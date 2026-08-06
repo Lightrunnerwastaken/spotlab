@@ -1,0 +1,215 @@
+"""Kommandozeile — eine dünne Hülle.
+
+Alles, was hier steht, ist Argumentauswertung und Ausgabe. Die Funktionalität
+liegt in workshop/ und api/, damit die spätere GUI und der MCP-Server sich an
+derselben Schicht bedienen können.
+"""
+
+import argparse
+import getpass
+import sys
+from pathlib import Path
+
+from spotlab import __version__
+from spotlab.errors import SpotlabError
+from spotlab.record.read import list_runs, read_jsonl, read_run
+from spotlab.workshop.doctor import diagnose
+from spotlab.workshop.editor import open_in_editor
+from spotlab.workshop.launcher import run_script
+from spotlab.workshop.project import create_project
+
+GRUEN, ROT, GRAU, AUS = "\033[32m", "\033[31m", "\033[90m", "\033[0m"
+
+
+def build_parser():
+    parser = argparse.ArgumentParser(
+        prog="spotlab", description="Den Spot programmieren — Kantonsschule"
+    )
+    parser.add_argument("--version", action="version", version=f"spotlab {__version__}")
+    unter = parser.add_subparsers(dest="kommando", required=True)
+
+    unter.add_parser("login", help="IP, Benutzer und Passwort hinterlegen")
+    unter.add_parser("doctor", help="Netz, Anmeldung, Not-Aus, Lease und Akku prüfen")
+
+    neu = unter.add_parser("new", help="neues Projekt anlegen")
+    neu.add_argument("name")
+
+    oeffnen = unter.add_parser("open", help="Projekt in VS Code öffnen")
+    oeffnen.add_argument("projekt", nargs="?", default=".")
+
+    starten = unter.add_parser("run", help="Skript starten und aufzeichnen")
+    starten.add_argument("datei")
+    starten.add_argument(
+        "--dryrun", action="store_true", help="ohne Roboter, nur Kommandos prüfen"
+    )
+
+    laeufe = unter.add_parser("runs", help="Läufe auflisten")
+    laeufe.add_argument("show", nargs="?", help="Lauf-ID für Details")
+
+    lease = unter.add_parser("lease", help="wer steuert den Spot")
+    lease.add_argument("--take", action="store_true", help="Kontrolle bewusst übernehmen")
+    return parser
+
+
+def _utf8_ausgabe():
+    """Ausgabe auf UTF-8 zwingen.
+
+    Alle Meldungen dieser Bibliothek sind deutsch. Auf einer Windows-Konsole mit
+    cp1252 als Vorgabe kommen Umlaute sonst als Buchstabensalat an, und eine
+    Fehlermeldung, die man nicht lesen kann, ist keine.
+    """
+    for strom in (sys.stdout, sys.stderr):
+        try:
+            strom.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass  # z. B. unter pytest, wo stdout ersetzt ist
+
+
+def main(argv=None):
+    _utf8_ausgabe()
+    args = build_parser().parse_args(argv)
+    try:
+        return _fuehre_aus(args)
+    except SpotlabError as fehler:
+        print(f"{ROT}{fehler}{AUS}", file=sys.stderr)
+        return 1
+    except FileExistsError as fehler:
+        print(f"{ROT}{fehler}{AUS}", file=sys.stderr)
+        return 1
+
+
+def _fuehre_aus(args):
+    if args.kommando == "login":
+        return _login()
+    if args.kommando == "doctor":
+        return _doctor()
+    if args.kommando == "new":
+        ordner = create_project(args.name)
+        print(f"Projekt angelegt: {ordner}")
+        print(f"Weiter mit:  spotlab open {ordner.name}")
+        return 0
+    if args.kommando == "open":
+        from spotlab.config import load_config
+
+        try:
+            befehl = load_config().editor_command
+        except SpotlabError:
+            befehl = "code"
+        open_in_editor(Path(args.projekt).resolve(), command=befehl)
+        return 0
+    if args.kommando == "run":
+        return run_script(args.datei, dryrun=args.dryrun)
+    if args.kommando == "runs":
+        return _runs(args.show)
+    if args.kommando == "lease":
+        return _lease(args.take)
+    return 1
+
+
+def _login():
+    from spotlab.config import Config, Limits, load_config, save_config, save_password
+
+    try:
+        alt = load_config()
+    except SpotlabError:
+        alt = None
+    ip = input(f"IP des Spot [{alt.ip if alt else '192.168.80.3'}]: ").strip() or (
+        alt.ip if alt else "192.168.80.3"
+    )
+    benutzer = input(f"Benutzername [{alt.username if alt else 'user'}]: ").strip() or (
+        alt.username if alt else "user"
+    )
+    spitzname = input(f"Spitzname [{alt.nickname if alt else 'Spot'}]: ").strip() or (
+        alt.nickname if alt else "Spot"
+    )
+    passwort = getpass.getpass("Passwort (wird im Windows-Tresor gespeichert): ")
+
+    save_config(
+        Config(
+            ip=ip,
+            username=benutzer,
+            nickname=spitzname,
+            limits=alt.limits if alt else Limits(),
+            editor_command=alt.editor_command if alt else "code",
+            default_backend=alt.default_backend if alt else "real",
+        )
+    )
+    if passwort:
+        save_password(benutzer, passwort)
+    print("Gespeichert. Prüfen mit:  spotlab doctor")
+    return 0
+
+
+def _doctor():
+    alles_gut = True
+    for pruefung in diagnose():
+        zeichen = f"{GRUEN}OK  {AUS}" if pruefung.ok else f"{ROT}FEHL{AUS}"
+        print(f"{zeichen} {pruefung.name:<14} {pruefung.detail}")
+        if pruefung.rat:
+            print(f"     {GRAU}→ {pruefung.rat}{AUS}")
+        alles_gut = alles_gut and pruefung.ok
+    return 0 if alles_gut else 1
+
+
+def _runs(kennung):
+    wurzel = Path.cwd() / "runs"
+    if kennung:
+        verzeichnis = wurzel / kennung
+        if not verzeichnis.is_dir():
+            raise SpotlabError(f"Den Lauf {kennung} gibt es in {wurzel} nicht.")
+        lauf = read_run(verzeichnis)
+        print(f"Lauf     {lauf.id}")
+        print(f"Ergebnis {lauf.ergebnis}" + (f" — {lauf.fehler}" if lauf.fehler else ""))
+        print(f"Backend  {lauf.backend}")
+        print(f"Dauer    {lauf.dauer_s:.1f} s")
+        print(f"Skript   {lauf.skript or '(interaktiv)'}")
+        print(f"Daten    {lauf.ereignisse_n} Ereignisse, {lauf.abtastungen_n} Abtastungen")
+        print()
+        for satz in read_jsonl(verzeichnis / "ereignisse.jsonl"):
+            print(
+                f"  {satz.get('t', 0.0):7.2f}s  {satz.get('art'):<16} {satz.get('daten')}"
+            )
+        return 0
+
+    laeufe = list_runs(wurzel)
+    if not laeufe:
+        print(f"In {wurzel} gibt es noch keine Läufe. Starte einen mit:  spotlab run <datei>")
+        return 0
+    for lauf in laeufe:
+        farbe = GRUEN if lauf.ergebnis == "ok" else ROT
+        name = Path(lauf.skript).name if lauf.skript else ""
+        print(
+            f"{lauf.id}  {farbe}{lauf.ergebnis:<14}{AUS} "
+            f"{lauf.dauer_s:6.1f}s  {lauf.backend:<7} {name}"
+        )
+    return 0
+
+
+def _lease(uebernehmen):
+    from bosdyn.client.lease import LeaseClient
+
+    from spotlab.backends.real.lease import client_name, holder_of
+    from spotlab.backends.real.session import _standard_robot
+    from spotlab.config import load_config, load_password
+
+    cfg = load_config()
+    robot = _standard_robot(cfg)
+    robot.authenticate(cfg.username, load_password(cfg.username))
+    robot.time_sync.wait_for_sync()
+    client = robot.ensure_client(LeaseClient.default_service_name)
+
+    halter = holder_of(client)
+    if not uebernehmen:
+        print(f"Lease: {halter or 'frei'}")
+        print(f"Du wärst: {client_name()}")
+        return 0
+
+    if halter:
+        print(f"{ROT}Achtung:{AUS} {halter} steuert den Spot gerade.")
+        print("Ein laufendes Skript dort bricht sofort ab.")
+        if input("Wirklich übernehmen? [ja/nein] ").strip().lower() not in ("ja", "j"):
+            print("Abgebrochen.")
+            return 1
+    client.take()
+    print(f"Übernommen als {client_name()}.")
+    return 0

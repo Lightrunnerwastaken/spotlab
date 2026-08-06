@@ -41,8 +41,10 @@ def _toml_string(wert):
     return f'"{gesichert}"'
 
 
-def save_config(cfg, path=CONFIG_PATH):
-    path = Path(path)
+def save_config(cfg, path=None):
+    # Pfad erst zur Aufrufzeit auflösen: als Vorgabewert wäre CONFIG_PATH beim
+    # Import gebunden und in Tests nicht mehr umzubiegen.
+    path = Path(path) if path else CONFIG_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
     text = (
         "# von spotlab geschrieben — das Passwort steht NICHT hier, sondern im Windows-Tresor\n"
@@ -61,8 +63,8 @@ def save_config(cfg, path=CONFIG_PATH):
     path.write_text(text, encoding="utf-8")
 
 
-def load_config(path=CONFIG_PATH):
-    path = Path(path)
+def load_config(path=None):
+    path = Path(path) if path else CONFIG_PATH
     if not path.exists():
         raise ConfigMissing(
             f"Keine Konfiguration unter {path}. Einmalig einrichten mit `spotlab login`."

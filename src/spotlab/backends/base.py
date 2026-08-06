@@ -76,7 +76,7 @@ def require(backend, capability, wofuer):
     if vorhanden & capability:
         return
     raise UnsupportedCapability(
-        f"Dieses Backend kann {wofuer} nicht. Vorhanden: {_lesbar(vorhanden)}."
+        f"Dieses Backend beherrscht '{wofuer}' nicht. Vorhanden: {_lesbar(vorhanden)}."
     )
 
 
