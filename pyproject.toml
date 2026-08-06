@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "spotlab"
+version = "0.1.0"
+description = "Spot programmieren an der Kantonsschule"
+requires-python = ">=3.11"
+dependencies = [
+    "bosdyn-client==5.0.1.2",
+    "bosdyn-api==5.0.1.2",
+    "keyring>=24",
+    "numpy>=1.26",
+    "Pillow>=10",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+spotlab = "spotlab.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"spotlab.workshop" = ["templates/*.py"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
