@@ -199,14 +199,39 @@ die Schüler tatsächlich drücken.
 
 ## A12 — Fiducials · **VORAUSSETZUNG**
 
-**Prozedur** Markierungen aufhängen, Spot davorstellen, `spotlab record-map test` starten.
+**Vorhanden:** ja, mit dem Spot mitgeliefert (Stand 07.08.2026). Damit ist nur noch die
+Anbringung zu prüfen, nicht die Beschaffung.
+
+**Die stille Falle — Grösse.** Aus `spot-sdk/docs/concepts/autonomy/initialization.md`:
+*„Spot is configured to treat fiducials as 146mm squares and computes the distance based on
+that size. If a fiducial is printed at another size, Spot will infer the wrong position."*
+
+Das ist gefährlicher als ein Fehler, denn **es gibt keinen**: ein nachgedrucktes oder
+kopiertes Fiducial in falscher Grösse wird erkannt, liefert aber eine falsche Entfernung —
+die Karte wird still verzerrt. **Also nur die mitgelieferten Aufkleber verwenden.** Muss doch
+nachgedruckt werden: AprilTag-Set Tag36h11, 146 mm im Quadrat, auf weissem, mattem Papier,
+Druck mit 100 % Skalierung (kein „an Seite anpassen").
+
+**Anbringung**, ebenfalls aus derselben Quelle:
+
+- Eines **am Startpunkt** der Aufnahme.
+- Flach und fest an eine **senkrechte Wand** kleben. Verrutscht ein Fiducial nach der
+  Aufnahme, ist die Karte an dieser Stelle wertlos.
+- **Tief hängen:** die Oberkante auf Kniehöhe, 45–60 cm über dem Boden.
+- Jedes Fiducial in einer Karte nur **einmal** verwenden.
+- Nicht in wechselndes Licht, nicht im Gegenlicht (also nicht auf ein Fenster).
+- Dort hinhängen, wo sonst wenig zu sehen ist — etwa an einer langen kahlen Wand. Ecken,
+  Möbel und Geräte liefern dem Roboter ohnehin genug Merkmale.
+
+**Prozedur** Fiducials nach obiger Liste anbringen, Spot davorstellen,
+`spotlab record-map test` starten.
 
 **Erwartung** Kein `STATUS_MISSING_FIDUCIALS`; die Aufnahme läuft an.
 
 **Warum das zuerst kommt** Ohne Fiducial ist die ganze GraphNav-Stufe nicht benutzbar —
 weder Aufzeichnen noch Lokalisieren noch Fahren. Fällt A12 durch, sind A13–A16 gegenstandslos.
 
-**Ergebnis** _(offen)_
+**Ergebnis** _(offen — Beschaffung erledigt, Anbringung und Erkennung offen)_
 
 ---
 
