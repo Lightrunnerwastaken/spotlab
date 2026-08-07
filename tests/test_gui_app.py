@@ -103,12 +103,12 @@ def test_gui_importiert_kein_bosdyn():
     assert verstoesse == []
 
 
-def test_fenster_hat_jetzt_sechs_ansichten(qapp):
+def test_fenster_hat_jetzt_sieben_ansichten(qapp):
     fenster = MainWindow()
     assert set(fenster.ansichten) == {
-        "projekte", "code", "live", "laeufe", "karten", "spot"
+        "projekte", "code", "live", "laeufe", "karten", "anbindungen", "spot"
     }
-    assert fenster.stapel.count() == 6
+    assert fenster.stapel.count() == 7
 
 
 # --------------------------------------------------------------- Ansicht „Code"
@@ -180,6 +180,53 @@ def test_stopp_aus_dem_editor_geht_an_die_live_ansicht(qapp):
     fenster.ansichten["live"].stoppe = lambda: gerufen.append(True)
     fenster.ansichten["code"].stopp_gewuenscht.emit()
     assert gerufen == [True]
+
+
+def test_seitenleiste_hat_die_ansicht_anbindungen(qapp):
+    from spotlab.gui.sidebar import EINTRAEGE
+
+    assert ("anbindungen", "Anbindungen") in EINTRAEGE
+    schluessel = [s for s, _ in EINTRAEGE]
+    assert schluessel.index("anbindungen") < schluessel.index("spot")
+
+
+def test_lauf_aus_anbindungen_schaltet_nicht_um(qapp, tmp_path):
+    """Wer in „Anbindungen" startet, will die Panels sehen, nicht Telemetrie."""
+    fenster = MainWindow()
+    fenster._setze_arbeitsordner(str(tmp_path))
+    fenster._wechsle("anbindungen")
+    fenster._lauf_aus_anbindungen(_FakeProzess(), "egal.py")
+    fenster._lauf_begonnen(_lauf_verzeichnis(tmp_path))
+    assert fenster.stapel.currentWidget() is fenster.ansichten["anbindungen"]
+
+
+def test_lauf_aus_anbindungen_speist_die_ausgaben(qapp, tmp_path):
+    fenster = MainWindow()
+    fenster._setze_arbeitsordner(str(tmp_path))
+    fenster._lauf_aus_anbindungen(_FakeProzess(), "egal.py")
+    fenster._leser.zeile.emit("Fortschritt 3/20")
+    assert "Fortschritt 3/20" in fenster.ansichten["live"].ausgabe.toPlainText()
+    assert "Fortschritt 3/20" in fenster.ansichten["code"].ausgabe.toPlainText()
+
+
+def test_arbeitsordner_erreicht_die_anbindungen(qapp, tmp_path):
+    from spotlab.anbindung.manifest import DATEINAME
+    from spotlab.anbindung.speicher import binde_an
+
+    projekt = tmp_path / "fremd"
+    projekt.mkdir()
+    (projekt / "s.py").write_text("x = 1\n", encoding="utf-8")
+    (projekt / DATEINAME).write_text(
+        '[projekt]\nname = "fremd"\n\n[[skript]]\nname = "s"\ndatei = "s.py"\n',
+        encoding="utf-8",
+    )
+    arbeit = tmp_path / "werkstatt"
+    arbeit.mkdir()
+    binde_an(arbeit, projekt)
+
+    fenster = MainWindow()
+    fenster._setze_arbeitsordner(str(arbeit))
+    assert fenster.ansichten["anbindungen"].liste.count() == 1
 
 
 def test_projekt_in_spotlab_oeffnen_wechselt_zur_code_ansicht(qapp, tmp_path):

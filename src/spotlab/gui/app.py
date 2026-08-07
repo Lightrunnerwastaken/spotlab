@@ -25,6 +25,7 @@ from spotlab.gui.editor.view import EditorView
 from spotlab.gui.header import Header
 from spotlab.gui.sidebar import Sidebar
 from spotlab.gui.theme import palette_fuer, stylesheet
+from spotlab.gui.views.anbindungen import AnbindungenView
 from spotlab.gui.views.checkup import CheckupView
 from spotlab.gui.views.live import LiveView
 from spotlab.gui.views.maps import MapsView
@@ -75,10 +76,13 @@ class MainWindow(QWidget):
             "live": LiveView(),
             "laeufe": RunsView(),
             "karten": MapsView(),
+            "anbindungen": AnbindungenView(self._palette),
             "spot": CheckupView(),
         }
         self.stapel = QStackedWidget()
-        for schluessel in ("projekte", "code", "live", "laeufe", "karten", "spot"):
+        for schluessel in (
+            "projekte", "code", "live", "laeufe", "karten", "anbindungen", "spot"
+        ):
             self.stapel.addWidget(self.ansichten[schluessel])
 
         unten = QHBoxLayout()
@@ -119,6 +123,8 @@ class MainWindow(QWidget):
         self.ansichten["code"].lauf_gestartet.connect(self._lauf_aus_code)
         self.ansichten["code"].meldung.connect(self._melde)
         self.ansichten["projekte"].projekt_oeffnen.connect(self._oeffne_in_code)
+        self.ansichten["anbindungen"].meldung.connect(self._melde)
+        self.ansichten["anbindungen"].lauf_gestartet.connect(self._lauf_aus_anbindungen)
         self._verdrahte_code_stopp()
 
     def _verdrahte_code_stopp(self):
@@ -136,6 +142,7 @@ class MainWindow(QWidget):
     def _setze_arbeitsordner(self, pfad):
         self.ansichten["projekte"].setze_arbeitsordner(pfad or None)
         self.ansichten["code"].setze_arbeitsordner(pfad or None)
+        self.ansichten["anbindungen"].setze_arbeitsordner(pfad or None)
         self.ansichten["laeufe"].setze_arbeitsordner(pfad or None)
         self.ansichten["karten"].setze_arbeitsordner(pfad or None)
         if self._watcher is not None:
@@ -220,6 +227,13 @@ class MainWindow(QWidget):
         self._start_aus = "code"
         self._starte_leser(prozess)
 
+    def _lauf_aus_anbindungen(self, prozess, skript):
+        # Aus demselben Grund: wer dort startet, will die Panels sehen, nicht
+        # Telemetrie. Ein langer Experimentlauf schreibt seinen Fortschritt
+        # genau in die Ansicht, aus der er gestartet wurde.
+        self._start_aus = "anbindungen"
+        self._starte_leser(prozess)
+
     def _oeffne_in_code(self, projekt):
         self.ansichten["code"].setze_projekt(projekt)
         self._wechsle("code")
@@ -235,7 +249,7 @@ class MainWindow(QWidget):
         # sonst sieht der Schüler nicht, dass sein Programm läuft. Wer aber
         # gerade selbst aus „Code" gestartet hat, wird nicht aus seiner Ansicht
         # geworfen.
-        if self._start_aus == "code":
+        if self._start_aus in ("code", "anbindungen"):
             return
         self._wechsle("live")
         self.leiste.waehle("live")
@@ -247,6 +261,7 @@ class MainWindow(QWidget):
     def _lauf_beendet(self, verzeichnis):
         self.ansichten["live"].lauf_beendet()
         self.ansichten["code"].lauf_beendet()
+        self.ansichten["anbindungen"].aktualisiere()
         self.ansichten["laeufe"].aktualisiere()
         self.kopf.zeige_getrennt()
         self._start_aus = None
