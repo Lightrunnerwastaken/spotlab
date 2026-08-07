@@ -92,6 +92,45 @@ def test_ruhe_kommt_erst_nach_der_pause(qapp):
     assert ruhig == [True]                 # genau einmal
 
 
+def test_ctrl_f_zeigt_die_suchleiste_oben_rechts(qapp):
+    # Ohne eigene Platzierung saesse die Leiste in der linken oberen Ecke
+    # ueber den Zeilennummern — sie liegt in keinem Layout.
+    feld = CodeEdit(DUNKEL)
+    feld.resize(800, 400)
+    QTest.keyClick(feld, Qt.Key_F, Qt.ControlModifier)
+    # isHidden(), nicht isVisible(): ohne gezeigtes Fenster ist isVisible()
+    # immer falsch.
+    assert feld.suchleiste is not None and not feld.suchleiste.isHidden()
+    leiste = feld.suchleiste.geometry()
+    sicht = feld.viewport().geometry()
+    assert leiste.right() <= sicht.right() + 1
+    # Nicht ueber den Zeilennummern: die liegen links vom Textbereich.
+    assert leiste.left() >= sicht.left() > 0
+    assert leiste.height() < sicht.height()      # verdeckt nicht den ganzen Text
+
+    QTest.keyClick(feld, Qt.Key_F, Qt.ControlModifier)
+    assert feld.suchleiste.isHidden()
+
+
+def test_suchen_findet_und_springt(qapp):
+    feld = CodeEdit(DUNKEL)
+    feld.setPlainText("eins\nzwei\ndrei\n")
+    feld.suchleiste_umschalten()
+    feld.suchleiste.suchfeld.setText("drei")
+    assert feld.suchleiste.suche() is True
+    assert feld.textCursor().selectedText() == "drei"
+
+
+def test_suchen_faengt_am_anfang_wieder_an(qapp):
+    # Sonst endet die Suche stumm, sobald man einmal durch ist.
+    feld = CodeEdit(DUNKEL)
+    feld.setPlainText("treffer\nnichts\n")
+    feld.moveCursor(QTextCursor.End)
+    feld.suchleiste_umschalten()
+    feld.suchleiste.suchfeld.setText("treffer")
+    assert feld.suchleiste.suche() is True
+
+
 def test_alle_ersetzen_in_der_offenen_datei(qapp):
     feld = CodeEdit(DUNKEL)
     feld.setPlainText("a = 1\nb = a\nc = a\n")

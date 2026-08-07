@@ -92,6 +92,7 @@ class CodeEdit(QPlainTextEdit):
         self.leiste.setGeometry(
             QRect(innen.left(), innen.top(), self.zeilenleiste_breite(), innen.height())
         )
+        self._platziere_suchleiste()
 
     def zeichne_zeilenleiste(self, ereignis):
         maler = QPainter(self.leiste)
@@ -190,9 +191,29 @@ class CodeEdit(QPlainTextEdit):
     def suchleiste_umschalten(self):
         if self.suchleiste is None:
             self.suchleiste = Suchleiste(self)
-        self.suchleiste.setVisible(not self.suchleiste.isVisible())
-        if self.suchleiste.isVisible():
+        # isHidden() statt isVisible(): isVisible() ist falsch, solange ein
+        # Vorfahre nicht gezeigt wird — das Umschalten haette dann nie wieder
+        # zugemacht.
+        zeigen = self.suchleiste.isHidden()
+        self.suchleiste.setVisible(zeigen)
+        self._platziere_suchleiste()
+        if zeigen:
             self.suchleiste.suchfeld.setFocus()
+
+    def _platziere_suchleiste(self):
+        """Oben rechts ueber dem Text, wie in VS Code.
+
+        Die Leiste ist ein Kind des Textfelds und liegt in keinem Layout —
+        ohne diese Platzierung saesse sie in der linken oberen Ecke ueber den
+        Zeilennummern.
+        """
+        if self.suchleiste is None or self.suchleiste.isHidden():
+            return
+        sicht = self.viewport().geometry()
+        breite = min(self.suchleiste.sizeHint().width(), sicht.width())
+        hoehe = self.suchleiste.sizeHint().height()
+        self.suchleiste.setGeometry(sicht.right() - breite + 1, sicht.top(), breite, hoehe)
+        self.suchleiste.raise_()
 
 
 class Suchleiste(QWidget):
@@ -202,8 +223,9 @@ class Suchleiste(QWidget):
     """
 
     def __init__(self, editor):
-        super().__init__(editor.parentWidget() or editor)
+        super().__init__(editor)
         self._editor = editor
+        self.setAutoFillBackground(True)
         self.suchfeld = QLineEdit()
         self.suchfeld.setPlaceholderText("Suchen")
         self.ersatzfeld = QLineEdit()
@@ -227,6 +249,12 @@ class Suchleiste(QWidget):
         for widget in (self.suchfeld, self.ersatzfeld, self.gross_klein,
                        zurueck, weiter, ersetzen, alle, schliessen):
             anordnung.addWidget(widget)
+
+        # Ausdruecklich verstecken: ein frisch angelegtes Kindwidget gilt in Qt
+        # bereits als sichtbar (isHidden() == False), auch wenn der Vorfahre
+        # noch nicht gezeigt wurde. Ohne das haette der erste Ctrl+F die Leiste
+        # zugemacht statt aufgemacht.
+        self.hide()
 
     def _flags(self, rueckwaerts):
         flags = QTextDocument.FindFlags()

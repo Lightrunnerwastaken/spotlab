@@ -39,10 +39,35 @@ def test_dieselbe_datei_zweimal_oeffnen_gibt_denselben_reiter(qapp, tmp_path):
     assert ansicht.reiter.count() == 1
 
 
-def test_aenderung_markiert_den_reiter(qapp, tmp_path):
+def test_frisch_geoeffneter_reiter_ist_nicht_verschmutzt(qapp, tmp_path):
+    """rehighlight() aendert Formatierung, und Qt zaehlt das als Inhaltsaenderung.
+
+    Mit textChanged waere jeder Reiter schon beim Oeffnen als geaendert markiert
+    — und der Punkt im Titel damit bedeutungslos.
+    """
     ansicht, _ordner, projekt = _ansicht(tmp_path)
     ansicht.oeffne(projekt / "hallo_spot.py")
-    ansicht.reiter.currentWidget().setPlainText("x = 2\n")
+    QTest.qWait(400)          # Ruhepause abwarten: hier laeuft neu_lexen
+    assert ansicht.reiter.tabText(0) == "hallo_spot.py"
+    assert ansicht.aktueller_reiter().verschmutzt is False
+
+
+def test_rueckgaengig_bis_zum_urzustand_loescht_die_marke(qapp, tmp_path):
+    ansicht, _ordner, projekt = _ansicht(tmp_path)
+    ansicht.oeffne(projekt / "hallo_spot.py")
+    feld = ansicht.reiter.currentWidget()
+    feld.insertPlainText("# neu\n")
+    assert ansicht.reiter.tabText(0).startswith("●")
+    feld.undo()
+    assert ansicht.reiter.tabText(0) == "hallo_spot.py"
+
+
+def test_aenderung_markiert_den_reiter(qapp, tmp_path):
+    # Getippt, nicht setPlainText: das setzt Qts Modified-Flag zurueck und
+    # kommt im Programm nur beim Laden und Neuladen vor, wo genau das stimmt.
+    ansicht, _ordner, projekt = _ansicht(tmp_path)
+    ansicht.oeffne(projekt / "hallo_spot.py")
+    QTest.keyClicks(ansicht.reiter.currentWidget(), "y")
     assert ansicht.reiter.tabText(0).startswith("●")
 
 

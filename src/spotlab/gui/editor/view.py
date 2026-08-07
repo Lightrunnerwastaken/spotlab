@@ -249,12 +249,19 @@ class EditorView(QWidget):
 
         feld = CodeEdit(self._palette)
         feld.setPlainText(text)
+        feld.document().setModified(False)
         hervorheber = Hervorheber(feld.document(), self._palette)
         hilfe = Vervollstaendigung(feld)
         hilfe.setze_pfad(pfad)
         feld.ruhe.connect(hervorheber.neu_lexen)
         feld.ruhe.connect(lambda f=feld: self._pruefe(f))
-        feld.textChanged.connect(lambda f=feld: self._verschmutzt(f))
+        # modificationChanged statt textChanged: rehighlight() aendert
+        # Formatierung, und Qt zaehlt das als Inhaltsaenderung — der Reiter
+        # waere sonst schon beim Oeffnen als geaendert markiert.
+        # QSyntaxHighlighter stellt das Modified-Flag ausdruecklich wieder her.
+        feld.document().modificationChanged.connect(
+            lambda geaendert, f=feld: self._verschmutzt(f, geaendert)
+        )
         feld.speichern_gewuenscht.connect(self.speichere_aktuellen)
 
         self._reiter[feld] = Reiter(pfad, feld, hervorheber, hilfe, zeit, groesse)
@@ -268,11 +275,11 @@ class EditorView(QWidget):
             return
         feld.zeige_fehler(pruefe(feld.toPlainText(), name=str(eintrag.pfad)))
 
-    def _verschmutzt(self, feld):
+    def _verschmutzt(self, feld, geaendert=True):
         eintrag = self._reiter.get(feld)
-        if eintrag is None or eintrag.verschmutzt:
+        if eintrag is None or eintrag.verschmutzt == geaendert:
             return
-        eintrag.verschmutzt = True
+        eintrag.verschmutzt = geaendert
         self._titel(eintrag)
 
     def _titel(self, eintrag):
@@ -323,6 +330,7 @@ class EditorView(QWidget):
         except OSError as fehler:
             self.meldung.emit(f"{eintrag.pfad.name} liess sich nicht speichern: {fehler}")
             return False
+        eintrag.feld.document().setModified(False)
         eintrag.verschmutzt = False
         self._titel(eintrag)
         return True
@@ -334,6 +342,7 @@ class EditorView(QWidget):
             self.meldung.emit(str(fehler))
             return
         eintrag.feld.setPlainText(text)
+        eintrag.feld.document().setModified(False)
         eintrag.mtime, eintrag.groesse = stempel(eintrag.pfad)
         eintrag.verschmutzt = False
         self._titel(eintrag)

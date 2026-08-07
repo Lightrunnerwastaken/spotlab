@@ -31,6 +31,18 @@ versionsgepinntes Extra `spotlab[sim]`.
   Konfiguration.** Ohne das führe ein Schüler autonom schneller als von Hand.
 - **Das Kartenformat auf der Platte ist das des SDK.** Kein eigenes Format — sonst geht die
   Austauschbarkeit mit `graph_nav_command_line.py` und `view_map.py` verloren.
+- **`editor/` darf nichts aus `api/`, `backends/` oder `maps/` importieren und nichts
+  ausserhalb der Standardbibliothek.** `api/spot.py` zieht über `motion`/`posture`/`state`/
+  `perception` bosdyn, numpy und Pillow herein; für `editor/verbs.py` ist `api/spot.py`
+  **Text, keine Schnittstelle** — gelesen mit `ast`, nicht importiert. Ein Import wäre der
+  bequeme Weg zur Introspektion und würde den Editor an das SDK ketten.
+  `tests/test_editor_verbs.py` hält das in einem Unterprozess fest.
+- **Es gibt genau einen `OutputReader` pro Lauf.** Die Ausgabe-Pipe hat genau einen Leser;
+  ein zweiter teilte sich die Zeilen zufällig mit dem ersten. Neue Ansichten hängen sich als
+  weitere Senke an `app.py::_starte_leser`, nie mit einem eigenen Leser an den Prozess.
+- **Der Stopp-Knopf im Editor delegiert an `LiveView.stoppe()`.** Dieselbe Funktion
+  aufzurufen genügt nicht — der freundliche Stopp hängt am Lauf-Verzeichnis, das nur die
+  Live-Ansicht vom Watcher bekommt. Delegation heisst dasselbe Objekt mit demselben Zustand.
 - **`errors/` darf nichts aus `backends/` importieren.** `backends/base.py` importiert
   `UnsupportedCapability` aus `errors`; die Gegenrichtung schliesst den Kreis, sobald
   `backends.base` zuerst geladen wird. Die Position der Importzeile hilft dagegen nicht.
@@ -52,6 +64,12 @@ versionsgepinntes Extra `spotlab[sim]`.
 - Alle Meldungen an Nutzer sagen, **was zu tun ist**, nicht nur was kaputt ist. Und sie
   dürfen keine Ursache *behaupten*, die nicht geprüft ist — eine Meldung, die auf die
   falsche Fährte schickt, kostet mehr Zeit als gar keine.
+- Der eingebaute Editor ist eine **Ergänzung**, kein Ersatz: `spotlab open` und „In VS Code
+  öffnen" bleiben. Genau deshalb haben regelmässig beide Editoren dieselbe Datei offen —
+  jeder Reiter merkt sich Änderungszeit und Grösse und fragt vor dem Überschreiben.
+- Der Editor schreibt Dateien mit `encoding="utf-8", newline="\n"`. Ohne das schreibt Python
+  auf Windows CRLF, und jede Datei sieht nach dem ersten Speichern in git vollständig
+  geändert aus.
 - **Externe Programme immer erst mit `shutil.which()` auflösen, dann mit vollem Pfad
   starten.** Python startet über `CreateProcess`; das durchsucht den PATH, hängt aber nur
   `.exe` an und wertet `PATHEXT` nicht aus. `code.cmd` ist damit aus `subprocess` heraus
@@ -82,6 +100,8 @@ versionsgepinntes Extra `spotlab[sim]`.
 
 ## Umsetzungsstand
 
-Fundament (Stufe 1+2) vollständig: Sitzungskern, Schülerbibliothek, Aufzeichnung,
-Werkstatt-CLI. Offen und bewusst nicht gebaut: GUI, MCP-Server, Sim-Adapter,
-NN-Anbindung, Mehrbenutzer-Dienst, Arm/GraphNav/Docking.
+Fundament (Stufe 1+2), GUI (Stufe 3), GraphNav (Stufe 4) und der eingebaute Editor
+(Stufe 5) sind vollständig. Offen und bewusst nicht gebaut: MCP-Server, Sim-Adapter,
+NN-Anbindung, Mehrbenutzer-Dienst, Arm und Docking. Im Editor bewusst nicht gebaut:
+Debugger mit Haltepunkten, git-Integration, Erweiterungen, projektweite Suche.
+Spec: `docs/superpowers/specs/2026-08-07-spotlab-ide-design.md`.

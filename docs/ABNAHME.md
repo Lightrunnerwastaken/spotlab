@@ -296,6 +296,25 @@ nur im Code steht — der einzige Punkt dieser Stufe, den kein Test ohne Roboter
 
 ---
 
+## A17 — Ein aus dem Editor gestarteter Lauf lässt sich genauso stoppen
+
+**Prozedur** Ein Programm aus der Ansicht „Code" starten. Im ersten Durchgang „Stopp"
+drücken, im zweiten den NOT-AUS in der Kopfleiste.
+
+**Erwartung** „Stopp" setzt Spot hin wie bei einem Lauf aus „Projekte". Der NOT-AUS schaltet
+die Motoren ab. Der Lauf erscheint danach in „Läufe", und die Ansicht springt beim Starten
+**nicht** weg von „Code".
+
+**Warum das trotz Delegation am Gerät geprüft wird:** ein zweiter Startweg, der beim
+Anhalten anders reagiert, wäre die gefährlichste Art, diese Stufe falsch zu bauen. Dass der
+Knopf dieselbe Methode desselben Objekts ruft, steht im Code — dass die Kette aus Watcher,
+Lauf-Verzeichnis und Stopp-Markierung auch bei diesem Startweg vollständig geschlossen ist,
+zeigt erst der Roboter.
+
+**Ergebnis** _(offen)_
+
+---
+
 ## Nach der Abnahme
 
 Ergebnisse hier eintragen, Abweichungen als Befund in die Spec zurückspielen, und erst
