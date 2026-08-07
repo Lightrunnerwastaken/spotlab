@@ -58,6 +58,7 @@ def build_parser():
     )
 
     unter.add_parser("gui", help="Fenster öffnen")
+    unter.add_parser("mcp", help="MCP-Server über stdin/stdout starten (für Agenten)")
     return parser
 
 
@@ -119,7 +120,28 @@ def _fuehre_aus(args):
         return _record_map(args.name, args.leeren)
     if args.kommando == "gui":
         return _gui()
+    if args.kommando == "mcp":
+        return _mcp()
     return 1
+
+
+def _mcp_vorhanden():
+    import importlib.util
+
+    return importlib.util.find_spec("mcp") is not None
+
+
+def _mcp():
+    if not _mcp_vorhanden():
+        print(
+            "Der MCP-Server braucht das Extra `mcp`. Installieren mit:\n"
+            '  pip install "spotlab[mcp]"',
+            file=sys.stderr,
+        )
+        return 1
+    from spotlab.mcp.server import main as server_main
+
+    return server_main()
 
 
 def _arbeitsordner():
@@ -316,3 +338,7 @@ def _lease(uebernehmen):
     client.take()
     print(f"Übernommen als {client_name()}.")
     return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

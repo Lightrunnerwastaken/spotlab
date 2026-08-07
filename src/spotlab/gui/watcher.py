@@ -7,12 +7,16 @@ der nur die neuen Bytes liest, kostet praktisch nichts.
 
 Die Logik steckt vollständig in RunScanner (Qt-frei, geprüft); RunWatcher ist
 nur die Hülle, die den Takt gibt und Signale aussendet.
+
+Wo die Läufe liegen, entscheidet spotlab.laufsuche — dieselbe Funktion benutzt
+der MCP-Server, damit beide dasselbe finden.
 """
 
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QTimer, Signal
 
+from spotlab.laufsuche import lauf_verzeichnisse  # noqa: F401  (Re-Export)
 from spotlab.record.tail import JsonlTail
 from spotlab.workshop.control import ist_aktiv
 
@@ -25,33 +29,6 @@ class _Lauf:
         self.zustand = JsonlTail(self.dir / "zustand.jsonl")
         self.ereignisse = JsonlTail(self.dir / "ereignisse.jsonl")
         self.gesehene_bilder = set()
-
-
-def lauf_verzeichnisse(workspace):
-    """Alle Lauf-Verzeichnisse unter <arbeitsordner>/<projekt>/runs/<lauf>.
-
-    Der Beobachter bekommt den ARBEITSORDNER, nicht einen runs-Ordner: dort
-    liegen die Projekte, und jedes bringt sein eigenes runs/ mit. Neue Projekte
-    werden bei jedem Takt neu ermittelt, damit ein währenddessen angelegtes
-    Projekt sofort mitläuft.
-    """
-    wurzel = Path(workspace)
-    try:
-        projekte = sorted((p for p in wurzel.iterdir() if p.is_dir()), key=lambda p: p.name)
-    except OSError:
-        return []
-    gefunden = []
-    for projekt in projekte:
-        runs = projekt / "runs"
-        if not runs.is_dir():
-            continue
-        try:
-            gefunden.extend(
-                sorted((p for p in runs.iterdir() if p.is_dir()), key=lambda p: p.name)
-            )
-        except OSError:
-            continue
-    return gefunden
 
 
 class RunScanner:

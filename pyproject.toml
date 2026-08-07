@@ -18,6 +18,9 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=8"]
 gui = ["PySide6>=6.6", "pygments>=2.17", "jedi>=0.19"]
+# >=2.0: dort heisst der Server MCPServer, in 1.x hiess er FastMCP und lag
+# unter mcp.server.fastmcp. Ein Kompatibilitaetspfad waere hier ungeprueft.
+mcp = ["mcp>=2.0"]
 
 [project.scripts]
 spotlab = "spotlab.cli:main"
