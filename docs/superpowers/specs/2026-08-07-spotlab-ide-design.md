@@ -82,7 +82,7 @@ an das SDK ketten. **Die Vervollständigung darf die eigene API nicht importiere
 gui/editor/view.py                       Ansicht „Code" (Baum · Reiter · Ausgabe)
    │   tree.py · codeedit.py · highlighter.py · completer.py      Qt
    ↓
-editor/    syntax.py · traceback.py · verbs.py                    Qt-frei, SDK-frei
+editor/    syntax.py · traceback.py · verbs.py · indent.py         Qt-frei, SDK-frei
    ↓
 (nichts)
 ```
@@ -216,6 +216,10 @@ def spotlab_verben() -> list[Vorschlag]                    # gecacht
 nicht mit `_` beginnt. Die Signatur entsteht aus `ast.unparse(node.args)`; das führende
 `self` wird abgeschnitten. Die Hilfe ist die erste Zeile von `ast.get_docstring(node)`.
 
+**`@property` zählt mit, aber ohne Klammern.** `is_powered`, `battery`, `state` und `robot`
+sind Eigenschaften; als `move()`-artiger Eintrag dargestellt wären sie eine Falle. Trägt ein
+Knoten den Dekorator `property`, ist die Signatur der blosse Name.
+
 Die Quelldateien werden über **reine Pfadarithmetik** gefunden — `editor/` und `api/` sind
 Geschwister unter `src/spotlab/`:
 
@@ -235,9 +239,10 @@ Docstrings deutsch sind:
 
 ```
 spot.
-  ▸ move(forward=0.0, side=0.0, turn=0.0)   Geht eine Strecke und dreht sich dabei.
-  ▸ navigate_to(waypoint)                   Fährt autonom zu einem Wegpunkt der aktiven Karte.
-  ▸ cameras()                               Nennt die verfügbaren Kameras.
+  ▸ move(forward=0.0, left=0.0, turn=0.0, timeout=30.0)  Geht eine feste Strecke und dreht dabei.
+  ▸ navigate_to(ziel, timeout=120.0)                     Fährt autonom zu einem Wegpunkt.
+  ▸ cameras()                                            Nennt die verfügbaren Kameras.
+  ▸ battery                                              Ladestand in Prozent.
 ```
 
 Für jemanden, der nicht weiss, was es überhaupt gibt, ist das der grösste Einzelnutzen des
@@ -308,8 +313,9 @@ Ein `QPlainTextEdit` mit:
 - **Suchen und Ersetzen** in der offenen Datei: eine einblendbare Leiste mit Suchfeld,
   Ersetzungsfeld, Weiter/Zurück, Ersetzen, Alle ersetzen.
 
-Die Einrückungsregeln sind Textarbeit und werden über die Hilfsfunktionen aus `editor/` und
-über simulierte Tastendrücke geprüft.
+Die Einrückungsregeln sind Textarbeit und liegen deshalb in **`editor/indent.py`**
+(`einrueckung_von`, `naechste_einrueckung`, `ausruecken`) — dort werden sie ohne Fenster
+geprüft, im Widget nur noch über simulierte Tastendrücke.
 
 ### 4.7 `gui/editor/completer.py` — Vorschläge
 
@@ -520,11 +526,14 @@ zeigt erst der Roboter.
 
 ---
 
-## 10 Offene Annahmen
+## 10 Annahmen
 
-1. **Die Docstrings in `api/` sind deutsch und einzeilig genug**, dass die erste Zeile als
-   Hilfe taugt. Trifft das für einzelne Methoden nicht zu, werden die Docstrings angepasst —
-   nicht die Vervollständigung.
+1. **Geprüft und widerlegt: `Spot` hat heute fast keine Docstrings.** Von den vierzehn
+   öffentlichen Namen in `api/spot.py` trägt einzig `robot` einen. Die Vervollständigung
+   zeigt damit nackte Signaturen — die Hälfte ihres Werts fiele weg.
+   **Folge für die Umsetzung:** jede öffentliche Methode und Eigenschaft von `Spot` bekommt
+   eine deutsche Docstring-Zeile. Das ist eine eigene Aufgabe im Plan, kein Nebenbei, und
+   ein Test hält fest, dass keine öffentliche Methode ohne Hilfe bleibt.
 2. **`ast.unparse(node.args)` liefert lesbare Signaturen** für unsere Methoden. Falls eine
    Signatur unbrauchbar aussieht, kommt der Name allein in die Liste.
 3. **`jedi` löst `spotlab` in der Umgebung der GUI auf.** Falls nicht, bleibt es beim
