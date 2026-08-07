@@ -17,6 +17,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+gui = ["PySide6>=6.6"]
 
 [project.scripts]
 spotlab = "spotlab.cli:main"
