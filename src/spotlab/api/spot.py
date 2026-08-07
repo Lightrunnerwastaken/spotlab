@@ -23,26 +23,31 @@ class Spot:
     # ------------------------------------------------------------ Leistung
 
     def power_on(self):
+        """Schaltet die Motoren ein. Spot steht davon noch nicht auf."""
         self.backend.power_on()
         if self.recorder is not None:
             self.recorder.event("power_on")
 
     def power_off(self, safe=True):
+        """Schaltet die Motoren ab; mit safe=True setzt Spot sich vorher hin."""
         self.backend.power_off(safe=safe)
         if self.recorder is not None:
             self.recorder.event("power_off", safe=safe)
 
     @property
     def is_powered(self):
+        """True, solange die Motoren eingeschaltet sind."""
         return self.backend.is_powered
 
     @property
     def battery(self):
+        """Ladestand des Akkus in Prozent."""
         return self.state.battery
 
     # ------------------------------------------------------------ Haltung
 
     def stand(self, height=0.0, timeout=10.0, schlaf=None):
+        """Steht auf. height hebt oder senkt den Körper in Metern."""
         posture.stand(
             self.backend,
             self.recorder,
@@ -52,6 +57,7 @@ class Spot:
         )
 
     def sit(self, timeout=10.0, schlaf=None):
+        """Setzt sich hin."""
         posture.sit(
             self.backend,
             self.recorder,
@@ -62,6 +68,7 @@ class Spot:
     # ------------------------------------------------------------ Bewegung
 
     def move(self, forward=0.0, left=0.0, turn=0.0, timeout=30.0):
+        """Geht eine feste Strecke in Metern und dreht sich um turn im Bogenmass."""
         motion.move(
             self.backend,
             self.recorder,
@@ -73,37 +80,45 @@ class Spot:
         )
 
     def walk(self, vx=0.0, vy=0.0, wz=0.0, duration=1.0):
+        """Fährt duration Sekunden lang mit den angegebenen Geschwindigkeiten."""
         motion.walk(
             self.backend, self.recorder, self.limits, vx=vx, vy=vy, wz=wz, duration=duration
         )
 
     def stop(self):
+        """Hält sofort an."""
         motion.stop(self.backend, self.recorder)
 
     # ------------------------------------------------------------ Wahrnehmung
 
     def cameras(self):
+        """Nennt die Namen der Kameras, die dieser Spot hat."""
         return perception.cameras(self.backend)
 
     def camera(self, name):
+        """Holt ein Bild der genannten Kamera und zeichnet es auf."""
         return perception.camera(self.backend, self.recorder, name)
 
     @property
     def state(self):
+        """Der aktuelle Zustand: Pose, Geschwindigkeit, Füsse, Akku."""
         return from_proto(self.backend.robot_state())
 
     # ------------------------------------------------------------ Karten
 
     def load_map(self, name=None):
+        """Lädt eine GraphNav-Karte; ohne Namen die aktive aus der Konfiguration."""
         self._karte = navigation.load_map(
             self.backend, self.recorder, self._workspace, name, self._active_map
         )
         return self._karte
 
     def localize(self):
+        """Bestimmt über ein Fiducial, wo Spot auf der geladenen Karte steht."""
         return navigation.localize(self.backend, self.recorder)
 
     def navigate_to(self, ziel, timeout=120.0):
+        """Fährt autonom zum genannten Wegpunkt der geladenen Karte."""
         if self._karte is None:
             from spotlab.errors import SpotlabError
 
@@ -115,6 +130,7 @@ class Spot:
         )
 
     def waypoints(self):
+        """Nennt die Wegpunkte der geladenen Karte."""
         return self._karte.waypoints if self._karte else []
 
     # ------------------------------------------------------------ Rohzugang
@@ -125,9 +141,11 @@ class Spot:
         return self._robot
 
     def send(self, command, end_time_secs=None):
+        """Schickt ein rohes RobotCommand-Protobuf an den Roboter."""
         if self.recorder is not None:
             self.recorder.event("kommando", name="send", roh=True)
         return self.backend.send_command(command, end_time_secs=end_time_secs)
 
     def close(self):
+        """Beendet die Verbindung. connect() ruft das am Ende selbst auf."""
         self.backend.close()
