@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 
 from spotlab.config import load_config, save_config
 from spotlab.errors import SpotlabError
+from spotlab.gui.editor.view import EditorView
 from spotlab.gui.header import Header
 from spotlab.gui.sidebar import Sidebar
 from spotlab.gui.theme import palette_fuer, stylesheet
@@ -56,6 +57,11 @@ class MainWindow(QWidget):
         except SpotlabError:
             self._config = None
 
+        self._palette = palette_fuer(system_ist_dunkel())
+        # Woher der letzte Start kam. Steuert nur eines: ob _lauf_begonnen die
+        # Ansicht wechselt.
+        self._start_aus = None
+
         self.kopf = Header()
         self.leiste = Sidebar()
         self.statuszeile = QLabel("")
@@ -65,13 +71,14 @@ class MainWindow(QWidget):
             "projekte": ProjectsView(
                 editor_command=self._config.editor_command if self._config else "code"
             ),
+            "code": EditorView(self._palette),
             "live": LiveView(),
             "laeufe": RunsView(),
             "karten": MapsView(),
             "spot": CheckupView(),
         }
         self.stapel = QStackedWidget()
-        for schluessel in ("projekte", "live", "laeufe", "karten", "spot"):
+        for schluessel in ("projekte", "code", "live", "laeufe", "karten", "spot"):
             self.stapel.addWidget(self.ansichten[schluessel])
 
         unten = QHBoxLayout()
@@ -109,9 +116,26 @@ class MainWindow(QWidget):
         self.ansichten["spot"].pruefung_angefordert.connect(self._pruefe)
         self.ansichten["karten"].meldung.connect(self._melde)
         self.ansichten["karten"].aktive_karte_gewaehlt.connect(self._merke_aktive_karte)
+        self.ansichten["code"].lauf_gestartet.connect(self._lauf_aus_code)
+        self.ansichten["code"].meldung.connect(self._melde)
+        self.ansichten["projekte"].projekt_oeffnen.connect(self._oeffne_in_code)
+        self._verdrahte_code_stopp()
+
+    def _verdrahte_code_stopp(self):
+        """Eigene Methode, damit Tests nach dem Austausch von stoppe() neu verdrahten.
+
+        Der Stopp-Knopf im Editor ruft NICHT eine zweite Kopie der Logik: der
+        freundliche Stopp hängt am Lauf-Verzeichnis, das nur die Live-Ansicht
+        vom Watcher bekommt. Delegation heisst dasselbe Objekt mit demselben
+        Zustand — und damit garantiert dasselbe Verhalten.
+        """
+        self.ansichten["code"].stopp_gewuenscht.connect(
+            lambda: self.ansichten["live"].stoppe()
+        )
 
     def _setze_arbeitsordner(self, pfad):
         self.ansichten["projekte"].setze_arbeitsordner(pfad or None)
+        self.ansichten["code"].setze_arbeitsordner(pfad or None)
         self.ansichten["laeufe"].setze_arbeitsordner(pfad or None)
         self.ansichten["karten"].setze_arbeitsordner(pfad or None)
         if self._watcher is not None:
@@ -173,12 +197,33 @@ class MainWindow(QWidget):
         self.ansichten["spot"].pruefen_knopf.setEnabled(True)
         self.ansichten["spot"].pruefen_knopf.setText("Spot prüfen")
 
-    def _lauf_gestartet(self, prozess, skript):
-        self._wechsle("live")
-        self.leiste.waehle("live")
+    def _starte_leser(self, prozess):
+        """EIN Leser, zwei Senken.
+
+        Ein zweiter OutputReader auf derselben Pipe teilte sich die Zeilen
+        zufällig mit dem ersten. Neue Ansichten hängen sich hier als weitere
+        Senke an, nie mit einem eigenen Leser an den Prozess.
+        """
         self._leser = OutputReader(prozess, self)
         self._leser.zeile.connect(self.ansichten["live"].zeige_ausgabe)
+        self._leser.zeile.connect(self.ansichten["code"].zeige_ausgabe)
         self._leser.start()
+
+    def _lauf_gestartet(self, prozess, skript):
+        self._start_aus = "projekte"
+        self._wechsle("live")
+        self.leiste.waehle("live")
+        self._starte_leser(prozess)
+
+    def _lauf_aus_code(self, prozess, skript):
+        # Kein Ansichtswechsel: wer aus „Code" startet, will dort bleiben.
+        self._start_aus = "code"
+        self._starte_leser(prozess)
+
+    def _oeffne_in_code(self, projekt):
+        self.ansichten["code"].setze_projekt(projekt)
+        self._wechsle("code")
+        self.leiste.waehle("code")
 
     def _lauf_begonnen(self, verzeichnis):
         # Skriptnamen aus lauf.json holen: „hallo_spot.py" sagt mehr als eine
@@ -187,7 +232,11 @@ class MainWindow(QWidget):
         name = Path(skript).name if skript else Path(verzeichnis).name
         self.ansichten["live"].setze_lauf(verzeichnis, name)
         # Auch bei einem von aussen gestarteten Lauf (F5 in VS Code) hinschalten —
-        # sonst sieht der Schüler nicht, dass sein Programm läuft.
+        # sonst sieht der Schüler nicht, dass sein Programm läuft. Wer aber
+        # gerade selbst aus „Code" gestartet hat, wird nicht aus seiner Ansicht
+        # geworfen.
+        if self._start_aus == "code":
+            return
         self._wechsle("live")
         self.leiste.waehle("live")
 
@@ -197,8 +246,10 @@ class MainWindow(QWidget):
 
     def _lauf_beendet(self, verzeichnis):
         self.ansichten["live"].lauf_beendet()
+        self.ansichten["code"].lauf_beendet()
         self.ansichten["laeufe"].aktualisiere()
         self.kopf.zeige_getrennt()
+        self._start_aus = None
 
     def closeEvent(self, ereignis):
         if self._watcher is not None:

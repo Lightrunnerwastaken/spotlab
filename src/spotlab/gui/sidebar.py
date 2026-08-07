@@ -5,6 +5,7 @@ from PySide6.QtWidgets import QButtonGroup, QPushButton, QVBoxLayout, QWidget
 
 EINTRAEGE = (
     ("projekte", "Projekte"),
+    ("code", "Code"),
     ("live", "Live-Lauf"),
     ("laeufe", "Läufe"),
     ("karten", "Karten"),

@@ -103,10 +103,94 @@ def test_gui_importiert_kein_bosdyn():
     assert verstoesse == []
 
 
-def test_fenster_hat_jetzt_fuenf_ansichten(qapp):
+def test_fenster_hat_jetzt_sechs_ansichten(qapp):
     fenster = MainWindow()
-    assert set(fenster.ansichten) == {"projekte", "live", "laeufe", "karten", "spot"}
-    assert fenster.stapel.count() == 5
+    assert set(fenster.ansichten) == {
+        "projekte", "code", "live", "laeufe", "karten", "spot"
+    }
+    assert fenster.stapel.count() == 6
+
+
+# --------------------------------------------------------------- Ansicht „Code"
+
+
+class _FakeProzess:
+    """Eine Pipe, die sofort endet — der Leser darf nicht hängen bleiben."""
+
+    stdout = ()
+
+    def wait(self):
+        return 0
+
+
+def _lauf_verzeichnis(tmp_path):
+    from spotlab.record.run import RunRecorder
+
+    skript = tmp_path / "demo.py"
+    skript.write_text("print(1)", encoding="utf-8")
+    recorder = RunRecorder(tmp_path / "runs", skript, backend="dryrun")
+    recorder.finish("ok")
+    return str(recorder.dir)
+
+
+def test_seitenleiste_hat_die_ansicht_code(qapp):
+    from spotlab.gui.sidebar import EINTRAEGE
+
+    assert ("code", "Code") in EINTRAEGE
+
+
+def test_ein_leser_speist_beide_ansichten(qapp, tmp_path):
+    """Zwei OutputReader auf derselben Pipe teilten sich die Zeilen zufällig auf."""
+    fenster = MainWindow()
+    fenster._setze_arbeitsordner(str(tmp_path))
+    fenster._starte_leser(_FakeProzess())
+    fenster._leser.zeile.emit("Akku: 87 %")
+    assert "Akku: 87 %" in fenster.ansichten["code"].ausgabe.toPlainText()
+    assert "Akku: 87 %" in fenster.ansichten["live"].ausgabe.toPlainText()
+
+
+def test_lauf_aus_dem_editor_schaltet_nicht_um(qapp, tmp_path):
+    fenster = MainWindow()
+    fenster._wechsle("code")
+    fenster._lauf_aus_code(_FakeProzess(), "egal.py")
+    fenster._lauf_begonnen(_lauf_verzeichnis(tmp_path))
+    assert fenster.stapel.currentWidget() is fenster.ansichten["code"]
+
+
+def test_lauf_von_aussen_schaltet_weiterhin_um(qapp, tmp_path):
+    """F5 in VS Code: der Schüler soll sehen, dass sein Programm läuft."""
+    fenster = MainWindow()
+    fenster._wechsle("code")
+    fenster._lauf_begonnen(_lauf_verzeichnis(tmp_path))
+    assert fenster.stapel.currentWidget() is fenster.ansichten["live"]
+
+
+def test_nach_dem_lauf_schaltet_ein_neuer_fremdlauf_wieder_um(qapp, tmp_path):
+    fenster = MainWindow()
+    fenster._wechsle("code")
+    fenster._lauf_aus_code(_FakeProzess(), "egal.py")
+    fenster._lauf_beendet(_lauf_verzeichnis(tmp_path))
+    fenster._lauf_begonnen(_lauf_verzeichnis(tmp_path))
+    assert fenster.stapel.currentWidget() is fenster.ansichten["live"]
+
+
+def test_stopp_aus_dem_editor_geht_an_die_live_ansicht(qapp):
+    fenster = MainWindow()
+    gerufen = []
+    fenster.ansichten["live"].stoppe = lambda: gerufen.append(True)
+    fenster.ansichten["code"].stopp_gewuenscht.emit()
+    assert gerufen == [True]
+
+
+def test_projekt_in_spotlab_oeffnen_wechselt_zur_code_ansicht(qapp, tmp_path):
+    projekt = tmp_path / "demo"
+    (projekt / "runs").mkdir(parents=True)
+    fenster = MainWindow()
+    fenster._setze_arbeitsordner(str(tmp_path))
+    fenster.ansichten["projekte"].projektliste.setCurrentRow(0)
+    fenster.ansichten["projekte"].spotlab_knopf.click()
+    assert fenster.stapel.currentWidget() is fenster.ansichten["code"]
+    assert fenster.ansichten["code"].projektwahl.currentText() == "demo"
 
 
 def test_aktive_karte_wird_gemerkt(qapp, tmp_path, monkeypatch):

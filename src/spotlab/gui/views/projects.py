@@ -39,6 +39,7 @@ def projekte_in(ordner):
 class ProjectsView(QWidget):
     lauf_gestartet = Signal(object, str)
     arbeitsordner_geaendert = Signal(str)
+    projekt_oeffnen = Signal(object)
 
     def __init__(self, editor_command="code", parent=None):
         super().__init__(parent)
@@ -54,6 +55,8 @@ class ProjectsView(QWidget):
         self.projektliste.currentRowChanged.connect(lambda _: self._fuelle_skripte())
         self.neu_knopf = QPushButton("Neues Projekt")
         self.neu_knopf.clicked.connect(self._neues_projekt)
+        self.spotlab_knopf = QPushButton("In spotlab öffnen")
+        self.spotlab_knopf.clicked.connect(self._oeffne_in_spotlab)
         self.oeffnen_knopf = QPushButton("In VS Code öffnen")
         self.oeffnen_knopf.clicked.connect(self._oeffne_projekt)
 
@@ -68,6 +71,7 @@ class ProjectsView(QWidget):
 
         projektknoepfe = QHBoxLayout()
         projektknoepfe.addWidget(self.neu_knopf)
+        projektknoepfe.addWidget(self.spotlab_knopf)
         projektknoepfe.addWidget(self.oeffnen_knopf)
         projektknoepfe.addStretch(1)
 
@@ -138,6 +142,11 @@ class ProjectsView(QWidget):
             QMessageBox.warning(self, "spotlab", str(fehler))
             return
         self.aktualisiere()
+
+    def _oeffne_in_spotlab(self):
+        projekt = self._gewaehltes_projekt()
+        if projekt is not None:
+            self.projekt_oeffnen.emit(projekt)
 
     def _oeffne_projekt(self):
         projekt = self._gewaehltes_projekt()
