@@ -75,10 +75,19 @@ mcp/   server.py · werkzeuge.py             stdio-Server, Extra [mcp]
 anbindung/   manifest.py · speicher.py · panel.py       Qt-frei, SDK-frei
 ```
 
-`anbindung/` benutzt nur die Standardbibliothek und importiert **nichts** aus `api/`,
-`backends/`, `maps/` oder `gui/`. Das ist dieselbe Bedingung, unter der `maps/` von der GUI
-benutzt werden darf, und sie ist hier wörtlich zu nehmen: die GUI muss Panels lesen können,
-ohne dass `bosdyn` installiert ist.
+`anbindung/` importiert **nichts** aus `api/`, `backends/`, `maps/` oder `gui/` und hält
+**keinen Lease-Client und keinen E-Stop-Endpunkt** — dieselbe Bedingung, unter der `maps/`
+von der GUI benutzt werden darf. `spotlab.errors` darf es benutzen: `SpotlabError` ist der
+Fehlertyp des Hauses, den CLI und GUI bereits abfangen.
+
+> **Korrektur gegenüber dem ersten Entwurf dieser Spec.** Dort stand, `anbindung/` dürfe nur
+> die Standardbibliothek benutzen, damit die GUI Panels ohne `bosdyn` lesen könne. Das trägt
+> nicht: `spotlab.errors` importiert über `translate.py` und `graphnav.py` selbst `bosdyn`,
+> und `gui/views/projects.py` importiert `spotlab.errors` seit Stufe 3. Der SDK ist im
+> GUI-Prozess ohnehin geladen, und `bosdyn-client` ist eine unbedingte Abhängigkeit des
+> Kerns. Der bestehende Test `test_gui_importiert_kein_bosdyn` prüft Quelltext auf **direkte**
+> Importe — er sichert die Lease-Regel, nicht Abwesenheit des SDK aus dem Prozess. Die
+> tragfähige Regel ist die von `maps/`, und die steht oben.
 
 `mcp/werkzeuge.py` ist die Schicht, die `anbindung/` mit `record/`, `maps/` und `workshop/`
 verbindet. **Die Werkzeuge sind gewöhnliche Funktionen**; `mcp/server.py` meldet sie nur beim
@@ -102,6 +111,11 @@ Lauf-Verzeichnis bekannt — `Path(datei).parent / "runs"`. `gui/watcher.py::lau
 nimmt zusätzlich zu `<arbeitsordner>/*/runs/*` die aus den Anbindungen abgeleiteten
 Verzeichnisse auf. Kein rekursives Absuchen fremder Repos, nur die Ordner, die im Manifest
 stehen. Dasselbe Ableiten benutzt `laeufe_auflisten` im MCP-Server.
+
+**Die Suche liegt an genau einer Stelle**, in einem Qt-freien `laufsuche.py`. `gui/watcher.py`
+ist zwar Qt-frei geschrieben, importiert aber PySide6 — der MCP-Server könnte die Funktion
+dort nicht benutzen, ohne Qt hereinzuziehen, und stünde dann vor der Wahl, sie nachzubauen.
+Zwei Suchen mit verschiedenen Ergebnissen wären der alte Fehler in neuem Gewand.
 
 **Ein Regressionstest hält das fest**, weil hier zum zweiten Mal dieselbe Klasse Fehler droht.
 
@@ -191,15 +205,16 @@ def loese(workspace: Path, name: str) -> None
 def lauf_verzeichnisse_von(anbindung: Anbindung) -> list[Path]
 ```
 
-Der Ordnername entsteht über eine **eigene Kopie** von `sicherer_name` — dieselbe Regel wie
-bei Karten (`re.sub(r"[^\w.-]+", "-", …)`), damit ein Projektname mit Schrägstrich keinen
-Ordner ausserhalb anlegt.
+Der Ordnername entsteht über `sicherer_name` — dieselbe Regel wie bei Karten
+(`re.sub(r"[^\w.-]+", "-", …)`), damit ein Projektname mit Schrägstrich keinen Ordner
+ausserhalb anlegt.
 
-**Warum kopiert und nicht importiert:** `maps/store.py` importiert auf Modulebene
-`bosdyn.api.graph_nav.map_pb2` für `lade_graph`. Ein Import von dort zöge das SDK in
-`anbindung/` und damit in die GUI — genau die Schichtregel, die dieses Paket einhält.
-Fünf Zeilen zu duplizieren ist der kleinere Preis. **Ein Test hält die beiden Umsetzungen
-gegeneinander**, damit sie nicht auseinanderlaufen.
+**Die Funktion zieht dafür nach `spotlab/pfade.py` um**, und `maps/store.py` importiert sie
+von dort. Sie aus `maps/store.py` zu importieren hiesse, die Anbindung an die
+GraphNav-Ablage zu koppeln — für eine fünfzeilige Regex, die mit Karten nichts zu tun hat.
+Sie zu kopieren hiesse, zwei Umsetzungen zu haben, die auseinanderlaufen können. Ein
+gemeinsamer Ort löst beides; `maps/store.py` behält den Namen als Re-Export, damit
+bestehende Importe und Tests unverändert laufen.
 
 `binde_an` ist **idempotent**: erneutes Anbinden erneuert `anbindung.json` und lässt die
 Panels stehen. Ein Agent, der nach jeder Manifeständerung neu anbindet, verliert nichts.
@@ -447,11 +462,16 @@ Agent → (eigene Dateiwerkzeuge) → zustand.jsonl im Detail
 
 **Qt-frei, ohne Server** — `anbindung/`:
 Manifest lesen samt fehlender Felder und Standardwerte; Pfade werden gegen das
-Projektverzeichnis aufgelöst; `binde_an` ist idempotent und lässt Panels stehen; `sicherer_name`
-verhindert Ausbruch aus `anbindungen/`; Panel schreiben und lesen im Kreis; **kaputtes JSON
-ergibt ein Panel mit `fehler` statt einer Ausnahme**; unbekannte Art ebenso; `bild_erlaubt`
-lässt einen Pfad aus dem Projekt zu und einen daneben nicht; atomares Schreiben hinterlässt
-keine `.neu`-Datei.
+Projektverzeichnis aufgelöst; `binde_an` ist idempotent und lässt Panels stehen;
+`sicherer_name` verhindert Ausbruch aus `anbindungen/` (der bestehende Test in
+`test_maps_store.py` läuft über den Re-Export weiter); Panel schreiben und lesen im Kreis;
+**kaputtes JSON ergibt ein Panel mit `fehler` statt einer Ausnahme**; unbekannte Art ebenso;
+`bild_erlaubt` lässt einen Pfad aus dem Projekt zu und einen daneben nicht; atomares
+Schreiben hinterlässt keine `.neu`-Datei.
+
+Dazu ein Schichttest wie in Stufe 5, aber auf die **richtige** Regel gerichtet: kein
+Quelltext unter `anbindung/` enthält `import bosdyn`, `spotlab.backends`, `spotlab.api`,
+`spotlab.maps` oder `spotlab.gui`.
 
 **MCP-Werkzeuge als Funktionen**, gegen einen Arbeitsordner in `tmp_path`: jedes Werkzeug
 liefert JSON-fähige Werte; `lauf_lesen` gibt Pfade und **keine Dateiinhalte**;
@@ -524,4 +544,4 @@ kann.
 
 `tomllib` ist ab Python 3.11 in der Standardbibliothek; die Untergrenze des Projekts ist
 3.11. Der Kern und das Extra `[gui]` bekommen **keine** neue Abhängigkeit — `anbindung/`
-benutzt nur die Standardbibliothek.
+braucht ausser `spotlab.errors` nichts, was nicht schon da ist.
