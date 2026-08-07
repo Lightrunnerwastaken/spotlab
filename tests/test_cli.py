@@ -81,3 +81,22 @@ def test_doctor_gibt_stufen_aus(monkeypatch, capsys):
 def test_unbekanntes_kommando_gibt_hilfe():
     with pytest.raises(SystemExit):
         main(["quatsch"])
+
+
+def test_gui_kommando_existiert():
+    assert build_parser().parse_args(["gui"])
+
+
+def test_gui_ohne_pyside_nennt_den_befehl(monkeypatch, capsys):
+    import builtins
+
+    echt = builtins.__import__
+
+    def ohne_pyside(name, *args, **kw):
+        if name.startswith("spotlab.gui") or name.startswith("PySide6"):
+            raise ImportError("No module named 'PySide6'")
+        return echt(name, *args, **kw)
+
+    monkeypatch.setattr(builtins, "__import__", ohne_pyside)
+    assert main(["gui"]) == 1
+    assert "pip install" in capsys.readouterr().err

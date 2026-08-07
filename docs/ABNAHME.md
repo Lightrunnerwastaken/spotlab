@@ -154,6 +154,49 @@ gegen die kommandierten 0.3 m/s auswertbar.
 
 ---
 
+## A9 — Freundlicher Stopp aus der GUI
+
+**Prozedur** Skript mit langer `walk()`-Phase starten, in der GUI *Stopp* drücken.
+
+**Erwartung** Spot bremst, setzt sich kontrolliert hin, Motoren aus, Lease frei.
+`lauf.json` trägt `abgebrochen`. Der Knopf „Reagiert nicht — hart beenden" darf **nicht**
+erscheinen; tut er es, kommt der `KeyboardInterrupt` nicht durch die gRPC-Aufrufe durch,
+und das gehört ins Tagebuch.
+
+**Ergebnis** _(offen)_
+
+---
+
+## A10 — NOT-AUS aus der GUI
+
+**Vor diesem Punkt Freifläche und Aufsicht sicherstellen — der Spot fällt kontrolliert um.**
+
+**Prozedur** Spot steht, NOT-AUS drücken.
+
+**Erwartung** Motoren gehen sofort aus, Spot sackt zusammen. `lauf.json` bleibt auf `läuft`
+stehen — der Prozess wurde getötet, `finish()` lief nie; das ist beabsichtigt und das
+Erkennungsmerkmal eines harten Abbruchs. Der Roboter ist danach ohne Neustart wieder
+verbindbar.
+
+**Ergebnis** _(offen)_
+
+---
+
+## A11 — F5-Lauf aus VS Code
+
+**Prozedur** GUI geöffnet lassen, in VS Code ein Skript mit F5 starten.
+
+**Erwartung** Die GUI greift den Lauf innerhalb einer Sekunde auf, zeigt Telemetrie, und
+**beide Stopp-Knöpfe wirken**.
+
+**Warum das der Prüfstein ist** Fällt A11 durch, ist Grundsatzentscheidung H3 der
+GUI-Spec falsch und die Oberfläche für den Unterrichtsalltag wertlos — denn F5 ist, was
+die Schüler tatsächlich drücken.
+
+**Ergebnis** _(offen)_
+
+---
+
 ## Nach der Abnahme
 
 Ergebnisse hier eintragen, Abweichungen als Befund in die Spec zurückspielen, und erst

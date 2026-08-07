@@ -19,6 +19,12 @@ versionsgepinntes Extra `spotlab[sim]`.
   bewusste, protokollierte Handlung.
 - **`connect()` schaltet die Motoren nicht ein.** `power_on()` bleibt eine eigene Zeile
   im Schülerprogramm.
+- **Kein `import bosdyn` und kein `import spotlab.backends` unterhalb von `src/spotlab/gui/`.**
+  Die GUI hält nie ein Lease; sie liest Live-Daten aus dem Lauf-Verzeichnis.
+- **Farben nur aus `gui/theme.py`.** Ein Farbliteral im Widget-Code bricht den zweiten
+  Hell/Dunkel-Modus, ohne dass es auffällt.
+- **`beende_hart` tötet nur einen Lauf, der nach `ist_aktiv()` noch lebt.** Prozess-IDs
+  werden vom Betriebssystem wiederverwendet.
 
 ## Regeln
 
@@ -45,6 +51,15 @@ versionsgepinntes Extra `spotlab[sim]`.
   Attrappen herein, kein Test wartet real.
 - Was nur am Gerät prüfbar ist, gehört in `docs/ABNAHME.md`, nicht in einen Test, der
   Sicherheit bloss behauptet.
+- Qt-Tests laufen mit `QT_QPA_PLATFORM=offscreen` (in `conftest.py` gesetzt) und werden
+  ohne das Extra `[gui]` sauber übersprungen. **Im Offscreen-Modus gibt es keine
+  Schriften** — gerenderte Bildschirmfotos zeigen Kästchen statt Text; das ist ein
+  Artefakt, kein Fehler. Aussehen nur auf einem echten Desktop beurteilen.
+- Widgets im Test in einer Variablen festhalten. Ein Wegwerf-Ausdruck wie
+  `Header().hinweis.text()` wird sofort abgeräumt und wirft `libshiboken: Internal C++
+  object already deleted`.
+- Was nicht Widget ist, gehört in ein Qt-freies Modul — `record/tail.py`,
+  `workshop/control.py`, `gui/theme.py`, `gui/watcher.py::RunScanner`.
 
 ## Umsetzungsstand
 

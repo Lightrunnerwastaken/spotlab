@@ -27,33 +27,59 @@ class _Lauf:
         self.gesehene_bilder = set()
 
 
+def lauf_verzeichnisse(workspace):
+    """Alle Lauf-Verzeichnisse unter <arbeitsordner>/<projekt>/runs/<lauf>.
+
+    Der Beobachter bekommt den ARBEITSORDNER, nicht einen runs-Ordner: dort
+    liegen die Projekte, und jedes bringt sein eigenes runs/ mit. Neue Projekte
+    werden bei jedem Takt neu ermittelt, damit ein währenddessen angelegtes
+    Projekt sofort mitläuft.
+    """
+    wurzel = Path(workspace)
+    try:
+        projekte = sorted((p for p in wurzel.iterdir() if p.is_dir()), key=lambda p: p.name)
+    except OSError:
+        return []
+    gefunden = []
+    for projekt in projekte:
+        runs = projekt / "runs"
+        if not runs.is_dir():
+            continue
+        try:
+            gefunden.extend(
+                sorted((p for p in runs.iterdir() if p.is_dir()), key=lambda p: p.name)
+            )
+        except OSError:
+            continue
+    return gefunden
+
+
 class RunScanner:
     """Qt-freier Kern: findet Läufe und liefert die Neuigkeiten seit dem letzten Aufruf."""
 
-    def __init__(self, runs_dir):
-        self._wurzel = Path(runs_dir)
+    def __init__(self, workspace):
+        self._wurzel = Path(workspace)
         self._offen = {}
 
     def tick(self):
         ereignisse = []
         ereignisse.extend(self._neue_laeufe())
-        for name in list(self._offen):
-            ereignisse.extend(self._neuigkeiten(name))
+        for schluessel in list(self._offen):
+            ereignisse.extend(self._neuigkeiten(schluessel))
         return ereignisse
 
     # ------------------------------------------------------------------ intern
 
     def _neue_laeufe(self):
         gefunden = []
-        try:
-            kandidaten = [p for p in self._wurzel.iterdir() if p.is_dir()]
-        except OSError:
-            return gefunden
-        for verzeichnis in sorted(kandidaten, key=lambda p: p.name):
-            if verzeichnis.name in self._offen or not ist_aktiv(verzeichnis):
+        for verzeichnis in lauf_verzeichnisse(self._wurzel):
+            # Schlüssel ist der volle Pfad: zwei Projekte können Läufe mit
+            # derselben Kennung haben.
+            schluessel = str(verzeichnis)
+            if schluessel in self._offen or not ist_aktiv(verzeichnis):
                 continue
-            self._offen[verzeichnis.name] = _Lauf(verzeichnis)
-            gefunden.append(("lauf_begonnen", str(verzeichnis)))
+            self._offen[schluessel] = _Lauf(verzeichnis)
+            gefunden.append(("lauf_begonnen", schluessel))
         return gefunden
 
     def _neuigkeiten(self, name):

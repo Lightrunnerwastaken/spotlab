@@ -33,6 +33,35 @@ Ohne Roboter üben — baut und prüft alle Kommandos, bewegt nichts:
 spotlab run hallo_spot.py --dryrun
 ```
 
+## Oberfläche
+
+```
+pip install -e .[gui]
+spotlab gui
+```
+
+Vier Ansichten in einer Seitenleiste: **Projekte** (anlegen, in VS Code öffnen, starten —
+mit Häkchen für Trockenlauf), **Live-Lauf** (Ereignisse, Telemetrie, Kamerabild, Ausgabe),
+**Läufe** (Liste vergangener Läufe mit der Kurve kommandiertes gegen gemessenes Tempo) und
+**Spot** (Zugangsdaten und Prüfung). Hell und dunkel folgen der Windows-Einstellung.
+
+Die Oberfläche zeigt **jeden** Lauf im Arbeitsordner — auch die, die du in VS Code mit F5
+startest.
+
+**Zwei Arten anzuhalten**, und der Unterschied ist wichtig:
+
+| Knopf | Wirkung |
+|---|---|
+| **Stopp** | Freundlich: das Programm bricht ab, der Abbau läuft, **der Spot setzt sich hin.** Reagiert es nach 3 s nicht, wird hartes Beenden angeboten. |
+| **NOT-AUS** | Hart, ein Klick, keine Rückfrage: der Prozess wird getötet, **die Motoren gehen aus und der Spot sackt zusammen.** |
+
+Der NOT-AUS wirkt nur auf das laufende spotlab-Programm. **Das primäre Sicherheitsmittel
+bleibt der physische Not-Aus am Tablet.**
+
+Die GUI hält **nie ein Lease** — sie liest alles aus dem Lauf-Verzeichnis mit. Deshalb gibt
+es kein Live-Kamerabild ohne laufendes Skript: Bilder erscheinen, sobald ein Programm
+welche aufnimmt.
+
 ## Ein Programm
 
 ```python

@@ -48,6 +48,8 @@ def build_parser():
 
     lease = unter.add_parser("lease", help="wer steuert den Spot")
     lease.add_argument("--take", action="store_true", help="Kontrolle bewusst übernehmen")
+
+    unter.add_parser("gui", help="Fenster öffnen")
     return parser
 
 
@@ -103,7 +105,23 @@ def _fuehre_aus(args):
         return _runs(args.show)
     if args.kommando == "lease":
         return _lease(args.take)
+    if args.kommando == "gui":
+        return _gui()
     return 1
+
+
+def _gui():
+    try:
+        from spotlab.gui.app import main as gui_main
+    except ImportError:
+        print(
+            f"{ROT}Die Oberfläche braucht PySide6.{AUS}\n"
+            "Einmalig installieren mit:\n"
+            "    pip install -e .[gui]",
+            file=sys.stderr,
+        )
+        return 1
+    return int(gui_main([]) or 0)
 
 
 def _login():
