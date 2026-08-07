@@ -43,6 +43,23 @@ versionsgepinntes Extra `spotlab[sim]`.
 - **Der Stopp-Knopf im Editor delegiert an `LiveView.stoppe()`.** Dieselbe Funktion
   aufzurufen genügt nicht — der freundliche Stopp hängt am Lauf-Verzeichnis, das nur die
   Live-Ansicht vom Watcher bekommt. Delegation heisst dasselbe Objekt mit demselben Zustand.
+- **Fremde Projekte liefern Daten, keinen Code.** Panels sind deklarative JSON-Dateien, die
+  spotlab mit den eigenen Widgets zeichnet. Ein Qt-Plugin-System liefe im Prozess mit dem
+  NOT-AUS-Knopf; eine Schleife oder ein Absturz darin nähme dem Fenster den Failsafe, um den
+  Stufe 1 herumgebaut ist.
+- **`SPOTLAB_NUR_TROCKEN=1` ist eine Obergrenze, keine Vorgabe.** `connect()` weist ein
+  explizites `backend="real"` damit ab, statt es stillschweigend herunterzustufen.
+  `SPOTLAB_BACKEND` genügt dafür nicht: `art = backend or os.environ.get(...)` — ein
+  Skriptargument überschreibt die Variable. **Ein veraltetes Manifest darf den Roboter nicht
+  bewegen können.** Die Prüfung steht vor dem `RunRecorder`, sonst bliebe ein leeres
+  Lauf-Verzeichnis liegen.
+- **`anbindung/` importiert nichts aus `api/`, `backends/`, `maps/`, `gui/`** und hält weder
+  Lease-Client noch E-Stop-Endpunkt — dieselbe Regel wie `maps/`. `spotlab.errors` ist
+  erlaubt und erwünscht.
+- **Wo Läufe liegen, entscheidet `laufsuche.py` — an genau einer Stelle.** Läufe fremder
+  Projekte liegen unter `<skriptordner>/runs/`, also ausserhalb des Arbeitsordners. Zwei
+  Suchen mit verschiedenen Ergebnissen sind der Fehler aus Stufe 3 in neuem Gewand;
+  `gui/watcher.py` exportiert die Funktion nur weiter.
 - **`errors/` darf nichts aus `backends/` importieren.** `backends/base.py` importiert
   `UnsupportedCapability` aus `errors`; die Gegenrichtung schliesst den Kreis, sobald
   `backends.base` zuerst geladen wird. Die Position der Importzeile hilft dagegen nicht.
@@ -64,6 +81,12 @@ versionsgepinntes Extra `spotlab[sim]`.
 - Alle Meldungen an Nutzer sagen, **was zu tun ist**, nicht nur was kaputt ist. Und sie
   dürfen keine Ursache *behaupten*, die nicht geprüft ist — eine Meldung, die auf die
   falsche Fährte schickt, kostet mehr Zeit als gar keine.
+- Panels bestimmen keine Farben. Ein Panel, das eine Farbe mitbringt, ist in einem der beiden
+  Modi unlesbar. Bildpfade dürfen nur ins Projekt oder in den Anbindungsordner zeigen —
+  dieselbe Regel wie bei den anklickbaren Tracebacks.
+- **`anbindung/panel.py::lies` wirft nie.** Ein Panel, das im Sekundentakt überschrieben
+  wird, ist regelmässig halb geschrieben; eine Ansicht, die daran leer wird, flackert im
+  Betrieb, und **ein** kaputtes Panel darf die anderen nicht löschen.
 - Der eingebaute Editor ist eine **Ergänzung**, kein Ersatz: `spotlab open` und „In VS Code
   öffnen" bleiben. Genau deshalb haben regelmässig beide Editoren dieselbe Datei offen —
   jeder Reiter merkt sich Änderungszeit und Grösse und fragt vor dem Überschreiben.
@@ -100,8 +123,12 @@ versionsgepinntes Extra `spotlab[sim]`.
 
 ## Umsetzungsstand
 
-Fundament (Stufe 1+2), GUI (Stufe 3), GraphNav (Stufe 4) und der eingebaute Editor
-(Stufe 5) sind vollständig. Offen und bewusst nicht gebaut: MCP-Server, Sim-Adapter,
-NN-Anbindung, Mehrbenutzer-Dienst, Arm und Docking. Im Editor bewusst nicht gebaut:
-Debugger mit Haltepunkten, git-Integration, Erweiterungen, projektweite Suche.
-Spec: `docs/superpowers/specs/2026-08-07-spotlab-ide-design.md`.
+Fundament (1+2), GUI (3), GraphNav (4), der eingebaute Editor (5) und die Anbindung
+fremder Projekte samt MCP-Server (6) sind vollständig. Offen und bewusst nicht gebaut:
+Sim-Adapter, NN-Anbindung, Mehrbenutzer-Dienst, Arm und Docking. Im Editor bewusst nicht
+gebaut: Debugger mit Haltepunkten, git-Integration, Erweiterungen, projektweite Suche.
+In der Anbindung: MCP über Netz, Mehrbenutzer, Qt-Code aus fremden Projekten, eine
+Diagrammbibliothek jenseits der fünf Panel-Arten.
+
+Specs: `docs/superpowers/specs/2026-08-07-spotlab-ide-design.md` und
+`…-spotlab-anbindung-design.md`. Anleitung für fremde Projekte: `docs/ANBINDUNG.md`.
