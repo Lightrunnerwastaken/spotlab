@@ -25,6 +25,15 @@ versionsgepinntes Extra `spotlab[sim]`.
   Hell/Dunkel-Modus, ohne dass es auffällt.
 - **`beende_hart` tötet nur einen Lauf, der nach `ist_aktiv()` noch lebt.** Prozess-IDs
   werden vom Betriebssystem wiederverwendet.
+- **Kein Lease-Client und kein E-Stop-Endpunkt unterhalb von `src/spotlab/maps/`.**
+  Aufzeichnen ist leaselos; nur deshalb darf die GUI es. Ein Lease dort bräche H1.
+- **Autonome Fahrt bekommt immer `travel_params` mit `velocity_limit` aus der
+  Konfiguration.** Ohne das führe ein Schüler autonom schneller als von Hand.
+- **Das Kartenformat auf der Platte ist das des SDK.** Kein eigenes Format — sonst geht die
+  Austauschbarkeit mit `graph_nav_command_line.py` und `view_map.py` verloren.
+- **`errors/` darf nichts aus `backends/` importieren.** `backends/base.py` importiert
+  `UnsupportedCapability` aus `errors`; die Gegenrichtung schliesst den Kreis, sobald
+  `backends.base` zuerst geladen wird. Die Position der Importzeile hilft dagegen nicht.
 
 ## Regeln
 

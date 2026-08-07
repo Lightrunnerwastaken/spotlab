@@ -62,6 +62,46 @@ Die GUI hält **nie ein Lease** — sie liest alles aus dem Lauf-Verzeichnis mit
 es kein Live-Kamerabild ohne laufendes Skript: Bilder erscheinen, sobald ein Programm
 welche aufnimmt.
 
+## Karten
+
+Der Spot kann einen Raum als GraphNav-Karte aufzeichnen und darauf danach autonom fahren.
+
+**Aufzeichnen** — in der Ansicht „Karten" oder im Terminal:
+
+```
+spotlab record-map turnhalle
+```
+
+Zwei Voraussetzungen, die nicht verhandelbar sind: **der Spot muss beim Start ein Fiducial
+sehen** (die AprilTag-Markierung), und **gefahren wird mit dem Tablet**. spotlab zeichnet nur
+mit und übernimmt die Steuerung nicht — es braucht dafür kein Lease.
+
+**Ansehen und auswählen** — `spotlab maps` listet auf, die Ansicht „Karten" zeigt eine
+Draufsicht. *Als aktive Karte setzen* merkt die Wahl, danach reicht im Skript `load_map()`
+ohne Argument.
+
+**Darauf fahren:**
+
+```python
+with spotlab.connect() as spot:
+    spot.power_on()
+    spot.stand()
+
+    karte = spot.load_map()          # die in der GUI gewählte Karte
+    print(karte.waypoints)           # ['start', 'kueche', 'fenster']
+
+    spot.localize()                  # über das Fiducial verorten
+    spot.navigate_to("kueche")
+```
+
+> **`navigate_to` bewegt den Roboter autonom.** Er fährt selbstständig eine Route ab. Sorge
+> für freie Fläche und Aufsicht. Der Geschwindigkeitsdeckel aus `config.toml` gilt auch
+> hier — er wird als `velocity_limit` an GraphNav durchgereicht.
+
+Karten liegen im **Format des SDK** unter `<arbeitsordner>/karten/<name>/`. Eine mit spotlab
+aufgezeichnete Karte lässt sich deshalb unverändert an `graph_nav_command_line.py` und
+`view_map.py` aus dem Spot-SDK verfüttern — und umgekehrt.
+
 ## Ein Programm
 
 ```python

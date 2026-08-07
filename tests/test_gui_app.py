@@ -5,12 +5,6 @@ pytest.importorskip("PySide6.QtWidgets")
 from spotlab.gui.app import MainWindow  # noqa: E402
 
 
-def test_fenster_baut_sich_mit_vier_ansichten(qapp):
-    fenster = MainWindow()
-    assert set(fenster.ansichten) == {"projekte", "live", "laeufe", "spot"}
-    assert fenster.stapel.count() == 4
-
-
 def test_navigation_wechselt_die_ansicht(qapp):
     fenster = MainWindow()
     fenster.leiste.knoepfe["laeufe"].click()
@@ -107,3 +101,21 @@ def test_gui_importiert_kein_bosdyn():
         if muster.search(p.read_text(encoding="utf-8"))
     ]
     assert verstoesse == []
+
+
+def test_fenster_hat_jetzt_fuenf_ansichten(qapp):
+    fenster = MainWindow()
+    assert set(fenster.ansichten) == {"projekte", "live", "laeufe", "karten", "spot"}
+    assert fenster.stapel.count() == 5
+
+
+def test_aktive_karte_wird_gemerkt(qapp, tmp_path, monkeypatch):
+    from spotlab.config import Config, Limits, load_config, save_config
+
+    pfad = tmp_path / "config.toml"
+    save_config(Config(ip="1.2.3.4", username="u", limits=Limits()), pfad)
+    monkeypatch.setattr("spotlab.config.CONFIG_PATH", pfad)
+
+    fenster = MainWindow()
+    fenster._merke_aktive_karte("turnhalle")
+    assert load_config(pfad).active_map == "turnhalle"

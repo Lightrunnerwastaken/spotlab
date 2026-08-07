@@ -7,6 +7,7 @@ EINTRAEGE = (
     ("projekte", "Projekte"),
     ("live", "Live-Lauf"),
     ("laeufe", "Läufe"),
+    ("karten", "Karten"),
     ("spot", "Spot"),
 )
 

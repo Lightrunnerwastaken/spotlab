@@ -26,6 +26,7 @@ from spotlab.gui.sidebar import Sidebar
 from spotlab.gui.theme import palette_fuer, stylesheet
 from spotlab.gui.views.checkup import CheckupView
 from spotlab.gui.views.live import LiveView
+from spotlab.gui.views.maps import MapsView
 from spotlab.gui.views.projects import ProjectsView
 from spotlab.gui.views.runs import RunsView
 from spotlab.gui.watcher import RunWatcher
@@ -66,10 +67,11 @@ class MainWindow(QWidget):
             ),
             "live": LiveView(),
             "laeufe": RunsView(),
+            "karten": MapsView(),
             "spot": CheckupView(),
         }
         self.stapel = QStackedWidget()
-        for schluessel in ("projekte", "live", "laeufe", "spot"):
+        for schluessel in ("projekte", "live", "laeufe", "karten", "spot"):
             self.stapel.addWidget(self.ansichten[schluessel])
 
         unten = QHBoxLayout()
@@ -89,6 +91,7 @@ class MainWindow(QWidget):
         self._verdrahte()
         self._setze_arbeitsordner(self._config.workspace if self._config else "")
         self.kopf.zeige_config(self._config)
+        self.ansichten["karten"].setze_config(self._config)
 
         if self._config is None:
             self._wechsle("spot")
@@ -104,10 +107,13 @@ class MainWindow(QWidget):
         self.ansichten["projekte"].arbeitsordner_geaendert.connect(self._merke_arbeitsordner)
         self.ansichten["spot"].config_gespeichert.connect(self._config_gespeichert)
         self.ansichten["spot"].pruefung_angefordert.connect(self._pruefe)
+        self.ansichten["karten"].meldung.connect(self._melde)
+        self.ansichten["karten"].aktive_karte_gewaehlt.connect(self._merke_aktive_karte)
 
     def _setze_arbeitsordner(self, pfad):
         self.ansichten["projekte"].setze_arbeitsordner(pfad or None)
         self.ansichten["laeufe"].setze_arbeitsordner(pfad or None)
+        self.ansichten["karten"].setze_arbeitsordner(pfad or None)
         if self._watcher is not None:
             self._watcher.stop()
             self._watcher = None
@@ -137,9 +143,18 @@ class MainWindow(QWidget):
         self._config = replace(self._config, workspace=pfad)
         save_config(self._config)
 
+    def _merke_aktive_karte(self, name):
+        if self._config is None:
+            self._melde("Der Spot ist noch nicht eingerichtet — Ansicht 'Spot'.")
+            return
+        self._config = replace(self._config, active_map=name)
+        save_config(self._config)
+        self.ansichten["karten"].setze_config(self._config)
+
     def _config_gespeichert(self, cfg):
         self._config = cfg
         self.kopf.zeige_config(cfg)
+        self.ansichten["karten"].setze_config(cfg)
 
     def _pruefe(self):
         self.ansichten["spot"].pruefen_knopf.setEnabled(False)

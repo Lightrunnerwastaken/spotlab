@@ -49,6 +49,14 @@ def build_parser():
     lease = unter.add_parser("lease", help="wer steuert den Spot")
     lease.add_argument("--take", action="store_true", help="Kontrolle bewusst übernehmen")
 
+    unter.add_parser("maps", help="aufgezeichnete Karten auflisten")
+
+    aufnahme = unter.add_parser("record-map", help="eine Karte aufzeichnen")
+    aufnahme.add_argument("name")
+    aufnahme.add_argument(
+        "--leeren", action="store_true", help="Karte auf dem Roboter zuerst leeren"
+    )
+
     unter.add_parser("gui", help="Fenster öffnen")
     return parser
 
@@ -105,9 +113,86 @@ def _fuehre_aus(args):
         return _runs(args.show)
     if args.kommando == "lease":
         return _lease(args.take)
+    if args.kommando == "maps":
+        return _maps()
+    if args.kommando == "record-map":
+        return _record_map(args.name, args.leeren)
     if args.kommando == "gui":
         return _gui()
     return 1
+
+
+def _arbeitsordner():
+    from spotlab.config import load_config
+
+    cfg = load_config()
+    if not cfg.workspace:
+        raise SpotlabError(
+            "Es ist kein Arbeitsordner gesetzt. Wähle einen in der Oberfläche "
+            "(`spotlab gui`, Ansicht 'Projekte')."
+        )
+    return cfg, Path(cfg.workspace)
+
+
+def _maps():
+    from spotlab.maps.store import karten
+
+    cfg, ordner = _arbeitsordner()
+    liste = karten(ordner)
+    if not liste:
+        print(
+            f"In {ordner} gibt es noch keine Karten. "
+            f"Aufzeichnen mit:  spotlab record-map <name>"
+        )
+        return 0
+    aktiv = cfg.active_map
+    for eintrag in liste:
+        marke = "*" if eintrag.name == aktiv else " "
+        print(
+            f"{marke} {eintrag.name:<24} {eintrag.wegpunkte:>4} Wegpunkte, "
+            f"{eintrag.kanten:>4} Kanten   {eintrag.aufgezeichnet or ''}"
+        )
+    if aktiv:
+        print("\n* = aktive Karte; im Skript reicht spot.load_map()")
+    return 0
+
+
+def _record_map(name, leeren):
+    """Interaktiv wie das SDK-Beispiel: gefahren wird mit dem Tablet."""
+    from spotlab.maps.session import RecordingSession
+    from spotlab.maps.store import karten_wurzel
+
+    cfg, ordner = _arbeitsordner()
+    print(
+        f"{GRAU}Der Spot muss ein Fiducial sehen. Gefahren wird mit dem TABLET — "
+        f"spotlab zeichnet nur mit.{AUS}"
+    )
+    sitzung = RecordingSession.connect(cfg)
+    try:
+        sitzung.start(graph_leeren=leeren)
+        print(
+            f"{GRUEN}Aufnahme läuft.{AUS} Befehle: <Name> = Wegpunkt setzen · "
+            f"s = Status · f = fertig"
+        )
+        while True:
+            eingabe = input("> ").strip()
+            if eingabe == "f":
+                break
+            if eingabe == "s":
+                zustand = sitzung.status()
+                print(
+                    f"  {zustand.meldung} · {zustand.wegpunkte} Wegpunkte, "
+                    f"{zustand.kanten} Kanten"
+                )
+                continue
+            if eingabe:
+                print(f"  Wegpunkt gesetzt: {sitzung.waypoint(eingabe)}")
+        sitzung.stop()
+        ziel = sitzung.download(karten_wurzel(ordner), name, roboter=cfg.nickname)
+        print(f"{GRUEN}Karte gespeichert:{AUS} {ziel}")
+    finally:
+        sitzung.close()
+    return 0
 
 
 def _gui():

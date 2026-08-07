@@ -1,0 +1,74 @@
+import pytest
+
+pytest.importorskip("PySide6.QtWidgets")
+
+from PySide6.QtGui import QColor, QPixmap  # noqa: E402
+
+from spotlab.gui.mapplot import MapPlot  # noqa: E402
+from spotlab.gui.theme import DUNKEL  # noqa: E402
+from spotlab.maps.geometry import Grundriss, Punkt  # noqa: E402
+
+
+def _grundriss():
+    return Grundriss(
+        punkte=[Punkt("a", "start", 0.0, 0.0), Punkt("b", "kueche", 4.0, 3.0)],
+        kanten=[("a", "b")],
+        quelle="anker",
+        hinweis="",
+    )
+
+
+def _gezeichnet(widget, breite=320, hoehe=240):
+    widget.resize(breite, hoehe)
+    bild = QPixmap(breite, hoehe)
+    widget.render(bild)
+    return bild.toImage()
+
+
+def _zaehle(bild, hexfarbe, toleranz=40):
+    ziel = QColor(hexfarbe)
+    treffer = 0
+    for y in range(bild.height()):
+        for x in range(bild.width()):
+            farbe = bild.pixelColor(x, y)
+            if (
+                abs(farbe.red() - ziel.red()) < toleranz
+                and abs(farbe.green() - ziel.green()) < toleranz
+                and abs(farbe.blue() - ziel.blue()) < toleranz
+            ):
+                treffer += 1
+    return treffer
+
+
+def test_leerer_grundriss_zeichnet_ohne_absturz(qapp):
+    plot = MapPlot()
+    plot.setze_grundriss(Grundriss([], [], "leer", "Diese Karte ist leer."))
+    _gezeichnet(plot)  # darf nicht werfen
+
+
+def test_punkte_werden_gezeichnet(qapp):
+    plot = MapPlot()
+    plot.setze_grundriss(_grundriss(), DUNKEL)
+    bild = _gezeichnet(plot)
+    # zwei benannte Wegpunkte ⇒ Kreise in der ok-Farbe
+    assert _zaehle(bild, DUNKEL.ok) > 20
+
+
+def test_hinweis_wird_uebernommen(qapp):
+    plot = MapPlot()
+    riss = Grundriss([Punkt("a", "", 0.0, 0.0)], [], "kette", "Rundungsfehler möglich.")
+    plot.setze_grundriss(riss, DUNKEL)
+    assert plot.grundriss.hinweis == "Rundungsfehler möglich."
+
+
+def test_ein_einzelner_punkt_stuerzt_nicht_ab(qapp):
+    """Ohne Ausdehnung wäre der Massstab eine Division durch null."""
+    plot = MapPlot()
+    plot.setze_grundriss(Grundriss([Punkt("a", "", 2.0, 2.0)], [], "kette", ""), DUNKEL)
+    _gezeichnet(plot)
+
+
+def test_widget_ohne_flaeche_stuerzt_nicht_ab(qapp):
+    plot = MapPlot()
+    plot.setze_grundriss(_grundriss(), DUNKEL)
+    _gezeichnet(plot, breite=1, hoehe=1)

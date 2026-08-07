@@ -197,6 +197,80 @@ die Schüler tatsächlich drücken.
 
 ---
 
+## A12 — Fiducials · **VORAUSSETZUNG**
+
+**Prozedur** Markierungen aufhängen, Spot davorstellen, `spotlab record-map test` starten.
+
+**Erwartung** Kein `STATUS_MISSING_FIDUCIALS`; die Aufnahme läuft an.
+
+**Warum das zuerst kommt** Ohne Fiducial ist die ganze GraphNav-Stufe nicht benutzbar —
+weder Aufzeichnen noch Lokalisieren noch Fahren. Fällt A12 durch, sind A13–A16 gegenstandslos.
+
+**Ergebnis** _(offen)_
+
+---
+
+## A13 — Karte aufzeichnen
+
+**Prozedur** Aufnahme starten, mit dem **Tablet** durch den Raum fahren, unterwegs zwei
+benannte Wegpunkte setzen, beenden und speichern.
+
+**Erwartung** Der Zähler in der GUI steigt sichtbar; `karten/<name>/graph` existiert; für
+jeden Wegpunkt liegt ein Schnappschuss in `waypoint_snapshots/`; `spotlab maps` zeigt die
+Karte mit plausiblen Zahlen; die benannten Wegpunkte tauchen in `spot.load_map(...).waypoints`
+auf.
+
+**Beobachten statt annehmen** Wie dicht der Dienst von selbst Wegpunkte setzt, ist nicht
+dokumentiert festgelegt. Notieren, wie viele Wegpunkte auf welcher Strecke entstanden sind.
+
+**Ergebnis** _(offen)_
+
+---
+
+## A14 — Gegenprobe zur Interoperabilität
+
+**Prozedur** Dieselbe Karte in der Ansicht „Karten" **und** mit
+`python view_map.py <pfad>` aus `spot-sdk/python/examples/graph_nav_view_map/` öffnen.
+
+**Erwartung** Beide zeigen dieselbe Anordnung der Wegpunkte.
+
+**Was das auf einen Schlag bestätigt** Das Kartenformat (Entscheidung N5) und die
+Positionsrechnung in `maps/geometry.py`. Notieren, ob unsere Ansicht `anker` oder `kette`
+als Quelle meldet — nach einem `load_map()` sollte es `anker` sein, weil wir mit
+`generate_new_anchoring=True` hochladen.
+
+**Ergebnis** _(offen)_
+
+---
+
+## A15 — Lokalisieren nach Neustart
+
+**Prozedur** Roboter neu starten. Dann `spot.load_map("<name>")` und `spot.localize()`.
+
+**Erwartung** Die Verortung gelingt und nennt einen Wegpunkt der Karte. Ohne sichtbares
+Fiducial kommt stattdessen die Klartextmeldung, die zum Fiducial schickt.
+
+**Ergebnis** _(offen)_
+
+---
+
+## A16 — Autonome Fahrt
+
+**Freifläche und Aufsicht sicherstellen. Der Roboter fährt selbstständig.**
+
+**Prozedur** `spot.navigate_to("<name>")` zu einem entfernten Wegpunkt.
+
+**Erwartung** Der Spot erreicht den Wegpunkt. **Die aus `runs/<id>/zustand.jsonl` gemessene
+Höchstgeschwindigkeit bleibt unter `max_speed` aus `config.toml`.** Der NOT-AUS in der GUI
+wirkt während der Fahrt.
+
+**Den gemessenen Wert notieren.** Er ist die Bestätigung, dass der Deckel greift und nicht
+nur im Code steht — der einzige Punkt dieser Stufe, den kein Test ohne Roboter beweisen kann.
+
+**Ergebnis** _(offen)_
+
+---
+
 ## Nach der Abnahme
 
 Ergebnisse hier eintragen, Abweichungen als Befund in die Spec zurückspielen, und erst

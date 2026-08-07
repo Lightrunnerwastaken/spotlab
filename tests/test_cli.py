@@ -100,3 +100,71 @@ def test_gui_ohne_pyside_nennt_den_befehl(monkeypatch, capsys):
     monkeypatch.setattr(builtins, "__import__", ohne_pyside)
     assert main(["gui"]) == 1
     assert "pip install" in capsys.readouterr().err
+
+
+def test_maps_kommando_existiert():
+    assert build_parser().parse_args(["maps"])
+
+
+def test_record_map_braucht_einen_namen():
+    assert build_parser().parse_args(["record-map", "turnhalle"])
+
+
+def test_maps_ohne_arbeitsordner_sagt_das(monkeypatch, capsys, tmp_path):
+    from spotlab.config import Config, Limits, save_config
+
+    pfad = tmp_path / "config.toml"
+    save_config(Config(ip="1.2.3.4", username="u", limits=Limits()), pfad)
+    monkeypatch.setattr("spotlab.config.CONFIG_PATH", pfad)
+    assert main(["maps"]) == 1
+    assert "Arbeitsordner" in capsys.readouterr().err
+
+
+def test_maps_listet_die_karten(monkeypatch, capsys, tmp_path):
+    from bosdyn.api.graph_nav import map_pb2
+
+    from spotlab.config import Config, Limits, save_config
+    from spotlab.maps.store import karten_wurzel, speichere_metadaten
+
+    graph = map_pb2.Graph()
+    graph.waypoints.add().id = "wp0"
+    ordner = karten_wurzel(tmp_path) / "turnhalle"
+    ordner.mkdir(parents=True)
+    (ordner / "graph").write_bytes(graph.SerializeToString())
+    speichere_metadaten(ordner, "turnhalle", "SN-1", graph)
+
+    pfad = tmp_path / "config.toml"
+    save_config(
+        Config(ip="1.2.3.4", username="u", limits=Limits(), workspace=str(tmp_path)), pfad
+    )
+    monkeypatch.setattr("spotlab.config.CONFIG_PATH", pfad)
+
+    assert main(["maps"]) == 0
+    assert "turnhalle" in capsys.readouterr().out
+
+
+def test_maps_markiert_die_aktive_karte(monkeypatch, capsys, tmp_path):
+    from bosdyn.api.graph_nav import map_pb2
+
+    from spotlab.config import Config, Limits, save_config
+    from spotlab.maps.store import karten_wurzel, speichere_metadaten
+
+    graph = map_pb2.Graph()
+    graph.waypoints.add().id = "wp0"
+    ordner = karten_wurzel(tmp_path) / "turnhalle"
+    ordner.mkdir(parents=True)
+    (ordner / "graph").write_bytes(graph.SerializeToString())
+    speichere_metadaten(ordner, "turnhalle", "SN-1", graph)
+
+    pfad = tmp_path / "config.toml"
+    save_config(
+        Config(ip="1.2.3.4", username="u", limits=Limits(), workspace=str(tmp_path),
+               active_map="turnhalle"),
+        pfad,
+    )
+    monkeypatch.setattr("spotlab.config.CONFIG_PATH", pfad)
+
+    main(["maps"])
+    ausgabe = capsys.readouterr().out
+    assert "* turnhalle" in ausgabe
+    assert "load_map()" in ausgabe
