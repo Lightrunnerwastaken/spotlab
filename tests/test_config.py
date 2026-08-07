@@ -53,3 +53,16 @@ def test_umlaute_im_spitznamen_ueberleben(tmp_path):
     cfg = Config(ip="1.2.3.4", username="u", nickname='Spot "Grüezi" \\ Kanti', limits=Limits())
     save_config(cfg, pfad)
     assert load_config(pfad).nickname == 'Spot "Grüezi" \\ Kanti'
+
+
+def test_arbeitsordner_ueberlebt_schreiben_und_lesen(tmp_path):
+    pfad = tmp_path / "config.toml"
+    cfg = Config(ip="1.2.3.4", username="u", limits=Limits(), workspace=r"D:\Schule\Spot")
+    save_config(cfg, pfad)
+    assert load_config(pfad).workspace == r"D:\Schule\Spot"
+
+
+def test_arbeitsordner_hat_leere_vorgabe(tmp_path):
+    pfad = tmp_path / "config.toml"
+    pfad.write_text('[robot]\nip = "1.2.3.4"\nusername = "u"\n', encoding="utf-8")
+    assert load_config(pfad).workspace == ""

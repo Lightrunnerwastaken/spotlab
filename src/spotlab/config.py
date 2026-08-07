@@ -33,6 +33,7 @@ class Config:
     limits: Limits = field(default_factory=Limits)
     editor_command: str = "code"
     default_backend: str = "real"
+    workspace: str = ""  # Arbeitsordner der GUI; leer = noch nicht gewählt
 
 
 def _toml_string(wert):
@@ -59,6 +60,8 @@ def save_config(cfg, path=None):
         f"command = {_toml_string(cfg.editor_command)}\n"
         "\n[defaults]\n"
         f"backend = {_toml_string(cfg.default_backend)}\n"
+        "\n[gui]\n"
+        f"workspace = {_toml_string(cfg.workspace)}\n"
     )
     path.write_text(text, encoding="utf-8")
 
@@ -87,6 +90,7 @@ def load_config(path=None):
         ),
         editor_command=roh.get("editor", {}).get("command", "code"),
         default_backend=roh.get("defaults", {}).get("backend", "real"),
+        workspace=roh.get("gui", {}).get("workspace", ""),
     )
 
 

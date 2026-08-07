@@ -18,6 +18,7 @@ from pathlib import Path
 from spotlab.record.events import ARTEN, ERGEBNISSE
 
 ZEITFORMAT = "%Y%m%dT%H%M%SZ"
+STOPP_DATEI = "stopp"  # von der GUI angelegt; der Abtaster bricht daraufhin ab
 
 
 def _sha256(pfad):
@@ -55,6 +56,7 @@ class RunRecorder:
             "spotlab_version": _version(),
             "benutzer": user or f"{getpass.getuser()}@{socket.gethostname()}",
             "python": platform.python_version(),
+            "pid": os.getpid(),
             "skript": str(self._script_path) if self._script_path else None,
             "skript_sha256": _sha256(self._script_path) if self._script_path else None,
             "ergebnis": "läuft",

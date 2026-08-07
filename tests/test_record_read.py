@@ -45,15 +45,17 @@ def test_abgestuerzter_lauf_bleibt_lesbar(tmp_path):
 
 
 def test_laeufe_kommen_neueste_zuerst(tmp_path):
-    ersteres = RunRecorder(tmp_path, None, backend="dryrun")
-    ersteres.finish("ok")
-    (tmp_path / "20260806T999999Z_abcdef12").mkdir()
-    (tmp_path / "20260806T999999Z_abcdef12" / "lauf.json").write_text(
-        json.dumps({"id": "20260806T999999Z_abcdef12", "ergebnis": "ok"}), encoding="utf-8"
-    )
+    """Bewusst nur synthetische IDs: ein echter Lauf träge das heutige Datum und
+    machte die Sortierung vom Kalender abhängig."""
+    for kennung in ("20260101T120000Z_aaaaaaaa", "20270101T120000Z_bbbbbbbb"):
+        verzeichnis = tmp_path / kennung
+        verzeichnis.mkdir()
+        (verzeichnis / "lauf.json").write_text(
+            json.dumps({"id": kennung, "ergebnis": "ok"}), encoding="utf-8"
+        )
 
     ids = [z.id for z in list_runs(tmp_path)]
-    assert ids[0] == "20260806T999999Z_abcdef12"
+    assert ids == ["20270101T120000Z_bbbbbbbb", "20260101T120000Z_aaaaaaaa"]
 
 
 def test_leeres_runs_verzeichnis(tmp_path):

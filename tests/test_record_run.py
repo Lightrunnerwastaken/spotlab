@@ -95,3 +95,19 @@ def test_jede_zeile_wird_sofort_geschrieben(tmp_path):
     rec.event("verbunden")
     inhalt = (rec.dir / "ereignisse.jsonl").read_text(encoding="utf-8")
     assert inhalt.endswith("\n")
+
+
+def test_lauf_json_traegt_die_prozess_id(tmp_path):
+    """Ohne die PID kann der Not-Aus keinen Lauf beenden, den er nicht selbst gestartet hat."""
+    import os
+
+    rec = RunRecorder(tmp_path, None, backend="dryrun")
+    rec.finish("ok")
+    daten = json.loads((rec.dir / "lauf.json").read_text(encoding="utf-8"))
+    assert daten["pid"] == os.getpid()
+
+
+def test_stopp_datei_ist_benannt():
+    from spotlab.record.run import STOPP_DATEI
+
+    assert STOPP_DATEI == "stopp"
