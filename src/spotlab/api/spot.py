@@ -4,17 +4,21 @@ Die Abkürzung ist keine Mauer: `spot.robot` und `spot.send()` führen jederzeit
 zum vollen SDK — ohne Lease, Not-Aus und Aufzeichnung aufzugeben.
 """
 
-from spotlab.api import motion, perception, posture
+from spotlab.api import motion, navigation, perception, posture
 from spotlab.api.state import from_proto
 from spotlab.config import Limits
 
 
 class Spot:
-    def __init__(self, backend, recorder=None, limits=None, robot=None):
+    def __init__(self, backend, recorder=None, limits=None, robot=None,
+                 workspace=None, active_map=None):
         self.backend = backend
         self.recorder = recorder
         self.limits = limits or Limits()
         self._robot = robot
+        self._karte = None
+        self._workspace = workspace
+        self._active_map = active_map
 
     # ------------------------------------------------------------ Leistung
 
@@ -87,6 +91,31 @@ class Spot:
     @property
     def state(self):
         return from_proto(self.backend.robot_state())
+
+    # ------------------------------------------------------------ Karten
+
+    def load_map(self, name=None):
+        self._karte = navigation.load_map(
+            self.backend, self.recorder, self._workspace, name, self._active_map
+        )
+        return self._karte
+
+    def localize(self):
+        return navigation.localize(self.backend, self.recorder)
+
+    def navigate_to(self, ziel, timeout=120.0):
+        if self._karte is None:
+            from spotlab.errors import SpotlabError
+
+            raise SpotlabError(
+                "Es ist keine Karte geladen — rufe zuerst spot.load_map() auf."
+            )
+        navigation.navigate_to(
+            self.backend, self.recorder, self._karte, ziel, self.limits, timeout=timeout
+        )
+
+    def waypoints(self):
+        return self._karte.waypoints if self._karte else []
 
     # ------------------------------------------------------------ Rohzugang
 

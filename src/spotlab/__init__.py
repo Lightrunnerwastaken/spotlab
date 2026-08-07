@@ -56,7 +56,14 @@ def connect(
             raise
         roher_roboter = unten.robot
 
-    spot = Spot(unten, recorder=recorder, limits=grenzen, robot=roher_roboter)
+    spot = Spot(
+        unten,
+        recorder=recorder,
+        limits=grenzen,
+        robot=roher_roboter,
+        workspace=(cfg.workspace if cfg else None),
+        active_map=(cfg.active_map if cfg else None),
+    )
     abtaster = StateSampler(unten, recorder)
     abtaster.start()
 

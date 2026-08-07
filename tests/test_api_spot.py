@@ -49,3 +49,16 @@ def test_close_schaltet_ab():
     spot.power_on()
     spot.close()
     assert spot.is_powered is False
+
+
+def test_navigate_ohne_karte_sagt_was_zu_tun_ist():
+    from spotlab.errors import SpotlabError
+
+    spot = _spot()
+    with pytest.raises(SpotlabError) as info:
+        spot.navigate_to("kueche")
+    assert "load_map" in str(info.value)
+
+
+def test_waypoints_ohne_karte_ist_leer():
+    assert _spot().waypoints() == []

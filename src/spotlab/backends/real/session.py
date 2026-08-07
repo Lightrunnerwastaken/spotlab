@@ -171,6 +171,38 @@ class RealSpot:
     def robot(self):
         return self._robot
 
+    # ------------------------------------------------------------- GraphNav
+
+    def upload_map(self, kartenordner):
+        from spotlab.backends.real import graphnav
+
+        self._lease.raise_if_lost()
+        return graphnav.upload_map(self._robot, kartenordner)
+
+    def localize(self):
+        from spotlab.backends.real import graphnav
+
+        self._lease.raise_if_lost()
+        return graphnav.localize(self._robot)
+
+    def travel_params(self, limits):
+        from spotlab.backends.real import graphnav
+
+        return graphnav.travel_params(limits)
+
+    def navigate_step(self, waypoint_id, dauer_s, params, command_id=None):
+        from spotlab.backends.real import graphnav
+
+        self._lease.raise_if_lost()
+        return graphnav.navigate_step(
+            self._robot, waypoint_id, dauer_s, params, command_id=command_id
+        )
+
+    def navigation_status(self, command_id):
+        from spotlab.backends.real import graphnav
+
+        return graphnav.navigation_status(self._robot, command_id)
+
     # ------------------------------------------------------------- Abbau
 
     def close(self):
