@@ -111,3 +111,20 @@ def test_stopp_datei_ist_benannt():
     from spotlab.record.run import STOPP_DATEI
 
     assert STOPP_DATEI == "stopp"
+
+
+def test_zwei_laeufe_in_derselben_sekunde_kollidieren_nicht(tmp_path):
+    """Ohne Skript ist die Kurzkennung immer 'interakt' — ohne Auflösung
+    schrieben beide Läufe in dasselbe Verzeichnis."""
+    erster = RunRecorder(tmp_path, None, backend="dryrun")
+    zweiter = RunRecorder(tmp_path, None, backend="dryrun")
+    assert erster.dir != zweiter.dir
+    assert zweiter.id.endswith("-2")
+
+
+def test_gleiches_skript_zweimal_kollidiert_nicht(tmp_path):
+    skript = tmp_path / "x.py"
+    skript.write_text("print(1)", encoding="utf-8")
+    erster = RunRecorder(tmp_path / "runs", skript, backend="dryrun")
+    zweiter = RunRecorder(tmp_path / "runs", skript, backend="dryrun")
+    assert erster.dir != zweiter.dir

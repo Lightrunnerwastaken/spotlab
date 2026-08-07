@@ -35,6 +35,21 @@ def run_id(script_path, now):
     return f"{zeit}_{kurz}"
 
 
+def _freies_verzeichnis(runs_dir, kennung):
+    """Kollisionen auflösen: zwei Läufe pro Sekunde dürfen sich nicht überschreiben.
+
+    Ohne Skript ist die Kurzkennung immer "interakt", und auch dasselbe Skript
+    zweimal in derselben Sekunde ergäbe dieselbe ID. Beide Läufe schrieben dann
+    in dieselben jsonl-Dateien und überschrieben gegenseitig lauf.json.
+    """
+    ziel = runs_dir / kennung
+    nummer = 2
+    while ziel.exists():
+        ziel = runs_dir / f"{kennung}-{nummer}"
+        nummer += 1
+    return ziel.name, ziel
+
+
 class RunRecorder:
     """Schreibt einen Lauf nach runs_dir/<id>/. Threadsicher."""
 
@@ -43,8 +58,9 @@ class RunRecorder:
         self._sperre = threading.RLock()
         jetzt = datetime.now(UTC)
         self._script_path = Path(script_path) if script_path else None
-        self.id = run_id(self._script_path, jetzt)
-        self.dir = Path(runs_dir) / self.id
+        self.id, self.dir = _freies_verzeichnis(
+            Path(runs_dir), run_id(self._script_path, jetzt)
+        )
         (self.dir / "bilder").mkdir(parents=True, exist_ok=True)
         self._bilder = []
         self._meta = {
