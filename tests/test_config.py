@@ -66,3 +66,16 @@ def test_arbeitsordner_hat_leere_vorgabe(tmp_path):
     pfad = tmp_path / "config.toml"
     pfad.write_text('[robot]\nip = "1.2.3.4"\nusername = "u"\n', encoding="utf-8")
     assert load_config(pfad).workspace == ""
+
+
+def test_aktive_karte_ueberlebt_schreiben_und_lesen(tmp_path):
+    pfad = tmp_path / "config.toml"
+    cfg = Config(ip="1.2.3.4", username="u", limits=Limits(), active_map="turnhalle")
+    save_config(cfg, pfad)
+    assert load_config(pfad).active_map == "turnhalle"
+
+
+def test_aktive_karte_hat_leere_vorgabe(tmp_path):
+    pfad = tmp_path / "config.toml"
+    pfad.write_text('[robot]\nip = "1.2.3.4"\nusername = "u"\n', encoding="utf-8")
+    assert load_config(pfad).active_map == ""

@@ -45,3 +45,16 @@ def test_feedback_ist_unveraenderlich():
 def test_safety_status_darf_leer_sein():
     zustand = SafetyStatus(lease_holder=None, estop_level=None)
     assert zustand.lease_holder is None
+
+
+def test_graph_nav_ist_eine_eigene_faehigkeit():
+    assert Capability.GRAPH_NAV not in Capability.CAMERAS
+    assert Capability.GRAPH_NAV not in Capability.LOCOMOTION
+
+
+def test_navstatus_ist_unveraenderlich():
+    from spotlab.backends.base import NavStatus
+
+    zustand = NavStatus(fertig=True, status="angekommen", gescheitert=False)
+    with pytest.raises(AttributeError):
+        zustand.fertig = False

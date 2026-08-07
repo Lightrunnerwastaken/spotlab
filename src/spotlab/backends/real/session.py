@@ -6,7 +6,6 @@ lässt die Keepalives sterben — dann geht der Roboter von selbst in den sicher
 Zustand, und genau das ist der Not-Aus, den man nicht kaputtprogrammieren kann.
 """
 
-from bosdyn.client import create_standard_sdk
 from bosdyn.client.estop import EstopClient
 from bosdyn.client.image import ImageClient, build_image_request
 from bosdyn.client.lease import LeaseClient
@@ -17,8 +16,9 @@ from spotlab.backends.base import Capability, SafetyStatus
 from spotlab.backends.real.estop import EstopGuard
 from spotlab.backends.real.feedback import to_feedback
 from spotlab.backends.real.lease import LeaseGuard, holder_of
-from spotlab.config import load_password
-from spotlab.errors import NotPowered, TimeSyncFailed, translate
+from spotlab.backends.real.verbindung import standard_robot as _standard_robot
+from spotlab.backends.real.verbindung import verbinde
+from spotlab.errors import NotPowered, translate
 
 AUFBAU_SCHRITTE = ("auth", "time_sync", "estop", "lease", "aufzeichnung")
 ABBAU_SCHRITTE = (
@@ -28,14 +28,6 @@ ABBAU_SCHRITTE = (
     "estop_abmelden",
     "verbindung_schliessen",
 )
-
-SDK_NAME = "spotlab"
-
-
-def _standard_robot(cfg):
-    sdk = create_standard_sdk(SDK_NAME)
-    return sdk.create_robot(cfg.ip)
-
 
 class RealSpot:
     """Backend für den echten Roboter."""
@@ -67,26 +59,7 @@ class RealSpot:
         cls, cfg, recorder=None, take=False, robot_bauen=None, estop_bauen=None,
         passwort_lesen=None,
     ):
-        robot_bauen = robot_bauen or _standard_robot
-        passwort_lesen = passwort_lesen or load_password
-        robot = robot_bauen(cfg)
-
-        try:
-            robot.authenticate(cfg.username, passwort_lesen(cfg.username))
-        except Exception as fehler:
-            uebersetzt = translate(fehler, ip=cfg.ip)
-            if uebersetzt is not None:
-                raise uebersetzt from fehler
-            raise
-
-        try:
-            robot.time_sync.wait_for_sync()
-        except Exception as fehler:
-            raise TimeSyncFailed(
-                "Die Uhr deines Laptops weicht zu stark von der des Roboters ab; "
-                "die Zeitsynchronisierung ist fehlgeschlagen. Windows-Uhrzeit "
-                "automatisch stellen lassen und erneut versuchen."
-            ) from fehler
+        robot = verbinde(cfg, robot_bauen=robot_bauen, passwort_lesen=passwort_lesen)
 
         estop_client = robot.ensure_client(EstopClient.default_service_name)
         wache = (estop_bauen or EstopGuard)(estop_client)
@@ -132,6 +105,7 @@ class RealSpot:
             | Capability.GRAY_CAMERAS
             | Capability.LEASE
             | Capability.ESTOP
+            | Capability.GRAPH_NAV
         )
 
     def send_command(self, command, end_time_secs=None):

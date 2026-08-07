@@ -70,3 +70,14 @@ __all__ = [
     "UnsupportedCapability",
     "translate",
 ]
+
+# Ganz am Ende, nach allen Ausnahmeklassen: errors/graphnav.py importiert
+# NavStatus aus backends/base.py, und das importiert UnsupportedCapability von
+# hier. Weiter oben stünde ein Importzyklus.
+from spotlab.errors.graphnav import (  # noqa: E402
+    MapError,
+    NavigationError,
+    NotLocalized,
+)
+
+__all__ += ["MapError", "NavigationError", "NotLocalized"]

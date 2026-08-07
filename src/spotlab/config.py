@@ -34,6 +34,7 @@ class Config:
     editor_command: str = "code"
     default_backend: str = "real"
     workspace: str = ""  # Arbeitsordner der GUI; leer = noch nicht gewählt
+    active_map: str = ""  # in der GUI gewählte Karte; leer = keine
 
 
 def _toml_string(wert):
@@ -62,6 +63,8 @@ def save_config(cfg, path=None):
         f"backend = {_toml_string(cfg.default_backend)}\n"
         "\n[gui]\n"
         f"workspace = {_toml_string(cfg.workspace)}\n"
+        "\n[maps]\n"
+        f"active = {_toml_string(cfg.active_map)}\n"
     )
     path.write_text(text, encoding="utf-8")
 
@@ -91,6 +94,7 @@ def load_config(path=None):
         editor_command=roh.get("editor", {}).get("command", "code"),
         default_backend=roh.get("defaults", {}).get("backend", "real"),
         workspace=roh.get("gui", {}).get("workspace", ""),
+        active_map=roh.get("maps", {}).get("active", ""),
     )
 
 

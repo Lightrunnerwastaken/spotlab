@@ -22,6 +22,7 @@ class Capability(enum.Flag):
     COLOR_CAMERAS = enum.auto()
     LEASE = enum.auto()
     ESTOP = enum.auto()
+    GRAPH_NAV = enum.auto()
 
     CAMERAS = DEPTH_CAMERAS | GRAY_CAMERAS | COLOR_CAMERAS
 
@@ -33,6 +34,18 @@ class Feedback:
     done: bool
     status: str  # deutscher Klartext, z. B. "steht", "unterwegs"
     rejected: bool = False
+
+
+@dataclass(frozen=True)
+class NavStatus:
+    """Rückmeldung einer laufenden Navigation, backend-unabhängig.
+
+    Dieselbe Naht wie Feedback: api/ bleibt dadurch protobuf-frei.
+    """
+
+    fertig: bool
+    status: str  # deutscher Klartext
+    gescheitert: bool = False
 
 
 @dataclass(frozen=True)
@@ -67,6 +80,7 @@ _EINZELN = (
     Capability.COLOR_CAMERAS,
     Capability.LEASE,
     Capability.ESTOP,
+    Capability.GRAPH_NAV,
 )
 
 
