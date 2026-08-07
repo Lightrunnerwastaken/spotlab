@@ -19,6 +19,7 @@ from pathlib import Path
 from bosdyn.api.graph_nav import map_pb2
 
 from spotlab.errors import SpotlabError
+from spotlab.pfade import sicherer_name  # noqa: F401  (Re-Export, historischer Pfad)
 
 KARTEN_ORDNER = "karten"
 METADATEN = "karte.json"
@@ -36,11 +37,6 @@ class MapInfo:
 
 def karten_wurzel(workspace):
     return Path(workspace) / KARTEN_ORDNER
-
-
-def sicherer_name(name):
-    sauber = re.sub(r"[^\w.-]+", "-", str(name).strip()).strip("-.")
-    return sauber or "karte"
 
 
 def speichere_metadaten(kartenordner, name, roboter, graph):
@@ -106,7 +102,7 @@ def karten(workspace):
 
 
 def finde(workspace, name):
-    ziel = karten_wurzel(workspace) / sicherer_name(name)
+    ziel = karten_wurzel(workspace) / sicherer_name(name, ersatz="karte")
     if ziel.is_dir() and (ziel / "graph").exists():
         return ziel
     vorhanden = [k.name for k in karten(workspace)]

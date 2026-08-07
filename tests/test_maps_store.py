@@ -42,7 +42,9 @@ def test_wurzel_heisst_karten(tmp_path):
 
 def test_namen_werden_entschaerft():
     assert "/" not in sicherer_name("Turn/Halle")
-    assert sicherer_name("  ") == "karte"
+    # Der Rueckfallname ist Sache des Aufrufers, seit die Funktion in pfade.py
+    # liegt und auch die Anbindung sie benutzt.
+    assert sicherer_name("  ", ersatz="karte") == "karte"
 
 
 def test_karte_wird_gefunden_und_beschrieben(tmp_path):

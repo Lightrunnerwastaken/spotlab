@@ -68,7 +68,7 @@ class RecordingSession:
 
     def waypoint(self, name):
         antwort = self._versuche(
-            lambda: self._recording.create_waypoint(waypoint_name=sicherer_name(name)),
+            lambda: self._recording.create_waypoint(waypoint_name=sicherer_name(name, ersatz="karte")),
             "Wegpunkt setzen",
         )
         if antwort.status != _W.STATUS_OK:
@@ -99,14 +99,14 @@ class RecordingSession:
 
     def download(self, wurzel, name, roboter=None):
         """Karte in <wurzel>/<name>/ ablegen. Gibt den Ordner zurück."""
-        ziel = Path(wurzel) / sicherer_name(name)
+        ziel = Path(wurzel) / sicherer_name(name, ersatz="karte")
         ziel.mkdir(parents=True, exist_ok=True)
         self._versuche(
             lambda: self._graph.write_graph_and_snapshots(str(ziel)),
             "Karte herunterladen",
         )
         graph = self._versuche(self._graph.download_graph, "Karte lesen")
-        speichere_metadaten(ziel, sicherer_name(name), roboter, graph)
+        speichere_metadaten(ziel, sicherer_name(name, ersatz="karte"), roboter, graph)
         return ziel
 
     def close(self):

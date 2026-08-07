@@ -17,12 +17,16 @@ from pathlib import Path
 from spotlab.errors import SpotlabError
 
 ENV_BACKEND = "SPOTLAB_BACKEND"
+ENV_NUR_TROCKEN = "SPOTLAB_NUR_TROCKEN"
 
 
-def _umgebung(dryrun):
+def _umgebung(dryrun, nur_trocken=False):
     umgebung = dict(os.environ)
     if dryrun:
         umgebung[ENV_BACKEND] = "dryrun"
+    if nur_trocken:
+        # Obergrenze: connect() weist damit auch ein explizites backend="real" ab.
+        umgebung[ENV_NUR_TROCKEN] = "1"
 
     # UTF-8 im Kindprozess erzwingen: die Meldungen der Bibliothek sind deutsch,
     # und eine Windows-Konsole mit cp1252 macht daraus sonst Buchstabensalat.
@@ -37,21 +41,24 @@ def _umgebung(dryrun):
     return umgebung
 
 
-def start_script(pfad, dryrun=False, starter=subprocess.Popen):
+def start_script(pfad, dryrun=False, argumente=(), nur_trocken=False, starter=subprocess.Popen):
     """Startet das Skript und kehrt SOFORT zurück. Gibt den Prozess-Handle zurück.
 
     stdout und stderr laufen zusammen in eine Text-Pipe: die GUI muss dann nur
     einen Leser betreiben, und die Reihenfolge von print und Traceback bleibt
     so erhalten, wie sie im Terminal erschiene.
+
+    `argumente` wird als Liste an den Prozess gereicht, nie über eine Shell
+    zusammengesetzt. `nur_trocken` setzt die Obergrenze aus __init__.py.
     """
     skript = Path(pfad).resolve()
     if not skript.exists():
         raise SpotlabError(f"Die Datei {skript} gibt es nicht.")
 
     return starter(
-        [sys.executable, "-u", str(skript)],
+        [sys.executable, "-u", str(skript), *argumente],
         cwd=str(skript.parent),
-        env=_umgebung(dryrun),
+        env=_umgebung(dryrun, nur_trocken=nur_trocken),
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,

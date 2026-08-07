@@ -9,6 +9,10 @@ __version__ = "0.1.0"
 
 ENV_BACKEND = "SPOTLAB_BACKEND"
 
+# Obergrenze, nicht Vorgabe. Gesetzt von allem, was ohne Aufsicht startet —
+# heute vom MCP-Server, wenn ein Agent ein Skript startet.
+ENV_NUR_TROCKEN = "SPOTLAB_NUR_TROCKEN"
+
 
 @contextlib.contextmanager
 def connect(
@@ -31,6 +35,21 @@ def connect(
         cfg = None
 
     art = backend or os.environ.get(ENV_BACKEND) or (cfg.default_backend if cfg else "dryrun")
+
+    # Die Schranke steht VOR dem RunRecorder: sonst entstünde ein leeres
+    # Lauf-Verzeichnis für einen Lauf, den es nie gab.
+    #
+    # SPOTLAB_BACKEND allein genügt hier nicht — die Zeile darüber liest
+    # `backend or os.environ.get(...)`, ein explizites backend="real" im Skript
+    # überschreibt die Variable also. Abgewiesen statt stillschweigend
+    # heruntergestuft: ein Skript, das glaubt, es fahre den echten Spot,
+    # meldet sonst Unsinn und niemand merkt es.
+    if os.environ.get(ENV_NUR_TROCKEN) == "1" and art != "dryrun":
+        raise SpotlabError(
+            "Dieser Lauf wurde ohne Roboter gestartet und darf keinen anfordern. "
+            "Starte das Programm selbst im Fenster, wenn der Spot fahren soll."
+        )
+
     grenzen = cfg.limits if cfg else Limits()
     spitzname = nickname or (cfg.nickname if cfg else "")
 
