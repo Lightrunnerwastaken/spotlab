@@ -9,3 +9,6 @@ dist/
 
 # Läufe sind lokale Messdaten, nicht Quellcode
 runs/
+
+# Brainstorming-Mockups
+.superpowers/
