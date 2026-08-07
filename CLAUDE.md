@@ -40,7 +40,13 @@ versionsgepinntes Extra `spotlab[sim]`.
   `backends.base.Feedback`, nicht als rohes Protobuf.
 - Neue Fähigkeit ⇒ neuer Eintrag in `Capability`, Prüfung über `require()`, **und** ein
   neuer Punkt in `docs/ABNAHME.md`.
-- Alle Meldungen an Nutzer sagen, **was zu tun ist**, nicht nur was kaputt ist.
+- Alle Meldungen an Nutzer sagen, **was zu tun ist**, nicht nur was kaputt ist. Und sie
+  dürfen keine Ursache *behaupten*, die nicht geprüft ist — eine Meldung, die auf die
+  falsche Fährte schickt, kostet mehr Zeit als gar keine.
+- **Externe Programme immer erst mit `shutil.which()` auflösen, dann mit vollem Pfad
+  starten.** Python startet über `CreateProcess`; das durchsucht den PATH, hängt aber nur
+  `.exe` an und wertet `PATHEXT` nicht aus. `code.cmd` ist damit aus `subprocess` heraus
+  unsichtbar, obwohl `code` in jeder Shell funktioniert.
 
 ## Tests
 
@@ -49,6 +55,10 @@ versionsgepinntes Extra `spotlab[sim]`.
   SDK-Schemata geprüft (Methode aus `matura-spot/tests/test_sdk_commands.py`).
 - Zeitabhängige Funktionen nehmen `schlaf`/`jetzt` als Parameter — Tests reichen
   Attrappen herein, kein Test wartet real.
+- **Wo ein externer Prozess im Spiel ist, braucht es mindestens einen Test, der ihn
+  wirklich startet** (mit `skipif`, wenn das Programm fehlen darf). Attrappen-Tests prüfen
+  nur, dass die richtigen Argumente gebaut werden — nicht, dass das Betriebssystem damit
+  etwas anfangen kann. Genau daran ging „In VS Code öffnen" durch die ganze Suite.
 - Was nur am Gerät prüfbar ist, gehört in `docs/ABNAHME.md`, nicht in einen Test, der
   Sicherheit bloss behauptet.
 - Qt-Tests laufen mit `QT_QPA_PLATFORM=offscreen` (in `conftest.py` gesetzt) und werden

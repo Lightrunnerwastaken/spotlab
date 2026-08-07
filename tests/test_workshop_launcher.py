@@ -1,9 +1,10 @@
+import shutil
 import subprocess
 
 import pytest
 
 from spotlab.errors import SpotlabError
-from spotlab.workshop.editor import open_in_editor
+from spotlab.workshop.editor import finde_editor, open_in_editor
 from spotlab.workshop.launcher import run_script, start_script
 
 
@@ -18,19 +19,79 @@ class FakeProzess:
         return self.returncode
 
 
+FAKE_CODE = r"C:\fake\Microsoft VS Code\bin\code.CMD"
+
+
 def test_editor_wird_mit_pfad_aufgerufen(tmp_path):
     aufrufe = []
-    open_in_editor(tmp_path, command="code", starter=lambda *a, **k: aufrufe.append(a))
+    open_in_editor(
+        tmp_path,
+        command="code",
+        starter=lambda *a, **k: aufrufe.append(a),
+        sucher=lambda _: FAKE_CODE,
+    )
     assert str(tmp_path) in aufrufe[0][0]
 
 
-def test_fehlender_editor_gibt_klartext(tmp_path):
+def test_befehl_wird_vor_dem_start_aufgeloest(tmp_path):
+    """Der Kern des Windows-Fehlers: subprocess bekommt nie den nackten Namen.
+
+    CreateProcess wertet PATHEXT nicht aus und findet `code.cmd` im PATH
+    deshalb nicht — obwohl `code` in jeder Shell funktioniert.
+    """
+    aufrufe = []
+    open_in_editor(
+        tmp_path,
+        command="code",
+        starter=lambda *a, **k: aufrufe.append(a),
+        sucher=lambda _: FAKE_CODE,
+    )
+    assert aufrufe[0][0][0] == FAKE_CODE
+    assert aufrufe[0][0][0] != "code"
+
+
+def test_nicht_gefunden_gibt_klartext(tmp_path):
+    with pytest.raises(SpotlabError) as info:
+        open_in_editor(tmp_path, command="code", sucher=lambda _: None)
+    text = str(info.value)
+    assert "installiert" in text
+    assert str(tmp_path) in text
+
+
+def test_start_schlaegt_fehl_gibt_klartext(tmp_path):
     def fehlt(*a, **k):
-        raise FileNotFoundError
+        raise FileNotFoundError("weg")
 
     with pytest.raises(SpotlabError) as info:
-        open_in_editor(tmp_path, command="code", starter=fehlt)
-    assert "PATH" in str(info.value) or "gefunden" in str(info.value)
+        open_in_editor(tmp_path, command="code", starter=fehlt, sucher=lambda _: FAKE_CODE)
+    assert "starten" in str(info.value)
+
+
+def test_voller_pfad_wird_durchgereicht(tmp_path):
+    """Damit man in config.toml ein Programm ausserhalb des PATH eintragen kann."""
+    programm = tmp_path / "meineditor.exe"
+    programm.write_text("", encoding="utf-8")
+    assert finde_editor(str(programm), sucher=lambda _: None) == str(programm)
+
+
+def test_voller_pfad_der_nicht_existiert_ergibt_none(tmp_path):
+    assert finde_editor(str(tmp_path / "gibtsnicht.exe"), sucher=lambda _: None) is None
+
+
+@pytest.mark.skipif(shutil.which("code") is None, reason="VS Code ist hier nicht installiert")
+def test_aufgeloester_editor_ist_wirklich_startbar():
+    """Regressionstest mit ECHTEM Prozess.
+
+    Genau hier lag die Lücke: beide alten Editor-Tests reichten eine Attrappe
+    herein und starteten nie etwas. Der nackte Name scheitert unter Windows an
+    CreateProcess, der aufgelöste Pfad läuft.
+    """
+    aufgeloest = finde_editor("code")
+    assert aufgeloest is not None
+    ergebnis = subprocess.run(
+        [aufgeloest, "--version"], capture_output=True, text=True, timeout=60
+    )
+    assert ergebnis.returncode == 0, ergebnis.stderr
 
 
 def test_skript_wird_mit_python_gestartet(tmp_path):
