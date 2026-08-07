@@ -1,9 +1,12 @@
 import re
+from dataclasses import fields
 
 from spotlab.gui.theme import DUNKEL, HELL, palette_fuer, stylesheet
 
-FELDER = ("hintergrund", "flaeche", "rand", "text", "gedaempft",
-          "akzent", "ok", "warnung", "gefahr")
+# Aus der Dataclass abgeleitet statt abgeschrieben: eine neue Farbe soll nicht
+# stillschweigend an der Vollstaendigkeitspruefung vorbeikommen.
+FELDER = tuple(f.name for f in fields(DUNKEL))
+SYNTAXFELDER = ("schluesselwort", "zeichenkette", "kommentar", "zahl", "funktion")
 
 
 def test_beide_paletten_sind_vollstaendig():
@@ -34,6 +37,20 @@ def test_stylesheet_enthaelt_nur_farben_der_palette():
 def test_stylesheet_ist_fuer_beide_paletten_baubar():
     assert len(stylesheet(HELL)) > 100
     assert stylesheet(HELL) != stylesheet(DUNKEL)
+
+
+def test_beide_paletten_haben_die_syntaxfarben():
+    for palette in (DUNKEL, HELL):
+        for feld in SYNTAXFELDER:
+            assert feld in FELDER
+            assert re.fullmatch(r"#[0-9a-fA-F]{6}", getattr(palette, feld))
+
+
+def test_syntaxfarben_sind_unterscheidbar():
+    for palette in (DUNKEL, HELL):
+        farben = {getattr(palette, feld) for feld in SYNTAXFELDER}
+        assert len(farben) == 5              # keine zwei Token sehen gleich aus
+        assert palette.text not in farben    # und keine faellt mit dem Fliesstext zusammen
 
 
 def test_theme_ist_qt_frei():

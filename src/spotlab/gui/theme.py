@@ -20,6 +20,13 @@ class Palette:
     ok: str
     warnung: str
     gefahr: str
+    # Syntaxhervorhebung. Angewendet werden sie ueber QTextCharFormat, nicht
+    # ueber das Stylesheet — deshalb tauchen sie unten nicht noch einmal auf.
+    schluesselwort: str
+    zeichenkette: str
+    kommentar: str
+    zahl: str
+    funktion: str
 
 
 DUNKEL = Palette(
@@ -32,6 +39,11 @@ DUNKEL = Palette(
     ok="#3fb950",
     warnung="#d29922",
     gefahr="#e5484d",
+    schluesselwort="#c678dd",
+    zeichenkette="#98c379",
+    kommentar="#7f848e",
+    zahl="#d19a66",
+    funktion="#61afef",
 )
 
 HELL = Palette(
@@ -44,6 +56,11 @@ HELL = Palette(
     ok="#1a7f37",
     warnung="#9a6700",
     gefahr="#d1372f",
+    schluesselwort="#a626a4",
+    zeichenkette="#2a7d3f",
+    kommentar="#8a9099",
+    zahl="#97600a",
+    funktion="#2f5fd0",
 )
 
 
@@ -105,4 +122,26 @@ QHeaderView::section {{
 }}
 QTableWidget {{ gridline-color: {p.rand}; }}
 QPlainTextEdit {{ font-family: Consolas, monospace; font-size: 12px; }}
+QTreeView {{
+    background: {p.flaeche};
+    border: 1px solid {p.rand};
+    border-radius: 8px;
+}}
+QTreeView::item {{ padding: 3px 2px; }}
+QTreeView::item:selected {{ background: {p.rand}; color: {p.text}; }}
+QTabWidget::pane {{ border: 1px solid {p.rand}; border-radius: 8px; }}
+QTabBar::tab {{
+    background: transparent;
+    color: {p.gedaempft};
+    padding: 6px 12px;
+    border-bottom: 2px solid transparent;
+}}
+QTabBar::tab:selected {{ color: {p.text}; border-bottom: 2px solid {p.akzent}; }}
+QComboBox {{
+    background: {p.flaeche};
+    border: 1px solid {p.rand};
+    border-radius: 7px;
+    padding: 5px 8px;
+}}
+QSplitter::handle {{ background: {p.rand}; }}
 """
