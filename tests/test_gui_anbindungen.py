@@ -107,6 +107,26 @@ def test_skriptknopf_startet_wirklich(qapp, tmp_path):
     prozess.wait()
 
 
+def test_viele_skripte_brechen_auf_mehrere_zeilen_um(qapp, tmp_path):
+    """matura-spot bringt acht Skripte mit — in einer Reihe wäre keines mehr lesbar."""
+    arbeit = tmp_path / "werkstatt"
+    arbeit.mkdir()
+    projekt = tmp_path / "viele"
+    (projekt / "scripts").mkdir(parents=True)
+    eintraege = ['[projekt]\nname = "viele"\n']
+    for i in range(8):
+        (projekt / "scripts" / f"s{i}.py").write_text("x = 1\n", encoding="utf-8")
+        eintraege.append(f'\n[[skript]]\nname = "Skript {i}"\ndatei = "scripts/s{i}.py"\n')
+    (projekt / DATEINAME).write_text("".join(eintraege), encoding="utf-8")
+    binde_an(arbeit, projekt)
+
+    ansicht = AnbindungenView(DUNKEL)
+    ansicht.setze_arbeitsordner(arbeit)
+    assert len(ansicht.skriptknoepfe) == 8
+    assert ansicht.knopfzeile.rowCount() >= 3
+    assert ansicht.knopfzeile.columnCount() <= 3
+
+
 def test_fehlende_quelle_schaltet_die_knoepfe_ab(qapp, tmp_path):
     arbeit, projekt, gebunden = _welt(tmp_path)
     schreibe(gebunden, "a", "kennzahlen", "K", [{"name": "x", "wert": "1"}])

@@ -33,6 +33,8 @@ from spotlab.anbindung import speicher
 from spotlab.errors import SpotlabError
 from spotlab.workshop.launcher import start_script
 
+KNOEPFE_JE_ZEILE = 3
+
 
 class Kurve(QWidget):
     """Eine Zahlenreihe als Linie. Wie gui/mapplot.py: QPainter statt Bibliothek."""
@@ -186,8 +188,11 @@ class AnbindungenView(QWidget):
         self.hinweis.setObjectName("Gedaempft")
         self.hinweis.setWordWrap(True)
 
+        # Gitter statt Reihe: matura-spot bringt acht Skripte mit, und eine
+        # QHBoxLayout bricht nicht um — die Knoepfe wuerden zu Streifen
+        # zusammengequetscht, bis keine Beschriftung mehr lesbar ist.
         knopfhuelle = QWidget()
-        self.knopfzeile = QHBoxLayout(knopfhuelle)
+        self.knopfzeile = QGridLayout(knopfhuelle)
         self.knopfzeile.setContentsMargins(0, 0, 0, 0)
 
         self._panelhuelle = QWidget()
@@ -265,7 +270,7 @@ class AnbindungenView(QWidget):
                 "Die Panels bleiben sichtbar, die Skripte lassen sich nicht starten."
             )
 
-        for skript in anbindung.manifest.skripte:
+        for nummer, skript in enumerate(anbindung.manifest.skripte):
             beschriftung = f"▶ {skript.name}"
             if skript.roboter:
                 beschriftung += "  (mit Roboter)"
@@ -273,9 +278,9 @@ class AnbindungenView(QWidget):
             knopf.setToolTip(skript.beschreibung or str(skript.datei))
             knopf.setEnabled(anbindung.vorhanden)
             knopf.clicked.connect(lambda _=False, s=skript: self._starte(s))
-            self.knopfzeile.addWidget(knopf)
+            self.knopfzeile.addWidget(knopf, nummer // KNOEPFE_JE_ZEILE,
+                                      nummer % KNOEPFE_JE_ZEILE)
             self.skriptknoepfe.append(knopf)
-        self.knopfzeile.addStretch(1)
 
         for panel in panelmodul.panels(anbindung):
             widget, text = panel_widget(panel, anbindung, self._palette)
