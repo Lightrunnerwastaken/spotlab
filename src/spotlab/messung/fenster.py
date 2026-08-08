@@ -13,6 +13,7 @@ import math
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from spotlab.messung import schritt as schrittmodul
 from spotlab.record.read import read_jsonl
 
 DATEINAME = "messfenster.json"
@@ -219,6 +220,11 @@ def kennzahlen(saetze, kommandos, quelle, hz_soll):
     duty, frequenz = _fuesse(saetze, dauer)
     mu_mittel, schlupf_weg, schlupf_tempo = _terrain(saetze)
     je_gelenk = _gelenke(saetze)
+    versatz_x = posen[-1][0] - posen[0][0]
+    versatz_y = posen[-1][1] - posen[0][1]
+    schritt = schrittmodul.kennzahlen(
+        saetze, zeiten, versatz_m=math.hypot(versatz_x, versatz_y)
+    )
 
     return {
         "abtastungen": len(saetze),
@@ -245,8 +251,8 @@ def kennzahlen(saetze, kommandos, quelle, hz_soll):
         # Vorzeichenbehaftet je Achse: der Sim rechnet seine erreichte
         # Geschwindigkeit als dp[0]/dt. Ohne diese beiden Zahlen liesse sich das
         # real nicht nachrechnen, und der Vergleich waere keiner.
-        "versatz_x_m": round(posen[-1][0] - posen[0][0], 4),
-        "versatz_y_m": round(posen[-1][1] - posen[0][1], 4),
+        "versatz_x_m": round(versatz_x, 4),
+        "versatz_y_m": round(versatz_y, 4),
         "gierwinkel_grad": round(math.degrees(_gier_aufsummiert([p[2] for p in posen])), 2),
         "kommandiert": kommandiert,
         "tracking_prozent": _tracking(kommandiert, tempo_x, tempo_y, drehrate),
@@ -262,6 +268,9 @@ def kennzahlen(saetze, kommandos, quelle, hz_soll):
         "mu_mittel": mu_mittel,
         "schlupf_weg_max_m": schlupf_weg,
         "schlupf_tempo_max": schlupf_tempo,
+        # Trennt zu kurze Schritte von zu langsamer Kadenz — die offene Frage
+        # aus G2/G3.
+        "schritt": schritt,
     }
 
 
