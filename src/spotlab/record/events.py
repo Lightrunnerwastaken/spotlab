@@ -12,6 +12,7 @@ ARTEN = frozenset(
         "kommando",
         "rückmeldung",
         "bild",
+        "messfenster",
         "fehler",
         "lease_verloren",
         "lease_übernommen",

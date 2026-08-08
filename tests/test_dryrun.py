@@ -78,3 +78,31 @@ def test_kameras_werden_ehrlich_verweigert():
 def test_safety_status_ist_leer():
     zustand = DryRunBackend().safety_status()
     assert zustand.lease_holder is None and zustand.estop_level is None
+
+
+# --------------------------------------------------------- Kalibrierfelder (Stufe 7)
+
+
+def test_trockenlauf_liefert_die_kalibrierfelder():
+    """Sonst waere die erste echte Messfahrt zugleich der erste Test."""
+    from spotlab.api.state import from_proto
+
+    backend = DryRunBackend()
+    backend.power_on()
+    s = from_proto(backend.robot_state())
+    assert 0.35 < s.z < 0.50
+    assert s.t_robot > 0
+    assert len(s.feet_detail) == 4
+    assert all(0.3 < f["mu"] < 1.0 for f in s.feet_detail if f["kontakt"])
+    assert s.behavior in ("STANDING", "STEPPING", "TRANSITION")
+    assert s.battery_detail["spannung"] > 0
+    assert len(s.motor_temps) == 12
+
+
+def test_trockenlauf_zeitstempel_laeuft_weiter():
+    from spotlab.api.state import from_proto
+
+    backend = DryRunBackend()
+    erst = from_proto(backend.robot_state()).t_robot
+    zweit = from_proto(backend.robot_state()).t_robot
+    assert zweit >= erst > 0

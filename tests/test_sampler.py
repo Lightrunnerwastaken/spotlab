@@ -68,3 +68,65 @@ def test_stopp_wird_nur_einmal_ausgeloest(tmp_path, monkeypatch):
     rec.finish("abgebrochen")
 
     assert len(gerufen) == 1
+
+
+# --------------------------------------------------- Takt und Umfang (Stufe 7)
+
+
+def test_takt_umschalten_wirkt(tmp_path):
+    rec = RunRecorder(tmp_path, None, backend="dryrun")
+    abtaster = StateSampler(DryRunBackend(), rec, hz=10.0)
+    assert abtaster.takt() == (10.0, False)
+    abtaster.setze_takt(50.0, True)
+    assert abtaster.takt() == (50.0, True)
+
+
+def _saetze(rec):
+    import json
+
+    return [
+        json.loads(z)
+        for z in (rec.dir / "zustand.jsonl").read_text(encoding="utf-8").splitlines()
+        if z.strip()
+    ]
+
+
+def test_reicher_takt_schreibt_reiche_saetze(tmp_path):
+    rec = RunRecorder(tmp_path, None, backend="dryrun")
+    abtaster = StateSampler(DryRunBackend(), rec, hz=200.0)
+    abtaster.setze_takt(200.0, True)
+    abtaster.start()
+    threading.Event().wait(0.15)
+    abtaster.stop()
+    saetze = _saetze(rec)
+    assert saetze and "feet_detail" in saetze[-1]["daten"]
+
+
+def test_schlanker_takt_schreibt_schlanke_saetze(tmp_path):
+    rec = RunRecorder(tmp_path, None, backend="dryrun")
+    abtaster = StateSampler(DryRunBackend(), rec, hz=200.0)
+    abtaster.start()
+    threading.Event().wait(0.15)
+    abtaster.stop()
+    saetze = _saetze(rec)
+    assert saetze
+    assert "feet_detail" not in saetze[-1]["daten"]
+    # Die vier Immer-Felder fehlen trotzdem nie.
+    assert {"z", "roll", "pitch", "t_robot"} <= set(saetze[-1]["daten"])
+
+
+def test_langsamer_backend_erzeugt_keine_bursts(tmp_path):
+    """Nichts wird nachgeholt — sonst saehen Bursts in der Auswertung wie Dynamik aus."""
+    import time as _time
+
+    class Langsam(DryRunBackend):
+        def robot_state(self):
+            _time.sleep(0.02)
+            return super().robot_state()
+
+    rec = RunRecorder(tmp_path, None, backend="dryrun")
+    abtaster = StateSampler(Langsam(), rec, hz=1000.0)      # Soll 1 ms, Ist ~20 ms
+    abtaster.start()
+    threading.Event().wait(0.3)
+    abtaster.stop()
+    assert 3 <= len(_saetze(rec)) <= 30, len(_saetze(rec))

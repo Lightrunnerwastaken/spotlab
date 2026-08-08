@@ -75,6 +75,9 @@ def connect(
             raise
         roher_roboter = unten.robot
 
+    # Abtaster vor dem Spot: die Fassade braucht ihn, um im Messfenster die Rate
+    # zu heben.
+    abtaster = StateSampler(unten, recorder)
     spot = Spot(
         unten,
         recorder=recorder,
@@ -82,8 +85,8 @@ def connect(
         robot=roher_roboter,
         workspace=(cfg.workspace if cfg else None),
         active_map=(cfg.active_map if cfg else None),
+        sampler=abtaster,
     )
-    abtaster = StateSampler(unten, recorder)
     abtaster.start()
 
     ergebnis, fehlertext = "ok", None

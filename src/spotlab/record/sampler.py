@@ -25,11 +25,25 @@ class StateSampler:
     def __init__(self, backend, recorder, hz=10.0):
         self._backend = backend
         self._recorder = recorder
-        self._periode = 1.0 / float(hz)
+        self._takt_sperre = threading.Lock()
+        self._hz = float(hz)
+        self._periode = 1.0 / self._hz
+        self._reich = False
         self._stopp = threading.Event()
         self._thread = None
         self._stopp_datei = recorder.dir / STOPP_DATEI
         self._abbruch_gemeldet = False
+
+    def setze_takt(self, hz, reich):
+        """Wirkt ab dem nächsten Tick. Vom Messfenster gerufen."""
+        with self._takt_sperre:
+            self._hz = float(hz)
+            self._periode = 1.0 / self._hz
+            self._reich = bool(reich)
+
+    def takt(self):
+        with self._takt_sperre:
+            return self._hz, self._reich
 
     def start(self):
         if self._thread is not None:
@@ -60,12 +74,17 @@ class StateSampler:
     def _schleife(self):
         while not self._stopp.is_set():
             beginn = time.monotonic()
+            with self._takt_sperre:
+                periode, reich = self._periode, self._reich
             self._pruefe_stopp()
             try:
-                self._recorder.sample(as_sample(self._backend.robot_state()))
+                self._recorder.sample(as_sample(self._backend.robot_state(), reich=reich))
             except Exception:  # Abtastung darf den Lauf nie kippen
-                self._stopp.wait(self._periode)
+                self._stopp.wait(periode)
                 continue
-            rest = self._periode - (time.monotonic() - beginn)
+            # Nichts nachholen: dauert die RPC länger als die Periode, läuft die
+            # Schleife eben langsamer. Nachholen erzeugte Bursts, die in der
+            # Auswertung wie echte Dynamik aussehen.
+            rest = periode - (time.monotonic() - beginn)
             if rest > 0:
                 self._stopp.wait(rest)

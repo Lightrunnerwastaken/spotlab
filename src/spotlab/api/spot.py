@@ -4,21 +4,30 @@ Die Abkürzung ist keine Mauer: `spot.robot` und `spot.send()` führen jederzeit
 zum vollen SDK — ohne Lease, Not-Aus und Aufzeichnung aufzugeben.
 """
 
+import contextlib
+
 from spotlab.api import motion, navigation, perception, posture
 from spotlab.api.state import from_proto
 from spotlab.config import Limits
+from spotlab.errors import SpotlabError
+
+# `name` fehlt hier absichtlich: es ist ein Positionsparameter von messfenster(),
+# und Python weist ein doppeltes `name=` schon mit einer klaren Meldung ab.
+RESERVIERT = ("phase", "hz_soll")
 
 
 class Spot:
     def __init__(self, backend, recorder=None, limits=None, robot=None,
-                 workspace=None, active_map=None):
+                 workspace=None, active_map=None, sampler=None):
         self.backend = backend
         self.recorder = recorder
         self.limits = limits or Limits()
+        self.sampler = sampler
         self._robot = robot
         self._karte = None
         self._workspace = workspace
         self._active_map = active_map
+        self._fenster_offen = None
 
     # ------------------------------------------------------------ Leistung
 
@@ -145,6 +154,51 @@ class Spot:
         if self.recorder is not None:
             self.recorder.event("kommando", name="send", roh=True)
         return self.backend.send_command(command, end_time_secs=end_time_secs)
+
+    # ------------------------------------------------------------ Messung
+
+    @contextlib.contextmanager
+    def messfenster(self, name, hz=50.0, **felder):
+        """Markiert ein Messfenster und tastet darin dicht und vollständig ab.
+
+        Innerhalb des Blocks läuft die Abtastung mit `hz` und schreibt den vollen
+        Umfang; danach wieder wie zuvor. Die Marken landen als Ereignisse in der
+        Aufzeichnung, damit später feststeht, welche Abtastungen zu welcher
+        Bedingung gehören.
+
+            with spot.messfenster("G3", stuetzstelle="0.30", hz=50):
+                spot.walk(vx=0.30, duration=8.0)
+        """
+        doppelt = [k for k in RESERVIERT if k in felder]
+        if doppelt:
+            raise SpotlabError(
+                f"Die Feldnamen {', '.join(doppelt)} sind im Messfenster belegt. "
+                "Nimm einen anderen Namen."
+            )
+        if self._fenster_offen is not None:
+            raise SpotlabError(
+                f"Es ist schon ein Messfenster offen: „{self._fenster_offen}“. "
+                "Verschachtelte Fenster wären in der Auswertung nicht auseinanderzuhalten."
+            )
+
+        self._fenster_offen = name
+        vorher = self.sampler.takt() if self.sampler is not None else None
+        if self.recorder is not None:
+            self.recorder.event(
+                "messfenster", phase="start", name=name, hz_soll=hz, **felder
+            )
+        if self.sampler is not None:
+            self.sampler.setze_takt(hz, True)
+        try:
+            yield
+        finally:
+            # Ohne finally bliebe der Lauf nach einer Ausnahme für immer auf 50 Hz
+            # und das Fenster ohne Ende.
+            if self.sampler is not None and vorher is not None:
+                self.sampler.setze_takt(*vorher)
+            if self.recorder is not None:
+                self.recorder.event("messfenster", phase="ende", name=name, **felder)
+            self._fenster_offen = None
 
     def close(self):
         """Beendet die Verbindung. connect() ruft das am Ende selbst auf."""
