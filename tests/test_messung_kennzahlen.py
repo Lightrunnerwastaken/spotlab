@@ -158,3 +158,12 @@ def test_schlanke_daten_ergeben_none_statt_null():
 
 def test_leere_reihe_ergibt_leere_kennzahlen():
     assert kennzahlen([], [], "empfang", 50.0) == {}
+
+
+def test_versatz_ist_vorzeichenbehaftet_je_achse():
+    """Der Sim rechnet v_ach als dp[0]/dt — ohne das waere der Vergleich keiner."""
+    saetze = [_satz(i * 0.1, x=-i * 0.1, y=i * 0.02) for i in range(11)]
+    k = kennzahlen(saetze, [], "robot", 10.0)
+    assert k["versatz_x_m"] == pytest.approx(-1.0, abs=1e-6)
+    assert k["versatz_y_m"] == pytest.approx(0.2, abs=1e-6)
+    assert k["netto_versatz_m"] == pytest.approx(1.0198, abs=1e-3)   # Betrag, unveraendert

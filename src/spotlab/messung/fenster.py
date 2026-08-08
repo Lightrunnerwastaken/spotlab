@@ -242,6 +242,11 @@ def kennzahlen(saetze, kommandos, quelle, hz_soll):
         "tempo_max": round(max(math.dist((0.0, 0.0), t[:2]) for t in tempi), 4),
         "strecke_m": round(strecke, 4),
         "netto_versatz_m": round(math.dist(posen[0][:2], posen[-1][:2]), 4),
+        # Vorzeichenbehaftet je Achse: der Sim rechnet seine erreichte
+        # Geschwindigkeit als dp[0]/dt. Ohne diese beiden Zahlen liesse sich das
+        # real nicht nachrechnen, und der Vergleich waere keiner.
+        "versatz_x_m": round(posen[-1][0] - posen[0][0], 4),
+        "versatz_y_m": round(posen[-1][1] - posen[0][1], 4),
         "gierwinkel_grad": round(math.degrees(_gier_aufsummiert([p[2] for p in posen])), 2),
         "kommandiert": kommandiert,
         "tracking_prozent": _tracking(kommandiert, tempo_x, tempo_y, drehrate),
