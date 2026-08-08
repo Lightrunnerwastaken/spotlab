@@ -176,3 +176,46 @@ nicht im Arbeitsordner. Das gehört in dein `.gitignore`.
 
 spotlab findet diese Läufe trotzdem: die Verzeichnisse werden aus den Skriptpfaden im
 Manifest abgeleitet. Sie erscheinen in „Live-Lauf", in „Läufe" und in `laeufe_auflisten`.
+
+## 7 · Messfahrt für die Sim-Kalibrierung
+
+```python
+import spotlab
+
+with spotlab.connect() as spot:
+    spot.power_on()
+    spot.stand()
+    with spot.messfenster("G3", stuetzstelle="0.30", hz=50):
+        spot.walk(vx=0.30, duration=8.0)
+```
+
+Innerhalb des Blocks tastet spotlab mit 50 Hz und vollem Umfang ab — Gelenke mit
+Drehmoment, Fusskontakte mit Reibwert und Schlupf, Körperhöhe, Neigung, Roboterzeit.
+Ausserhalb bleibt es bei 10 Hz und schlank; der Sampler pollt über WLAN, und 50 RPCs je
+Sekunde in jedem Lauf wären Funklast für Daten, die niemand ansieht.
+
+Verschachtelte Fenster sind verboten — sie wären in der Auswertung nicht
+auseinanderzuhalten. Wirft der Block eine Ausnahme, wird das Fenster trotzdem geschlossen
+und die Rate zurückgestellt.
+
+Danach:
+
+```python
+from spotlab.messung.fenster import schreibe
+
+schreibe(r"D:\…\demo\runs\20260808T120000Z")     # legt messfenster.json an
+```
+
+`messfenster.json` enthält je Fenster die **Messwerte, nicht das Urteil**: Dauer, Ist-Rate
+und Lücken zuerst, dann Körperhöhe (Mittel/Min/Max/Drift), Roll- und Pitch-Spitze,
+Geschwindigkeiten, Strecke, fortlaufend aufsummierter Gierwinkel, kommandiert gegen
+erreicht als `tracking_prozent`, je Gelenk Spitzenrate und Spitzenlast, je Fuss
+Duty-Cycle und Schrittfrequenz, mittlerer Reibwert und Schlupf.
+
+Die Gate-Kriterien liegen in deinem Repo. spotlab misst, du bewertest.
+
+**Was nicht ableitbar ist, ist `None` — nie 0.** Ein schlank aufgezeichnetes Fenster hat
+keinen Reibwert, und ein erfundener 0.0 würde sich durch jede Auswertung mitteln.
+
+**Was ein Agent nicht darf, gilt auch hier:** ein über MCP gestarteter Lauf läuft im
+Trockenlauf. Eine Messfahrt am echten Spot startet ein Mensch.

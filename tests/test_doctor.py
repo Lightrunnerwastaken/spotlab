@@ -90,3 +90,48 @@ def test_belegtes_lease_ist_kein_fehler_sondern_ein_hinweis():
     lease = [p for p in pruefungen if p.name == "Lease"][0]
     assert lease.ok is False
     assert "anna" in lease.detail
+
+
+# ------------------------------------------------------- Zustandsstrom (Stufe 7)
+
+
+class _RobotMit:
+    def __init__(self, namen):
+        self._namen = namen
+
+    def list_services(self):
+        return [type("Dienst", (), {"name": n})() for n in self._namen]
+
+
+def test_zustandsstrom_ist_eine_stufe():
+    assert "Zustandsstrom" in STUFEN
+    assert STUFEN.index("Zustandsstrom") == STUFEN.index("Zeitsync") + 1
+
+
+def test_zustandsstrom_vorhanden():
+    from spotlab.workshop.doctor import _zustandsstrom
+
+    pruefung = _zustandsstrom(_RobotMit(["robot-state", "robot-state-streaming"]))
+    assert pruefung.ok is True
+    assert "verfügbar" in pruefung.detail
+
+
+def test_zustandsstrom_fehlt_ist_kein_fehler():
+    """Die Zeile beantwortet eine Frage — ein rotes Kreuz waere eine Falschaussage."""
+    from spotlab.workshop.doctor import _zustandsstrom
+
+    pruefung = _zustandsstrom(_RobotMit(["robot-state"]))
+    assert pruefung.ok is True
+    assert "Lizenz" in pruefung.rat
+
+
+def test_zustandsstrom_bei_fehlender_liste():
+    from spotlab.workshop.doctor import _zustandsstrom
+
+    class Kaputt:
+        def list_services(self):
+            raise RuntimeError("keine Verbindung")
+
+    pruefung = _zustandsstrom(Kaputt())
+    assert pruefung.ok is True
+    assert "nicht ermittelbar" in pruefung.detail

@@ -19,7 +19,39 @@ class Check:
     rat: str = ""
 
 
-STUFEN = ("Konfiguration", "Netz", "Anmeldung", "Zeitsync", "Not-Aus", "Lease", "Akku")
+STUFEN = (
+    "Konfiguration", "Netz", "Anmeldung", "Zeitsync", "Zustandsstrom",
+    "Not-Aus", "Lease", "Akku",
+)
+
+STROM_DIENST = "robot-state-streaming"
+
+
+def _zustandsstrom(robot):
+    """Gibt es den 333-Hz-Zustandsstrom auf diesem Roboter?
+
+    Die Zeile BENUTZT ihn nicht. Sie beantwortet nur, ob die lizenzpflichtige
+    Joint-Control-API auf diesem Gerät freigeschaltet ist — dort, wo man ohnehin
+    hinschaut, bevor man misst. Beide Antworten sind ok=True: ein fehlender
+    Strom ist kein Defekt, und ein rotes Kreuz wäre eine Falschaussage.
+    """
+    try:
+        namen = {getattr(d, "name", "") for d in robot.list_services()}
+    except Exception as fehler:
+        return Check(
+            "Zustandsstrom", True, f"nicht ermittelbar ({type(fehler).__name__})",
+            "Ohne die Angabe bleibt es bei RobotState mit rund 10-50 Hz.",
+        )
+    if STROM_DIENST in namen:
+        return Check(
+            "Zustandsstrom", True, "verfügbar (333 Hz mit rohem IMU)",
+            "spotlab nutzt ihn noch nicht — die Messfenster laufen über RobotState.",
+        )
+    return Check(
+        "Zustandsstrom", True, "nicht vorhanden",
+        "Der 333-Hz-Strom braucht die Joint-Control-Lizenz. Ohne ihn liefert "
+        "RobotState alles ausser rohem IMU — für die Gates reicht das.",
+    )
 
 
 def diagnose(cfg=None, robot_bauen=None, passwort_lesen=None):
@@ -66,6 +98,7 @@ def diagnose(cfg=None, robot_bauen=None, passwort_lesen=None):
                   "Windows-Uhrzeit automatisch stellen lassen.")
         ]
     pruefungen.append(Check("Zeitsync", True, "Uhren laufen synchron"))
+    pruefungen.append(_zustandsstrom(robot))
 
     try:
         from bosdyn.client.estop import EstopClient

@@ -60,6 +60,18 @@ versionsgepinntes Extra `spotlab[sim]`.
   Projekte liegen unter `<skriptordner>/runs/`, also ausserhalb des Arbeitsordners. Zwei
   Suchen mit verschiedenen Ergebnissen sind der Fehler aus Stufe 3 in neuem Gewand;
   `gui/watcher.py` exportiert die Funktion nur weiter.
+- **Bestehende Schlüssel in `zustand.jsonl` ändern sich nicht.** `pose` bleibt
+  `(x, y, yaw)`, `feet` bleibt vier Wahrheitswerte. Die Live-Ansicht liest genau das, und
+  alte Aufzeichnungen müssen lesbar bleiben. Neue Felder kommen dazu, nie an ihre Stelle.
+- **`t_robot` wird nicht in die Klientenzeit umgerechnet.** Für die Kalibrierung zählen
+  Abstände innerhalb eines Laufs; eine Umrechnung schöbe die Unsicherheit der
+  Zeitsynchronisierung in jede Ableitung. Der Umschlag-Zeitstempel `t` bleibt die
+  Empfangszeit — beide Uhren nebeneinander machen die Latenz sichtbar statt versteckt.
+- **Der Abtaster holt nichts nach.** Dauert die RPC länger als die Periode, läuft die
+  Schleife langsamer. Nachholen erzeugte Bursts, die in der Auswertung wie echte Dynamik
+  aussehen.
+- **`messung/` importiert nichts aus `api/`, `backends/`, `gui/` und kein `bosdyn`.**
+  `spotlab.record.read` und `spotlab.errors` sind erlaubt.
 - **`errors/` darf nichts aus `backends/` importieren.** `backends/base.py` importiert
   `UnsupportedCapability` aus `errors`; die Gegenrichtung schliesst den Kreis, sobald
   `backends.base` zuerst geladen wird. Die Position der Importzeile hilft dagegen nicht.
@@ -81,6 +93,15 @@ versionsgepinntes Extra `spotlab[sim]`.
 - Alle Meldungen an Nutzer sagen, **was zu tun ist**, nicht nur was kaputt ist. Und sie
   dürfen keine Ursache *behaupten*, die nicht geprüft ist — eine Meldung, die auf die
   falsche Fährte schickt, kostet mehr Zeit als gar keine.
+- **Fehlende Messwerte sind `None`, nie 0.** Der Unterschied zwischen „gemessen und null"
+  und „nicht gemessen" entscheidet, ob eine Kalibrierung gültig ist. Das gilt besonders für
+  `ground_mu_est`: ein erfundener Reibwert 0.0 mittelt sich durch jede Auswertung.
+- spotlab liefert **Messwerte, keine Urteile**. Die Kriterien der Realismus-Gates liegen in
+  `matura-spot`; `schranke`, `annahme` und `real_prozedur` gehören dorthin, wo das
+  RESEARCH-DECISION-Protokoll gilt.
+- Der Lückenmelder misst **abschnittsweise** gegen die erwartete Rate, und über eine
+  Abschnittsgrenze hinweg gegen die *kleinere* der beiden. Ein Alarm, der bei jeder
+  Messfahrt kommt, wird ignoriert.
 - Panels bestimmen keine Farben. Ein Panel, das eine Farbe mitbringt, ist in einem der beiden
   Modi unlesbar. Bildpfade dürfen nur ins Projekt oder in den Anbindungsordner zeigen —
   dieselbe Regel wie bei den anklickbaren Tracebacks.
@@ -123,12 +144,14 @@ versionsgepinntes Extra `spotlab[sim]`.
 
 ## Umsetzungsstand
 
-Fundament (1+2), GUI (3), GraphNav (4), der eingebaute Editor (5) und die Anbindung
-fremder Projekte samt MCP-Server (6) sind vollständig. Offen und bewusst nicht gebaut:
-Sim-Adapter, NN-Anbindung, Mehrbenutzer-Dienst, Arm und Docking. Im Editor bewusst nicht
-gebaut: Debugger mit Haltepunkten, git-Integration, Erweiterungen, projektweite Suche.
+Fundament (1+2), GUI (3), GraphNav (4), der eingebaute Editor (5), die Anbindung fremder
+Projekte samt MCP-Server (6) und die Kalibrier-Infrastruktur (7) sind vollständig. Offen
+und bewusst nicht gebaut: Sim-Adapter, NN-Anbindung, Mehrbenutzer-Dienst, Arm und Docking.
+Im Editor: Debugger mit Haltepunkten, git-Integration, Erweiterungen, projektweite Suche.
 In der Anbindung: MCP über Netz, Mehrbenutzer, Qt-Code aus fremden Projekten, eine
-Diagrammbibliothek jenseits der fünf Panel-Arten.
+Diagrammbibliothek jenseits der fünf Panel-Arten. In der Kalibrierung: **ein Simulator in
+spotlab** (MuJoCo bleibt in `matura-spot`), automatische Parameteranpassung, die Nutzung
+der lizenzpflichtigen 333-Hz-APIs.
 
-Specs: `docs/superpowers/specs/2026-08-07-spotlab-ide-design.md` und
-`…-spotlab-anbindung-design.md`. Anleitung für fremde Projekte: `docs/ANBINDUNG.md`.
+Specs unter `docs/superpowers/specs/`. Anleitungen: `docs/ANBINDUNG.md` (fremde Projekte
+und Messfahrt).

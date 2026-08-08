@@ -18,6 +18,8 @@ from spotlab.config import load_config
 from spotlab.errors import SpotlabError
 from spotlab.laufsuche import finde_lauf, lauf_verzeichnisse
 from spotlab.maps import store as kartenspeicher
+from spotlab.messung.fenster import abschnitte as _abschnitte
+from spotlab.messung.fenster import hz_soll_zwischen
 from spotlab.record.read import read_jsonl, read_run
 from spotlab.workshop.control import ist_aktiv, stoppe_freundlich
 from spotlab.workshop.doctor import diagnose
@@ -240,11 +242,17 @@ def zustand_zusammenfassen(lauf_id):
         tempo_max = max(tempo_max, (tempo[0] ** 2 + tempo[1] ** 2) ** 0.5)
         dreh_max = max(dreh_max, abs(tempo[2]) if len(tempo) > 2 else 0.0)
 
-    luecken = [
-        {"von_s": round(zeiten[i - 1], 3), "laenge_s": round(zeiten[i] - zeiten[i - 1], 3)}
-        for i in range(1, len(zeiten))
-        if zeiten[i] - zeiten[i - 1] > LUECKE_AB_S
-    ]
+    # Abschnittsweise gegen die ERWARTETE Rate: ein Messfenster laeuft mit 50 Hz,
+    # der Rest mit 10. Eine feste Grenze meldete jeden Ratenwechsel als Luecke —
+    # und ein Alarm, der bei jeder Messfahrt kommt, wird ignoriert.
+    stuecke = _abschnitte(verzeichnis)
+    luecken = []
+    for i in range(1, len(zeiten)):
+        abstand = zeiten[i] - zeiten[i - 1]
+        if abstand > 2.0 / hz_soll_zwischen(stuecke, zeiten[i - 1], zeiten[i]):
+            luecken.append(
+                {"von_s": round(zeiten[i - 1], 3), "laenge_s": round(abstand, 3)}
+            )
     dauer = zeiten[-1] - zeiten[0]
     akkus = [d.get("battery") for d in inhalte if d.get("battery") is not None]
     return {
@@ -252,7 +260,7 @@ def zustand_zusammenfassen(lauf_id):
         "abtastungen": len(saetze),
         "dauer_s": round(dauer, 3),
         "takt_ist_hz": round(len(saetze) / dauer, 2) if dauer > 0 else 0.0,
-        "takt_soll_hz": round(1 / SOLLTAKT_S, 2),
+        "abschnitte": stuecke,
         "strecke_m": round(strecke, 3),
         "tempo_max": round(tempo_max, 3),
         "drehrate_max": round(dreh_max, 3),

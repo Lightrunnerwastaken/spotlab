@@ -315,6 +315,26 @@ zeigt erst der Roboter.
 
 ---
 
+## A18 — Abtastrate und Lücken über WLAN
+
+**Prozedur** Eine Messfahrt mit `hz=50` über 30 s auf ebenem Boden, danach
+`messfenster.json` und `zustand_zusammenfassen` ansehen.
+
+**Erwartung** `hz_ist` und die Lückenliste werden **notiert, nicht bestanden oder
+durchgefallen**. Diese Zahl entscheidet, ob 50 Hz realistisch sind oder ob die Fenster auf
+20 Hz gehen müssen — und sie ist die einzige, die kein Test ohne Roboter liefern kann.
+
+**Zusätzlich notieren:**
+
+- ob `spotlab doctor` unter „Zustandsstrom" den 333-Hz-Dienst meldet,
+- ob `ground_mu_est` von null verschiedene Werte liefert. Bleibt der Reibwert konstant 0,
+  fällt diese Quelle für die Kalibrierung aus — besser vor der Messkampagne gewusst als
+  danach.
+
+**Ergebnis** _(offen)_
+
+---
+
 ## Nach der Abnahme
 
 Ergebnisse hier eintragen, Abweichungen als Befund in die Spec zurückspielen, und erst

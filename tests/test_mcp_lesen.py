@@ -90,7 +90,7 @@ def test_zustand_zusammenfassen_rechnet(welt):
     assert antwort["tempo_max"] == pytest.approx(0.5, abs=0.01)
     assert antwort["akku_von"] == 90.0
     assert antwort["akku_bis"] == 80.0
-    assert antwort["takt_soll_hz"] == 10.0
+    assert [a["hz_soll"] for a in antwort["abschnitte"]] == [10.0]
     assert antwort["luecken"] == []
 
 
@@ -140,3 +140,53 @@ def test_alle_lese_antworten_sind_json_faehig(welt):
         werkzeuge.karten_auflisten(),
     ):
         json.dumps(antwort)
+
+
+# ------------------------------------------------ abschnittsweiser Lueckenmelder
+
+
+def _ereignisse(recorder, eintraege):
+    text = "".join(json.dumps(e, ensure_ascii=False) + "\n" for e in eintraege)
+    (recorder.dir / "ereignisse.jsonl").write_text(text, encoding="utf-8")
+
+
+def _fenster_marken(von, bis, hz):
+    return [
+        {"t": von, "art": "messfenster",
+         "daten": {"phase": "start", "name": "G3", "hz_soll": hz}},
+        {"t": bis, "art": "messfenster", "daten": {"phase": "ende", "name": "G3"}},
+    ]
+
+
+def test_ratenwechsel_ist_keine_luecke(welt):
+    """Ein Alarm, der bei jeder Messfahrt kommt, wird ignoriert."""
+    recorder = _lauf(welt)
+    saetze = [_satz(i * 0.1) for i in range(11)]
+    saetze += [_satz(1.0 + i * 0.02) for i in range(1, 51)]
+    saetze += [_satz(2.0 + i * 0.1) for i in range(1, 11)]
+    _schreibe_zustand(recorder, saetze)
+    _ereignisse(recorder, _fenster_marken(1.0, 2.0, 50))
+
+    antwort = werkzeuge.zustand_zusammenfassen(recorder.id)
+    assert antwort["luecken"] == []
+    assert [a["hz_soll"] for a in antwort["abschnitte"]] == [10.0, 50.0, 10.0]
+
+
+def test_echte_luecke_im_fenster_wird_gefunden(welt):
+    recorder = _lauf(welt)
+    saetze = [_satz(1.0 + i * 0.02) for i in range(11)]
+    saetze += [_satz(1.5 + i * 0.02) for i in range(11)]
+    _schreibe_zustand(recorder, saetze)
+    _ereignisse(recorder, _fenster_marken(1.0, 2.0, 50))
+
+    antwort = werkzeuge.zustand_zusammenfassen(recorder.id)
+    assert len(antwort["luecken"]) == 1
+    assert antwort["luecken"][0]["laenge_s"] == pytest.approx(0.3, abs=0.01)
+
+
+def test_ohne_fenster_bleibt_es_bei_zehn_hertz(welt):
+    recorder = _lauf(welt)
+    _schreibe_zustand(recorder, [_satz(0.0), _satz(0.1), _satz(1.4), _satz(1.5)])
+    antwort = werkzeuge.zustand_zusammenfassen(recorder.id)
+    assert len(antwort["luecken"]) == 1
+    assert [a["hz_soll"] for a in antwort["abschnitte"]] == [10.0]
