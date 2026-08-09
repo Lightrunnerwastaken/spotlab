@@ -129,6 +129,25 @@ versionsgepinntes Extra `spotlab[sim]`.
   `backends/mobility.py::se2_grenze` gebaut. `RobotCommandBuilder.mobility_params()` kennt
   den Parameter `vel_limit` nicht (geprüft an bosdyn-client 5.0.1.2); das Feld wird direkt
   am Protobuf gesetzt, deshalb liegt es in `backends/` und nicht in `api/`.
+- **Kein Lease-Client und kein E-Stop-Endpunkt unterhalb von
+  `src/spotlab/beobachtung/`.** Dieselbe Regel wie bei `maps/`, und sie ist der
+  ganze Grund, warum der Beobachter-Modus **vor** Abnahmepunkt A1 benutzbar ist:
+  er nimmt dem Tablet nichts weg und kann den Roboter nicht bewegen.
+  `Zustandsquelle` hat genau eine Methode — es gibt gar nichts zu missbrauchen.
+  Ein Test hält zusätzlich fest, dass `StateSampler` nicht heimlich anfängt,
+  mehr als `robot_state()` zu verlangen; sonst reichte die Nur-Lese-Quelle nicht
+  mehr und die Aussage wäre still falsch geworden.
+- **Das Messfenster-Protokoll steht in `record/messfenster.py`, an genau einer
+  Stelle.** `api/spot.py` und `beobachtung/session.py` delegieren beide dorthin.
+  Zwei Formulierungen hiessen, dass `messung/fenster.py` bald zwei leicht
+  verschiedene Fensterprotokolle lesen muss — und das fällt erst auf, wenn die
+  Messfahrt vorbei ist.
+- **Eine Trockenprobe mit leeren Messfenstern beweist nichts.** Der Zeitraffer
+  darf die Wartezeiten kürzen, nicht die Messfenster: bei 40× blieben 0.05 s je
+  Fenster, also null bis zwei Abtastungen, und die Probe liefe grün durch, ohne
+  die Messkette berührt zu haben. `beobachten_real.py` hat dafür
+  `PROBE_FENSTER_S` als Untergrenze in echten Sekunden, und ein Test prüft die
+  Zahl der Abtastungen, nicht bloss die Existenz des Fensters.
 - **`errors/` darf nichts aus `backends/` importieren.** `backends/base.py` importiert
   `UnsupportedCapability` aus `errors`; die Gegenrichtung schliesst den Kreis, sobald
   `backends.base` zuerst geladen wird. Die Position der Importzeile hilft dagegen nicht.
@@ -202,7 +221,12 @@ versionsgepinntes Extra `spotlab[sim]`.
 ## Umsetzungsstand
 
 Fundament (1+2), GUI (3), GraphNav (4), der eingebaute Editor (5), die Anbindung fremder
-Projekte samt MCP-Server (6) und die Kalibrier-Infrastruktur (7) sind vollständig. Offen
+Projekte samt MCP-Server (6), die Kalibrier-Infrastruktur (7) und der Beobachter-Modus (8)
+sind vollständig. Der Beobachter (`beobachtung/`) schreibt leaselos mit, während ein
+Mensch mit dem Tablet fährt — das Drehbuch dazu liegt in
+`matura-spot/scripts/beobachten_real.py`. Noch nicht gebaut: der Vergleich gegen den Sim
+über die neue x-Achse (erreichtes statt kommandiertes Tempo); er berührt nur
+`matura-spot/scripts/vergleich_real_sim.py`. Offen
 und bewusst nicht gebaut: Sim-Adapter, NN-Anbindung, Mehrbenutzer-Dienst, Arm und Docking.
 Im Editor: Debugger mit Haltepunkten, git-Integration, Erweiterungen, projektweite Suche.
 In der Anbindung: MCP über Netz, Mehrbenutzer, Qt-Code aus fremden Projekten, eine

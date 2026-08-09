@@ -414,6 +414,47 @@ durchgefallen**. Diese Zahl entscheidet, ob 50 Hz realistisch sind oder ob die F
 
 ---
 
+## A19 — Beobachtungssitzung
+
+**Warum dieser Punkt VOR A1 kommen darf** Der Beobachter holt kein Lease und
+registriert keinen Not-Aus-Endpunkt. Er kann den Roboter nicht bewegen —
+`Zustandsquelle` hat genau eine Methode. Genau das ist hier zu **beweisen**,
+nicht anzunehmen.
+
+**Vorsicht trotzdem:** der Spot fährt, nur eben von Hand. Freifläche, Aufsicht,
+Tablet in Reichweite. Dass spotlab nicht steuert, macht den Roboter nicht
+harmlos.
+
+**Bedienung** Zwei Personen: eine am Tablet, eine am Laptop.
+
+**Prozedur**
+1. `python scripts/beobachten_real.py` (in matura-spot) starten, Abschnitt B1.
+2. Von einem zweiten Rechner: `spotlab lease` — muss `frei` melden.
+3. Von einem zweiten Rechner: `spotlab doctor` — Stufe „Not-Aus-Endpunkt" muss
+   `kein 'spotlab'-Endpunkt in der Konfiguration` melden.
+4. Abschnitt B2-3: mit dem Tablet geradeaus fahren und die Anzeige auf
+   0.17 m/s halten.
+5. Strg-C mitten in einem Abschnitt.
+
+**Erwartung**
+- (2) und (3) beweisen die Leaselosigkeit. Meldet eines von beidem etwas
+  anderes, ist der Beobachter nicht das, was er zu sein behauptet — dann darf
+  er auch nicht vor A1 benutzt werden.
+- (4) Die Live-Anzeige ist aus zwei Metern lesbar, und der Wert unter
+  `messwerte.versatz_x_m / dauer_s` im Protokoll passt zu dem, was während der
+  Fahrt angezeigt wurde.
+- (5) Der Lauf ist sauber abgeschlossen (`lauf.json` trägt `abgebrochen`), und
+  `protokoll_beobachtung.json` enthält die bis dahin gefahrenen Abschnitte samt
+  eingetippter Impulse.
+
+**Notieren** Ob sich ein Zielband überhaupt halten lässt. Davon hängt ab, ob die
+Bänder taugen oder ob die Auswertung breiter binnen muss. Ausserdem `hz_ist` je
+Fenster: über WLAN ist die erreichte Abtastrate ungemessen (siehe A18).
+
+**Ergebnis** _(offen)_
+
+---
+
 ## Nach der Abnahme
 
 Ergebnisse hier eintragen, Abweichungen als Befund in die Spec zurückspielen, und erst
