@@ -71,7 +71,10 @@ Feststellungen.
 | **S1.3** Konfigurationswerte absichern | **erledigt** — `ConfigBroken` für kaputte Datei, unbekanntes Backend und für `max_speed`/`max_turn_rate`, die nicht endlich und positiv sind |
 | **S1.4** `SPOTLAB_NUR_TROCKEN` tiefer verankern | **erledigt** — beim Import eingefroren, zusätzlich in `verbinde()` geprüft; bekannte Grenze in CLAUDE.md benannt |
 | **S1.5** E-Stop-Frischeprüfung + `connect()`-Rollback | **erledigt** — `time_since_valid_response` statt reinem Namensabgleich, Selbstheilung bleibt; Rollback fängt `BaseException` |
-| S1.6 – S1.13, S2, S3, S4 | offen |
+| **S1.6** Abbau robust gegen Strg-C | **erledigt** — `close()` fängt je Schritt `BaseException` und wirft den Abbruch erst am Ende; `abtaster.stop()` liegt jetzt innerhalb der Absicherung |
+| **S1.7** GUI-NOT-AUS ehrlich machen | **erledigt** — Killer meldet, ob er getroffen hat; Abbau-Markierung hält den Lauf im `close()`-Fenster aktiv; gescheitertes Töten schickt zum physischen Not-Aus statt Entwarnung zu geben |
+| **S1.13** `doctor`: zurückgelassener Endpunkt | **erledigt** — eigene Stufe „Not-Aus-Endpunkt", trennt Leiche von laufender Zweitsitzung; A3 damit automatisiert |
+| S1.8 – S1.12, S2, S3, S4 | offen |
 
 Mit S1.1 fiel ein zweiter Befund mit: die Zeitüberschreitung in `move()` liess den
 Roboter bisher weiterlaufen, weil `warte_auf` zwar wirft, aber keinen Stopp schickt.

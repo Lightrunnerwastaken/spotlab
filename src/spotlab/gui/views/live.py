@@ -172,9 +172,26 @@ class LiveView(QWidget):
             self.hart_knopf.show()
 
     def notaus(self):
+        """Harter Stopp. Meldet die Wahrheit, auch wenn sie unangenehm ist.
+
+        `beende_hart` gibt aus zwei sehr verschiedenen Gründen False zurück: es
+        war nichts mehr zu töten (harmlos), oder das Töten ist GESCHEITERT
+        (Rechte, hängender Prozess). Die beiden zu verwechseln hiess, im
+        gefährlicheren Fall Entwarnung zu geben, während der Roboter weiterfährt.
+        """
         if self._lauf is None:
             self.meldung.emit("Es läuft gerade kein Programm.")
             return
-        if not beende_hart(self._lauf):
-            self.meldung.emit("Der Lauf läuft nicht mehr.")
+        lief = ist_aktiv(self._lauf)
+        if beende_hart(self._lauf):
+            self.hart_knopf.hide()
+            return
+        if lief:
+            # Kein Verstecken des Knopfes: er bleibt sichtbar zum Nachdrücken.
+            self.meldung.emit(
+                "Das Programm liess sich NICHT beenden. Drücke sofort den "
+                "physischen Not-Aus am Tablet."
+            )
+            return
+        self.meldung.emit("Der Lauf läuft nicht mehr.")
         self.hart_knopf.hide()

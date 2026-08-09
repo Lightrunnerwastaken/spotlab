@@ -19,6 +19,7 @@ from spotlab.record.events import ARTEN, ERGEBNISSE
 
 ZEITFORMAT = "%Y%m%dT%H%M%SZ"
 STOPP_DATEI = "stopp"  # von der GUI angelegt; der Abtaster bricht daraufhin ab
+ABBAU_DATEI = "abbau"  # vom Lauf angelegt, solange close() läuft und der Abtaster schweigt
 
 
 def _sha256(pfad):
@@ -112,10 +113,29 @@ class RunRecorder:
             self._meta.update(felder)
         self._schreibe_meta()
 
+    def abbau_beginnt(self):
+        """Markiert: ab jetzt wird abgebaut, der Abtaster schweigt schon.
+
+        Ohne diese Markierung gilt der Lauf während des Abbaus als tot — der
+        Abtaster ist das einzige Lebenszeichen und hört als Erstes auf, während
+        `close()` noch bis zu 20 s läuft. Der NOT-AUS-Knopf träfe in genau
+        diesem Fenster niemanden (`workshop/control.py::ist_aktiv`).
+
+        Darf nie werfen: sie hängt im Abbaupfad.
+        """
+        try:
+            (self.dir / ABBAU_DATEI).touch()
+        except OSError:
+            pass
+
     def finish(self, ergebnis, fehler=None):
         if ergebnis not in ERGEBNISSE:
             raise ValueError(f"Unbekanntes Ergebnis: {ergebnis!r}")
         self.event("ende", ergebnis=ergebnis, fehler=fehler)
+        try:
+            (self.dir / ABBAU_DATEI).unlink(missing_ok=True)
+        except OSError:
+            pass
         with self._sperre:
             self._meta["ergebnis"] = ergebnis
             self._meta["fehler"] = fehler

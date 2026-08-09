@@ -280,3 +280,81 @@ def test_gescheiterter_aufbau_gibt_auch_das_lease_zurueck():
     assert "lease_acquire" in protokoll, "Vorbedingung: das Lease war geholt"
     assert "lease_return" in protokoll, str(protokoll)
     assert "estop_abmelden" in protokoll, str(protokoll)
+
+
+# --------------------------------------------- Abbau gegen Strg-C (S1.6)
+#
+# `_versuche` fing nur `Exception`. Ein KeyboardInterrupt im ERSTEN Abbauschritt
+# (Bewegung stoppen) sprang damit aus close() heraus: power_off, Lease-Rueckgabe
+# und E-Stop-Abmeldung liefen nie. Der Prozess starb, die Keepalives starben,
+# der Roboter schnitt die Motorleistung ab -- und ein stehender Spot faellt dabei
+# um, statt sich hinzusetzen.
+
+
+class _AbbruchBeimStoppen(FakeService):
+    def robot_command(self, command, end_time_secs=None, **kw):
+        self.protokoll.append("kommando_abgebrochen")
+        raise KeyboardInterrupt()
+
+
+class _RobotAbbruchBeimStoppen(FakeRobot):
+    def ensure_client(self, name):
+        if "command" in name.lower():
+            return _AbbruchBeimStoppen(self.protokoll)
+        return FakeService(self.protokoll)
+
+
+def test_strg_c_im_ersten_abbauschritt_stoppt_den_abbau_nicht():
+    protokoll = []
+    spot = RealSpot.connect(
+        _cfg(),
+        robot_bauen=lambda cfg: _RobotAbbruchBeimStoppen(protokoll),
+        estop_bauen=lambda client: FakeEstopGuard(protokoll),
+        passwort_lesen=lambda user: "geheim",
+    )
+    with pytest.raises(KeyboardInterrupt):
+        spot.close()
+    # Alle vier Schritte muessen trotzdem gelaufen sein.
+    assert "kommando_abgebrochen" in protokoll
+    assert any(s.startswith("power_off") for s in protokoll), str(protokoll)
+    assert "lease_return" in protokoll, str(protokoll)
+    assert "estop_abmelden" in protokoll, str(protokoll)
+
+
+def test_der_abbruch_geht_nach_dem_abbau_weiter_nach_oben():
+    """Verschlucken waere schlimmer als das Problem: der Lauf wuerde als 'ok'
+    verbucht, obwohl ihn jemand abgebrochen hat."""
+    protokoll = []
+    spot = RealSpot.connect(
+        _cfg(),
+        robot_bauen=lambda cfg: _RobotAbbruchBeimStoppen(protokoll),
+        estop_bauen=lambda client: FakeEstopGuard(protokoll),
+        passwort_lesen=lambda user: "geheim",
+    )
+    with pytest.raises(KeyboardInterrupt):
+        spot.close()
+
+
+def test_gewoehnliche_fehler_bleiben_stumm():
+    """Die bestehende Zusicherung: ein fehlgeschlagener Schritt darf die
+    folgenden nicht verhindern UND close() nicht zum Werfen bringen."""
+
+    class KommandoKaputt(FakeService):
+        def robot_command(self, command, end_time_secs=None, **kw):
+            raise RuntimeError("Funk weg")
+
+    class RobotKommandoKaputt(FakeRobot):
+        def ensure_client(self, name):
+            if "command" in name.lower():
+                return KommandoKaputt(self.protokoll)
+            return FakeService(self.protokoll)
+
+    protokoll = []
+    spot = RealSpot.connect(
+        _cfg(),
+        robot_bauen=lambda cfg: RobotKommandoKaputt(protokoll),
+        estop_bauen=lambda client: FakeEstopGuard(protokoll),
+        passwort_lesen=lambda user: "geheim",
+    )
+    spot.close()          # wirft nicht
+    assert "estop_abmelden" in protokoll

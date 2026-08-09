@@ -68,3 +68,49 @@ def test_starten_beobachten_stoppen(tmp_path):
         if prozess.poll() is None:
             prozess.kill()
             prozess.wait()
+
+
+# ------------------------------------- abtaster.stop() vor spot.close() (S1.6)
+
+
+def test_ein_kaputter_abtaster_verhindert_den_abbau_nicht(tmp_path, monkeypatch):
+    """`abtaster.stop()` stand ausserhalb jedes try/finally, direkt VOR
+    `spot.close()`. Wirft es -- oder wird es unterbrochen -- baut die Sitzung
+    nie ab: Motoren an, Lease gehalten, Not-Aus-Endpunkt registriert.
+    """
+    import spotlab
+    from spotlab.record.sampler import StateSampler
+
+    geschlossen = []
+
+    def kaputtes_stop(self):
+        raise RuntimeError("Abtaster klemmt")
+
+    monkeypatch.setattr(StateSampler, "stop", kaputtes_stop)
+
+    with pytest.raises(RuntimeError, match="Abtaster klemmt"):
+        with spotlab.connect(backend="dryrun", runs_dir=tmp_path) as spot:
+            monkeypatch.setattr(
+                type(spot), "close", lambda self: geschlossen.append(True)
+            )
+
+    assert geschlossen == [True], "spot.close() wurde uebersprungen"
+
+
+def test_der_lauf_wird_trotz_kaputtem_abtaster_abgeschlossen(tmp_path, monkeypatch):
+    """recorder.finish() muss ebenfalls laufen -- sonst bleibt lauf.json auf
+    'laeuft' stehen und die GUI zeigt den Lauf ewig als aktiv."""
+    import json
+
+    import spotlab
+    from spotlab.record.sampler import StateSampler
+
+    monkeypatch.setattr(
+        StateSampler, "stop", lambda self: (_ for _ in ()).throw(RuntimeError("klemmt"))
+    )
+    with pytest.raises(RuntimeError):
+        with spotlab.connect(backend="dryrun", runs_dir=tmp_path):
+            pass
+
+    lauf = next(tmp_path.glob("*/lauf.json"))
+    assert json.loads(lauf.read_text(encoding="utf-8"))["ergebnis"] != "läuft"

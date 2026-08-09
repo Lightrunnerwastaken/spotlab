@@ -21,7 +21,7 @@ class Check:
 
 STUFEN = (
     "Konfiguration", "Netz", "Anmeldung", "Zeitsync", "Zustandsstrom",
-    "Not-Aus", "Lease", "Akku",
+    "Not-Aus", "Not-Aus-Endpunkt", "Lease", "Akku",
 )
 
 STROM_DIENST = "robot-state-streaming"
@@ -51,6 +51,47 @@ def _zustandsstrom(robot):
         "Zustandsstrom", True, "nicht vorhanden",
         "Der 333-Hz-Strom braucht die Joint-Control-Lizenz. Ohne ihn liefert "
         "RobotState alles ausser rohem IMU — für die Gates reicht das.",
+    )
+
+
+def _eigener_endpunkt(estop_client):
+    """Steht noch ein spotlab-Endpunkt in der Not-Aus-Konfiguration?
+
+    Automatisiert Abnahmepunkt A3. Bisher fragte diese Diagnose nur den
+    aggregierten Systemstatus ab — ein zurückgelassener Endpunkt wäre dort
+    unsichtbar geblieben, obwohl der Roboter ihn beim nächsten Timeout als
+    ausgelöst wertet und der nächste Schüler einen scheinbar defekten Spot
+    vorfindet.
+
+    Zwei Fälle, die NICHT dasselbe sind: eine Leiche aus einem abgestürzten Lauf
+    (heilt sich beim nächsten Verbinden selbst) und ein zweiter, laufender
+    spotlab-Prozess (da muss ein Mensch etwas tun).
+    """
+    from spotlab.backends.real.estop import (
+        ENDPOINT_NAME,
+        ESTOP_TIMEOUT_S,
+        sekunden_seit_antwort,
+    )
+
+    namen = [e.name for e in estop_client.get_config().endpoints]
+    if ENDPOINT_NAME not in namen:
+        return Check(
+            "Not-Aus-Endpunkt", True,
+            f"kein '{ENDPOINT_NAME}'-Endpunkt in der Konfiguration",
+        )
+    seit = sekunden_seit_antwort(estop_client, ENDPOINT_NAME)
+    if seit is not None and seit <= ESTOP_TIMEOUT_S:
+        return Check(
+            "Not-Aus-Endpunkt", False,
+            f"ein anderer spotlab-Lauf hält ihn (Rückmeldung vor {seit:.1f} s)",
+            "Beende den anderen Lauf, bevor du verbindest.",
+        )
+    return Check(
+        "Not-Aus-Endpunkt", False,
+        f"ein '{ENDPOINT_NAME}'-Endpunkt ist zurückgeblieben und meldet sich nicht",
+        "Rest eines hart beendeten Laufs. Der nächste Verbindungsaufbau ersetzt "
+        "ihn automatisch — nach einem geordneten Ende sollte er aber weg sein "
+        "(Abnahmepunkt A3).",
     )
 
 
@@ -103,7 +144,8 @@ def diagnose(cfg=None, robot_bauen=None, passwort_lesen=None):
     try:
         from bosdyn.client.estop import EstopClient
 
-        status = robot.ensure_client(EstopClient.default_service_name).get_status()
+        estop_client = robot.ensure_client(EstopClient.default_service_name)
+        status = estop_client.get_status()
         stufe = LEVEL_NAMEN.get(status.stop_level, "unbekannt")
         frei = stufe == "frei"
         pruefungen.append(
@@ -113,6 +155,11 @@ def diagnose(cfg=None, robot_bauen=None, passwort_lesen=None):
             return pruefungen
     except Exception as fehler:
         return pruefungen + [_fehler("Not-Aus", fehler, cfg.ip)]
+
+    try:
+        pruefungen.append(_eigener_endpunkt(estop_client))
+    except Exception as fehler:
+        pruefungen.append(_fehler("Not-Aus-Endpunkt", fehler, cfg.ip))
 
     try:
         from bosdyn.client.lease import LeaseClient

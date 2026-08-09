@@ -113,11 +113,23 @@ def connect(
         ergebnis, fehlertext = "fehler", f"{type(fehler).__name__}: {fehler}"
         raise
     finally:
-        abtaster.stop()
+        # Verschachtelt, nicht hintereinander: `abtaster.stop()` stand hier
+        # ungeschützt VOR `spot.close()`. Wirft es — oder unterbricht Strg-C es
+        # genau dort —, baute die Sitzung nie ab: Motoren an, Lease gehalten,
+        # Not-Aus-Endpunkt registriert, und der Lauf blieb in lauf.json auf
+        # „läuft" stehen. Der Abtaster ist der unwichtigste der drei Schritte
+        # und stand am gefährlichsten Platz.
+        # Zuerst die Markierung: ab hier schweigt der Abtaster, und ohne sie
+        # gälte der Lauf für den NOT-AUS-Knopf schon als tot, obwohl der Spot
+        # noch unter Strom steht.
+        recorder.abbau_beginnt()
         try:
-            spot.close()
+            abtaster.stop()
         finally:
-            recorder.finish(ergebnis, fehlertext)
+            try:
+                spot.close()
+            finally:
+                recorder.finish(ergebnis, fehlertext)
 
 
 def _skript_pfad():

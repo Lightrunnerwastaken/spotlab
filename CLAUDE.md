@@ -24,7 +24,24 @@ versionsgepinntes Extra `spotlab[sim]`.
 - **Farben nur aus `gui/theme.py`.** Ein Farbliteral im Widget-Code bricht den zweiten
   Hell/Dunkel-Modus, ohne dass es auffällt.
 - **`beende_hart` tötet nur einen Lauf, der nach `ist_aktiv()` noch lebt.** Prozess-IDs
-  werden vom Betriebssystem wiederverwendet.
+  werden vom Betriebssystem wiederverwendet. Der Rückgabewert ist eine Aussage über den
+  **Prozess**, nicht über den Knopfdruck: der Killer meldet, ob er getroffen hat. `False`
+  hat zwei sehr verschiedene Bedeutungen — nichts zu töten (harmlos) und Töten gescheitert
+  (gefährlich). Die GUI muss sie trennen; eine Entwarnung im zweiten Fall wäre schlimmer
+  als gar keine Meldung.
+- **Der Abbau legt `ABBAU_DATEI` an, und `ist_aktiv()` liest sie.** Der Abtaster ist das
+  Lebenszeichen und hört beim Stopp als Erstes auf, während `close()` noch bis zu 20 s
+  läuft (`power_off(timeout_sec=20)`). Ohne die Markierung gilt der Lauf in genau diesem
+  Fenster als tot, und der NOT-AUS-Knopf trifft niemanden — obwohl der Spot noch unter
+  Strom steht. Ein **ausdrückliches Merkmal**, kein grosszügigeres Zeitfenster: ein
+  abgestürzter Prozess kommt nie dazu, die Datei anzulegen, und die Prozess-ID-Regel
+  bleibt dadurch unberührt.
+- **`RealSpot.close()` fängt je Schritt `BaseException` und wirft einen Abbruch erst am
+  Ende.** Nur `Exception` zu fangen liess Strg-C aus dem ersten Abbauschritt herausspringen:
+  Motoren blieben an, und der Spot fiel beim Wegfallen der Keepalives aus dem STAND um,
+  statt sich hinzusetzen. Verschlucken ist ebenso falsch — der Lauf würde als „ok" verbucht.
+  In `spotlab.connect()` steht `abtaster.stop()` aus demselben Grund **innerhalb** des
+  `try`, das `spot.close()` und `recorder.finish()` schützt.
 - **Kein Lease-Client und kein E-Stop-Endpunkt unterhalb von `src/spotlab/maps/`.**
   Aufzeichnen ist leaselos; nur deshalb darf die GUI es. Ein Lease dort bräche H1.
 - **Autonome Fahrt bekommt immer `travel_params` mit `velocity_limit` aus der

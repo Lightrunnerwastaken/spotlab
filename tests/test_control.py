@@ -71,7 +71,12 @@ def test_stopp_ist_idempotent(tmp_path):
 def test_hartes_beenden_ruft_den_killer(tmp_path):
     verzeichnis = _lauf(tmp_path, pid=1234)
     getroffen = []
-    assert beende_hart(verzeichnis, killer=getroffen.append) is True
+
+    def killer(pid):
+        getroffen.append(pid)
+        return True          # der Killer meldet jetzt, OB er getroffen hat
+
+    assert beende_hart(verzeichnis, killer=killer) is True
     assert getroffen == [1234]
 
 
@@ -89,3 +94,73 @@ def test_lauf_ohne_pid_wird_nicht_getoetet(tmp_path):
     getroffen = []
     assert beende_hart(verzeichnis, killer=getroffen.append) is False
     assert getroffen == []
+
+
+# ------------------------------------- ehrlicher NOT-AUS (A9, S1.7)
+
+
+def _im_abbau(tmp_path, alter_s=8.0):
+    """Ein Lauf, dessen Abtaster schon schweigt, waehrend close() noch laeuft."""
+    from spotlab.record.run import ABBAU_DATEI
+
+    verzeichnis = _lauf(tmp_path, pid=4242, alter_s=alter_s)
+    (verzeichnis / ABBAU_DATEI).touch()
+    return verzeichnis
+
+
+def test_beende_hart_meldet_misserfolg_wenn_das_toeten_scheitert(tmp_path):
+    """Bisher gab beende_hart() True zurueck, sobald es den Killer aufgerufen
+    hatte -- unabhaengig davon, ob taskkill den Prozess wirklich erwischt hat.
+    Die GUI meldete dem Schueler dann "beendet", waehrend der Roboter weiterlief.
+    """
+    verzeichnis = _lauf(tmp_path, pid=1234)
+    assert beende_hart(verzeichnis, killer=lambda pid: False) is False
+
+
+def test_beende_hart_meldet_erfolg_wenn_der_killer_ihn_meldet(tmp_path):
+    verzeichnis = _lauf(tmp_path, pid=1234)
+    assert beende_hart(verzeichnis, killer=lambda pid: True) is True
+
+
+def test_ein_lauf_im_abbau_gilt_weiter_als_aktiv(tmp_path):
+    """DER Fall, der A9 unterlaeuft: bei Strg-C hoert der Abtaster sofort auf,
+    aber close() laeuft noch bis zu 20 s (power_off timeout_sec=20). In genau
+    diesem Fenster meldete ist_aktiv() False -- der NOT-AUS-Knopf traf also
+    niemanden, waehrend der Spot noch unter Strom stand.
+    """
+    assert ist_aktiv(_im_abbau(tmp_path, alter_s=8.0)) is True
+
+
+def test_der_notaus_trifft_einen_lauf_im_abbau(tmp_path):
+    getroffen = []
+    verzeichnis = _im_abbau(tmp_path, alter_s=8.0)
+    assert beende_hart(verzeichnis, killer=lambda pid: getroffen.append(pid) or True)
+    assert getroffen == [4242]
+
+
+def test_ohne_abbau_markierung_bleibt_es_bei_der_alten_regel(tmp_path):
+    """Ein abgestuerzter Prozess kommt nie dazu, die Markierung anzulegen --
+    die Prozess-ID-Regel darf dadurch nicht aufgeweicht werden."""
+    assert ist_aktiv(_lauf(tmp_path, alter_s=8.0)) is False
+
+
+def test_auch_das_abbaufenster_ist_endlich(tmp_path):
+    """Mitten im Abbau getoetet: die Markierung bleibt liegen. Danach greift
+    wieder die Prozess-ID-Regel."""
+    from spotlab.workshop.control import ABBAU_FRIST_S
+
+    verzeichnis = _im_abbau(tmp_path, alter_s=10.0)
+    spaeter = time.time() + ABBAU_FRIST_S + 1.0
+    assert ist_aktiv(verzeichnis, jetzt=spaeter) is False
+
+
+def test_finish_raeumt_die_abbau_markierung_weg(tmp_path):
+    """Sonst gaelte jeder sauber beendete Lauf noch 30 s als aktiv."""
+    from spotlab.record.run import ABBAU_DATEI
+
+    rec = RunRecorder(tmp_path, None, backend="dryrun")
+    rec.sample({"battery": 90.0})
+    rec.abbau_beginnt()
+    assert (rec.dir / ABBAU_DATEI).exists()
+    rec.finish("ok")
+    assert not (rec.dir / ABBAU_DATEI).exists()

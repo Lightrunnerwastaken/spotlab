@@ -102,8 +102,19 @@ umgehen.
 Motoren aus → Lease frei (`spotlab lease` meldet `frei`) → `spotlab doctor` meldet
 Not-Aus `frei` und kein zurückgelassener `spotlab`-Endpunkt.
 
+Der letzte Teil ist seit S1.13 **automatisiert**: `spotlab doctor` hat eine eigene Stufe
+„Not-Aus-Endpunkt" direkt hinter „Not-Aus". Sie muss `kein 'spotlab'-Endpunkt in der
+Konfiguration` melden. Meldet sie „zurückgeblieben", ist dieser Punkt nicht bestanden —
+auch wenn sich der Endpunkt beim nächsten Verbinden selbst ersetzt.
+
 **Zusätzlich** Dasselbe mit Ctrl-C mitten im Lauf und mit einem Skript, das absichtlich
 eine Ausnahme wirft. Beide Male muss der Abbau vollständig durchlaufen.
+
+**Ctrl-C ist der wichtigere der beiden Fälle** (S1.6): der Abbau fing früher nur
+`Exception`. Ein Ctrl-C im ersten Abbauschritt sprang aus `close()` heraus, Motoren
+blieben an, und der Spot fiel beim Wegfallen der Keepalives aus dem STAND um, statt sich
+hinzusetzen. Achte deshalb ausdrücklich darauf, **wie** er zu Boden kommt, nicht nur
+darauf, dass er es tut.
 
 **Ergebnis** _(offen)_
 
@@ -211,6 +222,25 @@ gegen die kommandierten 0.3 m/s auswertbar.
 `lauf.json` trägt `abgebrochen`. Der Knopf „Reagiert nicht — hart beenden" darf **nicht**
 erscheinen; tut er es, kommt der `KeyboardInterrupt` nicht durch die gRPC-Aufrufe durch,
 und das gehört ins Tagebuch.
+
+**Zusatz A9b — NOT-AUS mitten im Abbau.** Der Punkt, den A9 bisher nur zu prüfen
+behauptete. Bis S1.7 hing das Lebenszeichen allein an `zustand.jsonl`; der Abtaster hört
+beim Stopp als Erstes auf, während `close()` noch bis zu 20 s läuft. In genau diesem
+Fenster hielt die GUI den Lauf für tot, und der NOT-AUS-Knopf traf niemanden — obwohl der
+Spot noch unter Strom stand.
+
+*Prozedur:* Skript mit langer `walk()`-Phase starten, *Stopp* drücken und **sofort
+danach**, noch während sich der Spot hinsetzt, den NOT-AUS-Knopf drücken.
+
+*Erwartung:* Der Knopf wirkt. Der Prozess stirbt, der Spot schneidet die Motorleistung ab
+(er sackt zusammen — das ist die Bedeutung eines Not-Aus, kein Fehler). Es erscheint
+**nicht** die Meldung „Der Lauf läuft nicht mehr". Erscheint sie doch, ist die Markierung
+`abbau` im Lauf-Verzeichnis nicht angelegt worden.
+
+*Und der umgekehrte Fall:* Lässt sich der Prozess nicht töten, muss die Meldung
+„Das Programm liess sich NICHT beenden. Drücke sofort den physischen Not-Aus am Tablet."
+kommen — und der harte Knopf **sichtbar bleiben**. Eine Entwarnung an dieser Stelle wäre
+gefährlicher als gar keine Meldung.
 
 **Ergebnis** _(offen)_
 

@@ -238,20 +238,46 @@ class RealSpot:
     # ------------------------------------------------------------- Abbau
 
     def close(self):
-        """Geordnetes Ende. Jeder Schritt ist gekapselt — der Abbau läuft immer durch."""
+        """Geordnetes Ende. Jeder Schritt ist gekapselt — der Abbau läuft immer durch.
+
+        „Immer" schliesst Strg-C ein. `_versuche` fing früher nur `Exception`;
+        ein KeyboardInterrupt im ersten Schritt sprang damit aus `close()`
+        heraus, und power_off, Lease-Rückgabe und E-Stop-Abmeldung liefen nie.
+        Der Prozess starb, die Keepalives starben, der Roboter schnitt die
+        Motorleistung ab — und ein STEHENDER Spot fällt dabei um, statt sich
+        hinzusetzen. Genau den Fall soll der geordnete Abbau verhindern.
+
+        Ein Abbruch wird deshalb gemerkt und erst NACH allen Schritten weiter
+        nach oben gereicht. Ihn zu verschlucken wäre schlimmer als das Problem:
+        der Lauf würde als „ok" verbucht, obwohl ihn jemand abgebrochen hat.
+        """
         if self._geschlossen:
             return
         self._geschlossen = True
-        self._versuche(
-            lambda: self._commands.robot_command(RobotCommandBuilder.stop_command())
-        )
-        self._versuche(lambda: self._robot.power_off(cut_immediately=False, timeout_sec=20))
-        self._versuche(self._lease.stop)
-        self._versuche(self._estop.stop)
+        abbruch = None
+        for schritt in (
+            lambda: self._commands.robot_command(RobotCommandBuilder.stop_command()),
+            lambda: self._robot.power_off(cut_immediately=False, timeout_sec=20),
+            self._lease.stop,
+            self._estop.stop,
+        ):
+            abbruch = self._versuche(schritt) or abbruch
+        if abbruch is not None:
+            raise abbruch
 
     @staticmethod
     def _versuche(schritt):
+        """Einen Abbauschritt ausführen. Gibt einen Abbruch zurück, statt ihn zu werfen.
+
+        Gewöhnliche Fehler bleiben stumm (bestehende Zusicherung: ein
+        fehlgeschlagener Schritt darf die folgenden nicht verhindern).
+        KeyboardInterrupt und SystemExit sind kein Fehler, sondern
+        Ablaufsteuerung — sie werden zurückgegeben und ganz am Ende geworfen.
+        """
         try:
             schritt()
         except Exception:
             pass
+        except BaseException as abbruch:
+            return abbruch
+        return None

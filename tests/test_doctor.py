@@ -20,6 +20,12 @@ class GesunderRobot:
 
         return estop_pb2.EstopSystemStatus(stop_level=estop_pb2.ESTOP_LEVEL_NONE)
 
+    def get_config(self):
+        """Gesund heisst hier auch: kein zurueckgelassener spotlab-Endpunkt."""
+        from bosdyn.api import estop_pb2
+
+        return estop_pb2.EstopConfig(unique_id="c0")
+
     def list_leases(self):
         return []
 
@@ -135,3 +141,84 @@ def test_zustandsstrom_bei_fehlender_liste():
     pruefung = _zustandsstrom(Kaputt())
     assert pruefung.ok is True
     assert "nicht ermittelbar" in pruefung.detail
+
+
+# ------------------------------------- zurueckgelassener Endpunkt (A3, S1.13)
+#
+# EstopGuard.stop() meldet den Endpunkt ab; bleibt er stehen, wertet der Roboter
+# ihn beim naechsten Timeout als ausgeloest und der naechste Schueler findet
+# einen scheinbar defekten Spot. Abnahmepunkt A3 verlangt genau das zu pruefen --
+# bisher fragte doctor nur den aggregierten Systemstatus ab und haette einen
+# zurueckgelassenen Endpunkt nie gesehen.
+
+from bosdyn.api import estop_pb2  # noqa: E402
+
+
+class RobotMitEndpunkten(GesunderRobot):
+    def __init__(self, endpunkte=(), frische=None):
+        super().__init__()
+        self._endpunkte = list(endpunkte)
+        self._frische = dict(frische or {})
+
+    def get_config(self):
+        cfg = estop_pb2.EstopConfig(unique_id="c0")
+        for name in self._endpunkte:
+            cfg.endpoints.add().name = name
+        return cfg
+
+    def get_status(self):
+        status = estop_pb2.EstopSystemStatus(stop_level=estop_pb2.ESTOP_LEVEL_NONE)
+        for name in self._endpunkte:
+            eintrag = status.endpoints.add()
+            eintrag.endpoint.name = name
+            seit = self._frische.get(name)
+            if seit is not None:
+                eintrag.time_since_valid_response.FromNanoseconds(int(seit * 1e9))
+        return status
+
+
+def _stufe(robot, name):
+    pruefungen = diagnose(
+        _cfg(), robot_bauen=lambda cfg: robot, passwort_lesen=lambda u: "x"
+    )
+    treffer = [p for p in pruefungen if p.name == name]
+    assert treffer, f"Stufe {name!r} fehlt: {[p.name for p in pruefungen]}"
+    return treffer[0]
+
+
+def test_sauber_abgemeldet_ist_gruen():
+    pruefung = _stufe(
+        RobotMitEndpunkten(endpunkte=("Tablet",), frische={"Tablet": 0.2}),
+        "Not-Aus-Endpunkt",
+    )
+    assert pruefung.ok is True
+    assert "kein" in pruefung.detail.lower()
+
+
+def test_zurueckgelassener_endpunkt_wird_gemeldet():
+    """Der Fall nach einem harten Abbruch -- er steht noch da und ist stumm."""
+    pruefung = _stufe(
+        RobotMitEndpunkten(endpunkte=("Tablet", "spotlab"), frische={"Tablet": 0.2}),
+        "Not-Aus-Endpunkt",
+    )
+    assert pruefung.ok is False
+    assert "zurückgeblieben" in pruefung.detail or "zurückgelassen" in pruefung.detail
+    # Und der Rat muss beruhigen, statt zu erschrecken: es heilt sich selbst.
+    assert "ersetzt" in pruefung.rat
+
+
+def test_lebender_anderer_lauf_wird_anders_benannt():
+    """Kein Defekt, sondern ein belegter Roboter -- die Meldung muss das trennen."""
+    pruefung = _stufe(
+        RobotMitEndpunkten(
+            endpunkte=("Tablet", "spotlab"), frische={"Tablet": 0.2, "spotlab": 0.3}
+        ),
+        "Not-Aus-Endpunkt",
+    )
+    assert pruefung.ok is False
+    assert "läuft" in pruefung.detail.lower() or "anderer" in pruefung.detail.lower()
+    assert "zurückgeblieben" not in pruefung.detail
+
+
+def test_die_stufe_steht_direkt_hinter_dem_not_aus():
+    assert STUFEN.index("Not-Aus-Endpunkt") == STUFEN.index("Not-Aus") + 1

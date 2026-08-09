@@ -98,3 +98,40 @@ def test_notaus_ohne_lauf_meldet_das(qapp):
     ansicht.meldung.connect(meldungen.append)
     ansicht.notaus()
     assert meldungen and "läuft" in meldungen[0].lower()
+
+
+def test_gescheitertes_notaus_schickt_zum_physischen_knopf(qapp, tmp_path, monkeypatch):
+    """Der gefaehrlichste Fall im ganzen Fenster.
+
+    Wenn taskkill den Prozess NICHT erwischt (Rechte, haengender Prozess), meldete
+    die Ansicht bisher "Der Lauf laeuft nicht mehr" -- eine Entwarnung, waehrend
+    der Roboter weiterfaehrt. Der Schueler muss stattdessen zum physischen
+    Not-Aus geschickt werden.
+    """
+    monkeypatch.setattr("spotlab.gui.views.live.beende_hart", lambda p, **kw: False)
+    monkeypatch.setattr("spotlab.gui.views.live.ist_aktiv", lambda p, **kw: True)
+    rec = _lauf(tmp_path)
+    meldungen = []
+    ansicht = LiveView()
+    ansicht.meldung.connect(meldungen.append)
+    ansicht.setze_lauf(rec.dir, "x.py")
+    ansicht.notaus()
+
+    assert meldungen, "keine Rueckmeldung nach gescheitertem NOT-AUS"
+    text = meldungen[-1]
+    assert "nicht" in text.lower()
+    assert "not-aus" in text.lower() or "tablet" in text.lower(), text
+    assert "läuft nicht mehr" not in text.lower(), "faelschliche Entwarnung: " + text
+
+
+def test_notaus_auf_totem_lauf_meldet_das_weiterhin(qapp, tmp_path, monkeypatch):
+    """Gegenprobe: der harmlose Fall darf nicht zur Alarmmeldung werden."""
+    monkeypatch.setattr("spotlab.gui.views.live.beende_hart", lambda p, **kw: False)
+    monkeypatch.setattr("spotlab.gui.views.live.ist_aktiv", lambda p, **kw: False)
+    rec = _lauf(tmp_path)
+    meldungen = []
+    ansicht = LiveView()
+    ansicht.meldung.connect(meldungen.append)
+    ansicht.setze_lauf(rec.dir, "x.py")
+    ansicht.notaus()
+    assert meldungen and "läuft nicht mehr" in meldungen[-1].lower()
