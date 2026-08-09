@@ -106,3 +106,75 @@ def test_trockenlauf_zeitstempel_laeuft_weiter():
     erst = from_proto(backend.robot_state()).t_robot
     zweit = from_proto(backend.robot_state()).t_robot
     assert zweit >= erst > 0
+
+
+# ----------------------------------------- Treue des Testdoubles: end_time_secs
+#
+# Diese Gruppe existiert wegen eines echten Fehlers: api/motion.py schickte
+# `end_time_secs=1.0` — die nackte Gueltigkeitsdauer statt eines Zeitpunkts.
+# Das SDK liest den Wert als Sekunden seit dem 1.1.1970
+# (time_sync.py::robot_timestamp_from_local_secs), der echte Spot haette jedes
+# Fahrkommando mit ExpiredError abgewiesen. 681 gruene Tests sahen nichts davon,
+# weil dieses Backend den Parameter entgegennahm und wegwarf.
+
+
+FIXZEIT = 1_800_000_000.0
+
+
+def _bereit(jetzt=lambda: FIXZEIT):
+    backend = DryRunBackend(jetzt=jetzt)
+    backend.power_on()
+    return backend
+
+
+def _fahrbefehl():
+    from bosdyn.client.robot_command import RobotCommandBuilder
+
+    return RobotCommandBuilder.synchro_velocity_command(v_x=0.2, v_y=0.0, v_rot=0.0)
+
+
+def test_abgelaufene_endzeit_wird_abgewiesen():
+    """Der Fehler, der 56 Jahre alt beim Roboter angekommen waere."""
+    from spotlab.errors import CommandRejected
+
+    backend = _bereit()
+    with pytest.raises(CommandRejected) as fehler:
+        backend.send_command(_fahrbefehl(), end_time_secs=1.0)
+    assert "keine Dauer" in str(fehler.value)
+
+
+def test_endzeit_in_ferner_zukunft_wird_abgewiesen():
+    """Millisekunden statt Sekunden — der zweite naheliegende Zahlendreher."""
+    from spotlab.errors import CommandRejected
+
+    backend = _bereit()
+    with pytest.raises(CommandRejected):
+        backend.send_command(_fahrbefehl(), end_time_secs=FIXZEIT * 1000)
+
+
+def test_gueltige_endzeit_wird_mitgeschrieben():
+    backend = _bereit()
+    backend.send_command(_fahrbefehl(), end_time_secs=FIXZEIT + 1.0)
+    assert backend.endzeiten == [FIXZEIT + 1.0]
+
+
+def test_ohne_endzeit_bleibt_es_erlaubt():
+    """Haltungskommandos brauchen keine — nur Geschwindigkeit, Trajektorie, Stance."""
+    backend = _bereit()
+    backend.send_command(_fahrbefehl())
+    assert backend.endzeiten == [None]
+
+
+def test_endzeiten_laufen_parallel_zu_gesendet():
+    backend = _bereit()
+    backend.send_command(_fahrbefehl())
+    backend.send_command(_fahrbefehl(), end_time_secs=FIXZEIT + 2.0)
+    assert len(backend.endzeiten) == len(backend.gesendet) == 2
+
+
+def test_deckel_kommt_aus_derselben_quelle_wie_beim_echten_backend():
+    from spotlab.backends.mobility import mit_grenze
+    from spotlab.config import Limits
+
+    grenzen = Limits(max_speed=0.4, max_turn_rate=0.7)
+    assert DryRunBackend().mobility_params(grenzen) == mit_grenze(grenzen)

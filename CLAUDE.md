@@ -72,6 +72,20 @@ versionsgepinntes Extra `spotlab[sim]`.
   aussehen.
 - **`messung/` importiert nichts aus `api/`, `backends/`, `gui/` und kein `bosdyn`.**
   `spotlab.record.read` und `spotlab.errors` sind erlaubt.
+- **`end_time_secs` ist ein ZEITPUNKT in Sekunden seit dem 1.1.1970, keine Dauer.**
+  Das SDK rechnet ihn über `time_sync.py::robot_timestamp_from_local_secs` in Roboterzeit
+  um. Eine nackte Dauer bedeutet „gültig bis 1970" — der echte Spot weist jedes solche
+  Kommando mit `ExpiredError` ab und bewegt sich nie. Deshalb führt `api/motion.py` **zwei**
+  injizierbare Uhren: `jetzt` (monoton) misst Dauern, `wanduhr` (`time.time`) stempelt
+  Endzeiten. Sie zu verschmelzen wäre bequem und wieder falsch. `DryRunBackend` weist
+  abgelaufene Endzeiten ab — genau das hat 681 grüne Tests lang gefehlt.
+- **Der Geschwindigkeitsdeckel wirkt auf allen drei Wegen, und es gibt genau eine
+  Formulierung davon.** `walk()` klemmt die Sollwerte, `move()` und die autonome Fahrt
+  schicken `vel_limit` mit — bei einer Zieltrajektorie wählt der Roboter sein Tempo selbst,
+  Klemmen liefe dort ins Leere. Die Grenze wird ausschliesslich in
+  `backends/mobility.py::se2_grenze` gebaut. `RobotCommandBuilder.mobility_params()` kennt
+  den Parameter `vel_limit` nicht (geprüft an bosdyn-client 5.0.1.2); das Feld wird direkt
+  am Protobuf gesetzt, deshalb liegt es in `backends/` und nicht in `api/`.
 - **`errors/` darf nichts aus `backends/` importieren.** `backends/base.py` importiert
   `UnsupportedCapability` aus `errors`; die Gegenrichtung schliesst den Kreis, sobald
   `backends.base` zuerst geladen wird. Die Position der Importzeile hilft dagegen nicht.

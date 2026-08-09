@@ -16,6 +16,7 @@ from bosdyn.client.exceptions import (
     UnknownDnsNameError,
 )
 from bosdyn.client.lease import DisplacedLeaseError, ResourceAlreadyClaimedError
+from bosdyn.client.robot_command import ExpiredError, NoTimeSyncError, TooDistantError
 
 
 def _mit_ursache(fehler, ursprung):
@@ -82,6 +83,37 @@ def translate(exc, *, ip=None):
     if isinstance(exc, (DisplacedLeaseError, LeaseUseError)):
         return _mit_ursache(
             E.LeaseLost("Kontrolle verloren — jemand anders hat übernommen. Lauf abgebrochen."),
+            exc,
+        )
+
+    # Die drei Zeit-Fehler des Kommandodienstes. Sie sehen für einen Schüler wie
+    # ein kaputter Roboter aus, sind aber immer ein Programmfehler auf UNSERER
+    # Seite — `end_time_secs` ist ein Zeitpunkt in Sekunden seit dem 1.1.1970,
+    # keine Dauer. Die Meldung sagt das, statt zum Neustart zu raten.
+    if isinstance(exc, ExpiredError):
+        return _mit_ursache(
+            E.CommandRejected(
+                "Der Roboter hat ein bereits abgelaufenes Kommando bekommen. Das ist "
+                "ein Fehler in spotlab, nicht in deinem Programm — bitte melden."
+            ),
+            exc,
+        )
+
+    if isinstance(exc, TooDistantError):
+        return _mit_ursache(
+            E.CommandRejected(
+                "Die Gültigkeit des Kommandos reicht dem Roboter zu weit in die "
+                "Zukunft. Fehler in spotlab, nicht in deinem Programm — bitte melden."
+            ),
+            exc,
+        )
+
+    if isinstance(exc, NoTimeSyncError):
+        return _mit_ursache(
+            E.NotReachable(
+                "Die Uhren von Laptop und Roboter sind nicht synchronisiert. Verbindung "
+                "trennen und neu aufbauen; hält es an, hilft `spotlab doctor`."
+            ),
             exc,
         )
 

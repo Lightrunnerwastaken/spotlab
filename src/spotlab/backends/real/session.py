@@ -12,6 +12,7 @@ from bosdyn.client.lease import LeaseClient
 from bosdyn.client.robot_command import RobotCommandBuilder, RobotCommandClient
 from bosdyn.client.robot_state import RobotStateClient
 
+from spotlab.backends import mobility
 from spotlab.backends.base import Capability, SafetyStatus
 from spotlab.backends.real.estop import EstopGuard
 from spotlab.backends.real.feedback import to_feedback
@@ -128,6 +129,9 @@ class RealSpot:
 
     def frame_tree_snapshot(self):
         return self._robot.get_frame_tree_snapshot()
+
+    def mobility_params(self, limits):
+        return mobility.mit_grenze(limits)
 
     def image_sources(self):
         if self._quellen is None:

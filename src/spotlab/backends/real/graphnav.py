@@ -14,6 +14,7 @@ from bosdyn.api import geometry_pb2
 from bosdyn.api.graph_nav import graph_nav_pb2, map_pb2, nav_pb2
 from bosdyn.client.graph_nav import GraphNavClient
 
+from spotlab.backends import mobility
 from spotlab.backends.base import NavStatus
 from spotlab.errors import MapError, NotLocalized
 from spotlab.errors.graphnav import (
@@ -105,20 +106,15 @@ def travel_params(limits, max_distance=0.4, max_yaw=0.15):
     """TravelParams mit unserem Geschwindigkeitsdeckel.
 
     Ohne velocity_limit führe die autonome Fahrt schneller als die von Hand
-    gesteuerte — der Deckel aus config.toml gilt sonst nur für walk() und
-    move(). min_vel muss mitgesetzt werden, sonst bremst nur die Vorwärtsfahrt.
+    gesteuerte. Die Grenze selbst kommt aus `backends/mobility.py` — denselben
+    Wert zweimal zu formulieren wären zwei Gelegenheiten, ihn unterschiedlich
+    falsch zu schreiben. Genau das war er: der frühere Kommentar hier behauptete,
+    der Deckel gelte „sonst nur für walk() und move()", während `move()` ihn in
+    Wahrheit gar nicht anwandte.
     """
-    grenze = geometry_pb2.SE2VelocityLimit(
-        max_vel=geometry_pb2.SE2Velocity(
-            linear=geometry_pb2.Vec2(x=limits.max_speed, y=limits.max_speed),
-            angular=limits.max_turn_rate,
-        ),
-        min_vel=geometry_pb2.SE2Velocity(
-            linear=geometry_pb2.Vec2(x=-limits.max_speed, y=-limits.max_speed),
-            angular=-limits.max_turn_rate,
-        ),
+    return GraphNavClient.generate_travel_params(
+        max_distance, max_yaw, mobility.se2_grenze(limits)
     )
-    return GraphNavClient.generate_travel_params(max_distance, max_yaw, grenze)
 
 
 def navigate_step(robot, waypoint_id, dauer_s, params, command_id=None):

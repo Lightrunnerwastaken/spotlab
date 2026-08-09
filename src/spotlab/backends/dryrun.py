@@ -12,11 +12,16 @@ from bosdyn.api import geometry_pb2, robot_command_pb2, robot_state_pb2
 from bosdyn.client.frame_helpers import BODY_FRAME_NAME, ODOM_FRAME_NAME, VISION_FRAME_NAME
 from google.protobuf import wrappers_pb2
 
+from spotlab.backends import mobility
 from spotlab.backends.base import Capability, Feedback, SafetyStatus
-from spotlab.errors import NotPowered, UnsupportedCapability
+from spotlab.errors import CommandRejected, NotPowered, UnsupportedCapability
 
 STANDHOEHE = 0.42       # m, plausible Standhöhe des echten Spot
 REIBWERT = 0.6          # erfunden, aber plausibel — lauf.json sagt `backend: dryrun`
+# Obergrenze für `end_time_secs`. Der echte Spot hat eine eigene, uns unbekannte
+# Schranke (`TooDistantError`); eine Stunde ist grosszügig gewählt und fängt
+# vor allem den Fall ab, dass jemand Millisekunden für Sekunden hält.
+ZU_WEIT_S = 3600.0
 
 GELENKE = [
     "fl.hx", "fl.hy", "fl.kn",
@@ -33,26 +38,64 @@ def _identitaets_kante(parent):
 
 
 class DryRunBackend:
-    def __init__(self, recorder=None):
+    def __init__(self, recorder=None, jetzt=time.time):
         self._recorder = recorder
+        # Wanduhr, nicht monoton: `end_time_secs` ist ein Zeitpunkt seit dem
+        # 1.1.1970. Injizierbar, damit Tests eine feste Zeit setzen können.
+        self._jetzt = jetzt
         self._powered = False
         self._zaehler = itertools.count(1)
         self._offen = {}
         self.gesendet = []
+        self.endzeiten = []     # parallel zu `gesendet`, None wo keine gesetzt war
 
     def capabilities(self):
         return Capability.LOCOMOTION | Capability.POSTURE | Capability.POWER
 
     # ------------------------------------------------------------- Kommandos
 
+    def mobility_params(self, limits):
+        return mobility.mit_grenze(limits)
+
     def send_command(self, command, end_time_secs=None):
+        """Wie der echte Roboter: eine abgelaufene Endzeit wird ABGEWIESEN.
+
+        Das ist keine Kosmetik am Testdouble, sondern die Lehre aus einem
+        echten Fehler: `api/motion.py` schickte `end_time_secs=1.0` — die nackte
+        Gültigkeitsdauer statt eines Zeitpunkts. Das SDK versteht den Wert als
+        Sekunden seit der Unix-Epoche (`time_sync.py::robot_timestamp_from_local_secs`)
+        und hätte am echten Spot jedes Fahrkommando mit `ExpiredError`
+        zurückgewiesen — der Roboter hätte sich kein einziges Mal bewegt.
+        681 grüne Tests haben das nicht gesehen, weil dieses Backend den
+        Parameter entgegennahm und wegwarf.
+
+        Ein Testdouble, das eine Bedingung nicht kennt, kann sie nicht prüfen.
+        """
         if not self._powered:
             raise NotPowered("Die Motoren sind aus — rufe zuerst `spot.power_on()` auf.")
+        if end_time_secs is not None:
+            self._pruefe_endzeit(float(end_time_secs), self._jetzt())
         kommando = self._als_robot_command(command)
         self.gesendet.append(kommando)
+        self.endzeiten.append(None if end_time_secs is None else float(end_time_secs))
         kennung = f"dryrun-{next(self._zaehler)}"
         self._offen[kennung] = 0
         return kennung
+
+    @staticmethod
+    def _pruefe_endzeit(endzeit, jetzt):
+        if endzeit <= jetzt:
+            raise CommandRejected(
+                f"Das Kommando war beim Absenden schon abgelaufen (Endzeit "
+                f"{endzeit:.1f}, jetzt {jetzt:.1f}). `end_time_secs` ist ein "
+                f"Zeitpunkt in Sekunden seit dem 1.1.1970, keine Dauer — "
+                f"gemeint war vermutlich `time.time() + Dauer`."
+            )
+        if endzeit > jetzt + ZU_WEIT_S:
+            raise CommandRejected(
+                f"Die Endzeit liegt {(endzeit - jetzt) / 3600:.0f} Stunden in der "
+                f"Zukunft. Der echte Spot weist das mit `TooDistantError` ab."
+            )
 
     def command_feedback(self, command_id):
         abrufe = self._offen.get(command_id, 0)

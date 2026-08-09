@@ -112,11 +112,30 @@ zu lassen. Die Kette bricht dort ab und prüft Lease und Akku nicht mehr.
 Zurückgelegte Strecke messen. Fünf Wiederholungen. Danach `spot.move(turn=90)`, Drehwinkel
 messen.
 
+Dann drei Zusätze, die den Kern von `move()` prüfen — nicht nur das Ziel:
+
+1. **Der Geschwindigkeitsdeckel gilt auch hier.** In `~/.spotlab/config.toml`
+   `max_speed = 0.2` setzen, `spot.move(forward=2.0)` fahren, Zeit stoppen. Bei einer
+   Zieltrajektorie wählt der Roboter sein Tempo SELBST — das Klemmen der Sollwerte wie
+   bei `walk()` wirkt hier nicht, der Deckel muss als `vel_limit` mitgeschickt werden.
+   Der Punkt prüft genau das.
+2. **Die Zeitüberschreitung hält den Roboter an.** `spot.move(forward=3.0, timeout=2.0)`.
+   Das Skript bricht mit einer Ausnahme ab — der Roboter muss im selben Moment stehen
+   bleiben, nicht weiterlaufen. (`warte_auf` schickt keinen Stopp; das Kommando läuft
+   stattdessen genau bei `timeout` ab.)
+3. **Ein Fahrkommando kommt überhaupt an.** Wenn `walk()` oder `move()` sofort mit
+   „Kommando abgelehnt" scheitert, ist `end_time_secs` wieder falsch berechnet: das SDK
+   liest den Wert als Sekunden seit dem 1.1.1970, nicht als Dauer. Das war einmal so und
+   hätte bedeutet, dass sich der Roboter kein einziges Mal bewegt.
+
 **Erwartung** 1.0 m ± 10 cm; 90° ± 10°. `move()` kehrt erst zurück, wenn der Roboter
-„angekommen" meldet, nicht nach einer geschätzten Zeit.
+„angekommen" meldet, nicht nach einer geschätzten Zeit. Zusatz 1: die Fahrt dauert
+mindestens 2 m / 0.2 m/s = 10 s. Zusatz 2: Stillstand innerhalb von etwa einer Sekunde
+nach dem Abbruch.
 
 **Notieren** Streuung über die fünf Läufe — das ist eine Vergleichsgrösse für die spätere
-Sim-Kalibrierung.
+Sim-Kalibrierung. Ausserdem die gemessene Dauer aus Zusatz 1: sie sagt, ob der Deckel
+wirklich greift oder ob der Roboter ihn nur ungefähr beachtet.
 
 **Ergebnis** _(offen)_
 

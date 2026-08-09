@@ -7,8 +7,11 @@ from spotlab.backends.dryrun import DryRunBackend
 from spotlab.config import Limits
 
 
-def _backend():
-    backend = DryRunBackend()
+FIXZEIT = 1_800_000_000.0        # feste Wanduhr fuer die Endzeit-Tests
+
+
+def _backend(jetzt=None):
+    backend = DryRunBackend() if jetzt is None else DryRunBackend(jetzt=jetzt)
     backend.power_on()
     return backend
 
@@ -80,6 +83,94 @@ def test_stop_baut_ein_stopp_kommando():
     backend = _backend()
     stop(backend, None)
     assert backend.gesendet[0].full_body_command.HasField("stop_request")
+
+
+# ------------------------------------------------- Endzeit: die zwei Uhren
+#
+# `end_time_secs` ist laut SDK (time_sync.py::robot_timestamp_from_local_secs)
+# ein Zeitpunkt in Sekunden seit dem 1.1.1970. Frueher stand hier die nackte
+# Konstante 1.0 — jedes Kommando waere am echten Spot als abgelaufen abgewiesen
+# worden, der Roboter haette sich nie bewegt.
+
+
+def test_walk_schickt_einen_zeitpunkt_keine_dauer():
+    backend = _backend(jetzt=lambda: FIXZEIT)
+    uhr = iter([0.0, 0.0, 2.0])
+    walk(
+        backend, None, Limits(), vx=0.3, duration=1.0,
+        schlaf=lambda _: None, jetzt=lambda: next(uhr), wanduhr=lambda: FIXZEIT,
+    )
+    assert backend.endzeiten[0] == pytest.approx(FIXZEIT + 1.0)
+
+
+def test_walk_nimmt_die_wanduhr_nicht_die_monotone_uhr():
+    """Die Verwechslung waere derselbe Fehler in neuem Gewand: `time.monotonic`
+    zaehlt ab einem beliebigen Bezugspunkt, meist dem Systemstart."""
+    backend = _backend(jetzt=lambda: FIXZEIT)
+    uhr = iter([0.0, 0.0, 2.0])
+    walk(
+        backend, None, Limits(), vx=0.3, duration=1.0,
+        schlaf=lambda _: None,
+        jetzt=lambda: next(uhr),        # monoton, klein
+        wanduhr=lambda: FIXZEIT,        # Wanduhr, gross
+    )
+    assert backend.endzeiten[0] > 1_000_000_000.0
+
+
+def test_move_setzt_eine_endzeit_gleich_der_geduld():
+    """Laeuft `timeout` ab, MUSS das Kommando am Roboter verfallen sein —
+    `warte_auf` wirft dann zwar, schickt aber keinen Stopp."""
+    backend = _backend(jetzt=lambda: FIXZEIT)
+    move(
+        backend, None, Limits(), forward=1.0, timeout=12.0,
+        schlaf=lambda _: None, wanduhr=lambda: FIXZEIT,
+    )
+    assert backend.endzeiten[0] == pytest.approx(FIXZEIT + 12.0)
+
+
+def test_walk_mit_echter_uhr_wird_nicht_abgewiesen():
+    """Gegenprobe ohne Attrappe: der Trockenlauf weist abgelaufene Kommandos ab."""
+    backend = _backend()
+    uhr = iter([0.0, 0.0, 2.0])
+    walk(backend, None, Limits(), vx=0.1, duration=1.0,
+         schlaf=lambda _: None, jetzt=lambda: next(uhr))
+    assert backend.endzeiten[0] > __import__("time").time() - 5
+
+
+# ------------------------------------------------- Deckel auch bei move()
+
+
+def _grenze(backend):
+    return backend.gesendet[0].synchronized_command.mobility_command.params
+
+
+def test_move_schickt_den_geschwindigkeitsdeckel_mit():
+    """Bei einer Zieltrajektorie waehlt der Roboter sein Tempo selbst —
+    Klemmen wie bei walk() liefe ins Leere, es braucht vel_limit."""
+    from bosdyn.api.spot import robot_command_pb2 as spot_command_pb2
+
+    backend = _backend()
+    move(backend, None, Limits(max_speed=0.25, max_turn_rate=0.4), forward=1.0,
+         schlaf=lambda _: None)
+    params = spot_command_pb2.MobilityParams()
+    _grenze(backend).Unpack(params)
+    assert params.vel_limit.max_vel.linear.x == pytest.approx(0.25)
+    assert params.vel_limit.max_vel.angular == pytest.approx(0.4)
+    # min_vel muss mit: sonst bremst nur die Vorwaertsfahrt.
+    assert params.vel_limit.min_vel.linear.x == pytest.approx(-0.25)
+    assert params.vel_limit.min_vel.angular == pytest.approx(-0.4)
+
+
+def test_move_und_autonome_fahrt_teilen_denselben_deckel():
+    """Zwei Formulierungen desselben Grenzwerts waeren zwei Gelegenheiten,
+    ihn unterschiedlich falsch zu schreiben."""
+    from spotlab.backends.mobility import se2_grenze
+
+    grenzen = Limits(max_speed=0.33, max_turn_rate=0.55)
+    aus_graphnav = pytest.importorskip(
+        "spotlab.backends.real.graphnav"
+    ).travel_params(grenzen).velocity_limit
+    assert aus_graphnav == se2_grenze(grenzen)
 
 
 def test_bewegung_ohne_faehigkeit_wird_verweigert():
