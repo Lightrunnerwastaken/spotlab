@@ -24,6 +24,22 @@ def _mittel(werte):
     return sum(werte) / len(werte) if werte else None
 
 
+def _streuung(werte):
+    """Standardabweichung — die Warnlampe am Mittelwert.
+
+    Ein Fuss, der pro Gangzyklus ZWEIMAL aufsetzt (schleifend, oder vom
+    Nachbarbein kurz hochgezogen), zieht `zyklusdauer_s` lautlos herunter; der
+    Mittelwert sieht dann aus wie eine schnellere Kadenz. Erst die Streuung
+    zeigt, dass es gar keine EINE Zyklusdauer gibt. Gefunden an der Simulation,
+    deren Kriechgang genau das tut (notes/REALISMUS_GATES.md, Runde 3) — am
+    echten Roboter kann ein schleifender Fuss dasselbe erzeugen.
+    """
+    if len(werte) < 2:
+        return None
+    m = sum(werte) / len(werte)
+    return math.sqrt(sum((w - m) ** 2 for w in werte) / len(werte))
+
+
 def dreh_matrix(roll, pitch, yaw):
     """Rotation Koerper -> odom, Konvention ZYX wie in api/state.py::rpy_aus."""
     cy, sy = math.cos(yaw), math.sin(yaw)
@@ -183,6 +199,9 @@ def kennzahlen(saetze, zeiten, versatz_m=None):
 
     return {
         "zyklusdauer_s": None if zyklus is None else round(zyklus, 4),
+        "zyklusdauer_streuung_s": (
+            None if (m := _streuung(zyklen_je_fuss)) is None else round(m, 4)
+        ),
         "zyklen": None if not zyklus else round(dauer / zyklus, 2),
         "schwungdauer_s": None if (m := _mittel(schwung)) is None else round(m, 4),
         "standdauer_s": None if (m := _mittel(stand)) is None else round(m, 4),

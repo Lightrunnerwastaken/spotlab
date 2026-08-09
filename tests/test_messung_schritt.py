@@ -154,6 +154,36 @@ def test_weg_je_zyklus_ist_die_entsprechung_der_bias_kappe():
     assert k["weg_je_zyklus_m"] == pytest.approx(0.30, abs=0.03)
 
 
+def test_streuung_zeigt_einen_doppelt_aufsetzenden_fuss():
+    """Setzt ein Fuss pro Gangzyklus zweimal auf, sinkt der Mittelwert und die
+    Kadenz sieht schneller aus als sie ist. Die Streuung ist die Warnlampe davor.
+
+    Gefunden am Sim-Kriechgang (matura-spot, notes/REALISMUS_GATES.md Runde 3);
+    real erzeugt ein schleifender Fuss dasselbe Bild.
+    """
+    sauber = _zweitakt(zyklus=0.8, zyklen=6)
+    kaputt = _zweitakt(zyklus=0.8, zyklen=6)
+    for s in kaputt:
+        if 0.20 <= (s["t"] / 0.8) % 1.0 < 0.28:      # mitten in der Standphase
+            s["daten"]["feet"][0] = False
+            s["daten"]["feet_detail"][0]["kontakt"] = False
+    k_sauber = kennzahlen(sauber, _zeiten(sauber))
+    k_kaputt = kennzahlen(kaputt, _zeiten(kaputt))
+    # Beim sauberen Gang bleibt die Streuung UNTER einer Abtastperiode — mehr
+    # als die Flankenquantisierung ist da nicht drin.
+    assert k_sauber["zyklusdauer_streuung_s"] < TAKT
+    assert k_kaputt["zyklusdauer_streuung_s"] > 0.1
+    assert k_kaputt["zyklusdauer_s"] < k_sauber["zyklusdauer_s"]
+
+
+def test_streuung_braucht_zwei_intervalle():
+    from spotlab.messung.schritt import _streuung
+
+    assert _streuung([]) is None
+    assert _streuung([1.0]) is None
+    assert _streuung([1.0, 3.0]) == pytest.approx(1.0)
+
+
 def test_ohne_versatz_bleibt_weg_je_zyklus_leer():
     saetze = _zweitakt(zyklen=4)
     assert kennzahlen(saetze, _zeiten(saetze))["weg_je_zyklus_m"] is None
