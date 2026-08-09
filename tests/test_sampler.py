@@ -130,3 +130,60 @@ def test_langsamer_backend_erzeugt_keine_bursts(tmp_path):
     threading.Event().wait(0.3)
     abtaster.stop()
     assert 3 <= len(_saetze(rec)) <= 30, len(_saetze(rec))
+
+
+# ------------------------------------------- Ringpuffer fuer die Live-Anzeige
+#
+# Die Live-Anzeige des Beobachter-Modus liest von hier. Ein zweiter
+# Abfragestrom nebenher waere eine zweite Wahrheit ueber denselben Roboter --
+# und wuerde die Messung stoeren, um die es eigentlich geht.
+
+
+def _abtaster(tmp_path, hz=50.0):
+    return StateSampler(DryRunBackend(), RunRecorder(tmp_path, None, backend="dryrun"), hz=hz)
+
+
+def test_verlauf_ist_anfangs_leer(tmp_path):
+    assert _abtaster(tmp_path).verlauf() == ()
+
+
+def test_verlauf_haelt_die_geschriebenen_abtastungen(tmp_path):
+    abtaster = _abtaster(tmp_path)
+    for _ in range(3):
+        assert abtaster._einmal() is True
+    verlauf = abtaster.verlauf()
+    assert len(verlauf) == 3
+    assert all("pose" in satz and "t_robot" in satz for satz in verlauf)
+
+
+def test_verlauf_ist_begrenzt(tmp_path):
+    """Eine lange Sitzung darf nicht den Speicher fuellen."""
+    from spotlab.record.sampler import RING
+
+    abtaster = _abtaster(tmp_path)
+    for _ in range(RING + 25):
+        abtaster._einmal()
+    assert len(abtaster.verlauf()) == RING
+
+
+def test_verlauf_ist_eine_kopie(tmp_path):
+    abtaster = _abtaster(tmp_path)
+    abtaster._einmal()
+    erste = abtaster.verlauf()
+    abtaster._einmal()
+    assert len(erste) == 1, "der zurueckgegebene Verlauf hat sich mitveraendert"
+
+
+def test_ein_fehlschlag_landet_nicht_im_ring(tmp_path):
+    """Sonst zeigte die Live-Anzeige eine Zahl aus einer Abtastung, die es
+    nie gab."""
+
+    class Kaputt(DryRunBackend):
+        def robot_state(self):
+            raise RuntimeError("Verbindung weg")
+
+    abtaster = StateSampler(
+        Kaputt(), RunRecorder(tmp_path, None, backend="dryrun"), hz=50.0
+    )
+    assert abtaster._einmal() is False
+    assert abtaster.verlauf() == ()

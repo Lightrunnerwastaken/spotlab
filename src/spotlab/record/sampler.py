@@ -14,11 +14,17 @@ blockierenden gRPC-Aufruf, kommt der Abbruch verzögert oder gar nicht an.
 """
 
 import _thread
+import collections
 import threading
 import time
 
 from spotlab.api.state import as_sample
 from spotlab.record.run import STOPP_DATEI
+
+# Ring der zuletzt geschriebenen Abtastungen, aus dem die Live-Anzeige des
+# Beobachter-Modus liest. Begrenzt nach ANZAHL, ausgewertet wird nach ZEIT —
+# sonst hinge die Fensterlänge der Live-Zahl an der gerade eingestellten Rate.
+RING = 512
 
 
 class StateSampler:
@@ -33,6 +39,8 @@ class StateSampler:
         self._thread = None
         self._stopp_datei = recorder.dir / STOPP_DATEI
         self._abbruch_gemeldet = False
+        self._ring = collections.deque(maxlen=RING)
+        self._ring_sperre = threading.Lock()
 
     def setze_takt(self, hz, reich):
         """Wirkt ab dem nächsten Tick. Vom Messfenster gerufen."""
@@ -71,15 +79,39 @@ class StateSampler:
             self._abbruch_gemeldet = True
             _thread.interrupt_main()
 
+    def verlauf(self):
+        """Kopie der zuletzt geschriebenen Abtastungen, älteste zuerst.
+
+        Quelle der Live-Anzeige im Beobachter-Modus. Sie liest mit, statt selbst
+        abzufragen: ein zweiter Abfragestrom wäre eine zweite Wahrheit über
+        denselben Roboter und würde die Messung stören, um die es geht.
+        """
+        with self._ring_sperre:
+            return tuple(self._ring)
+
+    def _einmal(self, reich=False):
+        """Eine Abtastung holen, schreiben, in den Ring legen.
+
+        Gibt zurück, ob es geklappt hat. Eine fehlgeschlagene Abtastung darf den
+        Lauf nie kippen — und sie darf auch nicht im Ring landen, sonst zeigte
+        die Live-Anzeige eine Zahl aus einer Abtastung, die es nie gab.
+        """
+        try:
+            satz = as_sample(self._backend.robot_state(), reich=reich)
+        except Exception:
+            return False
+        self._recorder.sample(satz)
+        with self._ring_sperre:
+            self._ring.append(satz)
+        return True
+
     def _schleife(self):
         while not self._stopp.is_set():
             beginn = time.monotonic()
             with self._takt_sperre:
                 periode, reich = self._periode, self._reich
             self._pruefe_stopp()
-            try:
-                self._recorder.sample(as_sample(self._backend.robot_state(), reich=reich))
-            except Exception:  # Abtastung darf den Lauf nie kippen
+            if not self._einmal(reich):
                 self._stopp.wait(periode)
                 continue
             # Nichts nachholen: dauert die RPC länger als die Periode, läuft die
