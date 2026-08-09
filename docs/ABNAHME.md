@@ -26,8 +26,22 @@ wirkungslos, solange ein Schülerskript läuft.
 
 **Gegenmassnahme, bereits umgesetzt:** `backends/real/estop.py::register_coexisting` liest
 die aktive Konfiguration, übernimmt alle bestehenden Endpunkte und hängt den eigenen an.
-Sieben Tests decken das ab (`tests/test_real_estop.py`), darunter der Fall eines stale
+Zwölf Tests decken das ab (`tests/test_real_estop.py`), darunter der Fall eines stale
 eigenen Endpunkts nach einem Absturz.
+
+**Zweiter Befund, nachträglich gefunden und behoben:** der Endpunktname `spotlab` ist eine
+feste Konstante, und bis dahin wurde *jeder* Endpunkt dieses Namens entfernt — auch der
+einer **lebenden zweiten spotlab-Sitzung**. Ein versehentlicher Doppelstart oder ein
+zweiter Schüler hätte dem ersten Lauf den Not-Aus aus der Konfiguration geworfen.
+Seither prüft `register_coexisting` über `time_since_valid_response`, ob sich der
+gleichnamige Endpunkt noch meldet, und weist den zweiten Aufbau mit `EstopBusy` ab.
+Ein instanzeigener Name wäre der naheliegende, aber falsche Fix gewesen: er zerstörte die
+Selbstheilung nach einem Absturz, und ein abgestürzter Laptop hielte den Roboter dauerhaft
+im CUT.
+
+**Drittens:** scheitert nach der E-Stop-Registrierung ein weiterer Aufbauschritt (Lease
+belegt, Strg-C), macht `connect()` den Aufbau jetzt rückgängig. Vorher blieben Endpunkt
+und Keepalive-Thread verwaist zurück.
 
 **Was am Gerät zu verifizieren bleibt:** dass der Roboter die erweiterte Konfiguration so
 auslegt wie erwartet und der Tablet-Not-Aus danach weiterhin auslöst.
@@ -44,6 +58,22 @@ bricht mit einer verständlichen Meldung ab.
 
 **Gegenprobe** Vor Schritt 4 am Tablet prüfen, dass dort weiterhin ein aktiver
 Not-Aus-Endpunkt angezeigt wird und nicht nur `spotlab`.
+
+**Zusatz A1b — zwei spotlab-Sitzungen.** Von einem zweiten Laptop (oder in einem zweiten
+Fenster) verbinden, während der erste Lauf läuft.
+
+*Erwartung:* Der zweite Versuch bricht mit „Ein anderer spotlab-Lauf hält gerade den
+Not-Aus dieses Roboters" ab. Der **erste** Lauf läuft unbeeinträchtigt weiter, und der
+Not-Aus am Tablet löst danach immer noch aus (Schritt 4 wiederholen). Das ist der
+entscheidende Teil: dass der abgewiesene Versuch nichts kaputt gemacht hat.
+
+**Zusatz A1c — Selbstheilung nach Absturz.** Einen Lauf hart töten (Task-Manager), dann
+sofort neu verbinden.
+
+*Erwartung:* Der neue Lauf kommt durch — der zurückgelassene Endpunkt wird ersetzt, weil
+er sich nicht mehr meldet. Kommt der neue Lauf NICHT durch, ist die Frischeprüfung zu
+streng eingestellt und der Roboter wäre nach jedem Absturz blockiert. Notiere, wie lange
+nach dem Töten der Neustart klappt.
 
 **Ergebnis** _(offen)_
 

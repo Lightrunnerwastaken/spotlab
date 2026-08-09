@@ -30,6 +30,23 @@ ABBAU_SCHRITTE = (
     "verbindung_schliessen",
 )
 
+def _rollback(lease, wache):
+    """Aufbau rückgängig machen, in umgekehrter Reihenfolge.
+
+    Jeder Schritt einzeln gekapselt und stumm: hier läuft bereits ein Fehler
+    nach oben, und der ist die Nachricht, die der Schüler braucht. Ein
+    Folgefehler beim Aufräumen dürfte ihn nicht überschreiben — er verdeckte
+    die eigentliche Ursache.
+    """
+    for schritt in (lease, wache):
+        if schritt is None:
+            continue
+        try:
+            schritt.stop()
+        except BaseException:
+            pass
+
+
 class RealSpot:
     """Backend für den echten Roboter."""
 
@@ -66,34 +83,45 @@ class RealSpot:
         wache = (estop_bauen or EstopGuard)(estop_client)
         wache.start()
 
-        lease_client = robot.ensure_client(LeaseClient.default_service_name)
-        lease = LeaseGuard(lease_client, take=take)
-        lease.start()
-        if take and lease.previous_holder and recorder is not None:
-            recorder.event("lease_übernommen", von=lease.previous_holder)
+        # Ab hier ist ein Not-Aus-Endpunkt registriert und ein Keepalive-Thread
+        # unterwegs. Scheitert irgendein weiterer Schritt, MUSS beides wieder
+        # weg — sonst hält ein Prozess ohne Sitzung den Not-Aus des Roboters,
+        # und der nächste Schüler findet einen scheinbar defekten Spot.
+        # `BaseException`, nicht `Exception`: Strg-C ist der häufigste Abbruch
+        # überhaupt und wäre sonst genau der Fall, der etwas zurücklässt.
+        lease = None
+        try:
+            lease_client = robot.ensure_client(LeaseClient.default_service_name)
+            lease = LeaseGuard(lease_client, take=take)
+            lease.start()
+            if take and lease.previous_holder and recorder is not None:
+                recorder.event("lease_übernommen", von=lease.previous_holder)
 
-        backend = cls(
-            robot=robot,
-            command_client=robot.ensure_client(RobotCommandClient.default_service_name),
-            state_client=robot.ensure_client(RobotStateClient.default_service_name),
-            image_client=robot.ensure_client(ImageClient.default_service_name),
-            lease_guard=lease,
-            estop_guard=wache,
-            recorder=recorder,
-        )
-
-        if recorder is not None:
-            kennung = robot.get_id()
-            recorder.set_robot_info(
-                roboter_seriennummer=getattr(kennung, "serial_number", None),
-                roboter_nickname=getattr(kennung, "nickname", None),
-                roboter_software=getattr(
-                    getattr(kennung, "software_release", None), "version", None
-                ),
-                uebernommen=bool(take),
+            backend = cls(
+                robot=robot,
+                command_client=robot.ensure_client(RobotCommandClient.default_service_name),
+                state_client=robot.ensure_client(RobotStateClient.default_service_name),
+                image_client=robot.ensure_client(ImageClient.default_service_name),
+                lease_guard=lease,
+                estop_guard=wache,
+                recorder=recorder,
             )
-            recorder.event("verbunden", backend="real", ip=cfg.ip)
-        return backend
+
+            if recorder is not None:
+                kennung = robot.get_id()
+                recorder.set_robot_info(
+                    roboter_seriennummer=getattr(kennung, "serial_number", None),
+                    roboter_nickname=getattr(kennung, "nickname", None),
+                    roboter_software=getattr(
+                        getattr(kennung, "software_release", None), "version", None
+                    ),
+                    uebernommen=bool(take),
+                )
+                recorder.event("verbunden", backend="real", ip=cfg.ip)
+            return backend
+        except BaseException:
+            _rollback(lease, wache)
+            raise
 
     # ------------------------------------------------------------- Protokoll
 

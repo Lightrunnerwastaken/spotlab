@@ -1,3 +1,5 @@
+import pytest
+
 from spotlab.backends.real.session import ABBAU_SCHRITTE, AUFBAU_SCHRITTE, RealSpot
 from spotlab.config import Config, Limits
 
@@ -149,3 +151,132 @@ def test_abbau_ist_idempotent():
 def test_schrittlisten_sind_dokumentiert():
     assert AUFBAU_SCHRITTE[0] == "auth"
     assert ABBAU_SCHRITTE[-1] == "verbindung_schliessen"
+
+
+# ------------------------------------------------- Rollback beim Aufbau (S1.5)
+
+
+class _LeaseVerweigert(FakeService):
+    def acquire(self, **kw):
+        self.protokoll.append("lease_versuch")
+        raise RuntimeError("Lease ist belegt")
+
+
+class _RobotMitLeaseFehler(FakeRobot):
+    def ensure_client(self, name):
+        if "lease" in name.lower():
+            return _LeaseVerweigert(self.protokoll)
+        return FakeService(self.protokoll)
+
+
+def test_gescheiterter_aufbau_meldet_den_estop_wieder_ab():
+    """Scheitert ein spaeterer Aufbauschritt, darf kein registrierter Endpunkt
+    und kein Keepalive-Thread zurueckbleiben.
+
+    Sonst haelt ein Prozess, der gar keine Sitzung hat, den Not-Aus des
+    Roboters -- und der naechste Schueler findet einen scheinbar defekten Spot,
+    oder schlimmer: einen, dessen Not-Aus an einem toten Thread haengt.
+    """
+    protokoll = []
+    with pytest.raises(RuntimeError):
+        RealSpot.connect(
+            _cfg(),
+            robot_bauen=lambda cfg: _RobotMitLeaseFehler(protokoll),
+            estop_bauen=lambda client: FakeEstopGuard(protokoll),
+            passwort_lesen=lambda user: "geheim",
+        )
+    assert "estop" in protokoll, "Vorbedingung: der E-Stop war registriert"
+    assert "estop_abmelden" in protokoll, (
+        "Der E-Stop-Endpunkt blieb nach dem gescheiterten Aufbau registriert: "
+        + str(protokoll)
+    )
+
+
+def test_rollback_verschluckt_den_urspruenglichen_fehler_nicht():
+    """Der Schueler muss erfahren, WORAN es lag -- nicht an einem Folgefehler."""
+    protokoll = []
+    with pytest.raises(RuntimeError, match="Lease ist belegt"):
+        RealSpot.connect(
+            _cfg(),
+            robot_bauen=lambda cfg: _RobotMitLeaseFehler(protokoll),
+            estop_bauen=lambda client: FakeEstopGuard(protokoll),
+            passwort_lesen=lambda user: "geheim",
+        )
+
+
+def test_scheitert_der_rollback_bleibt_der_erste_fehler_stehen():
+    """Ein kaputtes stop() darf die eigentliche Ursache nicht ueberschreiben."""
+
+    class KaputteWache(FakeEstopGuard):
+        def stop(self):
+            self.protokoll.append("estop_abmelden_gescheitert")
+            raise RuntimeError("Abmelden ging auch schief")
+
+    protokoll = []
+    with pytest.raises(RuntimeError, match="Lease ist belegt"):
+        RealSpot.connect(
+            _cfg(),
+            robot_bauen=lambda cfg: _RobotMitLeaseFehler(protokoll),
+            estop_bauen=lambda client: KaputteWache(protokoll),
+            passwort_lesen=lambda user: "geheim",
+        )
+    assert "estop_abmelden_gescheitert" in protokoll
+
+
+def test_ctrl_c_waehrend_des_aufbaus_meldet_den_estop_ab():
+    """Der haeufigste Abbruch ueberhaupt -- und er ist KEINE Exception.
+
+    Faengt der Rollback nur `Exception`, bleibt bei Strg-C der Endpunkt samt
+    Keepalive-Thread registriert, waehrend der Prozess stirbt.
+    """
+
+    class LeaseAbgebrochen(FakeService):
+        def acquire(self, **kw):
+            raise KeyboardInterrupt()
+
+    class RobotMitAbbruch(FakeRobot):
+        def ensure_client(self, name):
+            if "lease" in name.lower():
+                return LeaseAbgebrochen(self.protokoll)
+            return FakeService(self.protokoll)
+
+    protokoll = []
+    with pytest.raises(KeyboardInterrupt):
+        RealSpot.connect(
+            _cfg(),
+            robot_bauen=lambda cfg: RobotMitAbbruch(protokoll),
+            estop_bauen=lambda client: FakeEstopGuard(protokoll),
+            passwort_lesen=lambda user: "geheim",
+        )
+    assert "estop_abmelden" in protokoll, str(protokoll)
+
+
+def test_gescheiterter_aufbau_gibt_auch_das_lease_zurueck():
+    """Lease erfolgreich, spaeterer Schritt kaputt: beides muss zurueck."""
+
+    class RobotOhneKennung(FakeRobot):
+        def get_id(self):
+            raise RuntimeError("get_id kaputt")
+
+    class Aufzeichnung:
+        def __init__(self):
+            self.ereignisse = []
+
+        def event(self, art, **daten):
+            self.ereignisse.append(art)
+
+        def set_robot_info(self, **kw):
+            raise AssertionError("wird nie erreicht")
+
+    protokoll = []
+    with pytest.raises(RuntimeError, match="get_id kaputt"):
+        RealSpot.connect(
+            _cfg(),
+            recorder=Aufzeichnung(),
+            robot_bauen=lambda cfg: RobotOhneKennung(protokoll),
+            estop_bauen=lambda client: FakeEstopGuard(protokoll),
+            passwort_lesen=lambda user: "geheim",
+        )
+    assert "lease_acquire" in protokoll, "Vorbedingung: das Lease war geholt"
+    assert "lease_return" in protokoll, str(protokoll)
+    assert "estop_abmelden" in protokoll, str(protokoll)

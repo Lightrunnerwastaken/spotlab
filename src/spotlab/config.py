@@ -4,6 +4,7 @@ Kein Passwort im Klartext auf zwanzig Schullaptops: das Passwort geht über
 keyring in den Windows-Tresor, die Konfigurationsdatei enthält es nie.
 """
 
+import math
 import os
 import tomllib
 from dataclasses import dataclass, field
@@ -11,10 +12,11 @@ from pathlib import Path
 
 import keyring
 
-from spotlab.errors import ConfigMissing
+from spotlab.errors import ConfigBroken, ConfigMissing
 
 CONFIG_PATH = Path.home() / ".spotlab" / "config.toml"
 KEYRING_SERVICE = "spotlab"
+BACKENDS = ("real", "dryrun")
 ENV_PASSWORD = "BOSDYN_CLIENT_PASSWORD"
 ENV_USERNAME = "BOSDYN_CLIENT_USERNAME"
 
@@ -69,30 +71,70 @@ def save_config(cfg, path=None):
     path.write_text(text, encoding="utf-8")
 
 
+def _grenze(roh, schluessel, vorgabe, pfad):
+    """Ein Sicherheitswert. Muss endlich und echt positiv sein.
+
+    Warum so streng: `max_speed = inf` macht den Deckel wirkungslos, und ein
+    NEGATIVER Wert ist schlimmer als gar keiner — `motion.clamp()` rechnet dann
+    `max(0.8, min(-0.8, wz))` und liefert für ein kommandiertes wz = 0 eine
+    Dauerdrehung. Ein Tippfehler in dieser Datei darf den Roboter nicht bewegen.
+    """
+    wert = roh.get(schluessel, vorgabe)
+    try:
+        zahl = float(wert)
+    except (TypeError, ValueError):
+        raise ConfigBroken(
+            f"In {pfad} ist `{schluessel} = {wert!r}` keine Zahl. Korrigieren oder "
+            f"die Zeile löschen — dann gilt die Vorgabe {vorgabe}."
+        ) from None
+    if not math.isfinite(zahl) or zahl <= 0.0:
+        raise ConfigBroken(
+            f"In {pfad} ist `{schluessel} = {wert}` unbrauchbar. Der Wert ist eine "
+            f"Sicherheitsgrenze und muss eine endliche Zahl über 0 sein "
+            f"(Vorgabe: {vorgabe})."
+        )
+    return zahl
+
+
 def load_config(path=None):
     path = Path(path) if path else CONFIG_PATH
     if not path.exists():
         raise ConfigMissing(
             f"Keine Konfiguration unter {path}. Einmalig einrichten mit `spotlab login`."
         )
-    with path.open("rb") as datei:
-        roh = tomllib.load(datei)
+    try:
+        with path.open("rb") as datei:
+            roh = tomllib.load(datei)
+    except (tomllib.TOMLDecodeError, UnicodeDecodeError, OSError) as fehler:
+        # Ohne diesen Fang sperrt eine halb geschriebene Datei die GUI, das CLI
+        # und den Reparaturweg `spotlab login` gleichzeitig — mit rohem Traceback.
+        raise ConfigBroken(
+            f"{path} ist nicht lesbar ({fehler.__class__.__name__}). Datei "
+            f"korrigieren oder löschen und neu einrichten mit `spotlab login`."
+        ) from fehler
     robot = roh.get("robot", {})
     if "ip" not in robot or "username" not in robot:
         raise ConfigMissing(
             f"In {path} fehlen IP oder Benutzername. Neu einrichten mit `spotlab login`."
         )
     limits = roh.get("limits", {})
+    backend = roh.get("defaults", {}).get("backend", "real")
+    if backend not in BACKENDS:
+        raise ConfigBroken(
+            f"In {path} ist `backend = {backend!r}` unbekannt. Erlaubt: "
+            + ", ".join(sorted(BACKENDS))
+            + "."
+        )
     return Config(
         ip=robot["ip"],
         username=robot["username"],
         nickname=robot.get("nickname", "Spot"),
         limits=Limits(
-            max_speed=float(limits.get("max_speed", Limits.max_speed)),
-            max_turn_rate=float(limits.get("max_turn_rate", Limits.max_turn_rate)),
+            max_speed=_grenze(limits, "max_speed", Limits.max_speed, path),
+            max_turn_rate=_grenze(limits, "max_turn_rate", Limits.max_turn_rate, path),
         ),
         editor_command=roh.get("editor", {}).get("command", "code"),
-        default_backend=roh.get("defaults", {}).get("backend", "real"),
+        default_backend=backend,
         workspace=roh.get("gui", {}).get("workspace", ""),
         active_map=roh.get("maps", {}).get("active", ""),
     )

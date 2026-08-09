@@ -9,6 +9,16 @@ class ConfigMissing(SpotlabError):
     """Keine Konfiguration hinterlegt."""
 
 
+class ConfigBroken(SpotlabError):
+    """Konfiguration vorhanden, aber unbrauchbar.
+
+    Ausdrücklich KEIN Untertyp von ConfigMissing: `spotlab.connect()` fängt
+    ConfigMissing ab und fällt still auf den Trockenlauf zurück. Bei einer
+    kaputten Datei wäre das die falsche Rettung — der Schüler führe im
+    Trockenlauf und hielte das für den echten Roboter.
+    """
+
+
 class NotReachable(SpotlabError):
     """Der Roboter ist im Netz nicht erreichbar."""
 
@@ -31,6 +41,10 @@ class LeaseBusy(SpotlabError):
 
 class LeaseLost(SpotlabError):
     """Die Kontrolle wurde während des Laufs entzogen."""
+
+
+class EstopBusy(SpotlabError):
+    """Ein anderer, noch lebender spotlab-Lauf hält den Not-Aus-Endpunkt."""
 
 
 class EstopEngaged(SpotlabError):

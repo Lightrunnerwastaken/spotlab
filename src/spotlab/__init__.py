@@ -13,6 +13,17 @@ ENV_BACKEND = "SPOTLAB_BACKEND"
 # heute vom MCP-Server, wenn ein Agent ein Skript startet.
 ENV_NUR_TROCKEN = "SPOTLAB_NUR_TROCKEN"
 
+# EINMAL beim Import eingefroren, nicht bei jedem Aufruf frisch gelesen.
+# `os.environ.pop("SPOTLAB_NUR_TROCKEN")` in Zeile eins eines Skripts hätte die
+# Obergrenze sonst aufgehoben — und genau solche Skripte schreibt der Agent,
+# für den die Schranke gedacht ist.
+NUR_TROCKEN = os.environ.get(ENV_NUR_TROCKEN) == "1"
+
+NUR_TROCKEN_MELDUNG = (
+    "Dieser Lauf wurde ohne Roboter gestartet und darf keinen anfordern. "
+    "Starte das Programm selbst im Fenster, wenn der Spot fahren soll."
+)
+
 
 @contextlib.contextmanager
 def connect(
@@ -44,11 +55,8 @@ def connect(
     # überschreibt die Variable also. Abgewiesen statt stillschweigend
     # heruntergestuft: ein Skript, das glaubt, es fahre den echten Spot,
     # meldet sonst Unsinn und niemand merkt es.
-    if os.environ.get(ENV_NUR_TROCKEN) == "1" and art != "dryrun":
-        raise SpotlabError(
-            "Dieser Lauf wurde ohne Roboter gestartet und darf keinen anfordern. "
-            "Starte das Programm selbst im Fenster, wenn der Spot fahren soll."
-        )
+    if NUR_TROCKEN and art != "dryrun":
+        raise SpotlabError(NUR_TROCKEN_MELDUNG)
 
     grenzen = cfg.limits if cfg else Limits()
     spitzname = nickname or (cfg.nickname if cfg else "")

@@ -115,3 +115,72 @@ def test_start_script_setzt_die_schranke_nicht_von_selbst(tmp_path):
     ausgabe = prozess.stdout.read()
     prozess.wait()
     assert "nicht gesetzt" in ausgabe
+
+
+# ----------------------------------------------- der Weg an connect() vorbei
+#
+# `spotlab.connect()` ist nicht der einzige Weg zum echten Roboter. Wer direkt
+# `verbinde()` oder `RealSpot.connect()` importiert, kam an der Obergrenze
+# bisher vorbei -- und genau diesen Weg nimmt ein Agent, der ein fremdes
+# Projekt startet. Die Kartenaufzeichnung nutzt dieselbe Funktion.
+
+_DIREKT = """\
+from pathlib import Path
+from spotlab.config import Config
+from spotlab.backends.real.verbindung import verbinde
+
+def bauen(cfg):
+    Path("ERREICHT").write_text("ja", encoding="utf-8")
+    raise SystemExit("bis hierher haette es nie kommen duerfen")
+
+try:
+    verbinde(Config(ip="10.0.0.3", username="u"), robot_bauen=bauen,
+             passwort_lesen=lambda u: "x")
+except Exception as fehler:
+    print("ABGEWIESEN:", type(fehler).__name__, fehler)
+"""
+
+
+def test_schranke_greift_auch_am_direkten_weg(tmp_path):
+    ergebnis = _lauf(tmp_path, _DIREKT, SPOTLAB_NUR_TROCKEN="1")
+    assert not (tmp_path / "ERREICHT").exists(), (
+        "Der Roboter wurde trotz Schranke aufgebaut: " + ergebnis.stdout
+    )
+    assert "ABGEWIESEN" in ergebnis.stdout, ergebnis.stderr
+
+
+def test_ohne_schranke_geht_der_direkte_weg_weiter(tmp_path):
+    """Gegenprobe: sonst wuerde der Test oben auch bei kaputtem verbinde() gruen."""
+    ergebnis = _lauf(tmp_path, _DIREKT)
+    assert (tmp_path / "ERREICHT").exists(), ergebnis.stdout + ergebnis.stderr
+
+
+_ENTFERNEN = """\
+import os
+from pathlib import Path
+from spotlab.config import Config
+
+os.environ.pop("SPOTLAB_NUR_TROCKEN", None)      # Skript raeumt die Schranke weg
+
+from spotlab.backends.real.verbindung import verbinde
+
+def bauen(cfg):
+    Path("ERREICHT").write_text("ja", encoding="utf-8")
+    raise SystemExit("bis hierher haette es nie kommen duerfen")
+
+try:
+    verbinde(Config(ip="10.0.0.3", username="u"), robot_bauen=bauen,
+             passwort_lesen=lambda u: "x")
+except Exception as fehler:
+    print("ABGEWIESEN:", type(fehler).__name__)
+"""
+
+
+def test_skript_kann_die_schranke_nicht_selbst_entfernen(tmp_path):
+    """Der Wert wird beim Import EINMAL eingefroren. Wuerde er bei jedem Aufruf
+    frisch aus os.environ gelesen, genuegten zwei Zeilen, um ihn loszuwerden."""
+    ergebnis = _lauf(tmp_path, _ENTFERNEN, SPOTLAB_NUR_TROCKEN="1")
+    assert not (tmp_path / "ERREICHT").exists(), (
+        "Die Schranke liess sich zur Laufzeit entfernen: " + ergebnis.stdout
+    )
+    assert "ABGEWIESEN" in ergebnis.stdout, ergebnis.stderr

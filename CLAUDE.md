@@ -47,6 +47,32 @@ versionsgepinntes Extra `spotlab[sim]`.
   spotlab mit den eigenen Widgets zeichnet. Ein Qt-Plugin-System liefe im Prozess mit dem
   NOT-AUS-Knopf; eine Schleife oder ein Absturz darin nähme dem Fenster den Failsafe, um den
   Stufe 1 herumgebaut ist.
+- **`register_coexisting` verdrängt einen gleichnamigen Endpunkt nur, wenn er nachweislich
+  stumm ist.** `ENDPOINT_NAME` ist eine feste Konstante; ohne Frischeprüfung über
+  `time_since_valid_response` wirft ein zweiter Verbindungsversuch der ersten, laufenden
+  Sitzung den Not-Aus aus der Konfiguration. **Der naheliegende Gegenfix ist verboten:** ein
+  instanzeigener Endpunktname („spotlab-4711") zerstört die Selbstheilung, und ein
+  abgestürzter Schülerlaptop hielte den Roboter dauerhaft im CUT. Gemeinsamer Name plus
+  Frischeprüfung behält beides.
+- **`RealSpot.connect()` macht den Aufbau rückgängig, wenn ein Schritt nach der
+  E-Stop-Registrierung scheitert** — und fängt dafür `BaseException`, nicht `Exception`.
+  Strg-C ist der häufigste Abbruch überhaupt; sonst bliebe genau dort ein Endpunkt samt
+  Keepalive-Thread zurück. Der Rollback ist stumm: der ursprüngliche Fehler ist die
+  Nachricht, ein Folgefehler beim Aufräumen dürfte sie nicht überschreiben.
+- **Sicherheitswerte aus `config.toml` werden geprüft, nicht geglaubt.** `max_speed` und
+  `max_turn_rate` müssen endlich und echt positiv sein. `inf` macht den Deckel wirkungslos,
+  und ein NEGATIVER Wert ist schlimmer als keiner: `motion.clamp()` liefert dann für ein
+  kommandiertes `wz = 0` eine Dauerdrehung. Eine kaputte Datei wirft `ConfigBroken` —
+  ausdrücklich **kein** Untertyp von `ConfigMissing`, denn `connect()` fängt jenes ab und
+  fiele still auf den Trockenlauf zurück.
+- **`SPOTLAB_NUR_TROCKEN` wird beim Import EINMAL eingefroren** (`spotlab.NUR_TROCKEN`) und
+  zusätzlich in `backends/real/verbindung.py::verbinde` geprüft — dem gemeinsamen Engpass
+  von `RealSpot` und der Kartenaufzeichnung. Nur `spotlab.connect()` zu prüfen genügt nicht:
+  ein direkter Import von `verbinde()` kam daran vorbei, und genau solche Skripte schreibt
+  der Agent, für den die Schranke gedacht ist. **Bekannte Grenze:** wer die Variable löscht,
+  *bevor* irgendetwas aus `spotlab` importiert wird, hebt sie auf. Kein In-Prozess-Mittel
+  kann das verhindern — wer die Schranke wirklich braucht, darf dem Prozess die Variable
+  nicht als einziges Hindernis mitgeben.
 - **`SPOTLAB_NUR_TROCKEN=1` ist eine Obergrenze, keine Vorgabe.** `connect()` weist ein
   explizites `backend="real"` damit ab, statt es stillschweigend herunterzustufen.
   `SPOTLAB_BACKEND` genügt dafür nicht: `art = backend or os.environ.get(...)` — ein
