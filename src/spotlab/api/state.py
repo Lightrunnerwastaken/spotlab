@@ -41,6 +41,7 @@ class State:
     behavior: str = ""
     battery_detail: dict = field(default_factory=dict)
     motor_temps: dict = field(default_factory=dict)
+    faults: dict = field(default_factory=dict)
 
 
 def rpy_aus(quaternion):
@@ -51,6 +52,54 @@ def rpy_aus(quaternion):
     pitch = math.asin(max(-1.0, min(1.0, 2.0 * (w * y - z * x))))
     yaw = math.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
     return roll, pitch, yaw
+
+
+def _name_von(enum_typ, wert):
+    """Enum-Namen statt Zahl — eine 3 sagt in fünf Jahren niemandem mehr etwas."""
+    try:
+        return enum_typ.Name(wert)
+    except (ValueError, KeyError):
+        return str(wert)
+
+
+def _fehler(zustand):
+    """Fehlerzustände des Roboters, rein tatsächlich.
+
+    G2, G3 und G4 fordern „kein Sturz" als Kriterium; die reale Aufzeichnung
+    hatte dafür kein Gegenstück. Ein Roboter, der wegen eines Behavior Fault
+    stehenbleibt, sah in den Daten aus wie einer, der einfach langsam war.
+
+    Kein Werturteil, keine Schwellen — was ein Fehler für ein Gate bedeutet,
+    entscheidet matura-spot. Leere Listen sind eine MESSUNG („keine Fehler"),
+    kein fehlender Wert.
+    """
+    from bosdyn.api import robot_state_pb2 as rs
+
+    return {
+        "behavior": [
+            {
+                "id": f.behavior_fault_id,
+                "ursache": _name_von(rs.BehaviorFault.Cause, f.cause),
+                "status": _name_von(rs.BehaviorFault.Status, f.status),
+            }
+            for f in zustand.behavior_fault_state.faults
+        ],
+        "system": [
+            {
+                "name": f.name,
+                "schwere": _name_von(rs.SystemFault.Severity, f.severity),
+                "code": f.code,
+            }
+            for f in zustand.system_fault_state.faults
+        ],
+        "service": [
+            {
+                "name": f.fault_id.fault_name,
+                "schwere": _name_von(rs.ServiceFault.Severity, f.severity),
+            }
+            for f in zustand.service_fault_state.faults
+        ],
+    }
 
 
 def _sekunden(zeitstempel):
@@ -147,6 +196,7 @@ def from_proto(zustand):
         behavior=_verhalten(zustand),
         battery_detail=_akku_detail(zustand),
         motor_temps={m.name: m.temperature for m in zustand.system_state.motor_temperatures},
+        faults=_fehler(zustand),
     )
 
 
@@ -183,6 +233,10 @@ def as_sample(zustand, reich=False):
             "feet_detail": [dict(f) for f in s.feet_detail],
             "battery_detail": dict(s.battery_detail),
             "motor_temps": dict(s.motor_temps),
+            # Nur im reichen Satz: Messfenster sind reich, und genau dort gilt
+            # das Sturz-Kriterium der Gates. Der schlanke Satz bleibt so
+            # schmal, wie er seit Stufe 1 ist.
+            "faults": dict(s.faults),
         }
     )
     return satz

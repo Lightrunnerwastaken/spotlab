@@ -100,7 +100,11 @@ def test_zustand_zusammenfassen_findet_luecken(welt):
     _schreibe_zustand(recorder, [_satz(0.0), _satz(0.1), _satz(1.4), _satz(1.5)])
     antwort = werkzeuge.zustand_zusammenfassen(recorder.id)
     assert len(antwort["luecken"]) == 1
-    assert antwort["luecken"][0]["von_s"] == pytest.approx(0.1)
+    assert antwort["luecken"][0]["ab_start_s"] == pytest.approx(0.1)
+    # Beide Auswertungen muessen sagen, auf welcher Uhr sie zaehlen -- sonst
+    # liefern sie fuer denselben Lauf verschiedene Lueckenlisten und niemand
+    # sieht, warum.
+    assert antwort["zeitquelle"] == "empfang"
     assert antwort["luecken"][0]["laenge_s"] == pytest.approx(1.3)
 
 

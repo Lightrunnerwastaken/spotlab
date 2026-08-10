@@ -251,7 +251,11 @@ def zustand_zusammenfassen(lauf_id):
         abstand = zeiten[i] - zeiten[i - 1]
         if abstand > 2.0 / hz_soll_zwischen(stuecke, zeiten[i - 1], zeiten[i]):
             luecken.append(
-                {"von_s": round(zeiten[i - 1], 3), "laenge_s": round(abstand, 3)}
+                {
+                    "ab_start_s": round(zeiten[i - 1] - zeiten[0], 3),
+                    "laenge_s": round(abstand, 3),
+                    "t_roh_s": round(zeiten[i - 1], 3),
+                }
             )
     dauer = zeiten[-1] - zeiten[0]
     akkus = [d.get("battery") for d in inhalte if d.get("battery") is not None]
@@ -266,6 +270,13 @@ def zustand_zusammenfassen(lauf_id):
         "drehrate_max": round(dreh_max, 3),
         "akku_von": akkus[0] if akkus else None,
         "akku_bis": akkus[-1] if akkus else None,
+        # WELCHE UHR: diese Zusammenfassung zaehlt auf der Empfangszeit, weil
+        # die Abschnittsgrenzen aus den Ereignissen ebenfalls dort liegen.
+        # `messung/fenster.py` nimmt fuer Messfenster `t_robot`, sobald es da
+        # ist. Beide liefern deshalb fuer denselben Lauf leicht verschiedene
+        # Lueckenlisten -- das ist kein Fehler, aber es muss dabeistehen, sonst
+        # sucht jemand nach einer Ursache, die es nicht gibt.
+        "zeitquelle": "empfang",
         "luecken": luecken,
     }
 

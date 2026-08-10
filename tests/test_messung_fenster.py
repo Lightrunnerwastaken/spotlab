@@ -1,4 +1,5 @@
 import json
+import math
 import re
 from pathlib import Path
 
@@ -192,3 +193,68 @@ def test_abschnitte_decken_den_ganzen_lauf(tmp_path):
     assert [s["hz_soll"] for s in stuecke] == [10.0, 50.0, 10.0]
     assert stuecke[0]["von_s"] == 0.0
     assert stuecke[-1]["bis_s"] == pytest.approx(2.9)
+
+
+# =========================================================== S3.3 bis S3.6
+#
+# Vier Definitionsfehler aus docs/HAERTUNG.md, alle vor der ersten echten
+# Messkampagne zu beheben: sonst werden sie erst nach dem teuren Robotertermin
+# sichtbar.
+
+
+def _satz_mit(t, **daten):
+    grund = {"pose": [0.0, 0.0, 0.0], "velocity": [0.0, 0.0, 0.0], "joints": {},
+             "feet": [True] * 4, "z": 0.42, "roll": 0.0, "pitch": 0.0, "t_robot": t}
+    grund.update(daten)
+    return {"t": t, "daten": grund}
+
+
+def test_gierwinkel_bei_fensterstart_wird_mitgeschrieben():
+    """S3.3: erreichte Geschwindigkeit und Querdrift sind reine odom-x/y-
+    Differenzen. Ohne den Startwinkel laesst sich nicht nachrechnen, wie viel
+    davon nur Gierdrift war."""
+    from spotlab.messung.fenster import kennzahlen
+
+    saetze = [_satz_mit(i * 0.02, pose=[0.0, 0.0, 0.6]) for i in range(20)]
+    k = kennzahlen(saetze, [], "robot", 50.0)
+    assert k["gier_start_grad"] == pytest.approx(math.degrees(0.6), abs=0.01)
+
+
+def test_luecken_sind_im_fenster_verortbar():
+    """S3.4: `von_s` war bei Zeitquelle `robot` ein absoluter Epochenstempel
+    (1.78e9), waehrend das Fenster selbst laufrelativ zaehlt. Eine Luecke liess
+    sich damit nicht mehr im Fenster verorten."""
+    from spotlab.messung.fenster import kennzahlen
+
+    t0 = 1_786_000_000.0
+    zeiten = [t0 + i * 0.02 for i in range(10)] + [t0 + 1.0]
+    saetze = [_satz_mit(t) for t in zeiten]
+    luecken = kennzahlen(saetze, [], "robot", 50.0)["luecken"]
+    assert len(luecken) == 1
+    luecke = luecken[0]
+    assert "von_s" not in luecke, "der zweideutige Schluessel ist noch da"
+    assert luecke["ab_start_s"] == pytest.approx(0.18, abs=0.01)
+    assert luecke["laenge_s"] == pytest.approx(0.82, abs=0.01)
+    # Der rohe Stempel bleibt erhalten -- in der Uhr, die `zeitquelle` nennt.
+    assert luecke["t_roh_s"] == pytest.approx(t0 + 0.18, abs=0.01)
+
+
+def test_reich_prueft_alle_saetze_nicht_nur_den_ersten(tmp_path):
+    """S3.6: der Ratenwechsel wirkt erst ab dem naechsten Takt, der ERSTE Satz
+    im Fenster ist also oft noch schlank. `reich` meldete dann False -- genau
+    dort, wo man als Erstes nachsieht, ob Terrain-Daten vorliegen."""
+    saetze = [_satz_mit(0.01)]                       # schlank, kein feet_detail
+    saetze += [
+        _satz_mit(0.02 + i * 0.02,
+                  feet_detail=[{"kontakt": True, "pos": [0.3, 0.2, -0.42]}] * 4)
+        for i in range(10)
+    ]
+    ordner = _lauf(tmp_path, [_start(0.0, "G3"), _ende(0.5, "G3")], saetze)
+    assert fenster(ordner)[0].reich is True
+
+
+def test_reich_bleibt_falsch_wenn_kein_satz_reich_ist(tmp_path):
+    """Gegenprobe: sonst meldete jedes Fenster `reich`."""
+    saetze = [_satz_mit(0.02 + i * 0.02) for i in range(10)]
+    ordner = _lauf(tmp_path, [_start(0.0, "G3"), _ende(0.5, "G3")], saetze)
+    assert fenster(ordner)[0].reich is False

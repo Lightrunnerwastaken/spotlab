@@ -195,3 +195,68 @@ def test_reiche_abtastung_ist_deutlich_groesser():
     klein = len(json.dumps(as_sample(_voller_zustand())))
     gross = len(json.dumps(as_sample(_voller_zustand(), reich=True)))
     assert gross > klein
+
+
+# ============================================== S3.5 Hardwarefehler ohne Sturz
+#
+# G2, G3 und G4 fordern "kein Sturz" als Kriterium. Die reale Aufzeichnung
+# lieferte dafuer bisher kein Gegenstueck: behavior_fault_state,
+# system_fault_state und service_fault_state wurden nie gelesen. Ein Roboter,
+# der wegen eines Behavior Fault stehenbleibt, sah in den Daten aus wie einer,
+# der einfach langsam war.
+
+
+def _mit_fehlern():
+    from bosdyn.api import robot_state_pb2
+
+    from spotlab.backends.dryrun import DryRunBackend
+
+    zustand = DryRunBackend().robot_state()
+    bf = zustand.behavior_fault_state.faults.add()
+    bf.behavior_fault_id = 7
+    bf.cause = robot_state_pb2.BehaviorFault.CAUSE_FALL
+    bf.status = robot_state_pb2.BehaviorFault.STATUS_UNCLEARABLE
+    sf = zustand.system_fault_state.faults.add()
+    sf.name = "hip motor hot"
+    sf.severity = robot_state_pb2.SystemFault.SEVERITY_WARN
+    sf.code = 42
+    return zustand
+
+
+def test_fehlerzustaende_landen_im_reichen_satz():
+    from spotlab.api.state import as_sample
+
+    satz = as_sample(_mit_fehlern(), reich=True)
+    assert satz["faults"]["behavior"] == [
+        {"id": 7, "ursache": "CAUSE_FALL", "status": "STATUS_UNCLEARABLE"}
+    ]
+    assert satz["faults"]["system"] == [
+        {"name": "hip motor hot", "schwere": "SEVERITY_WARN", "code": 42}
+    ]
+    assert satz["faults"]["service"] == []
+
+
+def test_keine_fehler_ist_eine_gemessene_leere_liste():
+    """Unterschied zwischen "gemessen und keine" und "nicht gemessen" --
+    er entscheidet, ob eine Kalibrierung gueltig ist."""
+    from spotlab.api.state import as_sample
+    from spotlab.backends.dryrun import DryRunBackend
+
+    satz = as_sample(DryRunBackend().robot_state(), reich=True)
+    assert satz["faults"] == {"behavior": [], "system": [], "service": []}
+
+
+def test_der_schlanke_satz_traegt_keine_fehlerlisten():
+    """Bestehende Schluessel in zustand.jsonl aendern sich nicht, und 50 RPCs
+    je Sekunde sollen nicht dicker werden als noetig. Messfenster sind reich --
+    genau dort gilt das Sturz-Kriterium."""
+    from spotlab.api.state import as_sample
+
+    assert "faults" not in as_sample(_mit_fehlern(), reich=False)
+
+
+def test_der_zustand_kennt_die_fehler_auch_direkt():
+    from spotlab.api.state import from_proto
+
+    s = from_proto(_mit_fehlern())
+    assert s.faults["behavior"][0]["ursache"] == "CAUSE_FALL"

@@ -74,7 +74,17 @@ Feststellungen.
 | **S1.6** Abbau robust gegen Strg-C | **erledigt** — `close()` fängt je Schritt `BaseException` und wirft den Abbruch erst am Ende; `abtaster.stop()` liegt jetzt innerhalb der Absicherung |
 | **S1.7** GUI-NOT-AUS ehrlich machen | **erledigt** — Killer meldet, ob er getroffen hat; Abbau-Markierung hält den Lauf im `close()`-Fenster aktiv; gescheitertes Töten schickt zum physischen Not-Aus statt Entwarnung zu geben |
 | **S1.13** `doctor`: zurückgelassener Endpunkt | **erledigt** — eigene Stufe „Not-Aus-Endpunkt", trennt Leiche von laufender Zweitsitzung; A3 damit automatisiert |
-| S1.8 – S1.12, S2, S3, S4 | offen |
+| **S3.1** G6-Impulse vor Datenverlust | **erledigt** — `notizen.json` sofort bei Eingabe, Protokoll-Zwischenstand nach jedem Gate |
+| **S3.2** G7 Bremsweg-Zeitfenster | **erledigt** (Zeitfenster) — das reale Fenster öffnet jetzt am Ablauf, wie im Sim. Der Tempo-Unterschied 0.03 gegen 0.30 m/s steht als Hinweis in der Tabelle und bleibt eine RESEARCH DECISION |
+| **S3.3** Gierwinkel bei Fensterstart | **erledigt** — `gier_start_grad` je Fenster |
+| **S3.4** Zwei Uhren, Lücken verortbar | **erledigt** — `ab_start_s`/`t_roh_s` statt zweideutigem `von_s`, beide Auswertungen nennen ihre Uhr |
+| **S3.5** Hardwarefehler ohne Sturz | **erledigt** — `faults` (behavior/system/service) im reichen Satz |
+| **S3.6** `reich` über alle Sätze | **erledigt** |
+| S1.8 – S1.12, S2, S3.7 – S3.13, S4 | offen |
+
+Ausserdem gebaut (Stufe 8, eigene Spec): der **Beobachter-Modus** — leaseloses
+Mitschreiben, während ein Mensch mit dem Tablet fährt, samt Vergleich über das
+erreichte statt das kommandierte Tempo. Er steht nicht hinter Sperrpunkt A1.
 
 Mit S1.1 fiel ein zweiter Befund mit: die Zeitüberschreitung in `move()` liess den
 Roboter bisher weiterlaufen, weil `warte_auf` zwar wirft, aber keinen Stopp schickt.

@@ -202,8 +202,16 @@ def kennzahlen(saetze, kommandos, quelle, hz_soll):
     daten = [s.get("daten") or {} for s in saetze]
     dauer = zeiten[-1] - zeiten[0]
     grenze = 2.0 / hz_soll if hz_soll > 0 else 2.0 / STANDARD_HZ
+    # `ab_start_s` statt `von_s`: bei Zeitquelle „robot" sind `zeiten` absolute
+    # Epochenstempel (1.78e9), während das Fenster selbst laufrelativ zählt —
+    # eine Lücke liess sich damit nicht mehr im Fenster verorten. Der rohe
+    # Stempel bleibt daneben stehen, in der Uhr, die `zeitquelle` nennt.
     luecken = [
-        {"von_s": round(zeiten[i - 1], 3), "laenge_s": round(zeiten[i] - zeiten[i - 1], 3)}
+        {
+            "ab_start_s": round(zeiten[i - 1] - zeiten[0], 3),
+            "laenge_s": round(zeiten[i] - zeiten[i - 1], 3),
+            "t_roh_s": round(zeiten[i - 1], 3),
+        }
         for i in range(1, len(zeiten))
         if zeiten[i] - zeiten[i - 1] > grenze
     ]
@@ -254,6 +262,12 @@ def kennzahlen(saetze, kommandos, quelle, hz_soll):
         "versatz_x_m": round(versatz_x, 4),
         "versatz_y_m": round(versatz_y, 4),
         "gierwinkel_grad": round(math.degrees(_gier_aufsummiert([p[2] for p in posen])), 2),
+        # Ohne den Startwinkel ist nicht nachrechenbar, wie viel von `versatz_x`
+        # und `versatz_y` nur daher kommt, dass der Roboter schräg zur odom-Achse
+        # stand. Beides sind reine odom-Differenzen. Die echte Drehung ins
+        # fensterlokale System ist eine RESEARCH DECISION für matura-spot — hier
+        # wird nur die Zahl bereitgestellt, die sie möglich macht.
+        "gier_start_grad": round(math.degrees(posen[0][2]), 2),
         "kommandiert": kommandiert,
         "tracking_prozent": _tracking(kommandiert, tempo_x, tempo_y, drehrate),
         "gelenk_rate_max": round(
@@ -311,8 +325,15 @@ def fenster(lauf_dir):
                 hz_soll=hz_soll,
                 hz_ist=round((len(drin) - 1) / dauer, 2) if dauer > 0 else 0.0,
                 abtastungen=len(drin),
-                reich=bool(drin)
-                and any(k in (drin[0].get("daten") or {}) for k in REICHE_SCHLUESSEL),
+                # ÜBER ALLE Sätze, nicht nur den ersten: der Ratenwechsel wirkt
+                # erst ab dem nächsten Takt, der erste Satz im Fenster ist also
+                # oft noch schlank. `reich=False` stand dann genau dort, wo man
+                # als Erstes nachsieht, ob Terrain-Daten vorliegen.
+                reich=any(
+                    k in (s.get("daten") or {})
+                    for s in drin
+                    for k in REICHE_SCHLUESSEL
+                ),
                 unvollstaendig=ende is None,
                 zeitquelle=quelle,
                 kommandos=kommandos,
