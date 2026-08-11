@@ -67,6 +67,24 @@ versionsgepinntes Extra `spotlab[sim]`.
 - **Es gibt genau einen `OutputReader` pro Lauf.** Die Ausgabe-Pipe hat genau einen Leser;
   ein zweiter teilte sich die Zeilen zufällig mit dem ersten. Neue Ansichten hängen sich als
   weitere Senke an `app.py::_starte_leser`, nie mit einem eigenen Leser an den Prozess.
+- **Ein Widget wird nie zerstört, solange ein Thread darunter arbeitet.** Vor
+  `deleteLater()` auf einem `CodeEdit` erst `Vervollstaendigung.schliesse()` — sonst wird
+  ein laufender `JediWorker`-QThread destruiert und reisst das ganze Fenster mit, samt
+  NOT-AUS-Knopf. Dieselbe Regel gilt für `MapsView._worker` beim Fensterschliessen. Erst
+  trennen, dann warten: eine Antwort, die eine Millisekunde zu spät kommt, darf das
+  zerstörte Widget nicht mehr anfassen.
+- **`Ausgabefeld.haenge_an` führt die Dokumentlänge laufend mit, statt `toPlainText()` zu
+  rufen.** Jener kopiert bei jeder Zeile das ganze Dokument — gemessen 0.070 ms/Zeile bei
+  500 Zeilen, 0.402 bei 4000, also quadratisch; auf 50 000 Zeilen Minuten, in denen die
+  Ereignisschleife besetzt ist und ein Klick auf NOT-AUS in derselben Warteschlange steht.
+  Die Zahl muss stimmen: an ihr hängen die Zeichenpositionen der anklickbaren
+  Traceback-Stellen. **Eine Pufferbegrenzung gibt es bewusst nicht** — sie verschöbe alle
+  Positionen und schickte den Schüler in die falsche Datei.
+- **Ein Skript mit `roboter = true` aus „Anbindungen" holt die Live-Ansicht nach vorn.**
+  Fremder Code ohne Trockenlauf-Schranke, der den echten Spot bewegt, ist der am wenigsten
+  geprüfte Startweg im Fenster; da schlägt Sicherheit die Bequemlichkeit. Bei
+  `roboter = false` bleibt die Ansicht bei den Panels, sonst wird die Regel im Alltag
+  umgangen.
 - **Der Stopp-Knopf im Editor delegiert an `LiveView.stoppe()`.** Dieselbe Funktion
   aufzurufen genügt nicht — der freundliche Stopp hängt am Lauf-Verzeichnis, das nur die
   Live-Ansicht vom Watcher bekommt. Delegation heisst dasselbe Objekt mit demselben Zustand.
@@ -225,6 +243,16 @@ versionsgepinntes Extra `spotlab[sim]`.
 - Widgets im Test in einer Variablen festhalten. Ein Wegwerf-Ausdruck wie
   `Header().hinweis.text()` wird sofort abgeräumt und wirft `libshiboken: Internal C++
   object already deleted`.
+- **Wer im Test `deleteLater()` auslöst, arbeitet es auch ab** —
+  `QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)`. Sonst liegt die
+  Zerstörung in der Warteschlange, bis ein späterer Test eine verschachtelte
+  Ereignisschleife laufen lässt, und stürzt dort ab: der Bericht zeigt dann auf eine
+  fremde Datei, die nichts damit zu tun hat. Genau so ist ein `Fatal Python error:
+  Aborted` in `test_gui_tree.py` entstanden, ausgelöst von einem Reiter-Schliessen in
+  `test_gui_editorview.py`.
+- **`QObject.disconnect()` ohne Argument ist verboten.** Es kappt ALLE Signale des
+  Objekts, auch `finished` und `destroyed`, an denen Qt seine eigene Aufräumarbeit hängt.
+  Immer die eine Verbindung nennen: `arbeiter.fertig.disconnect(self._jedi_fertig)`.
 - Was nicht Widget ist, gehört in ein Qt-freies Modul — `record/tail.py`,
   `workshop/control.py`, `gui/theme.py`, `gui/watcher.py::RunScanner`.
 

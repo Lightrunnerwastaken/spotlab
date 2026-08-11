@@ -43,6 +43,13 @@ def test_kein_vorschlag_fuer_fremde_namen():
     assert eigene_vorschlaege("roboter.") == []
 
 
+def _feld():
+    from spotlab.gui.editor.codeedit import CodeEdit
+    from spotlab.gui.theme import palette_fuer
+
+    return CodeEdit(palette_fuer(False))
+
+
 def _hilfe_mit(feld, text):
     hilfe = Vervollstaendigung(feld)
     feld.setPlainText(text)
@@ -122,3 +129,66 @@ def test_mit_jedi_werden_fremde_namen_ergaenzt(qapp):
     hilfe = _hilfe_mit(feld, "import math\nmath.")
     fremde = hilfe.jedi_lesen(feld.toPlainText(), 2, 5, None)
     assert "sqrt" in {v.name for v in fremde}
+
+
+# ======================== S1.10 Reiter schliessen waehrend jedi noch laeuft
+#
+# `feld.deleteLater()` zerstoert das CodeEdit; der Vervollstaendiger haengt
+# darunter, der JediWorker-QThread wieder darunter. Laeuft der noch, wird ein
+# QThread destruiert, waehrend er arbeitet -- das reisst das GANZE Fenster mit,
+# inklusive NOT-AUS-Knopf, und ein laufendes Roboterprogramm im Kindprozess
+# bleibt fuehrerlos zurueck.
+
+
+class _LangsamerWorker:
+    """Ein Arbeiter, der noch laeuft, wenn der Reiter geschlossen wird."""
+
+    def __init__(self):
+        self.getrennt = False
+        self.gewartet = False
+        self._laeuft = True
+
+    def isRunning(self):
+        return self._laeuft
+
+    @property
+    def fertig(self):
+        arbeiter = self
+
+        class Signalattrappe:
+            def disconnect(self, *a, **kw):
+                arbeiter.getrennt = True
+
+        return Signalattrappe()
+
+    def wait(self, ms=None):
+        self.gewartet = True
+        self._laeuft = False
+        return True
+
+    def requestInterruption(self):
+        pass
+
+
+def test_schliesse_trennt_und_wartet_auf_den_arbeiter(qapp):
+    feld = _feld()
+    v = Vervollstaendigung(feld)
+    arbeiter = _LangsamerWorker()
+    v._worker = arbeiter
+    v.schliesse()
+    assert arbeiter.getrennt, "die Antwort haette in ein zerstoertes Widget gezeigt"
+    assert arbeiter.gewartet, "der Thread wurde nicht abgewartet"
+    assert v._worker is None
+
+
+def test_schliesse_ohne_arbeiter_ist_harmlos(qapp):
+    Vervollstaendigung(_feld()).schliesse()   # darf nicht werfen
+
+
+def test_eine_verspaetete_antwort_nach_dem_schliessen_wird_ignoriert(qapp):
+    """Der Kern: die Antwort darf das zerstoerte Widget nicht mehr anfassen."""
+    feld = _feld()
+    v = Vervollstaendigung(feld)
+    v._nummer = 5
+    v.schliesse()
+    v._jedi_fertig(5, [("os.path", "os.path")])       # darf nicht werfen

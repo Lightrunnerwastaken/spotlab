@@ -162,6 +162,14 @@ def panel_widget(panel, anbindung, palette):
 class AnbindungenView(QWidget):
     meldung = Signal(str)
     lauf_gestartet = Signal(object, str)
+    # Ein Skript mit `roboter = true` bewegt den echten Spot. Dann ist die
+    # Live-Ansicht mit ihrem NOT-AUS wichtiger als die Panels — Sicherheit
+    # schlaegt Bequemlichkeit.
+    roboterlauf = Signal()
+    # Delegiert an LiveView.stoppe(), wie der Editor. Projektregel: dieselbe
+    # Funktion aufzurufen genuegt nicht, es muss dasselbe Objekt mit demselben
+    # Zustand sein — der freundliche Stopp haengt am Lauf-Verzeichnis.
+    stopp_gewuenscht = Signal()
 
     def __init__(self, palette, parent=None):
         super().__init__(parent)
@@ -176,12 +184,17 @@ class AnbindungenView(QWidget):
         self.anbinden_knopf = QPushButton("Projekt anbinden…")
         self.anbinden_knopf.clicked.connect(self._anbinden)
 
+        self.stopp_knopf = QPushButton("■ Stopp")
+        self.stopp_knopf.clicked.connect(self.stopp_gewuenscht.emit)
+        self.stopp_knopf.hide()
+
         links = QWidget()
         links_anordnung = QVBoxLayout(links)
         links_anordnung.setContentsMargins(0, 0, 0, 0)
         links_anordnung.addWidget(QLabel("Angebundene Projekte"))
         links_anordnung.addWidget(self.liste, 1)
         links_anordnung.addWidget(self.anbinden_knopf)
+        links_anordnung.addWidget(self.stopp_knopf)
         links.setFixedWidth(230)
 
         self.hinweis = QLabel("")
@@ -314,3 +327,19 @@ class AnbindungenView(QWidget):
             self.meldung.emit(str(fehler))
             return
         self.lauf_gestartet.emit(prozess, str(skript.datei))
+        self.lauf_laeuft(True)
+        self._melde_roboterlauf(skript)
+
+    def _melde_roboterlauf(self, skript):
+        """Bei `roboter = true` gehoert der NOT-AUS in Sichtweite.
+
+        Wer hier startet, will sonst die Panels sehen — aber ein Skript, das den
+        echten Spot bewegt, ist der am wenigsten geprueften Startweg im ganzen
+        Fenster. Da schlaegt Sicherheit die Bequemlichkeit.
+        """
+        if getattr(skript, "roboter", False):
+            self.roboterlauf.emit()
+
+    def lauf_laeuft(self, laeuft):
+        """Stopp-Knopf zeigen oder verstecken."""
+        self.stopp_knopf.setVisible(bool(laeuft))

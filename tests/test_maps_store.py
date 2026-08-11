@@ -113,3 +113,63 @@ def test_metadaten_sind_lesbares_json(tmp_path):
     assert daten["name"] == "turnhalle"
     assert daten["wegpunkte"] == 3
     assert daten["spotlab_version"]
+
+
+# ============================== S1.11 eine kaputte Karte blockiert den Start
+#
+# `karten()` beschreibt jeden Ordner in einer Listcomprehension, und
+# `_beschreibe` fing um `lade_graph` nur OSError. Eine beschaedigte `graph`-Datei
+# wirft aber DecodeError -- der flog aus `karten()` heraus, und weil die
+# Kartenansicht beim Programmstart fuellt, startete die GANZE GUI nicht mehr.
+# Damit war auch der NOT-AUS-Knopf unerreichbar.
+
+
+def _karte(wurzel, name, inhalt=b"", meta=True):
+    import json
+
+    from spotlab.maps.store import KARTEN_ORDNER, METADATEN
+
+    ordner = wurzel / KARTEN_ORDNER / name
+    ordner.mkdir(parents=True, exist_ok=True)
+    (ordner / "graph").write_bytes(inhalt)
+    if meta:
+        (ordner / METADATEN).write_text(
+            json.dumps({"name": name, "wegpunkte": 3, "kanten": 2}), encoding="utf-8"
+        )
+    return ordner
+
+
+def test_kaputte_graph_datei_wirft_nicht(tmp_path):
+    from spotlab.maps.store import karten
+
+    _karte(tmp_path, "kaputt", inhalt=b"\xff\xfe kein protobuf", meta=False)
+    liste = karten(tmp_path)          # darf nicht werfen
+    assert [k.name for k in liste] == ["kaputt"]
+    assert liste[0].wegpunkte == 0, "erfundene Zahlen waeren schlimmer als 0"
+
+
+def test_eine_kaputte_karte_reisst_die_anderen_nicht_mit(tmp_path):
+    """Der eigentliche Schaden: die ganze Liste war weg, nicht nur die eine."""
+    from spotlab.maps.store import karten
+
+    _karte(tmp_path, "kaputt", inhalt=b"\xff\xfe kein protobuf", meta=False)
+    _karte(tmp_path, "heil")
+    namen = {k.name for k in karten(tmp_path)}
+    assert namen == {"kaputt", "heil"}
+
+
+def test_ein_unlesbarer_ordner_reisst_die_liste_nicht_mit(tmp_path, monkeypatch):
+    from spotlab.maps import store
+
+    _karte(tmp_path, "heil")
+    _karte(tmp_path, "sperrig")
+
+    echt = store._beschreibe
+
+    def stolpert(ordner):
+        if ordner.name == "sperrig":
+            raise OSError("Zugriff verweigert")
+        return echt(ordner)
+
+    monkeypatch.setattr(store, "_beschreibe", stolpert)
+    assert [k.name for k in store.karten(tmp_path)] == ["heil"]

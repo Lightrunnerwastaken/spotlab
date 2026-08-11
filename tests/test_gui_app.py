@@ -372,3 +372,34 @@ def test_schliessen_beendet_auch_den_kartenaufnehmer(qapp, tmp_path):
     fenster.ansichten["karten"]._worker = FakeWorker()
     fenster.closeEvent(QCloseEvent())
     assert beendet == ["schliesse"], "die Kartenaufnahme lief nach dem Schliessen weiter"
+
+
+def test_ein_roboterlauf_aus_anbindungen_schaltet_zur_live_ansicht(qapp, tmp_path):
+    """S1.9: bei `roboter = true` gehoert der NOT-AUS in Sichtweite.
+
+    Wer in "Anbindungen" startet, will sonst die Panels sehen -- aber fremder
+    Code, der den echten Spot bewegt, ist der am wenigsten geprueften Startweg
+    im ganzen Fenster."""
+    fenster = MainWindow()
+    fenster._setze_arbeitsordner(str(tmp_path))
+    fenster._wechsle("anbindungen")
+    fenster._lauf_aus_anbindungen(_FakeProzess(), "fahrt.py")
+    fenster.ansichten["anbindungen"].roboterlauf.emit()
+    assert fenster.stapel.currentWidget() is fenster.ansichten["live"]
+
+
+def test_der_stopp_aus_anbindungen_geht_an_dieselbe_live_ansicht(qapp):
+    """Projektregel: dieselbe Funktion aufzurufen genuegt nicht -- der
+    freundliche Stopp haengt am Lauf-Verzeichnis, das nur die Live-Ansicht hat."""
+    fenster = MainWindow()
+    gerufen = []
+    fenster.ansichten["live"].stoppe = lambda: gerufen.append(True)
+    fenster.ansichten["anbindungen"].stopp_gewuenscht.emit()
+    assert gerufen == [True]
+
+
+def test_das_lauf_ende_versteckt_den_stopp_knopf_in_anbindungen(qapp, tmp_path):
+    fenster = MainWindow()
+    fenster.ansichten["anbindungen"].lauf_laeuft(True)
+    fenster._lauf_beendet(_zweit_lauf(tmp_path, "lauf_a", aktiv=False))
+    assert fenster.ansichten["anbindungen"].stopp_knopf.isHidden()

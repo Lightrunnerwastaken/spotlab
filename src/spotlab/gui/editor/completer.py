@@ -134,6 +134,10 @@ class Vervollstaendigung(QObject):
         self._eigene = []
         self._anzeige_zu_name = {}
         self._worker = None
+        # Ab `schliesse()` wird nichts mehr angefordert und keine Antwort mehr
+        # verarbeitet — das Widget darunter ist dann schon zur Zerstörung
+        # vorgemerkt.
+        self._geschlossen = False
 
         self.modell = VorschlagModell(self)
         self.completer = QCompleter(self.modell, self)
@@ -188,7 +192,39 @@ class Vervollstaendigung(QObject):
         )
         self.completer.complete(rechteck)
 
+    def schliesse(self):
+        """Vor dem Zerstören des Editors aufrufen. Läuft immer durch.
+
+        `deleteLater()` auf dem CodeEdit nimmt den Vervollständiger und den
+        darunter hängenden `JediWorker`-QThread mit. Läuft der noch, wird ein
+        arbeitender QThread destruiert — das reisst das ganze Fenster mit,
+        samt NOT-AUS-Knopf, und ein laufendes Roboterprogramm im Kindprozess
+        bleibt führerlos zurück.
+
+        Erst trennen, dann warten: die Antwort darf das zerstörte Widget nicht
+        mehr anfassen, auch wenn sie eine Millisekunde zu spät kommt.
+        """
+        self._geschlossen = True
+        arbeiter, self._worker = self._worker, None
+        if arbeiter is None:
+            return
+        # NUR die eigene Verbindung trennen. `arbeiter.disconnect()` ohne
+        # Argument kappt ALLE Signale des QThread — auch `finished` und
+        # `destroyed`, an denen Qt seine eigene Aufräumarbeit hängt. Das hat
+        # beim ersten Versuch prompt den Interpreter abgestürzt, und zwar erst
+        # mehrere Testdateien später.
+        try:
+            arbeiter.fertig.disconnect(self._jedi_fertig)
+        except (RuntimeError, TypeError):
+            pass          # war nie verbunden oder ist schon weg
+        try:
+            arbeiter.wait(2000)
+        except RuntimeError:
+            pass
+
     def _frage_jedi(self, nummer):
+        if self._geschlossen:
+            return
         if jedi is None:
             return
         cursor = self._editor.textCursor()
@@ -204,6 +240,8 @@ class Vervollstaendigung(QObject):
         self._worker.start()
 
     def _jedi_fertig(self, nummer, fremde):
+        if self._geschlossen:
+            return
         if nummer != self._nummer:
             # Veraltet: eine langsame alte Antwort darf eine schnelle neue
             # nicht ueberschreiben.

@@ -81,7 +81,13 @@ Feststellungen.
 | **S3.5** Hardwarefehler ohne Sturz | **erledigt** — `faults` (behavior/system/service) im reichen Satz |
 | **S3.6** `reich` über alle Sätze | **erledigt** |
 | **S1.8** Zwei gleichzeitige Läufe | **erledigt** — die Live-Ansicht hängt nie bedingungslos um; ein zweiter Lauf wartet und rückt nach. Dazu der Fund des Vollständigkeitskritikers: `closeEvent` beendet jetzt auch die Kartenaufnahme, einen QThread mit offener Robotersitzung |
-| S1.9 – S1.12, S2, S3.7 – S3.13, S4 | offen |
+| **S1.9** `roboter=true` aus „Anbindungen" | **erledigt** — eigener Stopp-Knopf (delegiert an `LiveView.stoppe`), Wechsel zur Live-Ansicht nur bei `roboter = true`, Abnahmepunkt A20 |
+| **S1.10** Editor-Absturz beim Reiterschliessen | **erledigt** — `Vervollstaendigung.schliesse()` trennt und wartet, bevor das Feld zerstört wird |
+| **S1.11** Kaputte Karte blockiert den GUI-Start | **erledigt** — `DecodeError` gefangen, Ordner für Ordner statt Listcomprehension |
+| **S1.12** Ausgabeflut friert die Ereignisschleife ein | **erledigt** — laufender Offset statt `toPlainText()` je Zeile: 4000 Zeilen von 1.610 s auf 0.157 s, und linear statt quadratisch |
+| S2, S3.7 – S3.13, S4 | offen |
+
+**Stufe S1 ist damit vollständig.**
 
 Ausserdem gebaut (Stufe 8, eigene Spec): der **Beobachter-Modus** — leaseloses
 Mitschreiben, während ein Mensch mit dem Tablet fährt, samt Vergleich über das

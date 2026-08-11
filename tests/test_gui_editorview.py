@@ -258,3 +258,40 @@ def test_starten_ohne_offene_datei_meldet_es(qapp, tmp_path):
     ansicht.meldung.connect(gemeldet.append)
     ansicht.start_knopf.click()
     assert gemeldet and "Datei" in gemeldet[0]
+
+
+def test_reiter_schliessen_beendet_den_jedi_arbeiter(qapp, tmp_path):
+    """S1.10: erst den Arbeiter beenden, dann das Feld zerstoeren.
+
+    Umgekehrt wird ein arbeitender QThread destruiert -- das reisst das ganze
+    Fenster mit, samt NOT-AUS-Knopf, und ein laufendes Roboterprogramm im
+    Kindprozess bleibt fuehrerlos zurueck.
+    """
+    ansicht, _ordner, projekt = _ansicht(tmp_path)
+    ansicht.oeffne(projekt / "hallo_spot.py")
+    feld = ansicht.reiter.currentWidget()
+    hilfe = ansicht._reiter[feld].hilfe
+
+    # Mitschreiben, NICHT ersetzen: ein Lambda an dieser Stelle haette den
+    # echten Schutz abgeschaltet und genau den Zustand hinterlassen, den der
+    # Test verhindern soll -- ein lebender QThread unter einem zerstoerten
+    # Widget. Das hat in der vollen Suite prompt Python zum Absturz gebracht.
+    echt = hilfe.schliesse
+    geschlossen = []
+
+    def spion():
+        geschlossen.append(True)
+        echt()
+
+    hilfe.schliesse = spion
+    ansicht._schliesse(ansicht.reiter.currentIndex())
+    assert geschlossen == [True]
+
+    # Die aufgeschobene Zerstoerung HIER abarbeiten. Sonst liegt sie in der
+    # Warteschlange, bis irgendein spaeterer Test eine verschachtelte
+    # Ereignisschleife laufen laesst -- und stuerzt dort ab, weit weg von der
+    # Ursache. Genau das ist beim Bauen passiert: der Absturz zeigte auf
+    # test_gui_tree.py, ausgeloest hat ihn diese Zeile.
+    from PySide6.QtCore import QCoreApplication, QEvent
+
+    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)

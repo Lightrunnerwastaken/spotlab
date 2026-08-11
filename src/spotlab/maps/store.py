@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from google.protobuf.message import DecodeError
 from bosdyn.api.graph_nav import map_pb2
 
 from spotlab.errors import SpotlabError
@@ -79,7 +80,9 @@ def _beschreibe(ordner):
         try:
             graph = lade_graph(ordner)
             wegpunkte, kanten = len(graph.waypoints), len(graph.edges)
-        except OSError:
+        except (OSError, DecodeError):
+            # DecodeError fehlte: eine beschädigte `graph`-Datei flog bis nach
+            # oben durch und verhinderte den GUI-Start — samt NOT-AUS-Knopf.
             wegpunkte, kanten = 0, 0
 
     return MapInfo(
@@ -98,7 +101,15 @@ def karten(workspace):
         return []
     ordner = [p for p in wurzel.iterdir() if p.is_dir() and (p / "graph").exists()]
     ordner.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-    return [_beschreibe(p) for p in ordner]
+    # Ordner für Ordner, nicht in einer Listcomprehension: EINE unlesbare Karte
+    # nahm sonst die ganze Liste mit — und mit ihr den Programmstart.
+    liste = []
+    for p in ordner:
+        try:
+            liste.append(_beschreibe(p))
+        except Exception:
+            continue
+    return liste
 
 
 def finde(workspace, name):

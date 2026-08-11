@@ -470,6 +470,34 @@ Fenster: über WLAN ist die erreichte Abtastrate ungemessen (siehe A18).
 
 ---
 
+## A20 — Fremdes Skript bewegt den Spot
+
+Der dritte Startweg zum echten Roboter, und der am wenigsten geprüfte: aus
+„Anbindungen" lässt sich **fremder Code** starten, ohne Trockenlauf-Schranke.
+Ein Skript mit `roboter = true` im Manifest fährt damit den echten Spot.
+
+**Prozedur**
+1. Ein Projekt anbinden, dessen `spotlab.toml` ein Skript mit `roboter = true`
+   führt (matura-spot: „Gates am echten Spot").
+2. Aus der Ansicht „Anbindungen" starten.
+3. Während es läuft: den Stopp-Knopf in „Anbindungen" drücken.
+
+**Erwartung**
+- (2) Das Fenster wechselt **von selbst** zur Live-Ansicht. Der NOT-AUS gehört
+  in Sichtweite, sobald fremder Code den Roboter bewegt — bei einem Skript ohne
+  `roboter = true` bleibt die Ansicht dagegen bei den Panels.
+- (3) Der Spot bremst, setzt sich hin, Motoren aus. Derselbe Weg wie der
+  Stopp-Knopf im Editor: er delegiert an dieselbe Live-Ansicht, weil der
+  freundliche Stopp am Lauf-Verzeichnis hängt.
+
+**Gegenprobe** Ein Skript mit `roboter = false` starten. Die Ansicht darf
+**nicht** wechseln — sonst sieht niemand mehr seine Panels, und die Regel wird
+im Alltag umgangen.
+
+**Ergebnis** _(offen)_
+
+---
+
 ## Nach der Abnahme
 
 Ergebnisse hier eintragen, Abweichungen als Befund in die Spec zurückspielen, und erst

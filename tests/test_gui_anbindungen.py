@@ -154,3 +154,55 @@ def test_aktualisieren_zeigt_neue_panels(qapp, tmp_path):
     schreibe(gebunden, "neu", "text", "Neu", {"absaetze": ["frisch"]})
     ansicht.aktualisiere()
     assert ansicht.panelbereich.count() == 1
+
+
+# ================= S1.9 der dritte Startweg zum echten Roboter
+#
+# Aus "Anbindungen" laesst sich FREMDER Code starten, und zwar ohne
+# Trockenlauf-Schranke (hier sitzt ein Mensch vor dem NOT-AUS). Ein Skript mit
+# `roboter = true` bewegt damit den echten Spot -- aber die Ansicht hatte
+# keinen eigenen Stopp-Knopf und wechselte auch nicht zur Live-Ansicht. Der am
+# wenigsten geprueften Startweg war zugleich der ohne Notbremse in Sichtweite.
+
+
+def test_ein_roboter_skript_meldet_sich_als_solches(qapp, tmp_path):
+    from spotlab.anbindung.manifest import Skript
+
+    ansicht = AnbindungenView(DUNKEL)
+    gemeldet = []
+    ansicht.roboterlauf.connect(lambda: gemeldet.append(True))
+    skript = Skript(name="fahrt", datei=tmp_path / "f.py", argumente=[],
+                    roboter=True, beschreibung="")
+    ansicht._melde_roboterlauf(skript)
+    assert gemeldet == [True]
+
+
+def test_ein_gewoehnliches_skript_meldet_nichts(qapp, tmp_path):
+    from spotlab.anbindung.manifest import Skript
+
+    ansicht = AnbindungenView(DUNKEL)
+    gemeldet = []
+    ansicht.roboterlauf.connect(lambda: gemeldet.append(True))
+    skript = Skript(name="auswertung", datei=tmp_path / "a.py", argumente=[],
+                    roboter=False, beschreibung="")
+    ansicht._melde_roboterlauf(skript)
+    assert gemeldet == []
+
+
+def test_die_ansicht_hat_einen_stopp_knopf(qapp, tmp_path):
+    """Er delegiert an LiveView.stoppe() -- Projektregel: dieselbe Funktion
+    aufzurufen genuegt nicht, es muss dasselbe Objekt mit demselben Zustand sein."""
+    ansicht = AnbindungenView(DUNKEL)
+    gewuenscht = []
+    ansicht.stopp_gewuenscht.connect(lambda: gewuenscht.append(True))
+    ansicht.stopp_knopf.click()
+    assert gewuenscht == [True]
+
+
+def test_der_stopp_knopf_ist_erst_bei_einem_lauf_da(qapp, tmp_path):
+    ansicht = AnbindungenView(DUNKEL)
+    assert ansicht.stopp_knopf.isHidden()
+    ansicht.lauf_laeuft(True)
+    assert not ansicht.stopp_knopf.isHidden()
+    ansicht.lauf_laeuft(False)
+    assert ansicht.stopp_knopf.isHidden()

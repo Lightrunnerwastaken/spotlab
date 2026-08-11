@@ -86,6 +86,7 @@ class Ausgabefeld(QPlainTextEdit):
         self._palette = palette
         self._wurzel = None
         self._stellen = []          # (von, bis, pfad, zeile), absolut im Dokument
+        self._laenge = 0            # Dokumentlänge in Zeichen, laufend geführt
 
     def setze_wurzel(self, pfad):
         self._wurzel = Path(pfad) if pfad else None
@@ -96,11 +97,21 @@ class Ausgabefeld(QPlainTextEdit):
     def leere(self):
         self.clear()
         self._stellen = []
+        self._laenge = 0
 
     def haenge_an(self, zeile):
-        vorher = self.toPlainText()
-        basis = len(vorher) + (1 if vorher else 0)   # appendPlainText setzt ein \n davor
+        # LAUFENDER Offset statt toPlainText(): jener kopiert bei jeder Zeile
+        # das ganze Dokument, und das ist quadratisch. Gemessen 0.070 ms/Zeile
+        # bei 500 Zeilen, 0.402 bei 4000 — auf 50 000 Zeilen hochgerechnet
+        # Minuten, in denen die Qt-Ereignisschleife besetzt ist. Ein Klick auf
+        # NOT-AUS steht in derselben Warteschlange.
+        #
+        # Die Zahl MUSS stimmen: an ihr hängen die Zeichenpositionen der
+        # anklickbaren Traceback-Stellen. Ein Fehler hier schickt den Schüler in
+        # die falsche Datei, deshalb prüft ein Test sie gegen toPlainText().
+        basis = self._laenge + (1 if self._laenge else 0)  # append setzt ein \n davor
         self.appendPlainText(zeile)
+        self._laenge = basis + len(zeile)
         if self._wurzel is None:
             return
         for stelle in finde_stellen(zeile, self._wurzel):
@@ -360,7 +371,12 @@ class EditorView(QWidget):
             if antwort != QMessageBox.Yes:
                 return
         self.reiter.removeTab(index)
-        self._reiter.pop(feld, None)
+        reiter = self._reiter.pop(feld, None)
+        # ERST den jedi-Arbeiter beenden, DANN das Feld zur Zerstörung
+        # vormerken. Umgekehrt wird ein arbeitender QThread destruiert, und das
+        # reisst das ganze Fenster mit — samt NOT-AUS-Knopf.
+        if reiter is not None and reiter.hilfe is not None:
+            reiter.hilfe.schliesse()
         feld.deleteLater()
 
     def springe_zu(self, pfad, zeile):

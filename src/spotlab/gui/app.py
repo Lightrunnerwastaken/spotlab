@@ -131,6 +131,12 @@ class MainWindow(QWidget):
         self.ansichten["projekte"].projekt_oeffnen.connect(self._oeffne_in_code)
         self.ansichten["anbindungen"].meldung.connect(self._melde)
         self.ansichten["anbindungen"].lauf_gestartet.connect(self._lauf_aus_anbindungen)
+        self.ansichten["anbindungen"].roboterlauf.connect(self._roboterlauf_aus_anbindungen)
+        # An dieselbe LiveView, nicht an eine eigene Stopp-Funktion: der
+        # freundliche Stopp haengt am Lauf-Verzeichnis, das nur sie kennt.
+        self.ansichten["anbindungen"].stopp_gewuenscht.connect(
+            self.ansichten["live"].stoppe
+        )
         self._verdrahte_code_stopp()
 
     def _verdrahte_code_stopp(self):
@@ -240,6 +246,12 @@ class MainWindow(QWidget):
         self._start_aus = "anbindungen"
         self._starte_leser(prozess)
 
+    def _roboterlauf_aus_anbindungen(self):
+        """Fremder Code bewegt den echten Spot — der NOT-AUS gehört in Sicht."""
+        self._start_aus = None
+        self._wechsle("live")
+        self.leiste.waehle("live")
+
     def _oeffne_in_code(self, projekt):
         self.ansichten["code"].setze_projekt(projekt)
         self._wechsle("code")
@@ -292,6 +304,7 @@ class MainWindow(QWidget):
             return
         self.ansichten["live"].lauf_beendet()
         self.ansichten["code"].lauf_beendet()
+        self.ansichten["anbindungen"].lauf_laeuft(False)
         self.ansichten["anbindungen"].aktualisiere()
         self.ansichten["laeufe"].aktualisiere()
         self.kopf.zeige_getrennt()
