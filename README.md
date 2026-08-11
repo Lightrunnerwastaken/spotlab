@@ -40,10 +40,30 @@ pip install -e .[gui]
 spotlab gui
 ```
 
-Vier Ansichten in einer Seitenleiste: **Projekte** (anlegen, in VS Code öffnen, starten —
-mit Häkchen für Trockenlauf), **Live-Lauf** (Ereignisse, Telemetrie, Kamerabild, Ausgabe),
-**Läufe** (Liste vergangener Läufe mit der Kurve kommandiertes gegen gemessenes Tempo) und
-**Spot** (Zugangsdaten und Prüfung). Hell und dunkel folgen der Windows-Einstellung.
+Sieben Ansichten in einer Seitenleiste: **Projekte** (anlegen, in VS Code öffnen, starten —
+mit Häkchen für Trockenlauf), **Code** (der eingebaute Editor), **Live-Lauf** (Ereignisse,
+Telemetrie, Kamerabild, Ausgabe), **Läufe** (vergangene Läufe mit der Kurve kommandiertes
+gegen gemessenes Tempo), **Karten** (GraphNav aufzeichnen und ansehen), **Anbindungen**
+(fremde Projekte) und **Spot** (Zugangsdaten und Prüfung). Hell und dunkel folgen der
+Windows-Einstellung.
+
+### Der eingebaute Editor
+
+Die Ansicht **Code** ist eine Ergänzung, kein Ersatz — `spotlab open` und „In VS Code
+öffnen" bleiben. Sie kann: mehrere Reiter, Syntaxhervorhebung, Vervollständigung für
+`spot.` und `spotlab.` mit deutscher Erklärung, Syntaxfehler nach einer kurzen Ruhepause,
+Suchen und Ersetzen, Starten und Stoppen ohne die Ansicht zu wechseln, und **anklickbare
+Dateinamen in Tracebacks** — ein Klick springt an die Zeile.
+
+Zwei Dinge, die im Alltag zählen:
+
+- **Vor dem Start wird alles gespeichert**, nicht nur der sichtbare Reiter. Ein Projekt aus
+  mehreren Dateien läuft sonst mit der alten Fassung seiner Importe.
+- **Beide Editoren dürfen dieselbe Datei offen haben.** Jeder Reiter merkt sich
+  Änderungszeit und Grösse und fragt, bevor er fremde Änderungen überschreibt.
+
+Nicht eingebaut: Debugger mit Haltepunkten, git-Integration, projektweite Suche,
+Erweiterungen. Dafür ist VS Code da.
 
 Die Oberfläche zeigt **jeden** Lauf im Arbeitsordner — auch die, die du in VS Code mit F5
 startest.
@@ -188,11 +208,39 @@ SDK-Weg `force_simple_setup()` würde ihn verdrängen und wird deshalb nicht ben
 > **Vor dem ersten Schülerbetrieb** ist die Abnahmeliste in [`docs/ABNAHME.md`](docs/ABNAHME.md)
 > abzuarbeiten, insbesondere Punkt **A1** (Not-Aus-Koexistenz am echten Gerät).
 
+### Für die Lehrperson: das Tempo herunterdrehen
+
+In der Ansicht **Spot** lassen sich `max_speed` und `max_turn_rate` setzen; sie landen in
+`~/.spotlab/config.toml`. **Für eine Anfängerstunde lohnt sich 0.2 m/s statt der
+Voreinstellung 0.6.** Der Deckel wirkt auf allen drei Wegen — `walk()`, `move()` und die
+autonome Fahrt — und ein Schülerskript kann ihn nicht überschreiben.
+
+Werte, die keine Sicherheitsgrenze mehr wären, werden abgewiesen statt stillschweigend
+übernommen: `inf`, `0` und negative Zahlen führen zu einer Fehlermeldung beim Start, nicht
+zu einem wirkungslosen Deckel.
+
 ## Weiterlesen
 
-- Entwurf und Begründungen: [`docs/superpowers/specs/2026-08-06-spotlab-fundament-design.md`](docs/superpowers/specs/2026-08-06-spotlab-fundament-design.md)
-- Umsetzungsplan: [`docs/superpowers/plans/`](docs/superpowers/plans/)
-- Abnahme am Gerät: [`docs/ABNAHME.md`](docs/ABNAHME.md)
+**Für die Benutzung**
+
+- Abnahme am Gerät: [`docs/ABNAHME.md`](docs/ABNAHME.md) — 20 Punkte, A1 ist der Sperrpunkt
+- Fremde Projekte anbinden: [`docs/ANBINDUNG.md`](docs/ANBINDUNG.md)
+
+**Für die Entwicklung** — jede Stufe hat ihren eigenen Entwurf mit Begründungen:
+
+| Stufe | Entwurf |
+|---|---|
+| Fundament | [`2026-08-06-spotlab-fundament-design.md`](docs/superpowers/specs/2026-08-06-spotlab-fundament-design.md) |
+| Oberfläche | [`2026-08-07-spotlab-gui-design.md`](docs/superpowers/specs/2026-08-07-spotlab-gui-design.md) |
+| GraphNav | [`2026-08-07-spotlab-graphnav-design.md`](docs/superpowers/specs/2026-08-07-spotlab-graphnav-design.md) |
+| Editor | [`2026-08-07-spotlab-ide-design.md`](docs/superpowers/specs/2026-08-07-spotlab-ide-design.md) |
+| Anbindung + MCP | [`2026-08-07-spotlab-anbindung-design.md`](docs/superpowers/specs/2026-08-07-spotlab-anbindung-design.md) |
+| Kalibrierung | [`2026-08-08-spotlab-kalibrierung-design.md`](docs/superpowers/specs/2026-08-08-spotlab-kalibrierung-design.md) |
+| Beobachter-Modus | [`2026-08-09-spotlab-beobachtung-design.md`](docs/superpowers/specs/2026-08-09-spotlab-beobachtung-design.md) |
+
+- Umsetzungspläne: [`docs/superpowers/plans/`](docs/superpowers/plans/)
+- Härtung, Befunde und Fahrplan: [`docs/HAERTUNG.md`](docs/HAERTUNG.md)
+- Nicht verhandelbare Regeln und ihre Begründungen: [`CLAUDE.md`](CLAUDE.md)
 
 ## Tests
 

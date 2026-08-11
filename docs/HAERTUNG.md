@@ -85,7 +85,8 @@ Feststellungen.
 | **S1.10** Editor-Absturz beim Reiterschliessen | **erledigt** — `Vervollstaendigung.schliesse()` trennt und wartet, bevor das Feld zerstört wird |
 | **S1.11** Kaputte Karte blockiert den GUI-Start | **erledigt** — `DecodeError` gefangen, Ordner für Ordner statt Listcomprehension |
 | **S1.12** Ausgabeflut friert die Ereignisschleife ein | **erledigt** — laufender Offset statt `toPlainText()` je Zeile: 4000 Zeilen von 1.610 s auf 0.157 s, und linear statt quadratisch |
-| S2, S3.7 – S3.13, S4 | offen |
+| **S2** Damit es im Unterricht trägt | **erledigt bis auf einen Punkt** — 1–11 und 13–15 stehen; aus 12 fehlt nur das Dateibaum-Kontextmenü (neue Funktionalität, bewusst zurückgestellt) |
+| S3.7 – S3.13, S4 | offen |
 
 **Stufe S1 ist damit vollständig.**
 

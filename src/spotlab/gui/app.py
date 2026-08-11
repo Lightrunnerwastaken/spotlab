@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QHBoxLayout,
     QLabel,
+    QMessageBox,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -226,6 +227,11 @@ class MainWindow(QWidget):
         self._leser = OutputReader(prozess, self)
         self._leser.zeile.connect(self.ansichten["live"].zeige_ausgabe)
         self._leser.zeile.connect(self.ansichten["code"].zeige_ausgabe)
+        # Der Leser weiss als Erster, dass der Prozess weg ist. Ein Skript mit
+        # Syntaxfehler stirbt, bevor es ein Lauf-Verzeichnis anlegt — der
+        # Watcher meldet dann nie ein Ende, und der Stopp-Knopf im Editor bliebe
+        # fuer immer haengen.
+        self._leser.ende.connect(lambda _code: self.ansichten["code"].pruefe_lauf_lebt())
         self._leser.start()
 
     def _lauf_gestartet(self, prozess, skript):
@@ -317,7 +323,33 @@ class MainWindow(QWidget):
                 self._uebernimm_lauf(naechster)
                 return
 
+    def frage_beim_schliessen(self, pfade):
+        """„speichern", „verwerfen" oder „abbrechen". Ersetzbar im Test."""
+        namen = ", ".join(p.name for p in pfade)
+        antwort = QMessageBox.question(
+            self,
+            "spotlab",
+            f"Ungespeicherte Änderungen in {namen}. Vor dem Schliessen speichern?",
+            QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel,
+        )
+        return {
+            QMessageBox.Save: "speichern",
+            QMessageBox.Discard: "verwerfen",
+        }.get(antwort, "abbrechen")
+
     def closeEvent(self, ereignis):
+        # Der X-Knopf verwarf Arbeit kommentarlos, obwohl das Schliessen eines
+        # einzelnen Reiters längst fragt. Für einen Schüler ist beides derselbe
+        # Vorgang — nur dass er beim Fenster mehr verliert.
+        offen = self.ansichten["code"].ungespeicherte()
+        if offen:
+            wahl = self.frage_beim_schliessen(offen)
+            if wahl == "abbrechen":
+                ereignis.ignore()
+                return
+            if wahl == "speichern" and not self.ansichten["code"].speichere_alle_geaenderten():
+                ereignis.ignore()
+                return
         if self._watcher is not None:
             self._watcher.stop()
         # Die Kartenaufnahme ist ein QThread mit einer OFFENEN Robotersitzung.

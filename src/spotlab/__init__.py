@@ -34,6 +34,7 @@ def connect(
     Die Motoren gehen dabei NICHT an — `spot.power_on()` ist eine eigene Zeile,
     die jemand geschrieben haben muss.
     """
+    from spotlab import protokoll
     from spotlab.api.spot import Spot
     from spotlab.config import Limits, load_config
     from spotlab.errors import ConfigMissing, LeaseLost, SpotlabError
@@ -64,6 +65,9 @@ def connect(
     skript = Path(script) if script else _skript_pfad()
     ziel = Path(runs_dir) if runs_dir else _runs_verzeichnis(skript)
     recorder = RunRecorder(ziel, skript, backend=art, nickname=spitzname)
+    # Ab hier landen Diagnosezeilen neben der Aufzeichnung. Ohne Ziel schreibt
+    # protokoll.notiere() nichts — ein Import von spotlab legt keine Datei an.
+    protokoll.setze_ziel(recorder.dir)
 
     if art == "dryrun":
         from spotlab.backends.dryrun import DryRunBackend
@@ -130,6 +134,7 @@ def connect(
                 spot.close()
             finally:
                 recorder.finish(ergebnis, fehlertext)
+                protokoll.setze_ziel(None)
 
 
 def _skript_pfad():

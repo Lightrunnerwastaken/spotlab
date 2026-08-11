@@ -41,3 +41,39 @@ def test_naechste_einrueckung(zeile, erwartet):
 )
 def test_ausruecken(zeile, erwartet):
     assert ausruecken(zeile) == erwartet
+
+
+# ================================== S2.12 Tabs und Kommentare in der Einrueckung
+
+
+def test_tabs_zaehlen_als_einrueckung():
+    """`lstrip(" ")` sah einen Tab nicht -- eine mit Tabs eingerueckte Datei
+    (VS Code, fremder Code) verlor bei jedem Zeilenumbruch ihre Ebene."""
+    assert einrueckung_von("\tx = 1") == "\t"
+    assert einrueckung_von("\t\tx = 1") == "\t\t"
+    assert einrueckung_von("  \tx = 1") == "  \t"
+
+
+def test_naechste_einrueckung_haelt_die_tab_ebene():
+    assert naechste_einrueckung("\tif x:") == "\t" + EINRUECKUNG
+    assert naechste_einrueckung("\t\tx = 1") == "\t\t"
+
+
+def test_ein_doppelpunkt_im_kommentar_rueckt_nicht_ein():
+    """`# und dann:` endet auf einem Doppelpunkt und ist trotzdem kein Block."""
+    assert naechste_einrueckung("x = 1  # und dann:") == ""
+    assert naechste_einrueckung("    y = 2  # Achtung:") == "    "
+
+
+def test_ein_doppelpunkt_in_einer_zeichenkette_rueckt_nicht_ein():
+    assert naechste_einrueckung('s = "gilt hier:"') == ""
+
+
+def test_echte_bloecke_ruecken_weiterhin_ein():
+    assert naechste_einrueckung("if x:") == EINRUECKUNG
+    assert naechste_einrueckung("def f():  # Kommentar") == EINRUECKUNG
+
+
+def test_ausruecken_kennt_den_tab():
+    assert ausruecken("\tx = 1") == 1
+    assert ausruecken("        x = 1") == len(EINRUECKUNG)

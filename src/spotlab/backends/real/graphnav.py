@@ -16,7 +16,7 @@ from bosdyn.client.graph_nav import GraphNavClient
 
 from spotlab.backends import mobility
 from spotlab.backends.base import NavStatus
-from spotlab.errors import MapError, NotLocalized
+from spotlab.errors import MapError, NotLocalized, translate
 from spotlab.errors.graphnav import (
     FERTIG,
     LAEUFT,
@@ -64,8 +64,8 @@ def upload_map(robot, kartenordner):
         raise MapError(f"Die Karte in {ordner} lässt sich nicht lesen.") from fehler
 
     client = _client(robot)
-    client.clear_graph()
-    antwort = client.upload_graph(graph=graph, generate_new_anchoring=True)
+    _versuche(client.clear_graph)
+    antwort = _versuche(client.upload_graph, graph=graph, generate_new_anchoring=True)
 
     for kennung in antwort.unknown_waypoint_snapshot_ids:
         pfad = ordner / "waypoint_snapshots" / kennung
@@ -86,14 +86,44 @@ def upload_map(robot, kartenordner):
     return graph
 
 
+def _uebersetze(fehler):
+    """SDK-Fehler in deutschen Klartext — oder unveraendert weiterreichen.
+
+    Ohne das kamen bei `upload_map`, `localize` und `navigate_step` rohe
+    SDK-Ausnahmen bis zum Schueler durch. Und `CannotModifyMapDuringRecording`
+    ist der haeufigste davon: wer eine Karte aufnimmt und gleichzeitig eine
+    hochladen will, bekam einen englischen Klassennamen statt eines Hinweises.
+    """
+    from bosdyn.client.graph_nav import CannotModifyMapDuringRecordingError
+
+    if isinstance(fehler, CannotModifyMapDuringRecordingError):
+        return MapError(
+            "Auf dem Roboter laeuft gerade eine Kartenaufnahme. Beende sie "
+            "zuerst in der Kartenansicht, dann laesst sich eine Karte hochladen."
+        )
+    return translate(fehler)
+
+
+def _versuche(aufruf, *args, **kw):
+    """Einen GraphNav-Aufruf machen und seine Fehler uebersetzen."""
+    try:
+        return aufruf(*args, **kw)
+    except Exception as fehler:
+        uebersetzt = _uebersetze(fehler)
+        if uebersetzt is not None:
+            raise uebersetzt from fehler
+        raise
+
+
 def localize(robot):
     """Über das nächste sichtbare Fiducial verorten. Gibt die Wegpunkt-ID zurück."""
     client = _client(robot)
-    client.set_localization(
+    _versuche(
+        client.set_localization,
         initial_guess_localization=nav_pb2.Localization(),
         fiducial_init=FIDUCIAL_NEAREST,
     )
-    kennung = client.get_localization_state().localization.waypoint_id
+    kennung = _versuche(client.get_localization_state).localization.waypoint_id
     if not kennung:
         raise NotLocalized(
             "Der Spot konnte sich nicht verorten. Stell ihn so hin, dass ein "
@@ -123,11 +153,12 @@ def navigate_step(robot, waypoint_id, dauer_s, params, command_id=None):
     Navigationskommandos verfallen wie Geschwindigkeitskommandos; der Aufrufer
     ruft das hier in einer Schleife auf.
     """
-    return _client(robot).navigate_to(
-        waypoint_id, dauer_s, travel_params=params, command_id=command_id
+    return _versuche(
+        _client(robot).navigate_to,
+        waypoint_id, dauer_s, travel_params=params, command_id=command_id,
     )
 
 
 def navigation_status(robot, command_id):
-    antwort = _client(robot).navigation_feedback(command_id=command_id)
+    antwort = _versuche(_client(robot).navigation_feedback, command_id=command_id)
     return nav_status(antwort.status)

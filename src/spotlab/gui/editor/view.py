@@ -149,6 +149,7 @@ class EditorView(QWidget):
         self._projekt = None
         self._reiter = {}          # CodeEdit -> Reiter
         self._laeuft = False
+        self._prozess = None
 
         # -------------------------------------------------- links: Dateien
         self.projektwahl = QComboBox()
@@ -324,10 +325,43 @@ class EditorView(QWidget):
             return "neu_laden"
         return "abbrechen"
 
+    def ungespeicherte(self):
+        """Pfade aller Reiter mit ungespeicherten Aenderungen."""
+        return [e.pfad for e in self._reiter.values() if e.verschmutzt]
+
+    def speichere_alle_geaenderten(self):
+        """Alle verschmutzten Reiter speichern. False, sobald einer scheitert.
+
+        Vor dem Start reicht der aktuelle Reiter nicht: ein Mehrdatei-Projekt
+        liefe sonst mit der alten Fassung der importierten Dateien, und der
+        Schueler sucht den Fehler in Code, der gar nicht ausgefuehrt wurde.
+        """
+        for eintrag in list(self._reiter.values()):
+            if self._weicht_ab(eintrag) and not self._speichere(eintrag):
+                return False
+        return True
+
+    def _weicht_ab(self, eintrag):
+        """Weicht der Reiter von der Datei ab?
+
+        Nicht `verschmutzt` allein: `setPlainText()` setzt Qts Modified-Flag
+        zurueck, die Markierung kann also falsch stehen. Vor dem Start zaehlt,
+        was WIRKLICH anders ist — der Vergleich mit der Datei luegt nicht.
+        """
+        if eintrag.verschmutzt:
+            return True
+        try:
+            return lade_text(eintrag.pfad) != eintrag.feld.toPlainText()
+        except (OSError, SpotlabError):
+            return True
+
     def speichere_aktuellen(self):
         eintrag = self.aktueller_reiter()
         if eintrag is None:
             return False
+        return self._speichere(eintrag)
+
+    def _speichere(self, eintrag):
         if self.fremd_geaendert(eintrag):
             wahl = self.frage_bei_konflikt(eintrag.pfad)
             if wahl == "abbrechen":
@@ -404,14 +438,17 @@ class EditorView(QWidget):
         if eintrag is None:
             self.meldung.emit("Öffne zuerst eine Datei, die du starten möchtest.")
             return
-        if not self.speichere_aktuellen():
-            return          # wer auf Starten drückt, meint den Code, den er sieht
+        # ALLE geaenderten, nicht nur den sichtbaren: wer auf Starten drueckt,
+        # meint das Programm, wie es gerade dasteht — samt seiner Importe.
+        if not self.speichere_alle_geaenderten():
+            return
         try:
             prozess = start_script(eintrag.pfad, dryrun=self.trockenlauf.isChecked())
         except SpotlabError as fehler:
             self.meldung.emit(str(fehler))
             return
         self.ausgabe.leere()
+        self._prozess = prozess
         self._setze_laeuft(True)
         self.lauf_gestartet.emit(prozess, str(eintrag.pfad))
 
@@ -422,5 +459,20 @@ class EditorView(QWidget):
     def zeige_ausgabe(self, zeile):
         self.ausgabe.haenge_an(zeile)
 
+    def pruefe_lauf_lebt(self):
+        """Knopf freigeben, wenn der Prozess schon tot ist.
+
+        Ein Skript mit Syntaxfehler stirbt, bevor es ein Lauf-Verzeichnis
+        anlegt. Der Watcher meldet dann nie ein Ende, und der Knopf blieb fuer
+        immer auf „Stopp" — der Schueler konnte danach nichts mehr starten und
+        musste das Fenster neu oeffnen.
+        """
+        prozess = self._prozess
+        if prozess is None or not self._laeuft:
+            return
+        if prozess.poll() is not None:
+            self.lauf_beendet()
+
     def lauf_beendet(self):
+        self._prozess = None
         self._setze_laeuft(False)

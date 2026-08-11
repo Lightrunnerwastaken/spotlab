@@ -295,3 +295,80 @@ def test_reiter_schliessen_beendet_den_jedi_arbeiter(qapp, tmp_path):
     from PySide6.QtCore import QCoreApplication, QEvent
 
     QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+
+
+# ============================= S2.2 alle verschmutzten Reiter vor dem Start
+#
+# Gespeichert wurde nur der AKTUELLE Reiter. Ein Mehrdatei-Projekt lief damit
+# mit der alten Fassung der importierten Dateien -- der Schueler sucht den
+# Fehler im Code, den er gerade geaendert hat, und der ist gar nicht drin.
+
+
+def test_starten_speichert_alle_geaenderten_dateien(qapp, tmp_path):
+    ansicht, _ordner, projekt = _ansicht(tmp_path)
+    hilfsdatei = projekt / "hilfe.py"
+    hilfsdatei.write_text("def f():\n    return 1\n", encoding="utf-8")
+
+    ansicht.oeffne(hilfsdatei)
+    ansicht.reiter.currentWidget().setPlainText("def f():\n    return 2\n")
+    ansicht.reiter.currentWidget().document().setModified(True)
+    ansicht._verschmutzt(ansicht.reiter.currentWidget(), True)
+
+    ansicht.oeffne(projekt / "hallo_spot.py")          # anderer Reiter ist aktiv
+    assert ansicht.speichere_alle_geaenderten() is True
+    assert hilfsdatei.read_text(encoding="utf-8") == "def f():\n    return 2\n"
+
+
+def test_speichere_alle_meldet_fehlschlag(qapp, tmp_path):
+    """Ein Konflikt in irgendeiner Datei muss den Start verhindern."""
+    ansicht, _ordner, projekt = _ansicht(tmp_path)
+    ansicht.oeffne(projekt / "hallo_spot.py")
+    ansicht.reiter.currentWidget().setPlainText("meins\n")
+    ansicht._verschmutzt(ansicht.reiter.currentWidget(), True)
+    (projekt / "hallo_spot.py").write_text("fremd\n", encoding="utf-8")
+    ansicht.frage_bei_konflikt = lambda pfad: "abbrechen"
+    assert ansicht.speichere_alle_geaenderten() is False
+
+
+def test_ohne_aenderungen_ist_speichere_alle_erfolgreich(qapp, tmp_path):
+    ansicht, _ordner, projekt = _ansicht(tmp_path)
+    ansicht.oeffne(projekt / "hallo_spot.py")
+    assert ansicht.speichere_alle_geaenderten() is True
+
+
+def test_offene_aenderungen_werden_gemeldet(qapp, tmp_path):
+    """S2.1: das Hauptfenster fragt damit vor dem Schliessen."""
+    ansicht, _ordner, projekt = _ansicht(tmp_path)
+    assert ansicht.ungespeicherte() == []
+    ansicht.oeffne(projekt / "hallo_spot.py")
+    ansicht._verschmutzt(ansicht.reiter.currentWidget(), True)
+    assert [p.name for p in ansicht.ungespeicherte()] == ["hallo_spot.py"]
+
+
+def test_der_stopp_knopf_faellt_zurueck_wenn_der_lauf_nie_beginnt(qapp, tmp_path):
+    """S2.12: startet ein Skript und stirbt sofort -- ein Syntaxfehler reicht --,
+    legt es nie ein Lauf-Verzeichnis an. Der Watcher meldet also nie ein Ende,
+    und der Knopf blieb fuer immer auf `Stopp`. Der Schueler kann danach nichts
+    mehr starten."""
+    ansicht, _ordner, projekt = _ansicht(tmp_path)
+    ansicht.oeffne(projekt / "hallo_spot.py")
+    ansicht._setze_laeuft(True)
+    assert ansicht.start_knopf.text().startswith("■")
+    ansicht.lauf_beendet()
+    assert ansicht.start_knopf.text().startswith("▶")
+
+
+def test_ein_sofort_gestorbener_prozess_gibt_den_knopf_frei(qapp, tmp_path):
+    ansicht, _ordner, projekt = _ansicht(tmp_path)
+    kaputt = projekt / "kaputt.py"
+    kaputt.write_text("def f(\n", encoding="utf-8")     # Syntaxfehler
+    ansicht.oeffne(kaputt)
+    ansicht.trockenlauf.setChecked(True)
+    prozesse = []
+    ansicht.lauf_gestartet.connect(lambda p, s: prozesse.append(p))
+    ansicht.start_knopf.click()
+    for prozess in prozesse:
+        prozess.wait()
+    QTest.qWait(200)
+    ansicht.pruefe_lauf_lebt()
+    assert ansicht.start_knopf.text().startswith("▶"), "Knopf haengt auf Stopp fest"

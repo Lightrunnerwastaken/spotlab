@@ -168,3 +168,28 @@ def test_maps_markiert_die_aktive_karte(monkeypatch, capsys, tmp_path):
     ausgabe = capsys.readouterr().out
     assert "* turnhalle" in ausgabe
     assert "load_map()" in ausgabe
+
+
+def test_login_behaelt_arbeitsordner_und_karte(tmp_path, monkeypatch):
+    """S2.3: Passwort erneuern verlor kommentarlos Arbeitsordner und aktive
+    Karte -- beide werden in _login() einfach nicht mitgeschrieben."""
+    from spotlab.config import Config, Limits, load_config, save_config
+
+    pfad = tmp_path / "config.toml"
+    monkeypatch.setattr("spotlab.config.CONFIG_PATH", pfad)
+    save_config(
+        Config(ip="1.2.3.4", username="u", nickname="Spot", limits=Limits(0.25, 0.4),
+               workspace=str(tmp_path / "werkstatt"), active_map="halle"),
+        pfad,
+    )
+    eingaben = iter(["", "", ""])
+    monkeypatch.setattr("builtins.input", lambda *a: next(eingaben))
+    monkeypatch.setattr("getpass.getpass", lambda *a: "")
+
+    from spotlab.cli import _login
+
+    _login()
+    neu = load_config(pfad)
+    assert neu.workspace == str(tmp_path / "werkstatt")
+    assert neu.active_map == "halle"
+    assert neu.limits.max_speed == 0.25

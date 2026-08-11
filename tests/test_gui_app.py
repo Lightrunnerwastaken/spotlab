@@ -403,3 +403,39 @@ def test_das_lauf_ende_versteckt_den_stopp_knopf_in_anbindungen(qapp, tmp_path):
     fenster.ansichten["anbindungen"].lauf_laeuft(True)
     fenster._lauf_beendet(_zweit_lauf(tmp_path, "lauf_a", aktiv=False))
     assert fenster.ansichten["anbindungen"].stopp_knopf.isHidden()
+
+
+def test_fenster_schliessen_fragt_bei_ungespeicherten_aenderungen(qapp, tmp_path):
+    """S2.1: X-Knopf und Alt+F4 verwarfen Arbeit kommentarlos, obwohl das
+    einzelne Reiter-Schliessen laengst fragt."""
+    from PySide6.QtGui import QCloseEvent
+
+    projekt = tmp_path / "demo"
+    (projekt / "runs").mkdir(parents=True)
+    (projekt / "a.py").write_text("x = 1\n", encoding="utf-8")
+
+    fenster = MainWindow()
+    fenster._setze_arbeitsordner(str(tmp_path))
+    code = fenster.ansichten["code"]
+    code.oeffne(projekt / "a.py")
+    code._verschmutzt(code.reiter.currentWidget(), True)
+
+    gefragt = []
+    fenster.frage_beim_schliessen = lambda pfade: gefragt.append(list(pfade)) or "abbrechen"
+    ereignis = QCloseEvent()
+    fenster.closeEvent(ereignis)
+    assert gefragt and gefragt[0][0].name == "a.py"
+    assert not ereignis.isAccepted(), "das Fenster wurde trotz Abbruch geschlossen"
+
+
+def test_ohne_ungespeicherte_aenderungen_wird_nicht_gefragt(qapp, tmp_path):
+    from PySide6.QtGui import QCloseEvent
+
+    fenster = MainWindow()
+    gefragt = []
+    fenster.frage_beim_schliessen = lambda pfade: gefragt.append(True) or "abbrechen"
+    ereignis = QCloseEvent()
+    ereignis.accept()
+    fenster.closeEvent(ereignis)
+    assert gefragt == []
+    assert ereignis.isAccepted()

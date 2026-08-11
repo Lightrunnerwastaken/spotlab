@@ -176,6 +176,15 @@ versionsgepinntes Extra `spotlab[sim]`.
   die Messkette berührt zu haben. `beobachten_real.py` hat dafür
   `PROBE_FENSTER_S` als Untergrenze in echten Sekunden, und ein Test prüft die
   Zahl der Abtastungen, nicht bloss die Existenz des Fensters.
+- **Diagnose geht in eine DATEI, nie auf stdout oder stderr.** Die Ausgabe eines Laufs hat
+  genau einen Leser, und der MCP-Server spricht über stdin/stdout ein Protokoll — ein
+  `StreamHandler` dort hinein zerstörte beides. `spotlab/protokoll.py` schreibt neben die
+  Aufzeichnung, wirft nie und schweigt ohne gesetztes Ziel. Die Abbaupfade fangen
+  weiterhin alles, aber sie verschlucken es nicht mehr spurlos: nach einem Vorfall muss
+  nachlesbar sein, warum der Spot sich nicht hingesetzt hat.
+- **Vor dem Start werden ALLE geänderten Reiter gespeichert, nicht nur der sichtbare.** Und
+  der Vergleich läuft gegen die Datei, nicht gegen Qts Modified-Flag: `setPlainText()`
+  setzt das Flag zurück, die Markierung kann also falsch stehen.
 - **`errors/` darf nichts aus `backends/` importieren.** `backends/base.py` importiert
   `UnsupportedCapability` aus `errors`; die Gegenrichtung schliesst den Kreis, sobald
   `backends.base` zuerst geladen wird. Die Position der Importzeile hilft dagegen nicht.

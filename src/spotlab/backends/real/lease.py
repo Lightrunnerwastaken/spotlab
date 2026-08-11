@@ -106,11 +106,11 @@ class LeaseGuard:
         if self._keepalive is not None:
             try:
                 self._keepalive.shutdown()
-            except Exception:
-                pass
+            except Exception as fehler:
+                protokoll.notiere("Lease-Keepalive beenden gescheitert", fehler)
             finally:
                 self._keepalive = None
         try:
             self._client.return_lease(self._client.lease_wallet.get_lease("body"))
-        except Exception:
-            pass  # Abbau darf nie werfen
+        except Exception as fehler:
+            protokoll.notiere("Lease-Rueckgabe gescheitert", fehler)

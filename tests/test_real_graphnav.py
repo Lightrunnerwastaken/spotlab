@@ -143,3 +143,51 @@ def test_realspot_kann_graph_nav():
 
     koennen = RealSpot.capabilities(None)
     assert koennen & Capability.GRAPH_NAV
+
+
+# ================================= S2.6 GraphNav-Fehler in deutschem Klartext
+
+
+class _KaputterRobot:
+    def __init__(self, fehler):
+        self._fehler = fehler
+
+    def ensure_client(self, name):
+        return self
+
+    def upload_graph(self, **kw):
+        raise self._fehler
+
+    def set_localization(self, **kw):
+        raise self._fehler
+
+    def clear_graph(self, **kw):
+        raise self._fehler
+
+    def get_localization_state(self):
+        raise self._fehler
+
+
+def test_aufnahme_laeuft_noch_wird_erklaert(tmp_path):
+    from bosdyn.api.graph_nav import map_pb2
+    from bosdyn.client.graph_nav import CannotModifyMapDuringRecordingError
+
+    from spotlab.backends.real import graphnav
+    from spotlab.errors import MapError
+
+    (tmp_path / "graph").write_bytes(map_pb2.Graph().SerializeToString())
+    robot = _KaputterRobot(CannotModifyMapDuringRecordingError(response=None))
+    with pytest.raises(MapError) as fehler:
+        graphnav.upload_map(robot, tmp_path)
+    assert "Kartenaufnahme" in str(fehler.value)
+
+
+def test_netzfehler_beim_verorten_meldet_das_netz():
+    from bosdyn.client.exceptions import RetryableUnavailableError
+
+    from spotlab.backends.real import graphnav
+    from spotlab.errors import NotReachable
+
+    robot = _KaputterRobot(RetryableUnavailableError(OSError("weg")))
+    with pytest.raises(NotReachable):
+        graphnav.localize(robot)

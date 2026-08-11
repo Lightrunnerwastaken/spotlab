@@ -232,7 +232,9 @@ def _gui():
 
 
 def _login():
-    from spotlab.config import Config, Limits, load_config, save_config, save_password
+    from dataclasses import replace
+
+    from spotlab.config import Config, load_config, save_config, save_password
 
     try:
         alt = load_config()
@@ -249,16 +251,14 @@ def _login():
     )
     passwort = getpass.getpass("Passwort (wird im Windows-Tresor gespeichert): ")
 
-    save_config(
-        Config(
-            ip=ip,
-            username=benutzer,
-            nickname=spitzname,
-            limits=alt.limits if alt else Limits(),
-            editor_command=alt.editor_command if alt else "code",
-            default_backend=alt.default_backend if alt else "real",
-        )
+    # replace() statt Neubau: bei einem Neubau muss man an JEDES Feld denken,
+    # und genau das ging schief — `workspace` und `active_map` fehlten, also
+    # verlor jedes Passwort-Erneuern kommentarlos den Arbeitsordner und die
+    # aktive Karte. Dasselbe Muster benutzt gui/app.py schon.
+    neu = Config(ip=ip, username=benutzer, nickname=spitzname) if alt is None else replace(
+        alt, ip=ip, username=benutzer, nickname=spitzname
     )
+    save_config(neu)
     if passwort:
         save_password(benutzer, passwort)
     print("Gespeichert. Prüfen mit:  spotlab doctor")

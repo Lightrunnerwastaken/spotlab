@@ -9,6 +9,7 @@ Hand der Aufsichtsperson wirkungslos. Deshalb registrieren wir ZUSÄTZLICH.
 from bosdyn.api import estop_pb2
 from bosdyn.client.estop import EstopEndpoint, EstopKeepAlive
 
+from spotlab import protokoll
 from spotlab.errors import EstopBusy
 
 ENDPOINT_NAME = "spotlab"
@@ -126,7 +127,10 @@ class EstopGuard:
         if self._endpoint is not None:
             try:
                 self._endpoint.deregister()
-            except Exception:
-                pass  # Abbau darf nie werfen
+            except Exception as fehler:
+                # Abbau darf nie werfen — aber er darf auch nicht spurlos
+                # scheitern: ein zurueckgelassener Endpunkt laesst den naechsten
+                # Schueler einen scheinbar defekten Spot vorfinden.
+                protokoll.notiere("E-Stop-Endpunkt abmelden gescheitert", fehler)
             finally:
                 self._endpoint = None

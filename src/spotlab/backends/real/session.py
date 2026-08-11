@@ -12,6 +12,7 @@ from bosdyn.client.lease import LeaseClient
 from bosdyn.client.robot_command import RobotCommandBuilder, RobotCommandClient
 from bosdyn.client.robot_state import RobotStateClient
 
+from spotlab import protokoll
 from spotlab.backends import mobility
 from spotlab.backends.base import Capability, SafetyStatus
 from spotlab.backends.real.estop import EstopGuard
@@ -276,8 +277,12 @@ class RealSpot:
         """
         try:
             schritt()
-        except Exception:
-            pass
+        except Exception as fehler:
+            # Stumm bleibt der ABLAUF, nicht die Aufzeichnung: ein
+            # fehlgeschlagener Abbauschritt war bisher nirgends nachlesbar, und
+            # nach einem Vorfall liess sich nicht sagen, warum der Spot sich
+            # nicht hingesetzt hat.
+            protokoll.notiere(f"Abbauschritt gescheitert: {schritt!r}", fehler)
         except BaseException as abbruch:
             return abbruch
         return None
