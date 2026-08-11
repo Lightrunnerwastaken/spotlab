@@ -80,7 +80,8 @@ Feststellungen.
 | **S3.4** Zwei Uhren, Lücken verortbar | **erledigt** — `ab_start_s`/`t_roh_s` statt zweideutigem `von_s`, beide Auswertungen nennen ihre Uhr |
 | **S3.5** Hardwarefehler ohne Sturz | **erledigt** — `faults` (behavior/system/service) im reichen Satz |
 | **S3.6** `reich` über alle Sätze | **erledigt** |
-| S1.8 – S1.12, S2, S3.7 – S3.13, S4 | offen |
+| **S1.8** Zwei gleichzeitige Läufe | **erledigt** — die Live-Ansicht hängt nie bedingungslos um; ein zweiter Lauf wartet und rückt nach. Dazu der Fund des Vollständigkeitskritikers: `closeEvent` beendet jetzt auch die Kartenaufnahme, einen QThread mit offener Robotersitzung |
+| S1.9 – S1.12, S2, S3.7 – S3.13, S4 | offen |
 
 Ausserdem gebaut (Stufe 8, eigene Spec): der **Beobachter-Modus** — leaseloses
 Mitschreiben, während ein Mensch mit dem Tablet fährt, samt Vergleich über das

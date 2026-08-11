@@ -272,6 +272,21 @@ verbindbar.
 GUI-Spec falsch und die Oberfläche für den Unterrichtsalltag wertlos — denn F5 ist, was
 die Schüler tatsächlich drücken.
 
+**Zusatz A11b — zwei Läufe gleichzeitig.** Der Alltagsfall, nicht der konstruierte:
+aus „Projekte" starten und dann, während es läuft, in VS Code F5 drücken.
+
+*Erwartung:* Die Live-Ansicht bleibt beim **ersten** Lauf, und der NOT-AUS trifft
+weiterhin ihn. Es erscheint eine Meldung, dass bereits ein Programm läuft. Wechselt die
+Anzeige stattdessen zum zweiten Lauf, zeigt der NOT-AUS-Knopf auf den falschen Prozess —
+und der erste hält womöglich gerade den Roboter.
+
+*Danach:* Den ersten Lauf beenden. Die Anzeige muss dann von selbst auf den zweiten
+umschalten, sofern der noch läuft.
+
+*Notieren:* Ob die Ausgabe beider Läufe im selben Fenster erscheint. Das ist bekannt und
+nicht gefährlich, aber verwirrend — falls es im Unterricht stört, wird daraus ein
+eigener Punkt.
+
 **Ergebnis** _(offen)_
 
 ---

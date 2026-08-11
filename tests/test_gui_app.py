@@ -250,3 +250,125 @@ def test_aktive_karte_wird_gemerkt(qapp, tmp_path, monkeypatch):
     fenster = MainWindow()
     fenster._merke_aktive_karte("turnhalle")
     assert load_config(pfad).active_map == "turnhalle"
+
+
+# ======================================= S1.8 zwei gleichzeitige Laeufe
+#
+# `_lauf_begonnen` setzte den Live-Lauf bedingungslos auf das zuletzt entdeckte
+# Verzeichnis. Startet ein Schueler aus "Projekte" und danach aus "Code" -- oder
+# laeuft zusaetzlich ein F5-Lauf aus VS Code (A11 sieht das ausdruecklich vor) --
+# zeigte die Live-Ansicht auf den falschen Prozess. Stopp und NOT-AUS trafen
+# dann einen anderen Lauf als den, der den Roboter haelt.
+
+
+def _zweit_lauf(tmp_path, name, aktiv=True):
+    import json
+    import os
+    import time
+
+    ordner = tmp_path / name
+    ordner.mkdir(parents=True, exist_ok=True)
+    (ordner / "lauf.json").write_text(
+        json.dumps({"pid": 4711, "ergebnis": "läuft", "skript": f"{name}.py"}),
+        encoding="utf-8",
+    )
+    zustand = ordner / "zustand.jsonl"
+    zustand.write_text("{}\n", encoding="utf-8")
+    if not aktiv:
+        alt = time.time() - 600
+        os.utime(zustand, (alt, alt))
+    return ordner
+
+
+def test_ein_zweiter_lauf_entfuehrt_den_notaus_nicht(qapp, tmp_path):
+    """Der erste Lauf laeuft noch -- die Live-Ansicht muss bei ihm bleiben."""
+    from spotlab.gui.app import MainWindow
+
+    erst = _zweit_lauf(tmp_path, "lauf_a")
+    zweit = _zweit_lauf(tmp_path, "lauf_b")
+    fenster = MainWindow()
+    fenster._lauf_begonnen(erst)
+    assert fenster.ansichten["live"]._lauf == erst
+
+    fenster._lauf_begonnen(zweit)
+    assert fenster.ansichten["live"]._lauf == erst, (
+        "Der NOT-AUS zeigt jetzt auf den zweiten Lauf, waehrend der erste faehrt."
+    )
+
+
+def test_der_zweite_lauf_wird_gemeldet(qapp, tmp_path):
+    """Stillschweigend waere schlimmer als gar nicht: der Schueler glaubt sonst,
+    er sehe seinen eben gestarteten Lauf."""
+    from spotlab.gui.app import MainWindow
+
+    fenster = MainWindow()
+    meldungen = []
+    fenster.ansichten["live"].meldung.connect(meldungen.append)
+    fenster._lauf_begonnen(_zweit_lauf(tmp_path, "lauf_a"))
+    fenster._lauf_begonnen(_zweit_lauf(tmp_path, "lauf_b"))
+    assert meldungen, "kein Hinweis auf den zweiten Lauf"
+    assert "zwei" in meldungen[-1].lower() or "läuft bereits" in meldungen[-1].lower()
+
+
+def test_nach_dem_ende_wird_der_wartende_lauf_uebernommen(qapp, tmp_path):
+    from spotlab.gui.app import MainWindow
+
+    erst = _zweit_lauf(tmp_path, "lauf_a")
+    zweit = _zweit_lauf(tmp_path, "lauf_b")
+    fenster = MainWindow()
+    fenster._lauf_begonnen(erst)
+    fenster._lauf_begonnen(zweit)
+    fenster._lauf_beendet(erst)
+    assert fenster.ansichten["live"]._lauf == zweit
+
+
+def test_ein_toter_erster_lauf_gibt_den_platz_frei(qapp, tmp_path):
+    """Gegenprobe: sonst blockierte eine Leiche die Ansicht fuer immer."""
+    from spotlab.gui.app import MainWindow
+
+    erst = _zweit_lauf(tmp_path, "lauf_a", aktiv=False)
+    zweit = _zweit_lauf(tmp_path, "lauf_b")
+    fenster = MainWindow()
+    fenster._lauf_begonnen(erst)
+    fenster._lauf_begonnen(zweit)
+    assert fenster.ansichten["live"]._lauf == zweit
+
+
+def test_derselbe_lauf_nochmal_ist_kein_zweiter(qapp, tmp_path):
+    from spotlab.gui.app import MainWindow
+
+    erst = _zweit_lauf(tmp_path, "lauf_a")
+    fenster = MainWindow()
+    meldungen = []
+    fenster.ansichten["live"].meldung.connect(meldungen.append)
+    fenster._lauf_begonnen(erst)
+    fenster._lauf_begonnen(erst)
+    assert fenster.ansichten["live"]._lauf == erst
+    assert not meldungen
+
+
+# ============================== S1.8b Kartenaufnahme ueberlebt das Schliessen
+
+
+def test_schliessen_beendet_auch_den_kartenaufnehmer(qapp, tmp_path):
+    """Der RecordingWorker ist ein QThread mit einer OFFENEN Robotersitzung.
+    closeEvent stoppte nur den RunWatcher; der Thread blieb als Kind eines
+    zerstoerten Widgets zurueck -- dasselbe Absturzmuster wie beim JediWorker,
+    hier aber mit einer laufenden Verbindung zum Spot."""
+    from PySide6.QtGui import QCloseEvent
+
+    from spotlab.gui.app import MainWindow
+
+    fenster = MainWindow()
+    beendet = []
+
+    class FakeWorker:
+        def schliesse(self):
+            beendet.append("schliesse")
+
+        def wait(self, ms):
+            return True
+
+    fenster.ansichten["karten"]._worker = FakeWorker()
+    fenster.closeEvent(QCloseEvent())
+    assert beendet == ["schliesse"], "die Kartenaufnahme lief nach dem Schliessen weiter"

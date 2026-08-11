@@ -34,6 +34,7 @@ from spotlab.gui.views.runs import RunsView
 from spotlab.gui.watcher import RunWatcher
 from spotlab.gui.workers import DoctorWorker, OutputReader
 from spotlab.record.read import read_run
+from spotlab.workshop.control import ist_aktiv
 
 
 def system_ist_dunkel(app=None):
@@ -62,6 +63,11 @@ class MainWindow(QWidget):
         # Woher der letzte Start kam. Steuert nur eines: ob _lauf_begonnen die
         # Ansicht wechselt.
         self._start_aus = None
+        # Genau EIN Lauf ist der, auf den Stopp und NOT-AUS zeigen. Weitere
+        # warten, statt ihn zu verdrängen — sonst zeigt der Knopf auf einen
+        # anderen Prozess als den, der gerade den Roboter hält.
+        self._aktiver_lauf = None
+        self._wartende_laeufe = []
 
         self.kopf = Header()
         self.leiste = Sidebar()
@@ -240,6 +246,25 @@ class MainWindow(QWidget):
         self.leiste.waehle("code")
 
     def _lauf_begonnen(self, verzeichnis):
+        # NIE bedingungslos umhängen: die Live-Ansicht ist das Ziel von Stopp
+        # und NOT-AUS. Zeigt sie auf einen anderen Lauf als den, der gerade den
+        # Roboter hält, trifft der Knopf den falschen Prozess. Zwei Läufe
+        # gleichzeitig sind kein konstruierter Fall — aus „Projekte" starten,
+        # dann aus „Code", oder zusätzlich F5 aus VS Code (A11 sieht das vor).
+        if Path(verzeichnis) == self._aktiver_lauf:
+            return
+        if self._aktiver_lauf is not None and ist_aktiv(self._aktiver_lauf):
+            self._wartende_laeufe.append(Path(verzeichnis))
+            self.ansichten["live"].meldung.emit(
+                f"Es läuft bereits ein Programm ({self._aktiver_lauf.name}). "
+                f"Die Anzeige und der NOT-AUS bleiben bei diesem — der zweite "
+                f"Lauf wird übernommen, sobald der erste fertig ist."
+            )
+            return
+        self._uebernimm_lauf(verzeichnis)
+
+    def _uebernimm_lauf(self, verzeichnis):
+        self._aktiver_lauf = Path(verzeichnis)
         # Skriptnamen aus lauf.json holen: „hallo_spot.py" sagt mehr als eine
         # Zeitstempel-Kennung.
         skript = read_run(verzeichnis).skript
@@ -259,16 +284,37 @@ class MainWindow(QWidget):
         self.ansichten["live"].zeige_zustand(satz)
 
     def _lauf_beendet(self, verzeichnis):
+        if self._aktiver_lauf is not None and Path(verzeichnis) != self._aktiver_lauf:
+            # Ein Lauf, den wir gar nicht anzeigen, ist fertig geworden.
+            self._wartende_laeufe = [
+                p for p in self._wartende_laeufe if p != Path(verzeichnis)
+            ]
+            return
         self.ansichten["live"].lauf_beendet()
         self.ansichten["code"].lauf_beendet()
         self.ansichten["anbindungen"].aktualisiere()
         self.ansichten["laeufe"].aktualisiere()
         self.kopf.zeige_getrennt()
         self._start_aus = None
+        self._aktiver_lauf = None
+        # Jetzt darf ein wartender Lauf nachrücken — aber nur, wenn er noch lebt.
+        while self._wartende_laeufe:
+            naechster = self._wartende_laeufe.pop(0)
+            if ist_aktiv(naechster):
+                self._uebernimm_lauf(naechster)
+                return
 
     def closeEvent(self, ereignis):
         if self._watcher is not None:
             self._watcher.stop()
+        # Die Kartenaufnahme ist ein QThread mit einer OFFENEN Robotersitzung.
+        # Ohne diesen Aufruf bliebe er als Kind eines zerstörten Widgets zurück —
+        # dasselbe Absturzmuster wie beim JediWorker, hier aber mit einer
+        # laufenden Verbindung zum Spot.
+        try:
+            self.ansichten["karten"]._beende_worker()
+        except Exception as fehler:      # Schliessen darf nie hängen bleiben
+            print(f"Kartenaufnahme liess sich nicht beenden: {fehler}", file=sys.stderr)
         super().closeEvent(ereignis)
 
 

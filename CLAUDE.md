@@ -54,6 +54,16 @@ versionsgepinntes Extra `spotlab[sim]`.
   **Text, keine Schnittstelle** — gelesen mit `ast`, nicht importiert. Ein Import wäre der
   bequeme Weg zur Introspektion und würde den Editor an das SDK ketten.
   `tests/test_editor_verbs.py` hält das in einem Unterprozess fest.
+- **Genau ein Lauf ist der, auf den Stopp und NOT-AUS zeigen.** `_lauf_begonnen` hängt die
+  Live-Ansicht **nie bedingungslos** um: läuft der bisherige noch, wartet der neue in
+  `_wartende_laeufe` und rückt erst nach. Zwei gleichzeitige Läufe sind kein konstruierter
+  Fall — aus „Projekte" starten, dann aus „Code", oder zusätzlich F5 aus VS Code (A11).
+  Zeigt die Ansicht auf den falschen Prozess, trifft der NOT-AUS den falschen, während der
+  andere den Roboter hält.
+- **`closeEvent` beendet auch die Kartenaufnahme.** `MapsView._worker` ist ein `QThread`
+  mit einer OFFENEN Robotersitzung; ohne den Aufruf bliebe er als Kind eines zerstörten
+  Widgets zurück. Dasselbe Absturzmuster wie beim `JediWorker`, nur mit einer laufenden
+  Verbindung zum Spot.
 - **Es gibt genau einen `OutputReader` pro Lauf.** Die Ausgabe-Pipe hat genau einen Leser;
   ein zweiter teilte sich die Zeilen zufällig mit dem ersten. Neue Ansichten hängen sich als
   weitere Senke an `app.py::_starte_leser`, nie mit einem eigenen Leser an den Prozess.
