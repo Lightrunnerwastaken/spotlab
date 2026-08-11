@@ -40,8 +40,12 @@ def test_abgestuerzter_lauf_bleibt_lesbar(tmp_path):
         datei.write('{"t": 1.0, "art": "komm')
 
     zusammenfassung = read_run(rec.dir)
-    assert zusammenfassung.ergebnis == "läuft"
+    # Der Kern dieses Tests: die halbe Zeile macht die Datei nicht unlesbar.
     assert zusammenfassung.ereignisse_n == 1
+    # Und er heisst nicht umsonst „abgestuerzt": lauf.json steht zwar auf
+    # „läuft", aber es laeuft nichts mehr. Frueher zeigte jede Ansicht so einen
+    # Lauf dauerhaft als aktiv an, mit 0.0 s Dauer (S2.9).
+    assert zusammenfassung.ergebnis == "abgebrochen"
 
 
 def test_laeufe_kommen_neueste_zuerst(tmp_path):
@@ -60,3 +64,70 @@ def test_laeufe_kommen_neueste_zuerst(tmp_path):
 
 def test_leeres_runs_verzeichnis(tmp_path):
     assert list_runs(tmp_path / "gibtsnicht") == []
+
+
+# ===================================== S2.9 / S2.15 abgestuerzte Laeufe, Version
+#
+# `ergebnis` bleibt auf "läuft", wenn finish() nie lief -- nach einem harten
+# Abbruch, einem Stromausfall, einem Absturz. Die GUI zeigt solche Laeufe
+# dauerhaft als laufend mit "0.0 s", obwohl sie es nicht sind. Der MCP-Pfad
+# loest das bereits ueber ist_aktiv(); read_run() ist die Stelle, an der es
+# EINMAL stehen muss, damit GUI und CLI es gemeinsam bekommen.
+
+
+def _lauf(tmp_path, ergebnis="läuft", alter_s=None):
+    import json
+    import os
+    import time
+
+    ordner = tmp_path / "lauf"
+    ordner.mkdir(exist_ok=True)
+    (ordner / "lauf.json").write_text(
+        json.dumps({"id": "x", "ergebnis": ergebnis, "dauer_s": 0.0,
+                    "spotlab_version": "0.1.0"}),
+        encoding="utf-8",
+    )
+    zustand = ordner / "zustand.jsonl"
+    zustand.write_text("{}\n", encoding="utf-8")
+    if alter_s:
+        alt = time.time() - alter_s
+        os.utime(zustand, (alt, alt))
+    return ordner
+
+
+def test_ein_abgestuerzter_lauf_gilt_nicht_mehr_als_laufend(tmp_path):
+    from spotlab.record.read import read_run
+
+    zusammenfassung = read_run(_lauf(tmp_path, "läuft", alter_s=600))
+    assert zusammenfassung.ergebnis == "abgebrochen"
+
+
+def test_ein_wirklich_laufender_lauf_bleibt_laufend(tmp_path):
+    from spotlab.record.read import read_run
+
+    assert read_run(_lauf(tmp_path, "läuft")).ergebnis == "läuft"
+
+
+def test_ein_abgeschlossener_lauf_wird_nicht_umgedeutet(tmp_path):
+    from spotlab.record.read import read_run
+
+    assert read_run(_lauf(tmp_path, "ok", alter_s=600)).ergebnis == "ok"
+
+
+def test_die_version_steht_in_der_zusammenfassung(tmp_path):
+    """S2.15: steht in jeder lauf.json, war aber ueber keinen Leseweg sichtbar --
+    fuer Versionsvergleiche im Unterricht und in der Maturaarbeit noetig."""
+    from spotlab.record.read import read_run
+
+    assert read_run(_lauf(tmp_path)).spotlab_version == "0.1.0"
+
+
+def test_eine_alte_aufzeichnung_ohne_version_bleibt_lesbar(tmp_path):
+    import json
+
+    from spotlab.record.read import read_run
+
+    ordner = tmp_path / "alt"
+    ordner.mkdir()
+    (ordner / "lauf.json").write_text(json.dumps({"id": "y"}), encoding="utf-8")
+    assert read_run(ordner).spotlab_version is None

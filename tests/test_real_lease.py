@@ -75,3 +75,51 @@ def test_verlust_wird_gemerkt_und_geworfen():
 
 def test_stop_ohne_start_wirft_nicht():
     LeaseGuard(FakeLeaseClient()).stop()
+
+
+# ============================ S2.5 ein WLAN-Aussetzer ist kein Lease-Verlust
+#
+# `on_failure_callback` feuert bei JEDEM fehlgeschlagenen Keepalive, auch bei
+# einem einzelnen Netzhaenger. Der Lauf brach daraufhin ab und trug in lauf.json
+# `lease_verloren` -- eine Behauptung ueber eine Uebernahme, die nie stattfand.
+# Die Projektregel verlangt, keine ungepruefte Ursache zu behaupten.
+
+
+def test_ein_netzhaenger_gilt_nicht_als_verlust():
+    from bosdyn.client.exceptions import RetryableUnavailableError
+
+    from spotlab.backends.real.lease import LeaseGuard
+
+    wache = LeaseGuard(FakeLeaseClient())
+    wache._melde_verlust(RetryableUnavailableError(OSError("kurz weg")))
+    assert wache.lost is False
+
+
+def test_eine_echte_uebernahme_gilt_als_verlust():
+    from bosdyn.client.lease import DisplacedLeaseError
+
+    from spotlab.backends.real.lease import LeaseGuard
+
+    wache = LeaseGuard(FakeLeaseClient())
+    wache._melde_verlust(DisplacedLeaseError(response=None))
+    assert wache.lost is True
+
+
+def test_ein_lease_use_error_gilt_als_verlust():
+    from bosdyn.client.exceptions import LeaseUseError
+
+    from spotlab.backends.real.lease import LeaseGuard
+
+    wache = LeaseGuard(FakeLeaseClient())
+    wache._melde_verlust(LeaseUseError(None, None))
+    assert wache.lost is True
+
+
+def test_ohne_ausnahme_wird_im_zweifel_der_verlust_angenommen():
+    """Kennen wir die Ursache nicht, ist Vorsicht richtig: lieber abbrechen als
+    weiterfahren, waehrend vielleicht jemand anders steuert."""
+    from spotlab.backends.real.lease import LeaseGuard
+
+    wache = LeaseGuard(FakeLeaseClient())
+    wache._melde_verlust(None)
+    assert wache.lost is True

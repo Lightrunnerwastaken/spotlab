@@ -121,6 +121,12 @@ def diagnose(cfg=None, robot_bauen=None, passwort_lesen=None):
 
     try:
         robot = robot_bauen(cfg)
+        # `create_robot()` macht KEINEN RPC — es baut nur ein Objekt. Ohne den
+        # folgenden Aufruf stand „Netz: OK" grün über einem Spot, der gar nicht
+        # antwortet, und der Fehler fiel erst eine Stufe später bei „Anmeldung"
+        # auf. `get_id()` braucht keine Anmeldung und ist damit die billigste
+        # Frage, die wirklich übers Netz geht.
+        robot.get_id()
     except Exception as fehler:
         return pruefungen + [_fehler("Netz", fehler, cfg.ip)]
     pruefungen.append(Check("Netz", True, f"{cfg.ip} antwortet"))

@@ -99,3 +99,21 @@ def test_status_fuellt_die_anzeige(qapp, tmp_path):
     ansicht.setze_arbeitsordner(tmp_path)
     ansicht._zeige_status(RecordingStatus(True, 12, 11, "Aufnahme läuft"))
     assert "12" in ansicht.aufnahme_status.text()
+
+
+def test_die_kartenansicht_reicht_die_palette_durch(qapp):
+    """S2.13: auf der Windows-Vorgabe `hell` sind die Wegpunktnamen sonst
+    praktisch unlesbar -- Kontrast rund 1.3:1 auf der Mehrheit der Schullaptops."""
+    from spotlab.gui.theme import HELL
+    from spotlab.gui.views.maps import MapsView
+
+    ansicht = MapsView(HELL)
+    assert ansicht.plot.palette_ is HELL
+
+
+def test_das_fenster_gibt_beiden_diagrammen_seine_palette(qapp):
+    from spotlab.gui.app import MainWindow
+
+    fenster = MainWindow()
+    assert fenster.ansichten["karten"].plot.palette_ is fenster._palette
+    assert fenster.ansichten["laeufe"].kurve.palette_ is fenster._palette

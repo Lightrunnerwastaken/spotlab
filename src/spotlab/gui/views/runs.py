@@ -25,10 +25,35 @@ from PySide6.QtWidgets import (
 )
 
 from spotlab.gui.theme import DUNKEL
-from spotlab.gui.views.projects import projekte_in
-from spotlab.record.read import list_runs, read_jsonl
+from spotlab.laufsuche import lauf_verzeichnisse
+from spotlab.record.read import read_jsonl, read_run
 
 SPALTEN = ("Lauf", "Ergebnis", "Dauer", "Backend", "Skript")
+
+
+# Was ein Ereignis interessant macht, je nach Art. Vorher stand hier nur
+# `name` oder `status` — bei `ende`, `bild` und `lease_übernommen` blieb die
+# Zeile deshalb leer, ausgerechnet dort, wo Erfolg oder Fehlertext steht.
+BESCHREIBER = {
+    "ende": ("ergebnis", "fehler"),
+    "bild": ("pfad",),
+    "lease_übernommen": ("von",),
+    "rückmeldung": ("name", "status"),
+    "messfenster": ("name", "phase"),
+    "fehler": ("text",),
+}
+STANDARD_FELDER = ("name", "status", "backend", "ip")
+
+
+def beschreibe(satz):
+    """Der Klartext hinter einem Ereignis — was auch immer es trägt."""
+    daten = satz.get("daten") or {}
+    felder = BESCHREIBER.get(satz.get("art"), STANDARD_FELDER)
+    teile = [str(daten[f]) for f in felder if daten.get(f) not in (None, "")]
+    if teile:
+        return " · ".join(teile)
+    # Unbekannte Art: lieber alles zeigen als eine leere Zeile.
+    return " · ".join(f"{k}={v}" for k, v in daten.items() if v not in (None, ""))
 
 
 def tempo_reihen(run_dir):
@@ -110,8 +135,13 @@ class SpeedPlot(QWidget):
 
 
 class RunsView(QWidget):
-    def __init__(self, parent=None):
+    def __init__(self, palette=DUNKEL, parent=None):
         super().__init__(parent)
+        # Palette durchreichen wie bei EditorView und AnbindungenView: das
+        # Diagramm malt sonst dunkle Beschriftungen auf hellen Grund, und auf
+        # der Windows-Vorgabe „hell" ist das praktisch unlesbar — die Mehrheit
+        # der Schullaptops.
+        self._palette = palette
         self._ordner = None
         self._laeufe = []
 
@@ -124,6 +154,7 @@ class RunsView(QWidget):
 
         self.ereignisliste = QListWidget()
         self.kurve = SpeedPlot()
+        self.kurve.palette_ = self._palette
 
         detail = QHBoxLayout()
         detail.addWidget(self.ereignisliste, 1)
@@ -140,10 +171,14 @@ class RunsView(QWidget):
         self.aktualisiere()
 
     def aktualisiere(self):
+        # ueber laufsuche, nicht ueber projekte_in: Laeufe angebundener
+        # Fremdprojekte liegen unter <skriptordner>/runs, also AUSSERHALB des
+        # Arbeitsordners. Wo Laeufe liegen, entscheidet genau eine Stelle --
+        # zwei Suchen mit verschiedenen Ergebnissen waren der Fehler aus
+        # Stufe 3, und er ist hier unbemerkt wiedergekommen.
         self._laeufe = []
         if self._ordner is not None:
-            for projekt in projekte_in(self._ordner):
-                self._laeufe.extend(list_runs(projekt / "runs"))
+            self._laeufe = [read_run(p) for p in lauf_verzeichnisse(self._ordner)]
         self._laeufe.sort(key=lambda lauf: lauf.id, reverse=True)
 
         self.tabelle.setRowCount(len(self._laeufe))
@@ -160,9 +195,8 @@ class RunsView(QWidget):
         lauf = self._laeufe[min(zeilen)]
         self.ereignisliste.clear()
         for satz in read_jsonl(lauf.dir / "ereignisse.jsonl"):
-            daten = satz.get("daten") or {}
-            beschreibung = daten.get("name") or daten.get("status") or ""
             self.ereignisliste.addItem(
-                f"{satz.get('t', 0.0):7.2f} s  {satz.get('art', ''):<14} {beschreibung}"
+                f"{satz.get('t', 0.0):7.2f} s  {satz.get('art', ''):<14} "
+                f"{beschreibe(satz)}"
             )
         self.kurve.setze_daten(*tempo_reihen(lauf.dir))

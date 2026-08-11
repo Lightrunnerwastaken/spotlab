@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from spotlab.gui.mapplot import MapPlot
+from spotlab.gui.theme import DUNKEL
 from spotlab.maps.geometry import grundriss
 from spotlab.maps.store import karten, karten_wurzel, lade_graph, loesche
 
@@ -35,8 +36,12 @@ class MapsView(QWidget):
     aktive_karte_gewaehlt = Signal(str)
     meldung = Signal(str)
 
-    def __init__(self, parent=None):
+    def __init__(self, palette=DUNKEL, parent=None):
         super().__init__(parent)
+        # Palette durchreichen wie bei den anderen Ansichten: der Grundriss
+        # malte seine Beschriftungen sonst immer in Dunkelmodus-Farben, auch
+        # auf hellem Grund.
+        self._palette = palette
         self._ordner = None
         self._config = None
         self._worker = None
@@ -66,6 +71,7 @@ class MapsView(QWidget):
         self.loeschen_knopf.clicked.connect(self._loesche)
 
         self.plot = MapPlot()
+        self.plot.palette_ = self._palette
         self.plot_hinweis = QLabel("")
         self.plot_hinweis.setObjectName("Gedaempft")
         self.plot_hinweis.setWordWrap(True)

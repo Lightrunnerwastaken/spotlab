@@ -137,3 +137,30 @@ def test_anbindung_ist_frei_von_sdk_und_qt():
         str(p) for p in wurzel.rglob("*.py") if muster.search(p.read_text(encoding="utf-8"))
     ]
     assert verstoesse == []
+
+
+def test_einfache_tabelle_statt_tabellenreihe_wird_erklaert(tmp_path):
+    """S2.11: `[skript]` statt `[[skript]]` ist der haeufigste TOML-Anfaengerfehler.
+
+    Er warf eine rohe AttributeError statt ManifestFehler -- und brach damit die
+    Zusage des MCP-Werkzeugs, dass Manifest-Fehler als Klartext zurueckkommen.
+    """
+    pfad = tmp_path / DATEINAME
+    pfad.write_text(
+        '[projekt]\nname = "x"\n\n[skript]\nname = "A"\ndatei = "a.py"\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(ManifestFehler) as fehler:
+        lies(tmp_path)
+    text = str(fehler.value)
+    assert "[[skript]]" in text, text
+
+
+def test_skript_als_liste_von_texten_wird_erklaert(tmp_path):
+    pfad = tmp_path / DATEINAME
+    # Vor [projekt], sonst gehoert der Schluessel laut TOML zu jener Tabelle.
+    pfad.write_text(
+        'skript = ["a.py"]\n\n[projekt]\nname = "x"\n', encoding="utf-8"
+    )
+    with pytest.raises(ManifestFehler):
+        lies(tmp_path)

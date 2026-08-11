@@ -49,6 +49,14 @@ def verbinde(cfg, robot_bauen=None, passwort_lesen=None):
     try:
         robot.time_sync.wait_for_sync()
     except Exception as fehler:
+        # Erst fragen, WORAN es lag. `wait_for_sync()` scheitert auch, wenn das
+        # WLAN weg ist — und die Meldung nannte trotzdem immer die Uhr. Das
+        # schickte den Schüler an die Windows-Zeiteinstellungen, während in
+        # Wahrheit das Netz fehlte. Projektregel: keine Ursache behaupten, die
+        # nicht geprüft ist.
+        uebersetzt = translate(fehler, ip=cfg.ip)
+        if uebersetzt is not None:
+            raise uebersetzt from fehler
         raise TimeSyncFailed(
             "Die Uhr deines Laptops weicht zu stark von der des Roboters ab; "
             "die Zeitsynchronisierung ist fehlgeschlagen. Windows-Uhrzeit "

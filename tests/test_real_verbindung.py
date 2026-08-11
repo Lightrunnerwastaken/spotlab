@@ -59,3 +59,60 @@ def test_zeitsync_fehler_wird_uebersetzt():
             passwort_lesen=lambda u: "x",
         )
     assert "Uhr" in str(info.value)
+
+
+# ==================== S2.7 ein Netzfehler ist keine Uhrenabweichung
+#
+# `wait_for_sync()` scheitert auch, wenn das WLAN weg ist. Die Meldung nannte
+# immer die Uhr -- und schickte den Schueler damit auf die falsche Faehrte, an
+# den Windows-Zeitservern zu drehen, waehrend in Wahrheit das Netz fehlte.
+
+
+def _cfg():
+    from spotlab.config import Config
+
+    return Config(ip="1.2.3.4", username="u")
+
+
+def _robot_mit_syncfehler(fehler):
+    class FakeSync:
+        def wait_for_sync(self):
+            raise fehler
+
+    class FakeRobot:
+        def __init__(self):
+            self.time_sync = FakeSync()
+
+        def authenticate(self, user, pw):
+            pass
+
+    return FakeRobot()
+
+
+def test_ein_netzfehler_beim_zeitsync_meldet_das_netz():
+    from bosdyn.client.exceptions import RetryableUnavailableError
+
+    from spotlab.backends.real.verbindung import verbinde
+    from spotlab.errors import NotReachable
+
+    with pytest.raises(NotReachable):
+        verbinde(
+            _cfg(),
+            robot_bauen=lambda cfg: _robot_mit_syncfehler(
+                RetryableUnavailableError(OSError("weg"))
+            ),
+            passwort_lesen=lambda u: "x",
+        )
+
+
+def test_eine_echte_uhrenabweichung_meldet_die_uhr():
+    from spotlab.backends.real.verbindung import verbinde
+    from spotlab.errors import TimeSyncFailed
+
+    with pytest.raises(TimeSyncFailed) as fehler:
+        verbinde(
+            _cfg(),
+            robot_bauen=lambda cfg: _robot_mit_syncfehler(RuntimeError("zu weit weg")),
+            passwort_lesen=lambda u: "x",
+        )
+    assert "Uhr" in str(fehler.value)

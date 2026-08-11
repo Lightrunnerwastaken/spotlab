@@ -80,8 +80,8 @@ class MainWindow(QWidget):
             ),
             "code": EditorView(self._palette),
             "live": LiveView(),
-            "laeufe": RunsView(),
-            "karten": MapsView(),
+            "laeufe": RunsView(self._palette),
+            "karten": MapsView(self._palette),
             "anbindungen": AnbindungenView(self._palette),
             "spot": CheckupView(),
         }

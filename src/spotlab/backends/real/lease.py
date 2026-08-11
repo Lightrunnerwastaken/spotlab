@@ -8,7 +8,13 @@ mit take — Übernahme ist eine bewusste Handlung.
 import getpass
 import socket
 
-from bosdyn.client.lease import LeaseKeepAlive
+from bosdyn.client.exceptions import (
+    LeaseUseError,
+    ProxyConnectionError,
+    RetryableUnavailableError,
+    TimedOutError,
+)
+from bosdyn.client.lease import DisplacedLeaseError, LeaseKeepAlive
 
 from spotlab.errors import LeaseLost, translate
 
@@ -24,6 +30,19 @@ def holder_of(lease_client, resource="body"):
         besitzer = eintrag.lease_owner
         return besitzer.client_name or besitzer.user_name or None
     return None
+
+
+# Ein Keepalive kann aus zwei sehr verschiedenen Gruenden fehlschlagen: das Netz
+# hat gehustet, oder jemand hat uebernommen. Nur das Zweite ist ein Lease-Verlust.
+VORUEBERGEHEND = (RetryableUnavailableError, TimedOutError, ProxyConnectionError)
+
+
+def _ist_voruebergehend(ursache):
+    if ursache is None:
+        return False
+    if isinstance(ursache, (DisplacedLeaseError, LeaseUseError)):
+        return False
+    return isinstance(ursache, VORUEBERGEHEND)
 
 
 class LeaseGuard:
@@ -56,10 +75,23 @@ class LeaseGuard:
             lease_client,
             must_acquire=False,
             return_at_exit=False,
-            on_failure_callback=lambda _msg: bei_verlust(),
+            on_failure_callback=bei_verlust,
         )
 
-    def _melde_verlust(self):
+    def _melde_verlust(self, ursache=None):
+        """Nur ein ECHTER Verlust bricht den Lauf ab.
+
+        `on_failure_callback` feuert bei jedem fehlgeschlagenen Keepalive, auch
+        bei einem einzelnen WLAN-Hänger in der Turnhalle. Der Lauf brach dann ab
+        und trug in `lauf.json` das Ergebnis `lease_verloren` — eine Behauptung
+        über eine Übernahme, die nie stattgefunden hat. Projektregel: keine
+        Ursache behaupten, die nicht geprüft ist.
+
+        Ohne erkennbare Ursache bleibt es beim Abbruch: weiterzufahren, während
+        vielleicht jemand anders steuert, wäre die gefährlichere Annahme.
+        """
+        if _ist_voruebergehend(ursache):
+            return
         self.lost = True
         if self._on_lost is not None:
             self._on_lost()

@@ -53,9 +53,24 @@ def lies(projektpfad):
     if not name:
         raise ManifestFehler(f"In {datei} fehlt unter [projekt] das Feld `name`.")
 
+    # `[skript]` statt `[[skript]]` ist der häufigste TOML-Anfängerfehler: das
+    # erste ergibt EINE Tabelle, das zweite eine Reihe davon. Ohne diese Prüfung
+    # lief ein dict in die Schleife, `eintrag` wurde zum Schlüsselnamen (ein
+    # Text), und `eintrag.get(...)` warf eine rohe AttributeError — die Zusage
+    # des MCP-Werkzeugs, Manifestfehler als Klartext zu liefern, war damit
+    # gebrochen.
+    roh_skripte = roh.get("skript") or []
+    if not isinstance(roh_skripte, list) or not all(
+        isinstance(e, dict) for e in roh_skripte
+    ):
+        raise ManifestFehler(
+            f"In {datei} muss jedes Skript als eigener Abschnitt `[[skript]]` "
+            "stehen — mit ZWEI eckigen Klammern. Ein einfaches `[skript]` "
+            "beschreibt nur ein einzelnes Skript und passt hier nicht."
+        )
     skripte = tuple(
         _skript(eintrag, nummer, projekt, datei)
-        for nummer, eintrag in enumerate(roh.get("skript") or [], start=1)
+        for nummer, eintrag in enumerate(roh_skripte, start=1)
     )
     return Manifest(
         name=name,

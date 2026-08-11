@@ -6,6 +6,10 @@ class GesunderRobot:
     def __init__(self):
         self.time_sync = self
 
+    def get_id(self):
+        """Die billigste Frage, die wirklich uebers Netz geht (S2.10)."""
+        return type("Id", (), {"nickname": "Spot"})()
+
     def authenticate(self, user, pw):
         pass
 
@@ -222,3 +226,32 @@ def test_lebender_anderer_lauf_wird_anders_benannt():
 
 def test_die_stufe_steht_direkt_hinter_dem_not_aus():
     assert STUFEN.index("Not-Aus-Endpunkt") == STUFEN.index("Not-Aus") + 1
+
+
+def test_die_netzstufe_prueft_wirklich_das_netz():
+    """S2.10: `create_robot()` macht keinen RPC. Ein unerreichbarer Spot fiel
+    erst bei `Anmeldung` auf, waehrend `Netz: OK` gruen darueber stand."""
+
+    class StummerRobot(GesunderRobot):
+        def get_id(self):
+            from bosdyn.client.exceptions import UnableToConnectToRobotError
+
+            raise UnableToConnectToRobotError("keine Antwort")
+
+    pruefungen = diagnose(
+        _cfg(), robot_bauen=lambda cfg: StummerRobot(), passwort_lesen=lambda u: "x"
+    )
+    netz = [p for p in pruefungen if p.name == "Netz"]
+    assert netz and netz[0].ok is False, [(p.name, p.ok) for p in pruefungen]
+    assert [p.name for p in pruefungen] == ["Konfiguration", "Netz"]
+
+
+def test_ein_erreichbarer_spot_bleibt_gruen():
+    class AntwortenderRobot(GesunderRobot):
+        def get_id(self):
+            return type("Id", (), {"nickname": "Spot"})()
+
+    pruefungen = diagnose(
+        _cfg(), robot_bauen=lambda cfg: AntwortenderRobot(), passwort_lesen=lambda u: "x"
+    )
+    assert all(p.ok for p in pruefungen)
