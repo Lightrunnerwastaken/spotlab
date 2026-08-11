@@ -1,5 +1,7 @@
 import shutil
 
+import pytest
+
 from spotlab.anbindung.manifest import DATEINAME
 from spotlab.anbindung.speicher import binde_an
 from spotlab.laufsuche import finde_lauf, lauf_verzeichnisse
@@ -83,6 +85,11 @@ def test_laufsuche_ist_qt_frei():
 
 
 def test_watcher_exportiert_dieselbe_funktion():
+    # Der einzige Test in dieser Datei, der Qt braucht -- und der einzige im
+    # ganzen Projekt, der ohne das Extra [gui] mit ModuleNotFoundError statt
+    # mit einem Ueberspringen endete. Aufgefallen ist das erst bei einer
+    # Installation, die NUR [dev] hatte; lokal ist PySide6 immer da.
+    pytest.importorskip("PySide6.QtCore")
     from spotlab.gui.watcher import lauf_verzeichnisse as aus_watcher
 
     assert aus_watcher is lauf_verzeichnisse

@@ -9,9 +9,9 @@ schlaegt darin nur nach. Ein Schuelerskript hat 50-300 Zeilen; das kostet nichts
 
 import bisect
 
-from PySide6.QtGui import QColor, QSyntaxHighlighter, QTextCharFormat
 from pygments.lexers import PythonLexer
 from pygments.token import Comment, Keyword, Name, Number, String
+from PySide6.QtGui import QColor, QSyntaxHighlighter, QTextCharFormat
 
 
 def _formate(palette):

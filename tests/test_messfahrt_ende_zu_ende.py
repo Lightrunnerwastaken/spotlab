@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 from spotlab.messung.fenster import fenster, schreibe
+from tests_zeitgrenzen import TEST_TIMEOUT_S
 
 QUELLE = str(Path(__file__).resolve().parents[1] / "src")
 
@@ -33,6 +34,7 @@ def _messfahrt(tmp_path):
         capture_output=True, text=True, encoding="utf-8", errors="replace",
         cwd=str(projekt),
         env={**os.environ, "PYTHONPATH": QUELLE, "PYTHONUTF8": "1"},
+        timeout=TEST_TIMEOUT_S,
     )
     assert ergebnis.returncode == 0, ergebnis.stderr
     laeufe = list((projekt / "runs").iterdir())
@@ -93,4 +95,59 @@ def test_die_messfahrt_meldet_keine_falschen_luecken(tmp_path, monkeypatch):
     raten = [a["hz_soll"] for a in antwort["abschnitte"]]
     assert raten[:4] == [10.0, 50.0, 10.0, 50.0], raten
     assert all(r in (10.0, 50.0) for r in raten)
-    assert antwort["luecken"] == [], antwort["luecken"]
+
+    # Geprueft wird die ART der Luecke, nicht ihre Abwesenheit.
+    #
+    # `luecken == []` stand hier und war auf diesem Rechner meistens wahr. In
+    # einer frischen Umgebung unter Last kamen vier Luecken von je 46 bis 47 ms
+    # heraus — kein Fehler im Detektor, sondern Windows: die Zeitgeberaufloesung
+    # ist rund 15.6 ms, ein 20-ms-Takt (50 Hz) rutscht damit regelmaessig auf
+    # 31 ms, gelegentlich auf 47. In der CI, wo der Rechner geteilt ist, waere
+    # der Test rot gewesen, ohne dass irgendetwas kaputt war — und ein Test, den
+    # man wegzuklicken lernt, ist schlimmer als keiner.
+    #
+    # Der EIGENTLICHE Fehler, gegen den dieser Test steht, sieht anders aus:
+    # rechnet der Detektor am Ratenwechsel mit der falschen Erwartung, meldet er
+    # den ganzen 10-Hz-Takt als Luecke — also 100 ms, nicht 47. Deshalb die
+    # Grenze bei einem 10-Hz-Takt.
+    laengen = [luecke["laenge_s"] for luecke in antwort["luecken"]]
+    assert all(laenge < 0.1 for laenge in laengen), (
+        f"Luecke in Groesse eines ganzen 10-Hz-Takts: {antwort['luecken']}"
+    )
+    # Und Jitter bleibt Jitter: reisst wirklich der Abtaster ab, sind es viele.
+    assert len(laengen) <= max(3, antwort["abtastungen"] // 10), antwort["luecken"]
+
+
+# ====================== S4.4 die Auswertung muss ohne das SDK importierbar sein
+#
+# spotlab.messung ist die Schicht, die matura-spot Zeile fuer Zeile spiegelt
+# (src/spotsim/schritt.py ist eine woertliche Kopie). Dort ist bosdyn NICHT
+# installiert. Zoege ein Import von spotlab.messung das SDK herein, waere der
+# Zwilling nicht mehr gegen das Original testbar -- und das ist der einzige
+# Grund, weshalb wir behaupten duerfen, dass Sim und Realroboter dieselbe
+# Groesse berechnen.
+#
+# Der Umkehrschluss steht bewusst NICHT hier: dass record/sampler.py ueber
+# api/state.py bosdyn hereinzieht, ist kein Versehen. backends/dryrun.py baut
+# echte RobotState-Protos, damit die Attrappe sich verhaelt wie der Roboter.
+# Genau das hat den end_time_secs-Fehler ueberhaupt erst sichtbar gemacht.
+# Ein Trockenlauf ohne SDK waere billiger und wertloser.
+
+
+def test_die_auswertung_zieht_weder_sdk_noch_qt_herein():
+    code = (
+        "import sys\n"
+        "import spotlab.messung.schritt\n"
+        "import spotlab.messung.fenster\n"
+        "import spotlab.record.read\n"
+        "verboten = [m for m in ('bosdyn', 'PySide6', 'keyring') if m in sys.modules]\n"
+        "print(','.join(verboten))\n"
+    )
+    ergebnis = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        env={**os.environ, "PYTHONPATH": QUELLE, "PYTHONUTF8": "1"},
+        timeout=TEST_TIMEOUT_S,
+    )
+    assert ergebnis.returncode == 0, ergebnis.stderr
+    assert ergebnis.stdout.strip() == "", f"mitgeschleppt: {ergebnis.stdout.strip()}"

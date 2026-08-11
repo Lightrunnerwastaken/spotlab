@@ -6,7 +6,6 @@ from spotlab.api.motion import clamp, move, stop, walk
 from spotlab.backends.dryrun import DryRunBackend
 from spotlab.config import Limits
 
-
 FIXZEIT = 1_800_000_000.0        # feste Wanduhr fuer die Endzeit-Tests
 
 

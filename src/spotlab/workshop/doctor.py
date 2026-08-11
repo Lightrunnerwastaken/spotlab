@@ -98,10 +98,10 @@ def _eigener_endpunkt(estop_client):
 def diagnose(cfg=None, robot_bauen=None, passwort_lesen=None):
     from spotlab.backends.real.estop import LEVEL_NAMEN
     from spotlab.backends.real.lease import holder_of
-    from spotlab.backends.real.session import _standard_robot
+    from spotlab.backends.real.verbindung import standard_robot
     from spotlab.config import load_config, load_password
 
-    robot_bauen = robot_bauen or _standard_robot
+    robot_bauen = robot_bauen or standard_robot
     passwort_lesen = passwort_lesen or load_password
     pruefungen = []
 

@@ -264,6 +264,36 @@ versionsgepinntes Extra `spotlab[sim]`.
   Immer die eine Verbindung nennen: `arbeiter.fertig.disconnect(self._jedi_fertig)`.
 - Was nicht Widget ist, gehört in ein Qt-freies Modul — `record/tail.py`,
   `workshop/control.py`, `gui/theme.py`, `gui/watcher.py::RunScanner`.
+- **Jeder Aufruf, der auf einen Prozess wartet, bekommt eine Zeitgrenze** —
+  `TEST_TIMEOUT_S` aus `tests/tests_zeitgrenzen.py` für `subprocess.run`/`wait`,
+  `zeile_mit_frist()` für `readline()`, das sich nicht unterbrechen lässt. Ohne sie
+  HÄNGT ein Lauf, statt zu scheitern: ein kaputter Zwischenstand hat einen Testlauf
+  drei Stunden laufen lassen. `pytest-timeout` (300 s je Test) ist das Netz darunter,
+  nicht der Ersatz — es sagt nur, DASS etwas hing, nicht wo.
+- **Ein Test, der von der Maschinenlast abhängt, prüft die falsche Sache.** Ein
+  20-ms-Takt rutscht unter Windows regelmässig auf 31 ms (Zeitgeberauflösung 15.6 ms).
+  Nicht die Abwesenheit von Jitter behaupten, sondern die ART des Fehlers prüfen, gegen
+  den der Test steht — siehe `test_die_messfahrt_meldet_keine_falschen_luecken`.
+
+## Linter und CI
+
+- `ruff check .` muss grün sein; die CI führt es **vor** den Tests aus. Es hat einen
+  `NameError` in einem Abbaupfad gefunden, den 844 Tests nicht sahen.
+- Die Regelauswahl in `pyproject.toml` ist bewusst schmal und bleibt es. **Kein `BLE`**
+  — die Abbaupfade fangen absichtlich alles, damit `close()` durchläuft. **Kein
+  `ruff format`** — es würde die Kommentarspalten zerlegen, an denen hier Begründungen
+  hängen.
+- **`# noqa: E402` wird einzeln gesetzt, nie als `per-file-ignores`.** Eine
+  Pauschalfreigabe deckt auch die Datei, in der jemand aus Versehen mitten im Code
+  importiert.
+- CI läuft auf **`windows-latest`**, nicht Linux. Die Fehler dieses Projekts —
+  `CreateProcess` mit nacktem Editornamen, cp1252 statt UTF-8, CRLF beim Speichern —
+  gibt es nur unter Windows. Geprüft werden Python 3.11 **und** 3.13.
+- Ein zweiter Auftrag installiert **nur `[dev]`** und prüft, dass ohne die Extras
+  weder alles scheitert noch alles übersprungen wird. Lokal ist PySide6 immer da; ohne
+  diesen Auftrag sieht niemand, ob `importorskip` wirklich greift.
+- **Jede Abhängigkeit hat eine Obergrenze** (`pyproject.toml`), und die Fassungsnummer
+  steht an genau EINER Stelle: `src/spotlab/__init__.py`.
 
 ## Umsetzungsstand
 

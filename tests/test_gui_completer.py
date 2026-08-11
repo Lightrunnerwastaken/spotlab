@@ -2,17 +2,17 @@ import pytest
 
 pytest.importorskip("PySide6.QtWidgets")
 
-from PySide6.QtGui import QTextCursor                                 # noqa: E402
+from PySide6.QtGui import QTextCursor  # noqa: E402
 
-from spotlab.editor.verbs import Vorschlag                            # noqa: E402
-from spotlab.gui.editor import completer as modul                     # noqa: E402
-from spotlab.gui.editor.codeedit import CodeEdit                      # noqa: E402
-from spotlab.gui.editor.completer import (                            # noqa: E402
+from spotlab.editor.verbs import Vorschlag  # noqa: E402
+from spotlab.gui.editor import completer as modul  # noqa: E402
+from spotlab.gui.editor.codeedit import CodeEdit  # noqa: E402
+from spotlab.gui.editor.completer import (  # noqa: E402
     Vervollstaendigung,
     eigene_vorschlaege,
     zusammenfuehren,
 )
-from spotlab.gui.theme import DUNKEL                                  # noqa: E402
+from spotlab.gui.theme import DUNKEL  # noqa: E402
 
 
 def test_eigener_eintrag_gewinnt_bei_namensgleichheit():

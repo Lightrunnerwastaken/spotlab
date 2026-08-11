@@ -10,14 +10,13 @@ view_map.py verfüttern — und umgekehrt.
 """
 
 import json
-import re
 import shutil
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from google.protobuf.message import DecodeError
 from bosdyn.api.graph_nav import map_pb2
+from google.protobuf.message import DecodeError
 
 from spotlab.errors import SpotlabError
 from spotlab.pfade import sicherer_name  # noqa: F401  (Re-Export, historischer Pfad)

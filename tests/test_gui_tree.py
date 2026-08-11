@@ -2,9 +2,9 @@ import pytest
 
 pytest.importorskip("PySide6.QtWidgets")
 
-from PySide6.QtCore import QEventLoop, QTimer                 # noqa: E402
+from PySide6.QtCore import QEventLoop, QTimer  # noqa: E402
 
-from spotlab.gui.editor.tree import Dateibaum                 # noqa: E402
+from spotlab.gui.editor.tree import Dateibaum  # noqa: E402
 
 
 def _warte_aufs_laden(baum, sekunden=5.0):

@@ -13,6 +13,7 @@ from spotlab.editor.verbs import (
     spotlab_verben,
     teilwort,
 )
+from tests_zeitgrenzen import TEST_TIMEOUT_S
 
 QUELLE = '''
 class Beispiel:
@@ -142,6 +143,7 @@ def test_editor_zieht_weder_sdk_noch_qt_herein():
         capture_output=True,
         text=True,
         env={**os.environ, "PYTHONPATH": str(quelle), "PYTHONUTF8": "1"},
+        timeout=TEST_TIMEOUT_S,
     )
     assert ergebnis.returncode == 0, ergebnis.stderr
     assert ergebnis.stdout.strip() == ""

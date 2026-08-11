@@ -87,6 +87,24 @@ def main(argv=None):
     except FileExistsError as fehler:
         print(f"{ROT}{fehler}{AUS}", file=sys.stderr)
         return 1
+    except Exception as fehler:
+        # S4.5: Nicht jeder Weg zum Roboter geht durch connect(). `spotlab
+        # lease` und `spotlab record-map` bauen die Sitzung selbst auf und
+        # liessen rohe SDK-Ausnahmen durch — der Schueler bekam einen
+        # englischen Klassennamen mit Rueckverfolgung statt „Bist du im WLAN
+        # des Spot?".
+        #
+        # Nur was translate() KENNT, wird gefangen. Ein Programmfehler in
+        # spotlab soll weiterhin mit voller Rueckverfolgung sichtbar sein;
+        # ihn hier in eine freundliche Zeile zu verwandeln, hiesse ihn
+        # verstecken.
+        from spotlab.errors import translate
+
+        uebersetzt = translate(fehler)
+        if uebersetzt is None:
+            raise
+        print(f"{ROT}{uebersetzt}{AUS}", file=sys.stderr)
+        return 1
 
 
 def _fuehre_aus(args):
@@ -314,11 +332,11 @@ def _lease(uebernehmen):
     from bosdyn.client.lease import LeaseClient
 
     from spotlab.backends.real.lease import client_name, holder_of
-    from spotlab.backends.real.session import _standard_robot
+    from spotlab.backends.real.verbindung import standard_robot
     from spotlab.config import load_config, load_password
 
     cfg = load_config()
-    robot = _standard_robot(cfg)
+    robot = standard_robot(cfg)
     robot.authenticate(cfg.username, load_password(cfg.username))
     robot.time_sync.wait_for_sync()
     client = robot.ensure_client(LeaseClient.default_service_name)

@@ -86,7 +86,8 @@ Feststellungen.
 | **S1.11** Kaputte Karte blockiert den GUI-Start | **erledigt** — `DecodeError` gefangen, Ordner für Ordner statt Listcomprehension |
 | **S1.12** Ausgabeflut friert die Ereignisschleife ein | **erledigt** — laufender Offset statt `toPlainText()` je Zeile: 4000 Zeilen von 1.610 s auf 0.157 s, und linear statt quadratisch |
 | **S2** Damit es im Unterricht trägt | **erledigt bis auf einen Punkt** — 1–11 und 13–15 stehen; aus 12 fehlt nur das Dateibaum-Kontextmenü (neue Funktionalität, bewusst zurückgestellt) |
-| S3.7 – S3.13, S4 | offen |
+| **S4** Damit es ein professionelles Produkt wird | **erledigt** — CI auf Windows für Python 3.11 und 3.13, alle Abhängigkeiten mit Obergrenze, ruff als Torwächter, Zeitgrenzen in jedem Test, der einen Prozess startet, Einrichtungsskript für die Schul-Laptops. Einzelheiten unten |
+| S3.7 – S3.13 | offen — Sim-Korrekturen in matura-spot, brauchen die Entscheidung des Autors |
 
 **Stufe S1 ist damit vollständig.**
 
@@ -340,6 +341,98 @@ Aufwand: klein. Datei: `pyproject.toml` (`ruff`, `line-length=100`, `select=["E4
 **9. Verteilung an Schul-Laptops konzipieren.**
 Wirkung: einziger dokumentierter Weg ist `pip install -e .` gegen PyPI — kein Offline-Pfad, kein maschinenweiter Konfigurationspfad für IP/Limits.
 Aufwand: mittel. Dateien: `README.md`, `config.py` (Konfigurationssuche um maschinenweiten Pfad erweitern, nie Passwort).
+
+### Was aus S4 umgesetzt wurde — und was bewusst nicht
+
+Reihenfolge: CI zuerst, weil ohne sie kein anderer Punkt überprüfbar ist.
+
+**S4.1 Zeitgrenzen.** Neu `tests/tests_zeitgrenzen.py`: eine gemeinsame Grenze
+(120 s) für jeden Aufruf, der einen Prozess startet, dazu `zeile_mit_frist()`
+für `readline()`, das sich nicht unterbrechen lässt. Darunter als Netz
+`pytest-timeout` mit 300 s je Test (`timeout_method = "thread"` — SIGALRM gibt
+es unter Windows nicht). Der Grund ist während der Arbeit selbst eingetreten:
+ein kaputter Zwischenstand liess einen Testlauf **drei Stunden** laufen, statt
+zu scheitern.
+
+**S4.2 CI.** `.github/workflows/tests.yml`, zwei Aufträge, beide
+`windows-latest` — nicht Linux: die Fehler dieses Projekts (CreateProcess mit
+nacktem Editornamen, cp1252 statt UTF-8, CRLF beim Speichern) gibt es nur
+unter Windows. Auftrag eins: Python 3.11 **und** 3.13, alle drei Extras, ruff
+vor den Tests. Auftrag zwei: nur `[dev]`, prüft vorher nach, dass PySide6 und
+mcp wirklich fehlen, und danach, dass **nicht alles übersprungen** wurde — ein
+Überspringen-Vertrag, den man durch Überspringen von allem erfüllt, ist keiner.
+
+Der zweite Auftrag hat sofort eine Lücke gefunden:
+`test_laufsuche.py::test_watcher_exportiert_dieselbe_funktion` importierte Qt
+ohne `importorskip` und scheiterte ohne das Extra mit `ModuleNotFoundError`.
+Gemessen in einer frischen Umgebung: 645 von 667 Tests laufen ohne die Extras.
+
+**S4.3 Obergrenzen.** Jede Abhängigkeit hat jetzt eine obere Schranke vor dem
+nächsten Hauptsprung; `requires-python` ist `>=3.11,<3.15` — die Obergrenze ist
+nicht geraten, sondern die, die PySide6 selbst deklariert. Nachgeprüft in einer
+frisch gebauten Umgebung auf **Python 3.11** mit den neuesten auflösbaren
+Fassungen (numpy 2.4.6, protobuf 7.35.1, pygments 2.20, jedi 0.20): 858 Tests
+grün.
+
+**S4.4 anders entschieden.** Der Befund lautete: `record/sampler.py` zieht über
+`api/state.py` bosdyn herein. Das lässt sich nicht auflösen, ohne die
+Attrappe zu verschlechtern — `backends/dryrun.py` baut **echte**
+RobotState-Protos, und genau das hat den `end_time_secs`-Fehler sichtbar
+gemacht. Ein Trockenlauf ohne SDK wäre billiger und wertloser. Geschützt wurde
+stattdessen die Grenze, auf die es wirklich ankommt: `spotlab.messung` — die
+Schicht, die matura-spot wörtlich spiegelt — zieht weder SDK noch Qt noch
+keyring herein, und ein Test hält das fest.
+
+**S4.5 MCP-Werkzeuge.** Drei Dinge, davon eines ein echter Stillstand:
+`skript_starten` warf den Prozess-Handle weg, obwohl `start_script()` dem Kind
+eine Pipe gibt. Wer die Pipe nicht leert, lässt das Skript beim vollen Puffer
+(Windows: rund 64 KB) **für immer** stehen — ohne Fehler, ohne Ende, mitten in
+einer Bewegung. Nachgemessen: ein Skript mit 8000 Zeilen steht nach 15 s immer
+noch. Die Ausgabe geht jetzt in eine Datei unter `<arbeitsordner>/mcp-ausgabe/`,
+deren Pfad in der Antwort mitkommt. Dazu: `_antwortet`/`_als_liste` fangen jeden
+`Exception` statt nur zwei Typen, und zwei Obergrenzen (`MAX_LAEUFE = 200`,
+`MAX_GLEICHZEITIGE_LAEUFE = 3`) gegen einen Agenten in einer Schleife.
+Ausserdem übersetzt `cli.main()` jetzt SDK-Ausnahmen — `spotlab lease` und
+`spotlab record-map` gehen an `connect()` vorbei und zeigten dem Schüler eine
+Rückverfolgung statt „Bist du im WLAN des Spot?". Nur was `translate()` kennt;
+ein Programmfehler bleibt mit voller Rückverfolgung sichtbar.
+
+**S4.6 Panel-Lebenszyklus.** `speicher.loese()` gab es samt Tests, nur rief es
+niemand auf — neu als MCP-Werkzeug `projekt_loesen` (dreizehntes Werkzeug), und
+ein Test hält fest, dass nur die Buchführung verschwindet, nie das fremde
+Projekt. `panel.schreibe()` prüft Bildpfade jetzt beim **Schreiben**; die Prüfung
+beim Anzeigen bleibt, denn die Datei muss nicht von spotlab stammen.
+*Nicht umgesetzt:* die Live-Aktualisierung während eines laufenden Fremdskripts.
+
+**S4.7 Fassungsnummer.** Sie stand an drei Stellen. Jetzt an einer:
+`src/spotlab/__init__.py`; `pyproject.toml` liest sie über
+`dynamic = ["version"]`, der MCP-Server über `spotlab.__version__`. Ein Test
+hält beides zusammen. *Nicht umgesetzt:* ein CHANGELOG.
+
+**S4.8 Linter.** ruff mit genau den vorgeschlagenen Regeln, ohne `BLE`/`TRY`/
+`format`. Ausbeute beim ersten Lauf: 22 Meldungen, darunter **ein echter
+Fehler** — `backends/real/lease.py` benutzte `protokoll.notiere()`, ohne
+`protokoll` zu importieren. Der Handler warf also `NameError`, und ausgerechnet
+der Pfad, der einen Fehler überleben sollte, riss die Sitzung mit: Lease
+gehalten, Motoren an, Lauf ohne Abschluss. 844 Tests hatten ihn nicht gesehen,
+weil beide Attrappen brav zurückkehrten.
+
+**S4.9 Verteilung.** `einrichten.ps1`: legt `.venv` an, prüft jeden
+Python-Kandidaten durch **Ausprobieren** (`py` ist auch da, wenn keine Fassung
+dahintersteht), installiert alle drei Extras und weist danach nach, dass SDK,
+Oberfläche, MCP und pytest wirklich vorhanden sind. Zweimal ausgeführt ändert es
+nichts. Am eigenen Rechner durchgelaufen. Das README nannte bis dahin
+`pip install -e .[dev]` — womit ein Schüler ohne Oberfläche dagestanden hätte.
+*Nicht umgesetzt:* Offline-Pfad und maschinenweiter Konfigurationspfad.
+
+**Ein Test wurde abgeschwächt, mit Absicht.**
+`test_die_messfahrt_meldet_keine_falschen_luecken` verlangte `luecken == []`.
+In einer frischen Umgebung unter Last kamen vier Lücken von je 46–47 ms heraus:
+kein Fehler im Detektor, sondern Windows — die Zeitgeberauflösung liegt bei rund
+15.6 ms, ein 20-ms-Takt (50 Hz) rutscht damit regelmässig. Auf einem geteilten
+CI-Rechner wäre der Test rot gewesen, ohne dass etwas kaputt war. Geprüft wird
+jetzt die **Art** der Lücke: keine darf so lang sein wie ein ganzer 10-Hz-Takt,
+denn genau so sähe der Fehler aus, gegen den der Test steht.
 
 ---
 

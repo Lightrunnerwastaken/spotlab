@@ -193,3 +193,40 @@ def test_login_behaelt_arbeitsordner_und_karte(tmp_path, monkeypatch):
     assert neu.workspace == str(tmp_path / "werkstatt")
     assert neu.active_map == "halle"
     assert neu.limits.max_speed == 0.25
+
+
+# ================ S4.5 auch die Wege am connect() vorbei sprechen deutsch
+
+
+def test_eine_sdk_ausnahme_wird_uebersetzt_statt_zu_stuerzen(monkeypatch, capsys):
+    """`spotlab lease` baut die Sitzung selbst auf.
+
+    Ohne Uebersetzung sah ein Schueler, der nicht im WLAN des Spot war, eine
+    Python-Rueckverfolgung mit `UnableToConnectToRobotError` — statt der Zeile,
+    die ihm sagt, was zu tun ist.
+    """
+    from bosdyn.client.exceptions import UnableToConnectToRobotError
+
+    from spotlab import cli
+
+    def wirf(args):
+        raise UnableToConnectToRobotError(None)
+
+    monkeypatch.setattr(cli, "_fuehre_aus", wirf)
+    assert cli.main(["lease"]) == 1
+    assert "WLAN" in capsys.readouterr().err
+
+
+def test_ein_programmfehler_bleibt_sichtbar(monkeypatch):
+    """Die Gegenprobe: was translate() nicht kennt, wird NICHT verschluckt.
+
+    Ein KeyError in spotlab freundlich zu formulieren hiesse, ihn zu verstecken.
+    """
+    from spotlab import cli
+
+    def wirf(args):
+        raise KeyError("ein Programmfehler")
+
+    monkeypatch.setattr(cli, "_fuehre_aus", wirf)
+    with pytest.raises(KeyError):
+        cli.main(["runs"])

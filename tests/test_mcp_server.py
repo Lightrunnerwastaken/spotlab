@@ -8,14 +8,16 @@ from pathlib import Path
 import pytest
 
 from spotlab.mcp.server import WERKZEUGE
+from tests_zeitgrenzen import zeile_mit_frist
 
 QUELLE = str(Path(__file__).resolve().parents[1] / "src")
 HAT_MCP = importlib.util.find_spec("mcp") is not None
 
 
-def test_alle_zwoelf_werkzeuge_sind_angemeldet():
+def test_alle_dreizehn_werkzeuge_sind_angemeldet():
     assert {f.__name__ for f, _ in WERKZEUGE} == {
         "projekt_anbinden",
+        "projekt_loesen",
         "anbindungen_auflisten",
         "panel_setzen",
         "panel_entfernen",
@@ -99,11 +101,34 @@ def test_server_startet_wirklich_und_antwortet():
         }
         prozess.stdin.write(json.dumps(anfrage) + "\n")
         prozess.stdin.flush()
-        zeile = prozess.stdout.readline()
-        assert zeile, f"keine Antwort; stderr: {prozess.stderr.read()}"
+        zeile = zeile_mit_frist(prozess.stdout)
+        if not zeile:
+            # Erst abraeumen, dann lesen: stderr.read() wartet sonst auf einen
+            # Prozess, der vielleicht noch laeuft und nur nichts sagt.
+            prozess.kill()
+            raise AssertionError(f"keine Antwort; stderr: {prozess.stderr.read()}")
         antwort = json.loads(zeile)
         assert antwort["id"] == 1
         assert antwort["result"]["serverInfo"]["name"] == "spotlab"
     finally:
         prozess.kill()
         prozess.wait(timeout=10)
+
+
+def test_die_fassung_steht_nur_an_einer_stelle():
+    """S4.7 -- drei Kopien einer Zahl sind zwei Kopien zu viel.
+
+    `version="0.1.0"` stand im MCP-Server fest und in pyproject.toml noch
+    einmal. Beide waeren beim naechsten Sprung stumm falsch geworden: kein
+    Test schlaegt fehl, wenn eine Fassungsnummer luegt.
+    """
+    import importlib.metadata
+
+    import spotlab
+
+    assert importlib.metadata.version("spotlab") == spotlab.__version__
+
+    quelle = (Path(__file__).resolve().parents[1] / "src/spotlab/mcp/server.py").read_text(
+        encoding="utf-8"
+    )
+    assert 'version="' not in quelle, "Der Server schreibt die Fassung wieder selbst hin"

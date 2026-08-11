@@ -13,9 +13,31 @@ aus [`matura-spot`](../matura-spot) gegen das echte Verhalten zu kalibrieren.
 
 ## Installation
 
+Auf einem Schul-Laptop einmalig, im Ordner dieser Datei:
+
 ```
-pip install -e .[dev]
+powershell -ExecutionPolicy Bypass -File einrichten.ps1
 ```
+
+Das Skript legt eine eigene Umgebung unter `.venv` an, installiert spotlab mit
+allen drei Extras und **prüft danach nach**, dass SDK, Oberfläche, MCP und
+pytest wirklich da sind. Zweimal ausgeführt ändert es nichts.
+
+Von Hand geht es auch — dann aber mit allen Extras:
+
+```
+python -m venv .venv
+.\.venv\Scripts\activate
+pip install -e ".[dev,gui,mcp]"
+```
+
+`pip install -e ".[dev]"` allein reicht **nicht**: ohne `gui` gibt es kein
+Fenster und keinen Editor, ohne `mcp` keine Agenten-Anbindung. Die
+Grundausstattung ist trotzdem eine gültige Installation — `spotlab doctor`,
+`spotlab run` und die Auswertung laufen damit, und die Tests, die Qt brauchen,
+überspringen sich sauber. Genau das prüft die CI im Auftrag `nur [dev]`.
+
+Getestet auf Windows mit Python 3.11 und 3.13.
 
 ## Schnellstart
 

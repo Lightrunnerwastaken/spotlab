@@ -16,6 +16,7 @@ from bosdyn.client.exceptions import (
 )
 from bosdyn.client.lease import DisplacedLeaseError, LeaseKeepAlive
 
+from spotlab import protokoll
 from spotlab.errors import LeaseLost, translate
 
 

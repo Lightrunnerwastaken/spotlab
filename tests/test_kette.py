@@ -17,6 +17,7 @@ from spotlab.gui.watcher import RunScanner  # noqa: E402
 from spotlab.workshop.control import ist_aktiv, stoppe_freundlich  # noqa: E402
 from spotlab.workshop.launcher import start_script  # noqa: E402
 from spotlab.workshop.project import create_project  # noqa: E402
+from tests_zeitgrenzen import TEST_TIMEOUT_S  # noqa: E402
 
 SKRIPT = """
 import spotlab
@@ -67,7 +68,7 @@ def test_starten_beobachten_stoppen(tmp_path):
     finally:
         if prozess.poll() is None:
             prozess.kill()
-            prozess.wait()
+            prozess.wait(timeout=TEST_TIMEOUT_S)
 
 
 # ------------------------------------- abtaster.stop() vor spot.close() (S1.6)

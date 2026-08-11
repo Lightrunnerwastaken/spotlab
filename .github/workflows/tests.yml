@@ -1,0 +1,123 @@
+# Die Tests laufen bisher nur auf EINEM Rechner. Was hier gruen ist, ist damit
+# noch keine Aussage darueber, ob spotlab auf einem frisch aufgesetzten
+# Schul-Laptop laeuft -- dort fehlt genau das, was hier zufaellig installiert
+# ist. Dieser Ablauf beantwortet drei Fragen, die lokal nicht zu beantworten
+# sind:
+#
+#   1. Laeuft es auf einem Rechner, auf dem NICHTS vorinstalliert ist?
+#   2. Laeuft es auf der aeltesten und der neuesten unterstuetzten Python-Fassung?
+#   3. Ueberspringen die Tests wirklich sauber, wenn die Extras FEHLEN?
+#
+# Frage 3 ist die, die man am leichtesten uebersieht: hier sind PySide6 und mcp
+# immer da, deshalb hat noch nie jemand gesehen, ob `skipif` richtig greift.
+# Der Job `ohne-extras` ist genau dafuer da.
+
+name: Tests
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+# Ein neuer Push auf denselben Zweig raeumt den vorigen Lauf ab. Ohne das
+# stapeln sich bei einer Reihe kleiner Korrekturen die Laeufe.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  vollstaendig:
+    # windows-latest, nicht ubuntu: der Spot wird von Windows-Laptops
+    # gesteuert, und mehrere Fehler in diesem Projekt gab es NUR unter Windows
+    # (CreateProcess mit nacktem Editornamen, cp1252 statt UTF-8, CRLF beim
+    # Speichern). Ein Linux-Lauf haette keinen davon gefunden.
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false        # beide Fassungen zu Ende laufen lassen
+      matrix:
+        python: ["3.11", "3.13"]
+    name: Windows / Python ${{ matrix.python }}
+    # Der Job HAENGT sonst bis zum Kontolimit, statt zu scheitern. Der lokale
+    # Lauf braucht rund drei Minuten; 20 ist Luft, keine Erwartung.
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+
+      - name: Abhaengigkeiten
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,gui,mcp]"
+
+      - name: Linter
+        # Vor den Tests: ruff braucht Sekunden und hat in diesem Projekt einen
+        # NameError im Abbaupfad gefunden, den 844 Tests nicht gesehen haben.
+        run: python -m ruff check .
+
+      - name: Tests
+        env:
+          # Ohne Bildschirm gibt es keine Fensterverwaltung. Qt bricht sonst
+          # beim ersten Widget ab -- nicht mit einer Meldung, sondern hart.
+          QT_QPA_PLATFORM: offscreen
+          PYTHONUTF8: "1"
+        run: python -m pytest -q --timeout=300
+
+  ohne-extras:
+    # Die Probe aufs Ueberspringen. spotlab muss sich mit NUR den
+    # Grundabhaengigkeiten importieren und testen lassen -- alles, was PySide6
+    # oder mcp braucht, gehoert hinter importorskip/skipif.
+    #
+    # Das ist kein akademischer Fall: `spotlab doctor` und die MCP-Anbindung
+    # laufen auf Rechnern, auf denen nie jemand die GUI installiert hat.
+    runs-on: windows-latest
+    name: Windows / nur [dev]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Nur die Grundausstattung
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Wirklich nichts Zusaetzliches da?
+        # Waere PySide6 als Nebenwirkung mitgekommen, pruefte dieser Job nichts.
+        shell: bash
+        run: |
+          python -c "import importlib.util as u, sys; [sys.exit(f'{n} ist doch da') for n in ('PySide6','mcp') if u.find_spec(n)]"
+          echo "weder PySide6 noch mcp installiert -- die Probe ist aussagekraeftig"
+
+      - name: Tests
+        env:
+          PYTHONUTF8: "1"
+        run: python -m pytest -q --timeout=300 --junitxml=ergebnis.xml
+
+      - name: Es darf nicht ALLES uebersprungen worden sein
+        # Ein Ueberspringen-Vertrag, den man dadurch erfuellt, dass man ALLES
+        # ueberspringt, ist keiner: der Job waere gruen und haette nichts
+        # geprueft. Die Grenze ist bewusst ein Anteil und keine feste Zahl --
+        # eine feste Zahl muesste bei jedem neuen Test nachgezogen werden und
+        # waere nach drei Monaten falsch.
+        shell: bash
+        run: |
+          python - <<'PY'
+          import xml.etree.ElementTree as ET
+          s = ET.parse("ergebnis.xml").getroot().find("testsuite")
+          gesamt, uebersprungen = int(s.get("tests")), int(s.get("skipped"))
+          gelaufen = gesamt - uebersprungen
+          print(f"{gelaufen} von {gesamt} Tests liefen ohne die Extras")
+          assert gelaufen >= gesamt / 2, (
+              "Mehr als die Haelfte uebersprungen -- entweder haengt zu viel "
+              "am GUI-Extra, oder ein skipif greift zu breit."
+          )
+          PY

@@ -16,6 +16,9 @@ WERKZEUGE = (
      "die spotlab.toml liegt."),
     (werkzeuge.anbindungen_auflisten,
      "Nennt alle angebundenen Projekte mit ihren Skripten und Panelnamen."),
+    (werkzeuge.projekt_loesen,
+     "Loest die Anbindung eines Projekts. Entfernt nur die Manifestkopie und die "
+     "Panels unter dem Arbeitsordner; das Projekt selbst bleibt unberuehrt."),
     (werkzeuge.panel_setzen,
      "Schreibt oder ersetzt ein Panel in der Ansicht „Anbindungen“. Arten: kennzahlen "
      "(Liste aus name/wert/hinweis), tabelle (spalten/zeilen), reihe (x/y), bild (pfad), "
@@ -53,7 +56,13 @@ def baue_server():
     """
     from mcp.server import MCPServer
 
-    server = MCPServer("spotlab", version="0.1.0")
+    from spotlab import __version__
+
+    # NICHT noch einmal hingeschrieben: die Fassung stand hier als "0.1.0"
+    # fest und waere beim naechsten Sprung stumm falsch geblieben. Ein
+    # Agent, der ueber MCP spricht, sieht dann eine Zahl, die nichts mit dem
+    # Stand zu tun hat, mit dem er redet.
+    server = MCPServer("spotlab", version=__version__)
     for funktion, beschreibung in WERKZEUGE:
         server.add_tool(funktion, name=funktion.__name__, description=beschreibung)
     return server

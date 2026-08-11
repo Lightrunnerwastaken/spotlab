@@ -2,13 +2,13 @@ import pytest
 
 pytest.importorskip("PySide6.QtWidgets")
 
-from PySide6.QtCore import Qt                                # noqa: E402
-from PySide6.QtGui import QTextCursor                        # noqa: E402
-from PySide6.QtTest import QTest                             # noqa: E402
+from PySide6.QtCore import Qt  # noqa: E402
+from PySide6.QtGui import QTextCursor  # noqa: E402
+from PySide6.QtTest import QTest  # noqa: E402
 
-from spotlab.editor.syntax import pruefe                     # noqa: E402
-from spotlab.gui.editor.codeedit import CodeEdit             # noqa: E402
-from spotlab.gui.theme import DUNKEL                         # noqa: E402
+from spotlab.editor.syntax import pruefe  # noqa: E402
+from spotlab.gui.editor.codeedit import CodeEdit  # noqa: E402
+from spotlab.gui.theme import DUNKEL  # noqa: E402
 
 
 def test_tab_schreibt_vier_leerzeichen(qapp):

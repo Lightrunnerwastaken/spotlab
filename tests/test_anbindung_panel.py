@@ -145,3 +145,29 @@ def test_entfernen(gebunden):
 def test_panelname_kann_nicht_ausbrechen(gebunden):
     pfad = schreibe(gebunden, "../../weg", "kennzahlen", "X", KENNZAHLEN)
     assert pfad.parent == panelordner(gebunden)
+
+
+# ============ S4.6 die Wegpruefung gehoert an den Schreiber, nicht nur an die Anzeige
+
+
+def test_ein_bild_von_ausserhalb_wird_gar_nicht_erst_geschrieben(gebunden, tmp_path):
+    """Vorher: schreibe() nahm jeden Pfad an und meldete „ok".
+
+    Erst die GUI zeigte Tage spaeter eine Warnung statt des Bildes -- ohne zu
+    sagen, welches Werkzeug den Pfad geschrieben hatte. Der Schreiber ist die
+    einzige Stelle, an der jemand den Fehler noch beheben kann.
+    """
+    fremd = tmp_path / "geheim.png"
+    fremd.write_bytes(b"\x89PNG")
+    with pytest.raises(SpotlabError) as fehler:
+        schreibe(gebunden, "b", "bild", "B", {"pfad": str(fremd)})
+    assert "ausserhalb" in str(fehler.value)
+    assert not (panelordner(gebunden) / "b.json").exists()
+
+
+def test_ein_bild_aus_dem_projekt_wird_geschrieben(gebunden):
+    ziel = gebunden.quelle / "out" / "bild.png"
+    ziel.parent.mkdir(parents=True)
+    ziel.write_bytes(b"\x89PNG")
+    pfad = schreibe(gebunden, "b", "bild", "B", {"pfad": str(ziel)})
+    assert pfad.exists()

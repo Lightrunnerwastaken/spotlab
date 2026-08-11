@@ -1,14 +1,16 @@
+import json
 import shutil
 
 import pytest
 
 pytest.importorskip("PySide6.QtWidgets")
 
-from spotlab.anbindung.manifest import DATEINAME                  # noqa: E402
-from spotlab.anbindung.panel import schreibe                      # noqa: E402
-from spotlab.anbindung.speicher import binde_an                   # noqa: E402
-from spotlab.gui.theme import DUNKEL                              # noqa: E402
-from spotlab.gui.views.anbindungen import AnbindungenView         # noqa: E402
+from spotlab.anbindung.manifest import DATEINAME  # noqa: E402
+from spotlab.anbindung.panel import schreibe  # noqa: E402
+from spotlab.anbindung.speicher import binde_an, panelordner  # noqa: E402
+from spotlab.gui.theme import DUNKEL  # noqa: E402
+from spotlab.gui.views.anbindungen import AnbindungenView  # noqa: E402
+from tests_zeitgrenzen import TEST_TIMEOUT_S  # noqa: E402
 
 MANIFEST = """
 [projekt]
@@ -74,9 +76,22 @@ def test_ein_kaputtes_panel_laesst_die_anderen_stehen(qapp, tmp_path):
 
 
 def test_bild_von_ausserhalb_wird_nicht_geladen(qapp, tmp_path):
+    # Die Datei wird von HAND geschrieben, nicht ueber schreibe(): seit S4.6
+    # weist der Schreiber solche Pfade ab. Genau deshalb ist dieser Test noch
+    # noetig — er deckt den Fall, dass die Datei NICHT von spotlab stammt oder
+    # aelter ist als die Pruefung. Ginge er nur noch ueber schreibe(), pruefte
+    # er zweimal dieselbe Schranke und die Anzeige gar nicht mehr.
     arbeit, _, gebunden = _welt(tmp_path)
     fremd = _schreibe_png(tmp_path / "fremd.png")
-    schreibe(gebunden, "b", "bild", "B", {"pfad": str(fremd)})
+    ordner = panelordner(gebunden)
+    ordner.mkdir(parents=True, exist_ok=True)
+    (ordner / "b.json").write_text(
+        json.dumps(
+            {"titel": "B", "art": "bild", "stand": "2026-08-11T00:00:00+00:00",
+             "inhalt": {"pfad": str(fremd)}}
+        ),
+        encoding="utf-8",
+    )
 
     ansicht = AnbindungenView(DUNKEL)
     ansicht.setze_arbeitsordner(arbeit)
@@ -104,7 +119,7 @@ def test_skriptknopf_startet_wirklich(qapp, tmp_path):
     ansicht.skriptknoepfe[0].click()
     assert gestartet
     prozess, _skript = gestartet[0]
-    prozess.wait()
+    prozess.wait(timeout=TEST_TIMEOUT_S)
 
 
 def test_viele_skripte_brechen_auf_mehrere_zeilen_um(qapp, tmp_path):

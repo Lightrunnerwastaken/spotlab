@@ -4,9 +4,7 @@ import pytest
 
 pytest.importorskip("PySide6.QtWidgets")
 
-from spotlab.gui.editor.view import Ausgabefeld                # noqa: E402
-from spotlab.gui.theme import DUNKEL                           # noqa: E402
-
+from spotlab.gui.theme import DUNKEL  # noqa: E402
 
 # ======================= S1.12 Ausgabeflut friert die Ereignisschleife ein
 #

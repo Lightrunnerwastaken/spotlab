@@ -2,10 +2,11 @@ import pytest
 
 pytest.importorskip("PySide6.QtWidgets")
 
-from PySide6.QtTest import QTest                              # noqa: E402
+from PySide6.QtTest import QTest  # noqa: E402
 
-from spotlab.gui.editor.view import EditorView                # noqa: E402
-from spotlab.gui.theme import DUNKEL                          # noqa: E402
+from spotlab.gui.editor.view import EditorView  # noqa: E402
+from spotlab.gui.theme import DUNKEL  # noqa: E402
+from tests_zeitgrenzen import TEST_TIMEOUT_S  # noqa: E402
 
 
 def _werkstatt(tmp_path):
@@ -211,7 +212,7 @@ def test_starten_startet_wirklich_einen_prozess(qapp, tmp_path):
     prozess, _pfad = gestartet[0]
     for zeile in prozess.stdout:
         ansicht.zeige_ausgabe(zeile.rstrip("\n"))
-    prozess.wait()
+    prozess.wait(timeout=TEST_TIMEOUT_S)
 
     # Ein echter Python-Traceback, echt erzeugt, echt zerlegt.
     assert "ValueError" in ansicht.ausgabe.toPlainText()
@@ -229,7 +230,7 @@ def test_starten_speichert_vorher(qapp, tmp_path):
     ansicht.start_knopf.click()
     assert skript.read_text(encoding="utf-8") == "print('neu')\n"
     for prozess in prozesse:
-        prozess.wait()
+        prozess.wait(timeout=TEST_TIMEOUT_S)
 
 
 def test_knopf_wird_zu_stopp_und_meldet_den_wunsch(qapp, tmp_path):
@@ -249,7 +250,7 @@ def test_knopf_wird_zu_stopp_und_meldet_den_wunsch(qapp, tmp_path):
     ansicht.lauf_beendet()
     assert "Starten" in ansicht.start_knopf.text()
     for prozess in prozesse:
-        prozess.wait()
+        prozess.wait(timeout=TEST_TIMEOUT_S)
 
 
 def test_starten_ohne_offene_datei_meldet_es(qapp, tmp_path):
@@ -368,7 +369,7 @@ def test_ein_sofort_gestorbener_prozess_gibt_den_knopf_frei(qapp, tmp_path):
     ansicht.lauf_gestartet.connect(lambda p, s: prozesse.append(p))
     ansicht.start_knopf.click()
     for prozess in prozesse:
-        prozess.wait()
+        prozess.wait(timeout=TEST_TIMEOUT_S)
     QTest.qWait(200)
     ansicht.pruefe_lauf_lebt()
     assert ansicht.start_knopf.text().startswith("▶"), "Knopf haengt auf Stopp fest"

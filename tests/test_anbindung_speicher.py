@@ -145,3 +145,24 @@ def test_kaputte_anbindung_json_wird_uebersprungen(tmp_path):
     (wurzel(arbeit) / "muell").mkdir()
     (wurzel(arbeit) / "muell" / "anbindung.json").write_text("{", encoding="utf-8")
     assert [a.name for a in anbindungen(arbeit)] == ["matura-spot"]
+
+
+def test_loesen_laesst_das_fremde_projekt_stehen(tmp_path):
+    """S4.6 -- geloest wird die BUCHFUEHRUNG, nicht das Projekt.
+
+    `loese()` gab es samt Tests von Anfang an, nur rief es niemand auf. Mit dem
+    MCP-Werkzeug projekt_loesen ist es erreichbar, und damit wird wichtig, was
+    genau verschwindet: alles unter dem Arbeitsordner, nichts darunter.
+    """
+    arbeit = tmp_path / "werkstatt"
+    arbeit.mkdir()
+    projekt = tmp_path / "fremd"
+    projekt.mkdir()
+    (projekt / "s.py").write_text("x = 1\n", encoding="utf-8")
+    (projekt / DATEINAME).write_text(MANIFEST, encoding="utf-8")
+    anbindung = binde_an(arbeit, projekt)
+
+    assert loese(arbeit, anbindung.name) is True
+    assert not anbindung.ordner.exists()
+    assert (projekt / "s.py").exists(), "Das fremde Projekt wurde mit geloescht"
+    assert (projekt / DATEINAME).exists()

@@ -123,3 +123,46 @@ def test_ohne_ausnahme_wird_im_zweifel_der_verlust_angenommen():
     wache = LeaseGuard(FakeLeaseClient())
     wache._melde_verlust(None)
     assert wache.lost is True
+
+
+# ================================== S4.8 der Abbau darf nicht selbst scheitern
+#
+# `stop()` faengt beide Ausnahmen ab und schreibt sie ins Protokoll -- nur war
+# `protokoll` in dieser Datei nie importiert. Der Handler warf also NameError,
+# und ausgerechnet der Pfad, der einen Fehler ueberleben sollte, riss die
+# ganze Sitzung mit: Lease gehalten, Motoren an, Lauf ohne Abschluss.
+# Kein Test hatte das gedeckt, weil beide Attrappen brav zurueckkehrten.
+# Gefunden hat es der Linter (ruff F821), nicht die 844 Tests.
+
+
+class SperrigerClient(FakeLeaseClient):
+    def return_lease(self, *a, **kw):
+        raise RuntimeError("Netz weg")
+
+
+class SperrigesKeepalive:
+    def shutdown(self):
+        raise RuntimeError("Faden haengt")
+
+
+def test_stop_uebersteht_ein_scheiterndes_keepalive():
+    wache = LeaseGuard(FakeLeaseClient())
+    wache._keepalive = SperrigesKeepalive()
+    wache.stop()                                  # darf nicht werfen
+    assert wache._keepalive is None               # trotzdem losgelassen
+
+
+def test_stop_uebersteht_eine_scheiternde_rueckgabe():
+    LeaseGuard(SperrigerClient()).stop()
+
+
+def test_stop_schreibt_das_scheitern_ins_protokoll(tmp_path):
+    from spotlab import protokoll
+
+    protokoll.setze_ziel(tmp_path)
+    try:
+        LeaseGuard(SperrigerClient()).stop()
+    finally:
+        protokoll.setze_ziel(None)
+    geschrieben = "".join(p.read_text(encoding="utf-8") for p in tmp_path.iterdir())
+    assert "Lease-Rueckgabe gescheitert" in geschrieben

@@ -4,26 +4,41 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "spotlab"
-version = "0.1.0"
+# Eine einzige Quelle: src/spotlab/__init__.py. Vorher stand die Zahl an drei
+# Stellen, und zwei davon haetten beim naechsten Sprung stumm gelogen.
+dynamic = ["version"]
 description = "Spot programmieren an der Kantonsschule"
-requires-python = ">=3.11"
+# Obergrenze aus PySide6 (deklariert <3.15) — nicht geraten, sondern die
+# engste Schranke, die eine der Abhaengigkeiten selbst zieht. Untergrenze 3.11,
+# weil der Code `tomllib` aus der Standardbibliothek nutzt.
+requires-python = ">=3.11,<3.15"
+# Jede Abhaengigkeit hat eine OBERGRENZE. Ohne sie installiert ein Schul-Laptop,
+# der im Februar neu aufgesetzt wird, andere Fassungen als der Rechner, auf dem
+# die Tests gruen waren — und der Fehler taucht dann in der Lektion auf.
+# Die Grenze steht jeweils vor dem naechsten Hauptsprung, denn nur dort darf
+# eine Bibliothek laut SemVer brechen.
 dependencies = [
     "bosdyn-client==5.0.1.2",
     "bosdyn-api==5.0.1.2",
-    "keyring>=24",
-    "numpy>=1.26",
-    "Pillow>=10",
+    "keyring>=24,<26",
+    "numpy>=1.26,<3",
+    "Pillow>=10,<13",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
-gui = ["PySide6>=6.6", "pygments>=2.17", "jedi>=0.19"]
+# pytest-timeout ist kein Komfort: ohne es HAENGT ein Lauf, statt zu scheitern,
+# und in der CI kostet das den ganzen Job ohne verwertbare Meldung.
+dev = ["pytest>=8,<9", "pytest-timeout>=2.3,<3", "ruff>=0.6,<1"]
+gui = ["PySide6>=6.6,<7", "pygments>=2.17,<3", "jedi>=0.19,<1"]
 # >=2.0: dort heisst der Server MCPServer, in 1.x hiess er FastMCP und lag
 # unter mcp.server.fastmcp. Ein Kompatibilitaetspfad waere hier ungeprueft.
-mcp = ["mcp>=2.0"]
+mcp = ["mcp>=2.0,<3"]
 
 [project.scripts]
 spotlab = "spotlab.cli:main"
+
+[tool.setuptools.dynamic]
+version = {attr = "spotlab.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -33,3 +48,45 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Das Sicherheitsnetz UNTER den Zeitgrenzen in tests_zeitgrenzen.py: die decken
+# jeden Unterprozess ab, den wir kennen. Diese Grenze faengt den, den wir
+# uebersehen haben — und sagt beim Abbruch, in welchem Test es haengt.
+# thread, nicht signal: SIGALRM gibt es unter Windows nicht.
+timeout = 300
+timeout_method = "thread"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+# Bewusst SCHMAL. Ein Linter, der 400 Meldungen ausspuckt, wird abgeschaltet;
+# einer, der schweigt, bis wirklich etwas kaputt ist, bleibt an.
+#   E4/E7/E9  Importe, Anweisungen, Syntax — nichts davon ist Geschmack
+#   F         Pyflakes: ungenutzte Namen, doppelte Definitionen, echte Fehler
+#   I         Importreihenfolge (die Ursache der beiden kaputten Testdateien)
+#   TID252    keine relativen Importe — sie brechen, sobald eine Datei umzieht
+#   UP        veraltete Schreibweisen
+#   PLW1514   open() ohne encoding: unter Windows sonst cp1252 statt UTF-8,
+#             und genau das hat im Projekt schon Umlaute zerlegt
+#
+# BEWUSST NICHT: BLE (blind except) — die Abbaupfade fangen absichtlich alles,
+# damit close() durchlaeuft; TRY — dessen Regeln widersprechen dem Stil der
+# uebersetzten Fehlermeldungen; ruff format — es wuerde jede Datei anfassen
+# und die Kommentarspalten zerlegen, an denen hier Begruendungen haengen.
+select = ["E4", "E7", "E9", "F", "I", "TID252", "UP", "PLW1514"]
+# PLW1514 liegt noch in ruffs Vorschau. Statt die ganze Vorschau anzuschalten
+# — und damit unangekuendigt neue Regeln zu bekommen — wird genau diese eine
+# freigegeben: explicit-preview-rules laesst nur, was oben namentlich steht.
+preview = true
+explicit-preview-rules = true
+
+[tool.ruff.lint.isort]
+# tests_zeitgrenzen liegt in tests/, nicht unter src/ — ohne diese Zeile
+# sortiert ruff es zu den Fremdbibliotheken und streitet mit sich selbst.
+known-first-party = ["spotlab", "tests_zeitgrenzen"]
+
+# KEIN per-file-ignore fuer E402 in tests/. Die GUI-Tests muessen
+# importorskip("PySide6") vor ihren Importen ausfuehren und tragen dafuer
+# einzeln `# noqa: E402`. Eine Pauschalfreigabe wuerde auch die Datei decken,
+# in der jemand aus Versehen mitten im Code importiert.

@@ -41,12 +41,21 @@ def _umgebung(dryrun, nur_trocken=False):
     return umgebung
 
 
-def start_script(pfad, dryrun=False, argumente=(), nur_trocken=False, starter=subprocess.Popen):
+def start_script(
+    pfad, dryrun=False, argumente=(), nur_trocken=False, starter=subprocess.Popen, ausgabe=None
+):
     """Startet das Skript und kehrt SOFORT zurück. Gibt den Prozess-Handle zurück.
 
-    stdout und stderr laufen zusammen in eine Text-Pipe: die GUI muss dann nur
-    einen Leser betreiben, und die Reihenfolge von print und Traceback bleibt
-    so erhalten, wie sie im Terminal erschiene.
+    stdout und stderr laufen zusammen: die GUI muss dann nur einen Leser
+    betreiben, und die Reihenfolge von print und Traceback bleibt so erhalten,
+    wie sie im Terminal erschiene.
+
+    `ausgabe` ist für Aufrufer, die NICHT mitlesen. Ohne sie schreibt der
+    Prozess in eine Pipe, und wer die Pipe nicht leert, lässt das Skript beim
+    vollen Puffer (unter Windows rund 64 KB) für immer stehenbleiben — ohne
+    Fehler, ohne Ende, mitten in einer Bewegung. Genau das tat der MCP-Server.
+    Wird eine offene Datei übergeben, geht die Ausgabe dorthin und es gibt
+    keinen Puffer, der volllaufen kann.
 
     `argumente` wird als Liste an den Prozess gereicht, nie über eine Shell
     zusammengesetzt. `nur_trocken` setzt die Obergrenze aus __init__.py.
@@ -59,7 +68,7 @@ def start_script(pfad, dryrun=False, argumente=(), nur_trocken=False, starter=su
         [sys.executable, "-u", str(skript), *argumente],
         cwd=str(skript.parent),
         env=_umgebung(dryrun, nur_trocken=nur_trocken),
-        stdout=subprocess.PIPE,
+        stdout=subprocess.PIPE if ausgabe is None else ausgabe,
         stderr=subprocess.STDOUT,
         text=True,
         encoding="utf-8",

@@ -18,7 +18,6 @@ from spotlab.backends.base import Capability, SafetyStatus
 from spotlab.backends.real.estop import EstopGuard
 from spotlab.backends.real.feedback import to_feedback
 from spotlab.backends.real.lease import LeaseGuard, holder_of
-from spotlab.backends.real.verbindung import standard_robot as _standard_robot
 from spotlab.backends.real.verbindung import verbinde
 from spotlab.errors import NotPowered, translate
 

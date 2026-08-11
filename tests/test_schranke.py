@@ -5,6 +5,7 @@ from pathlib import Path
 
 from spotlab import ENV_NUR_TROCKEN
 from spotlab.workshop.launcher import start_script
+from tests_zeitgrenzen import TEST_TIMEOUT_S
 
 QUELLE = str(Path(__file__).resolve().parents[1] / "src")
 
@@ -24,6 +25,7 @@ def _lauf(tmp_path, quelltext, **extra):
         errors="replace",
         cwd=str(tmp_path),
         env=_umgebung(**extra),
+        timeout=TEST_TIMEOUT_S,
     )
 
 
@@ -90,7 +92,7 @@ def test_start_script_reicht_argumente_durch(tmp_path):
     skript.write_text("import sys\nprint('|'.join(sys.argv[1:]))\n", encoding="utf-8")
     prozess = start_script(skript, argumente=("--episoden", "20", "--archiv"))
     ausgabe = prozess.stdout.read()
-    prozess.wait()
+    prozess.wait(timeout=TEST_TIMEOUT_S)
     assert "--episoden|20|--archiv" in ausgabe
 
 
@@ -101,7 +103,7 @@ def test_start_script_setzt_die_schranke(tmp_path):
     )
     prozess = start_script(skript, nur_trocken=True)
     ausgabe = prozess.stdout.read()
-    prozess.wait()
+    prozess.wait(timeout=TEST_TIMEOUT_S)
     assert "1" in ausgabe
 
 
@@ -113,7 +115,7 @@ def test_start_script_setzt_die_schranke_nicht_von_selbst(tmp_path):
     )
     prozess = start_script(skript)
     ausgabe = prozess.stdout.read()
-    prozess.wait()
+    prozess.wait(timeout=TEST_TIMEOUT_S)
     assert "nicht gesetzt" in ausgabe
 
 

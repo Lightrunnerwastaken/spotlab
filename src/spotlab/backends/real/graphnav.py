@@ -10,7 +10,6 @@ neutralen NavStatus ist Backend-Arbeit. In errors/ wäre sie ein Importzyklus.
 
 from pathlib import Path
 
-from bosdyn.api import geometry_pb2
 from bosdyn.api.graph_nav import graph_nav_pb2, map_pb2, nav_pb2
 from bosdyn.client.graph_nav import GraphNavClient
 

@@ -9,6 +9,7 @@ schreibt ausschliesslich unterhalb von anbindungen/.
 """
 
 import functools
+from datetime import datetime
 from pathlib import Path
 
 from spotlab.anbindung import panel as panelmodul
@@ -20,6 +21,7 @@ from spotlab.laufsuche import finde_lauf, lauf_verzeichnisse
 from spotlab.maps import store as kartenspeicher
 from spotlab.messung.fenster import abschnitte as _abschnitte
 from spotlab.messung.fenster import hz_soll_zwischen
+from spotlab.pfade import sicherer_name
 from spotlab.record.read import read_jsonl, read_run
 from spotlab.workshop.control import ist_aktiv, stoppe_freundlich
 from spotlab.workshop.doctor import diagnose
@@ -27,6 +29,17 @@ from spotlab.workshop.launcher import start_script
 
 SOLLTAKT_S = 0.1                    # StateSampler laeuft mit 10 Hz
 LUECKE_AB_S = 2 * SOLLTAKT_S
+
+# S4.5 zwei Obergrenzen gegen einen Agenten in einer Schleife.
+#
+# `anzahl` kam ungeprueft aus dem Protokoll: laeufe_auflisten(anzahl=100000)
+# liest 100000 Lauf-Verzeichnisse von der Platte, waehrend im Fenster jemand
+# auf NOT-AUS wartet.
+MAX_LAEUFE = 200
+# Jeder Start ist ein echter Python-Prozess. Drei gleichzeitig sind mehr, als
+# ein Mensch verfolgen kann; auf einem Schul-Laptop sind dreissig das Ende der
+# Lektion. Die Grenze zaehlt NUR laufende Laeufe — beendete zaehlen nicht mit.
+MAX_GLEICHZEITIGE_LAEUFE = 3
 
 
 def arbeitsordner():
@@ -39,17 +52,41 @@ def arbeitsordner():
     return Path(cfg.workspace)
 
 
+def _fehlertext(fehler):
+    """Der Text, den der Agent zu sehen bekommt.
+
+    S4.5: Gefangen wurden bisher nur SpotlabError und OSError. Alles andere —
+    ein `int("viele")` aus einem falsch geratenen Argument, ein DecodeError in
+    einer halb geschriebenen Karte, ein KeyError in fremdem JSON — flog durch
+    und riss den Protokollaufruf mit. Der Agent bekam dann keine Meldung,
+    sondern gar nichts, und wiederholte denselben Aufruf.
+    Der Klassenname bleibt drin: bei einem echten Programmfehler ist er das
+    Einzige, womit man ihn spaeter findet.
+    """
+    if isinstance(fehler, SpotlabError):
+        return str(fehler)
+    if isinstance(fehler, OSError):
+        return f"Dateizugriff fehlgeschlagen: {fehler}"
+    return (
+        f"Unerwarteter Fehler in spotlab ({type(fehler).__name__}: {fehler}). "
+        "Das ist ein Programmfehler, kein Bedienfehler — derselbe Aufruf wird "
+        "auch beim zweiten Mal scheitern."
+    )
+
+
 def _antwortet(funktion):
-    """Wandelt SpotlabError in {"fehler": ...} statt in einen Protokollabbruch."""
+    """Wandelt JEDEN Fehler in {"fehler": ...} statt in einen Protokollabbruch.
+
+    Exception, nicht BaseException: KeyboardInterrupt und SystemExit muessen
+    durchkommen, sonst laesst sich der Server nicht mehr beenden.
+    """
 
     @functools.wraps(funktion)
     def huelle(*args, **kwargs):
         try:
             return funktion(*args, **kwargs)
-        except SpotlabError as fehler:
-            return {"fehler": str(fehler)}
-        except OSError as fehler:
-            return {"fehler": f"Dateizugriff fehlgeschlagen: {fehler}"}
+        except Exception as fehler:
+            return {"fehler": _fehlertext(fehler)}
 
     return huelle
 
@@ -61,10 +98,8 @@ def _als_liste(funktion):
     def huelle(*args, **kwargs):
         try:
             return funktion(*args, **kwargs)
-        except SpotlabError as fehler:
-            return [{"fehler": str(fehler)}]
-        except OSError as fehler:
-            return [{"fehler": f"Dateizugriff fehlgeschlagen: {fehler}"}]
+        except Exception as fehler:
+            return [{"fehler": _fehlertext(fehler)}]
 
     return huelle
 
@@ -107,6 +142,22 @@ def anbindungen_auflisten():
 
 
 @_antwortet
+def projekt_loesen(projekt):
+    """Loest die Anbindung wieder. Das FREMDE Projekt bleibt unangetastet.
+
+    Entfernt wird nur, was spotlab selbst unter dem Arbeitsordner angelegt hat:
+    die Manifestkopie und die Panels. Der Ordner, auf den die Anbindung zeigt,
+    wird nicht angefasst.
+
+    Fehlte bisher. `speicher.loese()` gab es samt Tests, nur rief es niemand
+    auf -- ein Agent konnte anbinden, aber nie wieder aufraeumen, und die
+    Ansicht „Anbindungen" zeigte weiter Knoepfe fuer Projekte, die es nicht
+    mehr gab.
+    """
+    return {"ok": speicher.loese(arbeitsordner(), projekt)}
+
+
+@_antwortet
 def panel_setzen(projekt, name, art, titel, inhalt):
     """Schreibt oder ersetzt ein Panel. Arten: kennzahlen, tabelle, reihe, bild, text."""
     anbindung = speicher.finde(arbeitsordner(), projekt)
@@ -126,7 +177,8 @@ def panel_entfernen(projekt, name):
 @_antwortet
 def skript_starten(projekt, name):
     """Startet ein registriertes Skript — erzwungen ohne Roboter."""
-    anbindung = speicher.finde(arbeitsordner(), projekt)
+    wurzel = arbeitsordner()
+    anbindung = speicher.finde(wurzel, projekt)
     skript = skript_von(anbindung.manifest, name)
     if skript is None:
         bekannt = ", ".join(s.name for s in anbindung.manifest.skripte) or "keine"
@@ -141,14 +193,38 @@ def skript_starten(projekt, name):
             "„Anbindungen“ — ein Agent darf den Roboter nicht in Bewegung setzen."
         )
 
-    start_script(skript.datei, argumente=skript.argumente, nur_trocken=True)
+    laufende = [v for v in lauf_verzeichnisse(wurzel) if ist_aktiv(v)]
+    if len(laufende) >= MAX_GLEICHZEITIGE_LAEUFE:
+        raise SpotlabError(
+            f"Es laufen bereits {len(laufende)} Läufe "
+            f"({', '.join(sorted(v.name for v in laufende))}). "
+            "Beende einen davon mit `lauf_stoppen`, bevor du einen weiteren startest."
+        )
+
+    # In eine DATEI, nicht in eine Pipe. Der Server liest nirgends mit; bei
+    # vollem Pipe-Puffer (unter Windows rund 64 KB) waere das Skript stumm
+    # stehengeblieben, mitten in einer Bewegung. Der Pfad geht in der Antwort
+    # mit zurueck, damit der Agent einen Traceback mit den eigenen
+    # Dateiwerkzeugen lesen kann.
+    protokolle = wurzel / "mcp-ausgabe"
+    protokolle.mkdir(parents=True, exist_ok=True)
+    marke = datetime.now().strftime("%Y%m%d-%H%M%S")
+    ausgabedatei = protokolle / f"{marke}-{sicherer_name(name, ersatz='skript')}.log"
+    with open(ausgabedatei, "w", encoding="utf-8", errors="replace") as strom:
+        start_script(
+            skript.datei, argumente=skript.argumente, nur_trocken=True, ausgabe=strom
+        )
+    # Der eigene Griff geht hier zu; der Kindprozess haelt seinen eigenen.
+
     return {
         "gestartet": True,
         "skript": str(skript.datei),
         "argumente": list(skript.argumente),
+        "ausgabe": str(ausgabedatei),
         "hinweis": (
             "Der Lauf läuft im Trockenlauf. Die Kennung erscheint in "
-            "`laeufe_auflisten`, sobald die Aufzeichnung angelegt ist."
+            "`laeufe_auflisten`, sobald die Aufzeichnung angelegt ist. "
+            "Ausgabe und Traceback stehen in der Datei unter `ausgabe`."
         ),
     }
 
@@ -189,7 +265,13 @@ def laeufe_auflisten(projekt=None, anzahl=20):
         anbindung = speicher.finde(wurzel, projekt)
         erlaubt = {str(p) for p in speicher.lauf_verzeichnisse_von(anbindung)}
         verzeichnisse = [v for v in verzeichnisse if str(v.parent) in erlaubt]
-    neueste = sorted(verzeichnisse, key=lambda p: p.name, reverse=True)[: max(1, int(anzahl))]
+    try:
+        wieviele = min(MAX_LAEUFE, max(1, int(anzahl)))
+    except (TypeError, ValueError):
+        raise SpotlabError(
+            f"`anzahl` muss eine Zahl sein, nicht „{anzahl}“."
+        ) from None
+    neueste = sorted(verzeichnisse, key=lambda p: p.name, reverse=True)[:wieviele]
     return [_lauf_json(read_run(v)) for v in neueste]
 
 

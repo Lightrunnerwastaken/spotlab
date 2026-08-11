@@ -75,6 +75,21 @@ def schreibe(anbindung, name, art, titel, inhalt, jetzt=None):
     grund = pruefe_inhalt(art, inhalt)
     if grund is not None:
         raise SpotlabError(grund)
+    # S4.6: Die Wegprüfung lief bisher NUR beim Anzeigen. Ein Agent, der einen
+    # Pfad ausserhalb des Projekts schrieb, bekam „ok" zurück, und erst der
+    # Schüler sah Tage später eine Warnung statt eines Bildes — ohne zu wissen,
+    # welches Werkzeug das verursacht hat. Der Schreiber ist die Stelle, an der
+    # jemand den Fehler noch beheben kann.
+    #
+    # Die Prüfung beim Anzeigen bleibt trotzdem: die Datei kann von irgendwem
+    # stammen, und ein Pfad, der beim Schreiben gültig war, muss es beim Lesen
+    # nicht mehr sein.
+    if art == "bild" and not bild_erlaubt(inhalt["pfad"], anbindung):
+        raise SpotlabError(
+            f"Das Bild „{inhalt['pfad']}“ liegt ausserhalb des Projekts und würde "
+            "nicht angezeigt. Erlaubt sind nur Pfade unterhalb von "
+            f"{anbindung.quelle} oder {anbindung.ordner}."
+        )
     ordner = panelordner(anbindung)
     ordner.mkdir(parents=True, exist_ok=True)
     sicher = sicherer_name(name, ersatz="panel")

@@ -3,8 +3,8 @@ import pytest
 pytest.importorskip("PySide6.QtWidgets")
 pytest.importorskip("pygments")
 
-from spotlab.gui.editor.highlighter import spannen          # noqa: E402
-from spotlab.gui.theme import DUNKEL                        # noqa: E402
+from spotlab.gui.editor.highlighter import spannen  # noqa: E402
+from spotlab.gui.theme import DUNKEL  # noqa: E402
 
 
 def _farben(karte, zeile):

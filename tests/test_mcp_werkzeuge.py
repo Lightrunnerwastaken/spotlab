@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import pytest
 
@@ -167,3 +168,138 @@ def test_alle_antworten_sind_json_faehig(welt):
         werkzeuge.lauf_stoppen("gibtsnicht"),
     ):
         json.dumps(antwort)
+
+
+# ==================================== S4.5 die Werkzeuge muessen alles abfangen
+#
+# Der Kopf dieser Datei verspricht: „Fehler kommen als {"fehler": ...} zurueck
+# statt als Ausnahme". Gefangen wurden aber nur SpotlabError und OSError. Alles
+# andere flog durch und riss den Protokollaufruf mit -- der Agent bekam dann
+# keine Meldung, sondern gar nichts, und wiederholte denselben Aufruf.
+
+
+def test_ein_unerwarteter_fehler_kommt_als_meldung_zurueck(welt, monkeypatch):
+    def wirf(*a, **kw):
+        raise ValueError("etwas ganz anderes")
+
+    monkeypatch.setattr(werkzeuge.speicher, "finde", wirf)
+    antwort = werkzeuge.panel_entfernen("matura-spot", "x")
+    assert "ValueError" in antwort["fehler"]
+    assert "Programmfehler" in antwort["fehler"]
+
+
+def test_ein_unerwarteter_fehler_bricht_auch_eine_liste_nicht_ab(welt, monkeypatch):
+    def wirf(*a, **kw):
+        raise RuntimeError("kaputt")
+
+    monkeypatch.setattr(werkzeuge, "lauf_verzeichnisse", wirf)
+    antwort = werkzeuge.laeufe_auflisten()
+    assert isinstance(antwort, list) and "RuntimeError" in antwort[0]["fehler"]
+
+
+def test_eine_unsinnige_anzahl_wird_benannt_statt_zu_werfen(welt):
+    antwort = werkzeuge.laeufe_auflisten(anzahl="viele")
+    assert "anzahl" in antwort[0]["fehler"]
+
+
+def test_die_anzahl_ist_nach_oben_begrenzt(welt, monkeypatch):
+    """anzahl kam ungeprueft aus dem Protokoll.
+
+    laeufe_auflisten(anzahl=1000000) las jedes gefundene Lauf-Verzeichnis von
+    der Platte, waehrend im Fenster jemand auf NOT-AUS wartete. Geprueft wird,
+    wie oft wirklich GELESEN wird — nicht, was die Konstante sagt.
+    """
+    from pathlib import Path
+
+    gelesen = []
+    monkeypatch.setattr(
+        werkzeuge, "lauf_verzeichnisse", lambda w: [Path(f"lauf{i:04d}") for i in range(500)]
+    )
+    monkeypatch.setattr(werkzeuge, "read_run", lambda v: gelesen.append(v) or _leer(v))
+
+    antwort = werkzeuge.laeufe_auflisten(anzahl=10**6)
+    assert len(gelesen) == werkzeuge.MAX_LAEUFE == 200
+    assert len(antwort) == 200
+
+
+def _leer(verzeichnis):
+    from spotlab.record.read import RunSummary
+
+    return RunSummary(
+        id=verzeichnis.name, dir=verzeichnis, gestartet=None, dauer_s=0.0,
+        backend="dryrun", nickname="", ergebnis="ok", fehler=None, skript=None,
+        benutzer=None, ereignisse_n=0, abtastungen_n=0,
+    )
+
+
+def test_mehr_als_drei_gleichzeitige_laeufe_werden_abgelehnt(welt, monkeypatch):
+    """Jeder Start ist ein echter Prozess. Ein Agent in einer Schleife hat auf
+    einem Schul-Laptop sonst die Lektion beendet."""
+    from pathlib import Path
+
+    werkzeuge.projekt_anbinden(str(welt[1]))
+    monkeypatch.setattr(
+        werkzeuge, "lauf_verzeichnisse", lambda w: [Path(f"lauf{i}") for i in range(3)]
+    )
+    monkeypatch.setattr(werkzeuge, "ist_aktiv", lambda v: True)
+    gestartet = []
+    monkeypatch.setattr(werkzeuge, "start_script", lambda *a, **kw: gestartet.append(a))
+
+    antwort = werkzeuge.skript_starten("matura-spot", "Baseline")
+    assert "laufen bereits 3" in antwort["fehler"]
+    assert gestartet == [], "Trotz Grenze gestartet"
+
+
+def test_unter_der_grenze_wird_gestartet(welt, monkeypatch):
+    from pathlib import Path
+
+    werkzeuge.projekt_anbinden(str(welt[1]))
+    monkeypatch.setattr(
+        werkzeuge, "lauf_verzeichnisse", lambda w: [Path(f"lauf{i}") for i in range(2)]
+    )
+    monkeypatch.setattr(werkzeuge, "ist_aktiv", lambda v: True)
+    gestartet = []
+    monkeypatch.setattr(werkzeuge, "start_script", lambda *a, **kw: gestartet.append(a))
+
+    antwort = werkzeuge.skript_starten("matura-spot", "Baseline")
+    assert antwort["gestartet"] is True
+    assert len(gestartet) == 1
+
+
+def test_ein_geschwaetziges_skript_bleibt_nicht_stehen(welt, tmp_path):
+    """S4.5 -- der Server liest die Pipe nirgends leer.
+
+    start_script() gibt dem Kind eine Pipe fuer stdout. Wer sie nicht leert,
+    laesst das Skript beim vollen Puffer (unter Windows rund 64 KB) fuer immer
+    stehen: ohne Fehler, ohne Ende, mitten in einer Bewegung. Der MCP-Server
+    warf den Prozess-Handle weg und las nie.
+
+    Das Skript hier schreibt rund 400 KB -- ein Vielfaches des Puffers.
+    """
+    import time
+
+    arbeit, projekt = welt
+    (projekt / "scripts" / "laut.py").write_text(
+        "for i in range(8000):\n    print('x' * 50)\n", encoding="utf-8"
+    )
+    (projekt / DATEINAME).write_text(
+        MANIFEST + '\n[[skript]]\nname = "Laut"\ndatei = "scripts/laut.py"\nroboter = false\n',
+        encoding="utf-8",
+    )
+    werkzeuge.projekt_anbinden(str(projekt))
+
+    antwort = werkzeuge.skript_starten("matura-spot", "Laut")
+    assert antwort["gestartet"] is True
+
+    ausgabe = Path(antwort["ausgabe"])
+    ende = time.monotonic() + 60
+    while time.monotonic() < ende:
+        if ausgabe.exists() and ausgabe.read_text(encoding="utf-8").count("\n") >= 8000:
+            break
+        time.sleep(0.1)
+    else:
+        gelesen = ausgabe.read_text(encoding="utf-8").count("\n") if ausgabe.exists() else 0
+        raise AssertionError(
+            f"Das Skript kam nicht durch: {gelesen} von 8000 Zeilen. "
+            "Der volle Pipe-Puffer haelt es an."
+        )
