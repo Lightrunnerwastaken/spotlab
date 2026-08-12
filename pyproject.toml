@@ -45,6 +45,10 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "spotlab.workshop" = ["templates/*.py"]
+# Ohne diese Zeile fehlt die Gangkennlinie in einem nicht-editierbaren Install
+# (`pip install .`), und `backend="sim"` scheitert erst zur Laufzeit mit
+# FileNotFoundError — auf dem Schullaptop, nicht hier.
+"spotlab.kalibrierung" = ["daten/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

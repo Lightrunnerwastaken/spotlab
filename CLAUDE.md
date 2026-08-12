@@ -141,6 +141,15 @@ versionsgepinntes Extra `spotlab[sim]`.
 - **Der Abtaster holt nichts nach.** Dauert die RPC länger als die Periode, läuft die
   Schleife langsamer. Nachholen erzeugte Bursts, die in der Auswertung wie echte Dynamik
   aussehen.
+- **Der Takt wartet über `time.sleep()`, nie über `Event.wait()`.** Jenes geht unter
+  Windows über den GROBEN Zeitgeber (Auflösung 15.6 ms): 20 ms angefordert werden zu
+  31 ms geliefert, aus 50 Hz werden 32. `time.sleep()` nutzt seit Python 3.11
+  hochauflösende Timer. Gemessen am 12.08.2026: 34.0 gegen 49.0 Hz im nachgestellten
+  Takt, 34.09 gegen 46.13 Hz in der vollen Trockenprobe — und die reale Messfahrt
+  desselben Tages kam auf 34.1 Hz. **Die Grenze war nie das WLAN und nie der Roboter,
+  sondern diese eine Zeile.** Der Preis ist eine Stopp-Verzögerung von bis zu 20 ms;
+  `_warte()` schläft deshalb in Stücken. Ein Ratentest dazu wäre lastabhängig — geprüft
+  wird der Quelltext, plus eine grosszügige Gegenprobe auf die Wartezeit selbst.
 - **`messung/` importiert nichts aus `api/`, `backends/`, `gui/` und kein `bosdyn`.**
   `spotlab.record.read` und `spotlab.errors` sind erlaubt.
 - **`end_time_secs` ist ein ZEITPUNKT in Sekunden seit dem 1.1.1970, keine Dauer.**
@@ -164,7 +173,29 @@ versionsgepinntes Extra `spotlab[sim]`.
   `Zustandsquelle` hat genau eine Methode — es gibt gar nichts zu missbrauchen.
   Ein Test hält zusätzlich fest, dass `StateSampler` nicht heimlich anfängt,
   mehr als `robot_state()` zu verlangen; sonst reichte die Nur-Lese-Quelle nicht
-  mehr und die Aussage wäre still falsch geworden.
+  mehr und die Aussage wäre still falsch geworden. **`Bildquelle` steht unter
+  derselben Regel**: eine Methode, `ImageClient` liest nur.
+- **Der Bildmitschnitt geht NICHT über `RunRecorder.image()`.** Jenes schreibt
+  `bilder.json` bei jedem Bild vollständig neu — quadratisch in der Bildzahl —
+  und legt ein Ereignis an. Und `bilder/` ist das Verzeichnis, das
+  `gui/watcher.py` bei JEDEM Takt globbt, um das neueste Bild zu finden.
+  Beides trägt eine Handvoll Schnappschüsse aus einem Schülerskript, keinen
+  Dauerstrom von fünf Kameras über eine Stunde. Der Strom liegt deshalb in
+  `kamera/` mit anhängendem Index `kamera.jsonl`.
+- **Bilder werden wörtlich geschrieben, nie umkodiert.** JPEG als `.jpg`, alles
+  andere als `.raw`. `api/perception.py::to_png_bytes()` normiert Tiefe für die
+  ANZEIGE auf 8 Bit; im Aufnahmepfad wäre das ein stiller Totalverlust der
+  Millimeterwerte — die Bilder sähen dabei völlig richtig aus.
+- **Was konstant ist, steht einmal in `kamera/quellen.json`** (Intrinsik,
+  Extrinsik, Tiefenskala), nicht in jeder der zehntausend Indexzeilen. Umgekehrt
+  gehört `pose` in JEDE Zeile: sie ist zum Aufnahmezeitpunkt gelesen, und
+  zwischen zwei 10-Hz-Abtastungen zu interpolieren kostete bei 0.3 m/s gut
+  anderthalb Zentimeter je Bild.
+- **Der Beobachter tastet ausserhalb der Messfenster REICH ab** — anders als
+  `spotlab.connect()`. Dort ist der schlanke Satz richtig (50 RPCs/s über WLAN
+  für Daten, die niemand ansieht); eine Messfahrt ist der umgekehrte Fall: sie
+  findet einmal statt, und nur der reiche Satz trägt µ, Schlupf,
+  Motortemperaturen und Faults.
 - **Das Messfenster-Protokoll steht in `record/messfenster.py`, an genau einer
   Stelle.** `api/spot.py` und `beobachtung/session.py` delegieren beide dorthin.
   Zwei Formulierungen hiessen, dass `messung/fenster.py` bald zwei leicht
@@ -185,6 +216,40 @@ versionsgepinntes Extra `spotlab[sim]`.
 - **Vor dem Start werden ALLE geänderten Reiter gespeichert, nicht nur der sichtbare.** Und
   der Vergleich läuft gegen die Datei, nicht gegen Qts Modified-Flag: `setPlainText()`
   setzt das Flag zurück, die Markierung kann also falsch stehen.
+- **Das Sim-Backend ist eine Interpolation von Messungen, keine Physik — und es
+  sagt das.** `backend: "sim"` steht in `lauf.json`, der Hinweis „NICHT am Roboter
+  erprobt" im `verbunden`-Ereignis. Wo keine Messung ist, steht **null oder gar
+  nichts**: Gelenkmomente und -geschwindigkeiten bleiben 0.0, `terrain` wird nicht
+  gesetzt, Kameras und GraphNav fehlen in `capabilities()`. Ein erfundener Reibwert
+  0.6 oder ein erfundenes Bild sähe aus wie eine Messung und liefe in jede
+  Auswertung — dieselbe Regel wie in `api/state.py`.
+- **Es gibt keine Kurve „kommandiert → erreicht", und der Sim tut nicht so.** Im
+  Beobachter-Modus hat niemand kommandiert; `ziel_m_s` ist die ABSICHT des
+  Bedieners, und er hat mit der Live-Anzeige darauf hin gesteuert. Die Abweichung
+  misst also die Tablet-Bedienung, nicht das Folgeverhalten des Roboters. Wer sie
+  als Schleppfehler ausgibt, verkauft Bedienfehler als Robotereigenschaft. Der
+  echte Schleppfehler bleibt unbekannt, bis jemand mit `gates_real.py`
+  **kommandiert** misst — hinter Sperrpunkt A1.
+- **Eine kombinierte Bewegung wurde nie vermessen.** Die B2-Fenster haben
+  Drehraten um 0.000, die B3-Fenster Tempi um 0.005. Das Modell wählt deshalb die
+  dominierende Achse, statt zwischen zwei Messreihen zu mischen, die nichts
+  miteinander zu tun haben.
+- **`OHNE_ROBOTER` in `spotlab/__init__.py` ist eine ERLAUBNISLISTE.** Nur die dort
+  genannten Backends laufen unter `SPOTLAB_NUR_TROCKEN`. Ein neues Backend ist
+  gesperrt, bis jemand es einträgt — und wer es einträgt, hat die Frage
+  beantwortet, ob es den Spot bewegen kann. Als Sperrliste wäre jedes künftige
+  Backend versehentlich frei.
+- **Die Kalibrierung liest Läufe, sie schreibt keine.** `kalibrierung/` nimmt nur
+  Läufe mit `backend` aus einer Erlaubnisliste — ein Trockenlauf hat erfundene
+  Gelenkwerte. Bis zum 12.08.2026 ging das nicht: Probe und Messfahrt hiessen
+  beide „beobachter", und die Probe fiel nur heraus, weil `DryRunBackend` alle
+  Füsse am Boden lässt. Seither heisst die Probe **`beobachter-trocken`**.
+- **Ein verschmolzener Gangzyklus verfälscht die Kennlinie, er verrauscht sie
+  nicht.** Verpasst die Kontakterkennung einen Aufsetzer, entsteht ein Zyklus von
+  doppelter Dauer; auf Phase 0..1 normiert zieht er zwei Schritte in den Platz von
+  einem. `ZYKLUS_BAND` sortiert nach dem Median aus, und die Zahl der verworfenen
+  Zyklen steht in der Herkunft — sonst sähe eine gesäuberte Kennlinie sauberer
+  aus, als die Messung war.
 - **`errors/` darf nichts aus `backends/` importieren.** `backends/base.py` importiert
   `UnsupportedCapability` aus `errors`; die Gegenrichtung schliesst den Kreis, sobald
   `backends.base` zuerst geladen wird. Die Position der Importzeile hilft dagegen nicht.
@@ -300,11 +365,20 @@ versionsgepinntes Extra `spotlab[sim]`.
 Fundament (1+2), GUI (3), GraphNav (4), der eingebaute Editor (5), die Anbindung fremder
 Projekte samt MCP-Server (6), die Kalibrier-Infrastruktur (7) und der Beobachter-Modus (8)
 sind vollständig. Der Beobachter (`beobachtung/`) schreibt leaselos mit, während ein
-Mensch mit dem Tablet fährt — das Drehbuch dazu liegt in
-`matura-spot/scripts/beobachten_real.py`. Noch nicht gebaut: der Vergleich gegen den Sim
+Mensch mit dem Tablet fährt — Zustand reich bei 10 Hz, 50 Hz im Messfenster, dazu ein
+Bildmitschnitt aller fünf Kameras (Tiefe auf Wunsch) nach `kamera/`. Das Drehbuch dazu
+liegt in `matura-spot/scripts/beobachten_real.py`, der Ablauf für den Messtag in
+`matura-spot/notes/MESSFAHRT_ABLAUF.md`. Noch nicht gebaut: der Vergleich gegen den Sim
 über die neue x-Achse (erreichtes statt kommandiertes Tempo); er berührt nur
-`matura-spot/scripts/vergleich_real_sim.py`. Offen
-und bewusst nicht gebaut: Sim-Adapter, NN-Anbindung, Mehrbenutzer-Dienst, Arm und Docking.
+`matura-spot/scripts/vergleich_real_sim.py`. **Aufgehoben am 12.08.2026:** „ein Simulator in spotlab" stand hier als bewusstes
+Nicht-Ziel. Der Autor hat das gekippt, wie zuvor beim Editor in Stufe 5. Gebaut ist
+jetzt `backends/sim.py` — eine Interpolation der am 12.08.2026 gemessenen Gangarten,
+**keine Physik**. MuJoCo bleibt in `matura-spot`; die geplante Kopplung als optionales
+Extra `spotlab[sim]` bleibt der Weg für alles, was neue Bedingungen braucht (Treppe,
+Stoss, Traglast). Die Matura-Experimente gehören weiterhin dorthin, nicht hierher.
+
+Offen
+und bewusst nicht gebaut: NN-Anbindung, Mehrbenutzer-Dienst, Arm und Docking.
 Im Editor: Debugger mit Haltepunkten, git-Integration, Erweiterungen, projektweite Suche.
 In der Anbindung: MCP über Netz, Mehrbenutzer, Qt-Code aus fremden Projekten, eine
 Diagrammbibliothek jenseits der fünf Panel-Arten. In der Kalibrierung: **ein Simulator in

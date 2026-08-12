@@ -16,7 +16,7 @@ from spotlab.errors import ConfigBroken, ConfigMissing
 
 CONFIG_PATH = Path.home() / ".spotlab" / "config.toml"
 KEYRING_SERVICE = "spotlab"
-BACKENDS = ("real", "dryrun")
+BACKENDS = ("real", "dryrun", "sim")
 ENV_PASSWORD = "BOSDYN_CLIENT_PASSWORD"
 ENV_USERNAME = "BOSDYN_CLIENT_USERNAME"
 

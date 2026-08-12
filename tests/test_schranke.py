@@ -186,3 +186,46 @@ def test_skript_kann_die_schranke_nicht_selbst_entfernen(tmp_path):
         "Die Schranke liess sich zur Laufzeit entfernen: " + ergebnis.stdout
     )
     assert "ABGEWIESEN" in ergebnis.stdout, ergebnis.stderr
+
+
+def test_schranke_erlaubt_den_sim(tmp_path):
+    """`sim` bewegt sich, kann aber keinen Roboter erreichen: kein Netzclient,
+    kein Lease, kein Not-Aus-Endpunkt. Die Schranke heisst „darf den echten
+    Spot nicht bewegen", nicht „darf sich nicht bewegen" -- sonst haette ein
+    Agent kein brauchbares Backend mehr, sobald der Trockenlauf zu wenig ist.
+    """
+    ergebnis = _lauf(
+        tmp_path,
+        "import spotlab\n"
+        "with spotlab.connect(backend='sim') as spot:\n"
+        "    spot.power_on()\n"
+        "    spot.walk(0.3, 0.0, 0.0, duration=0.2)\n"
+        "    print('ok')\n",
+        **{ENV_NUR_TROCKEN: "1"},
+    )
+    assert ergebnis.returncode == 0, ergebnis.stderr
+    assert "ok" in ergebnis.stdout
+
+
+def test_die_schranke_ist_eine_erlaubnisliste(tmp_path):
+    """Ein unbekannter Backend-Name muss GESPERRT sein, nicht durchgelassen.
+
+    Andersherum waere jedes kuenftige Backend versehentlich frei -- und wer es
+    hinzufuegt, haette die Frage „kann das den Spot bewegen?" nie beantworten
+    muessen.
+    """
+    from spotlab import OHNE_ROBOTER
+
+    assert "real" not in OHNE_ROBOTER
+    # MIT `with`: `connect()` ist ein Kontextmanager, ohne das laeuft der Rumpf
+    # gar nicht und der Test bewiese nichts.
+    ergebnis = _lauf(
+        tmp_path,
+        "import spotlab\n"
+        "with spotlab.connect(backend='etwas-neues'):\n"
+        "    print('durchgelassen')\n",
+        **{ENV_NUR_TROCKEN: "1"},
+    )
+    assert ergebnis.returncode != 0
+    assert "durchgelassen" not in ergebnis.stdout
+    assert "ohne Roboter gestartet" in (ergebnis.stdout + ergebnis.stderr)

@@ -24,6 +24,14 @@ NUR_TROCKEN_MELDUNG = (
     "Starte das Programm selbst im Fenster, wenn der Spot fahren soll."
 )
 
+# Backends, die gar keinen Roboter erreichen können: kein Netzclient, kein
+# Lease, kein Not-Aus-Endpunkt. Nur diese laufen unter `SPOTLAB_NUR_TROCKEN`.
+#
+# ERLAUBNISLISTE, keine Sperrliste. Ein neues Backend ist gesperrt, bis jemand
+# es hier einträgt — und wer es einträgt, hat die Frage beantwortet, ob es den
+# Spot bewegen kann. Andersherum wäre jedes künftige Backend versehentlich frei.
+OHNE_ROBOTER = ("dryrun", "sim")
+
 
 @contextlib.contextmanager
 def connect(
@@ -56,7 +64,12 @@ def connect(
     # überschreibt die Variable also. Abgewiesen statt stillschweigend
     # heruntergestuft: ein Skript, das glaubt, es fahre den echten Spot,
     # meldet sonst Unsinn und niemand merkt es.
-    if NUR_TROCKEN and art != "dryrun":
+    # `sim` steht hier neben `dryrun`, weil die Schranke „darf den echten Spot
+    # nicht bewegen" heisst — nicht „darf sich nicht bewegen". Beide haben
+    # keinen Netzclient und kein Lease; sie können gar keinen Roboter erreichen.
+    # Eine ERLAUBNISLISTE, keine Sperrliste: ein künftiges Backend ist gesperrt,
+    # bis jemand es hier ausdrücklich einträgt.
+    if NUR_TROCKEN and art not in OHNE_ROBOTER:
         raise SpotlabError(NUR_TROCKEN_MELDUNG)
 
     grenzen = cfg.limits if cfg else Limits()
@@ -74,6 +87,15 @@ def connect(
 
         roher_roboter, unten = None, DryRunBackend(recorder)
         recorder.event("verbunden", backend="dryrun")
+    elif art == "sim":
+        from spotlab.backends.sim import SimBackend
+
+        roher_roboter, unten = None, SimBackend(recorder)
+        # Der Hinweis gehört in die Aufzeichnung, nicht nur in den Docstring:
+        # wer den Lauf später ansieht, muss sehen, dass hier nichts erprobt ist.
+        recorder.event(
+            "verbunden", backend="sim", hinweis=unten.hinweis_zur_gueltigkeit()
+        )
     else:
         from spotlab.backends.real import RealSpot
 
@@ -133,6 +155,17 @@ def connect(
             try:
                 spot.close()
             finally:
+                # Vor `finish()`: der Bericht gehört in dasselbe `lauf.json`,
+                # und `finish()` schreibt es zum letzten Mal.
+                #
+                # Eigener try-Block, weil er im Abbaupfad steht: eine kaputte
+                # Kennlinie darf einen Lauf nicht offen lassen. Lieber ein
+                # Lauf ohne Bericht als einer, der für immer auf „läuft" steht.
+                try:
+                    if hasattr(unten, "bericht"):
+                        recorder.set_robot_info(sim=unten.bericht())
+                except Exception as fehler:
+                    protokoll.notiere("Sim-Bericht nicht geschrieben", fehler)
                 recorder.finish(ergebnis, fehlertext)
                 protokoll.setze_ziel(None)
 
