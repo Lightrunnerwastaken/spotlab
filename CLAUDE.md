@@ -335,6 +335,13 @@ versionsgepinntes Extra `spotlab[sim]`.
   HÄNGT ein Lauf, statt zu scheitern: ein kaputter Zwischenstand hat einen Testlauf
   drei Stunden laufen lassen. `pytest-timeout` (300 s je Test) ist das Netz darunter,
   nicht der Ersatz — es sagt nur, DASS etwas hing, nicht wo.
+- **Ein Test, der absichtlich `stop()` scheitern lässt, hält den Thread trotzdem
+  an.** Die Attrappe merkt sich die getroffene Instanz, das Teardown ruft das echte
+  `stop()` darauf (`tests/test_kette.py::klemmender_abtaster`). Ohne das lief der
+  Abtaster als Daemon bis zum Prozessende weiter — mit 10 Hz gegen ein `tmp_path`,
+  das pytest längst gelöscht hatte. Die Dauerlast hat einen ganz anderen Test
+  gekippt, in einem von drei vollständigen Läufen. **Ein Leck fällt nie dort auf,
+  wo es entsteht.**
 - **Ein Test, der von der Maschinenlast abhängt, prüft die falsche Sache.** Ein
   20-ms-Takt rutscht unter Windows regelmässig auf 31 ms (Zeitgeberauflösung 15.6 ms).
   Nicht die Abwesenheit von Jitter behaupten, sondern die ART des Fehlers prüfen, gegen

@@ -74,20 +74,53 @@ def test_starten_beobachten_stoppen(tmp_path):
 # ------------------------------------- abtaster.stop() vor spot.close() (S1.6)
 
 
-def test_ein_kaputter_abtaster_verhindert_den_abbau_nicht(tmp_path, monkeypatch):
+@pytest.fixture
+def klemmender_abtaster(monkeypatch):
+    """`StateSampler.stop()` wirft -- und der Thread wird trotzdem angehalten.
+
+    Die Aussage der beiden Tests darunter ist, dass der Abbau einen KAPUTTEN
+    Abtaster ueberlebt. Waehrend des Tests muss `stop()` also wirklich werfen.
+
+    Die Folge davon war ein Leck: der Abtaster-Thread wurde nie angehalten und
+    lief als Daemon bis zum Prozessende weiter, mit 10 Hz gegen ein
+    `tmp_path`, das pytest laengst geloescht hatte. Ab diesen beiden Tests
+    meldete JEDER folgende Test zwei lebende `spotlab-sampler`.
+
+    Das war nicht bloss unsauber: die Dauerlast hat
+    `test_messfahrt_ende_zu_ende.py::test_die_messfahrt_meldet_keine_falschen_luecken`
+    in einem von drei vollstaendigen Laeufen gekippt -- ein Test, der allein
+    zuverlaessig gruen ist. Auf einem geteilten CI-Rechner ist das schlechter,
+    nicht besser.
+
+    Die Attrappe merkt sich, WELCHE Instanz getroffen wurde, und im Teardown
+    laeuft das echte `stop()` darauf. `stop()` hat eine eigene Zeitgrenze
+    (2 s Join), es kann hier also nicht haengen.
+    """
+    from spotlab.record.sampler import StateSampler
+
+    echtes_stop = StateSampler.stop
+    getroffen = []
+
+    def kaputtes_stop(self, *args, **kwargs):
+        getroffen.append(self)
+        raise RuntimeError("Abtaster klemmt")
+
+    monkeypatch.setattr(StateSampler, "stop", kaputtes_stop)
+    yield
+    for abtaster in dict.fromkeys(getroffen):      # jede Instanz genau einmal
+        echtes_stop(abtaster)
+
+
+def test_ein_kaputter_abtaster_verhindert_den_abbau_nicht(
+    tmp_path, monkeypatch, klemmender_abtaster
+):
     """`abtaster.stop()` stand ausserhalb jedes try/finally, direkt VOR
     `spot.close()`. Wirft es -- oder wird es unterbrochen -- baut die Sitzung
     nie ab: Motoren an, Lease gehalten, Not-Aus-Endpunkt registriert.
     """
     import spotlab
-    from spotlab.record.sampler import StateSampler
 
     geschlossen = []
-
-    def kaputtes_stop(self):
-        raise RuntimeError("Abtaster klemmt")
-
-    monkeypatch.setattr(StateSampler, "stop", kaputtes_stop)
 
     with pytest.raises(RuntimeError, match="Abtaster klemmt"):
         with spotlab.connect(backend="dryrun", runs_dir=tmp_path) as spot:
@@ -98,20 +131,56 @@ def test_ein_kaputter_abtaster_verhindert_den_abbau_nicht(tmp_path, monkeypatch)
     assert geschlossen == [True], "spot.close() wurde uebersprungen"
 
 
-def test_der_lauf_wird_trotz_kaputtem_abtaster_abgeschlossen(tmp_path, monkeypatch):
+def test_der_lauf_wird_trotz_kaputtem_abtaster_abgeschlossen(
+    tmp_path, klemmender_abtaster
+):
     """recorder.finish() muss ebenfalls laufen -- sonst bleibt lauf.json auf
     'laeuft' stehen und die GUI zeigt den Lauf ewig als aktiv."""
     import json
 
     import spotlab
-    from spotlab.record.sampler import StateSampler
 
-    monkeypatch.setattr(
-        StateSampler, "stop", lambda self: (_ for _ in ()).throw(RuntimeError("klemmt"))
-    )
     with pytest.raises(RuntimeError):
         with spotlab.connect(backend="dryrun", runs_dir=tmp_path):
             pass
 
     lauf = next(tmp_path.glob("*/lauf.json"))
     assert json.loads(lauf.read_text(encoding="utf-8"))["ergebnis"] != "läuft"
+
+
+def test_der_abtaster_ueberlebt_diese_tests_nicht(tmp_path, monkeypatch):
+    """Die Gegenprobe zur Vorrichtung: nach dem Test lebt kein Abtaster mehr.
+
+    Ohne sie waere `klemmender_abtaster` eine Behauptung -- und genau diese
+    Sorte Leck faellt sonst erst auf, wenn ein ganz anderer Test kippt.
+    """
+    import threading
+
+    import spotlab
+    from spotlab.record.sampler import StateSampler
+
+    vorher = {t for t in threading.enumerate() if t.name == "spotlab-sampler"}
+
+    echtes_stop = StateSampler.stop
+    getroffen = []
+
+    def kaputtes_stop(self, *args, **kwargs):
+        getroffen.append(self)
+        raise RuntimeError("klemmt")
+
+    monkeypatch.setattr(StateSampler, "stop", kaputtes_stop)
+    with pytest.raises(RuntimeError):
+        with spotlab.connect(backend="dryrun", runs_dir=tmp_path):
+            pass
+    assert getroffen, "der gepatchte stop() wurde gar nicht gerufen"
+
+    # Vor dem Aufraeumen MUSS der Thread noch leben -- sonst pruefte der Test
+    # nichts.
+    assert getroffen[0]._thread is not None and getroffen[0]._thread.is_alive()
+
+    for abtaster in dict.fromkeys(getroffen):
+        echtes_stop(abtaster)
+
+    nachher = {t for t in threading.enumerate()
+               if t.name == "spotlab-sampler" and t.is_alive()}
+    assert nachher <= vorher, f"Abtaster ueberlebt: {nachher - vorher}"
