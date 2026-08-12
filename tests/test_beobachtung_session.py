@@ -2,6 +2,7 @@
 
 import json
 import math
+import time
 
 import pytest
 
@@ -20,7 +21,7 @@ def test_trockene_sitzung_zeichnet_auf(tmp_path):
         with b.messfenster("B1-Stand", hz=50.0, regler="MEDIUM"):
             pass
     lauf = _lauf(tmp_path)
-    assert lauf["backend"] == "beobachter"
+    assert lauf["backend"] == "beobachter-trocken"
     assert lauf["ergebnis"] == "ok"
 
 
@@ -29,7 +30,51 @@ def test_backend_name_sagt_dass_niemand_kommandiert_hat(tmp_path):
     bedeutungslos waere."""
     with Beobachtung.trocken(runs_dir=tmp_path):
         pass
-    assert _lauf(tmp_path)["backend"] == "beobachter"
+    assert _lauf(tmp_path)["backend"].startswith("beobachter")
+
+
+def test_die_probe_ist_von_der_messfahrt_zu_unterscheiden(tmp_path):
+    """Bis zum 12.08.2026 hiessen beide „beobachter".
+
+    Damit war in `lauf.json` nicht zu sehen, ob die Gelenkwerte gemessen oder
+    erfunden sind — nur matura-spots eigenes Protokoll wusste es, und davon
+    weiss spotlab nichts. Beim Bau der Gangkennlinie waere beinahe eine Probe
+    in die Kalibrierdaten gelaufen; sie fiel nur heraus, weil `DryRunBackend`
+    alle Fuesse am Boden laesst und damit null Gangzyklen liefert. Sobald das
+    Sim-Backend die Beine bewegt, faellt sie nicht mehr heraus.
+    """
+    from spotlab.config import Config
+
+    class FakeRobot:
+        def ensure_client(self, name):
+            return object()
+
+    trocken = tmp_path / "trocken"
+    echt = tmp_path / "echt"
+    with Beobachtung.trocken(runs_dir=trocken, bilder_hz=0):
+        pass
+    Beobachtung.connect(
+        Config(ip="1.2.3.4", username="u"), runs_dir=echt,
+        verbinder=lambda cfg: FakeRobot(), bilder_hz=0,
+    ).beende()
+
+    assert _lauf(trocken)["backend"] != _lauf(echt)["backend"]
+    assert "trocken" in _lauf(trocken)["backend"]
+    assert "trocken" not in _lauf(echt)["backend"]
+
+
+def test_auch_das_verbunden_ereignis_nennt_den_richtigen_backend(tmp_path):
+    """Sonst widerspraechen sich lauf.json und ereignisse.jsonl."""
+    b = Beobachtung.trocken(runs_dir=tmp_path, bilder_hz=0)
+    with b:
+        pass
+    zeilen = (b.lauf_verzeichnis / "ereignisse.jsonl").read_text(
+        encoding="utf-8"
+    ).splitlines()
+    verbunden = next(
+        json.loads(z) for z in zeilen if json.loads(z)["art"] == "verbunden"
+    )
+    assert verbunden["daten"]["backend"] == _lauf(tmp_path)["backend"]
 
 
 def test_der_abtaster_wird_garantiert_gestoppt(tmp_path):
@@ -195,3 +240,82 @@ def test_stillstand_ist_null_nicht_none():
     """Gegenprobe: gemessene Null und fehlende Messung sind zweierlei."""
     saetze = [_satz(t / 50.0) for t in range(100)]
     assert _sitzung(saetze).tempo() == pytest.approx(0.0, abs=1e-9)
+
+
+# ------------------------------------------------------------- Messfahrt-Umfang
+
+
+def _erste_abtastung(verzeichnis):
+    zeilen = (verzeichnis / "zustand.jsonl").read_text(encoding="utf-8").splitlines()
+    return json.loads(zeilen[0])["daten"]
+
+
+def test_ausserhalb_der_fenster_wird_reich_abgetastet(tmp_path):
+    """Anders als im Schuelerlauf — und das ist Absicht.
+
+    Nur der reiche Satz traegt µ, Schlupf, Motortemperaturen und Faults. Eine
+    Messfahrt findet einmal statt; was zwischen den Fenstern fehlt, ist weg.
+    """
+    b = Beobachtung.trocken(runs_dir=tmp_path, bilder_hz=0)
+    with b:
+        pass
+    daten = _erste_abtastung(b.lauf_verzeichnis)
+    for schluessel in ("feet_detail", "motor_temps", "faults", "velocity_vision"):
+        assert schluessel in daten, schluessel
+
+
+def test_die_schlanken_schluessel_bleiben_unveraendert(tmp_path):
+    """Gegenprobe zur Regel „neue Felder kommen dazu, nie an ihre Stelle":
+    die Live-Ansicht und alte Aufzeichnungen haengen an genau diesen."""
+    b = Beobachtung.trocken(runs_dir=tmp_path, bilder_hz=0)
+    with b:
+        pass
+    daten = _erste_abtastung(b.lauf_verzeichnis)
+    assert len(daten["pose"]) == 3
+    assert len(daten["feet"]) == 4
+
+
+def test_das_messfenster_faellt_hinterher_auf_reich_zurueck(tmp_path):
+    """`Messfenster` stellt den vorherigen Takt wieder her. Waere die Basis
+    weiterhin schlank, verlöre die Messfahrt nach dem ersten Fenster
+    unbemerkt genau die Felder, für die sie gefahren wird."""
+    b = Beobachtung.trocken(runs_dir=tmp_path, bilder_hz=0)
+    with b:
+        with b.messfenster("B1", hz=50.0):
+            pass
+        assert b.sampler.takt() == (10.0, True)
+
+
+def test_bilder_laufen_mit_und_stehen_vor_dem_abschluss(tmp_path):
+    b = Beobachtung.trocken(runs_dir=tmp_path, bilder_hz=50.0)
+    with b:
+        ende = time.monotonic() + 10.0
+        while time.monotonic() < ende and b.bildzaehler()["bilder"] < 3:
+            time.sleep(0.02)
+    assert b.bildzaehler()["bilder"] >= 3
+    assert b.mitschnitt._thread is None, "der Bildthread laeuft nach dem Abbau weiter"
+    assert _lauf(tmp_path)["ergebnis"] == "ok"
+
+
+def test_ohne_kameradienst_laeuft_die_messfahrt_trotzdem(tmp_path):
+    """Die Zustandsabtastung ist die Hauptmessung. Sie darf nicht daran
+    scheitern, dass ein Kameradienst fehlt — aber das Fehlen darf auch nicht
+    stumm bleiben."""
+    from spotlab.config import Config
+
+    class FakeRobot:
+        def ensure_client(self, name):
+            if "image" in name:
+                raise RuntimeError("kein Kameradienst")
+            return object()
+
+    b = Beobachtung.connect(
+        Config(ip="1.2.3.4", username="u"),
+        runs_dir=tmp_path,
+        verbinder=lambda cfg: FakeRobot(),
+    )
+    b.beende()
+    assert b.mitschnitt is None
+    assert b.bildzaehler() is None
+    assert "Kameradienst" in b.bild_hinweis
+    assert _lauf(tmp_path)["ergebnis"] == "ok"

@@ -64,6 +64,9 @@ class RunRecorder:
         )
         (self.dir / "bilder").mkdir(parents=True, exist_ok=True)
         self._bilder = []
+        # `kamera/` entsteht erst beim ersten Bild: ein leeres Verzeichnis in
+        # jedem Schülerlauf sähe aus, als wäre eine Aufnahme misslungen.
+        self._kamera_bereit = False
         self._meta = {
             "id": self.id,
             "gestartet": jetzt.isoformat(),
@@ -107,6 +110,44 @@ class RunRecorder:
             )
         self.event("bild", datei=datei, source=meta.get("source"))
         return ziel
+
+    def kamerabild(self, nummer, quelle, roh, endung, meta):
+        """Anhängender Bildstrom — für den Beobachter, nicht für `spot.camera()`.
+
+        Bewusst NICHT über `image()`: jenes schreibt `bilder.json` bei jedem Bild
+        vollständig neu (quadratisch in der Bildzahl) und legt zusätzlich ein
+        Ereignis an. Das trägt eine Handvoll Schnappschüsse aus einem
+        Schülerskript, aber keinen Dauerstrom von fünf Kameras über eine Stunde.
+
+        Eigenes Verzeichnis `kamera/`, damit `gui/watcher.py` weiterhin ein
+        kleines `bilder/` globbt: dort sucht die Live-Ansicht bei jedem Takt das
+        neueste Bild, und zehntausend Dateien machten daraus eine spürbare Last
+        im Fenster mit dem NOT-AUS-Knopf.
+
+        Der Index ist anhängend (`kamera.jsonl`) — mitlesbar, und ein Absturz
+        kostet höchstens die letzte Zeile.
+        """
+        ordner = self.dir / "kamera"
+        with self._sperre:
+            if not self._kamera_bereit:
+                ordner.mkdir(parents=True, exist_ok=True)
+                self._kamera_bereit = True
+        datei = f"{nummer:06d}_{quelle}.{endung}"
+        (ordner / datei).write_bytes(roh)
+        self._zeile(
+            "kamera/kamera.jsonl",
+            {"t": self._t(), "datei": datei, "quelle": quelle, **meta},
+        )
+        return ordner / datei
+
+    def kamera_beilage(self, name, text):
+        """Einmalige Beilage neben den Bildern — z. B. die Extrinsik einer Quelle."""
+        ordner = self.dir / "kamera"
+        with self._sperre:
+            if not self._kamera_bereit:
+                ordner.mkdir(parents=True, exist_ok=True)
+                self._kamera_bereit = True
+            (ordner / name).write_text(text, encoding="utf-8")
 
     def set_robot_info(self, **felder):
         with self._sperre:

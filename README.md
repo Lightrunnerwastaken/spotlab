@@ -212,7 +212,15 @@ Pro Lauf ein Verzeichnis unter `runs/<zeitstempel>_<skript-hash>/`:
 | `lauf.json` | Metadaten, Roboterkennung, Ergebnis, Dauer |
 | `ereignisse.jsonl` | Kommandos, Rückmeldungen, Fehler, mit Zeitstempel |
 | `zustand.jsonl` | 10 Hz: Pose, Geschwindigkeit, 12 Gelenke, Fusskontakte, Akku |
-| `bilder/` | Kamerabilder mit Intrinsics |
+| `bilder/` | einzelne Kamerabilder aus `spot.camera(...)`, mit Intrinsics |
+| `kamera/` | nur im Beobachter-Modus: laufender Bildmitschnitt aller Kameras |
+
+`kamera/` ist bewusst von `bilder/` getrennt. Dort liegen die Schnappschüsse, die ein
+Schülerskript anfordert — eine Handvoll je Lauf, und die Live-Ansicht sucht darin bei
+jedem Takt das neueste Bild. Der Mitschnitt einer Messfahrt sind zehntausend Dateien;
+er bekommt deshalb ein eigenes Verzeichnis mit anhängendem Index `kamera.jsonl`.
+Bilder liegen dort so, wie der Roboter sie geschickt hat: JPEG als `.jpg`, Tiefe roh
+als `.raw` — umkodieren hiesse bei Tiefenbildern, die Millimeterwerte wegzuwerfen.
 
 ## Sicherheit
 
