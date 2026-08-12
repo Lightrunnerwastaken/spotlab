@@ -187,3 +187,67 @@ def test_ein_fehlschlag_landet_nicht_im_ring(tmp_path):
     )
     assert abtaster._einmal() is False
     assert abtaster.verlauf() == ()
+
+
+# ------------------------------- Der Takt muss die Rate wirklich liefern (12.08.2026)
+
+
+def test_der_takt_wartet_nicht_ueber_event_wait():
+    """Die 34 Hz einer 50-Hz-Messfahrt lagen an EINER Zeile.
+
+    `threading.Event.wait()` geht unter Windows ueber den GROBEN Zeitgeber
+    (Aufloesung 15.6 ms): 20 ms angefordert -> 31 ms geliefert -> 32 statt
+    50 Hz. `time.sleep()` nutzt seit Python 3.11 hochaufloesende Timer.
+    Gemessen am 12.08.2026: 34.0 gegen 49.0 Hz im vollen Takt; die reale
+    Messfahrt kam auf 34.1 Hz.
+
+    Geprueft wird die QUELLE, nicht die Laufzeit -- ein Ratentest haengt an der
+    Maschinenlast und pruefte die falsche Sache. Der Fehler, gegen den dieser
+    Test steht, ist jemand, der `_warte()` wieder durch `self._stopp.wait()`
+    ersetzt, weil es kuerzer aussieht.
+    """
+    import inspect
+    import re
+
+    schleife = inspect.getsource(StateSampler._schleife)
+    assert not re.search(r"_stopp\.wait\(", schleife), (
+        "Der Takt wartet wieder ueber Event.wait() -- das kostet unter Windows "
+        "ein Drittel der Abtastrate."
+    )
+    assert "_warte(" in schleife
+
+
+def test_die_wartezeit_ist_genauer_als_der_grobe_zeitgeber(tmp_path):
+    """Gegenprobe zur Quelltextpruefung: die Zahl muss auch stimmen.
+
+    Grenze bei 26 ms fuer 20 ms angefordert. Der alte Weg lieferte im Median
+    30.9 ms, der neue 20.4 -- dazwischen ist Luft fuer Last. Median statt
+    Maximum, damit ein einzelner Aussetzer den Test nicht kippt.
+    """
+    import statistics
+    import time
+
+    rec = RunRecorder(tmp_path, None, backend="dryrun")
+    abtaster = StateSampler(DryRunBackend(), rec, hz=50.0)
+    zeiten = []
+    for _ in range(15):
+        t = time.perf_counter()
+        abtaster._warte(0.020)
+        zeiten.append((time.perf_counter() - t) * 1000)
+    rec.finish("ok")
+    median = statistics.median(zeiten)
+    assert median < 26.0, f"Median {median:.1f} ms -- der grobe Zeitgeber ist zurueck"
+
+
+def test_ein_gesetzter_stopp_beendet_die_wartezeit_sofort(tmp_path):
+    """In Stuecken schlafen hat genau diesen Zweck: bei 10 Hz (100 ms Periode)
+    darf ein Stopp nicht erst nach einer vollen Periode greifen."""
+    import time
+
+    rec = RunRecorder(tmp_path, None, backend="dryrun")
+    abtaster = StateSampler(DryRunBackend(), rec, hz=10.0)
+    abtaster._stopp.set()
+    t = time.perf_counter()
+    abtaster._warte(1.0)
+    rec.finish("ok")
+    assert (time.perf_counter() - t) < 0.05

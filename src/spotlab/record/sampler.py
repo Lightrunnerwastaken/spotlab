@@ -79,6 +79,32 @@ class StateSampler:
             self._abbruch_gemeldet = True
             _thread.interrupt_main()
 
+    def _warte(self, sekunden):
+        """Warten — genau, und trotzdem auf den Stopp reagierend.
+
+        NICHT `self._stopp.wait(sekunden)`. Das geht unter Windows über den
+        groben Zeitgeber mit 15.6 ms Auflösung: 20 ms angefordert werden zu
+        31 ms geliefert, aus 50 Hz werden 32. `time.sleep()` nutzt seit
+        Python 3.11 hochauflösende Timer und liefert 20.4 ms.
+
+        Gemessen am 12.08.2026 auf dem Schullaptop, voller Takt nachgestellt:
+        34.0 Hz mit `Event.wait`, 49.0 Hz mit `time.sleep`. Die reale Messfahrt
+        am selben Tag kam auf 34.1 Hz — die Grenze war also nie das WLAN oder
+        der Roboter, sondern diese eine Zeile. Bei einer Schwungphase von rund
+        einer Viertelsekunde ist das der Unterschied zwischen acht und zwölf
+        Stützstellen, und daran hängt, ob sich aus den Gelenkdaten Dynamik
+        rechnen lässt.
+
+        In Stücken schlafen, damit ein Stopp trotzdem binnen 20 ms greift statt
+        erst nach einer vollen 10-Hz-Periode.
+        """
+        ende = time.monotonic() + sekunden
+        while not self._stopp.is_set():
+            rest = ende - time.monotonic()
+            if rest <= 0:
+                return
+            time.sleep(min(rest, 0.02))
+
     def verlauf(self):
         """Kopie der zuletzt geschriebenen Abtastungen, älteste zuerst.
 
@@ -112,11 +138,11 @@ class StateSampler:
                 periode, reich = self._periode, self._reich
             self._pruefe_stopp()
             if not self._einmal(reich):
-                self._stopp.wait(periode)
+                self._warte(periode)
                 continue
             # Nichts nachholen: dauert die RPC länger als die Periode, läuft die
             # Schleife eben langsamer. Nachholen erzeugte Bursts, die in der
             # Auswertung wie echte Dynamik aussehen.
             rest = periode - (time.monotonic() - beginn)
             if rest > 0:
-                self._stopp.wait(rest)
+                self._warte(rest)
