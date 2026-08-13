@@ -494,10 +494,14 @@ def schreibe(stuetzstellen, ziel=DATEI, bemerkung=""):
     return ziel
 
 
-def lade(pfad=DATEI):
+def lade(pfad=None):
     """Die mitgelieferte Kennlinie. Wirft, wenn sie fehlt — ein Sim ohne
-    Kalibrierdaten wäre eine Erfindung, kein Ersatz."""
-    pfad = Path(pfad)
+    Kalibrierdaten wäre eine Erfindung, kein Ersatz.
+
+    `None` heisst „die mitgelieferte" — nicht als Vorgabewert in der Signatur,
+    damit auch ein durchgereichtes `None` (etwa aus einem CLI-Argument) sie
+    findet, statt an `Path(None)` zu scheitern."""
+    pfad = Path(pfad) if pfad else DATEI
     if not pfad.exists():
         raise FileNotFoundError(
             f"Keine Gangkennlinie unter {pfad}. Sie entsteht aus echten "
