@@ -281,3 +281,107 @@ def test_ohne_stoerung_wird_nichts_verworfen():
     behalten, _, verworfen = gang.brauchbare_zyklen(_gang(8))
     assert verworfen == 0
     assert len(behalten) == 6
+
+
+# --------------------------------------------------------------- Abschnitte
+
+
+def _fahrt(zyklen, tempo, punkte=20, dauer=0.8, x0=0.0, t0=0.0):
+    """Ein Gang mit echter Vorwaertsbewegung, damit `segmente` ein Tempo findet."""
+    saetze = []
+    for z in range(zyklen):
+        for k in range(punkte):
+            phase = k / punkte
+            t = t0 + (z + phase) * dauer
+            steht = phase < 0.6
+            satz = _satz(t, [steht, not steht, not steht, steht],
+                         winkel=math.sin(2 * math.pi * phase))
+            satz["pose"] = [x0 + tempo * (t - t0), 0.0, 0.0]
+            saetze.append(satz)
+    return saetze
+
+
+def test_ein_stetiger_gang_ergibt_abschnitte():
+    stuecke = gang.segmente(_fahrt(14, tempo=0.3))
+    assert len(stuecke) >= 2, stuecke
+    for _, tempo, drehrate in stuecke:
+        assert tempo == pytest.approx(0.3, abs=0.02)
+        assert abs(drehrate) < 0.01
+
+
+def test_jeder_abschnitt_traegt_sein_eigenes_tempo():
+    """Der Fensterschnitt mittelt Anfahren und Anhalten mit -- ein Abschnitt
+    nicht. Genau dafuer gibt es sie.
+
+    Der schnelle Teil ist absichtlich LANG: ein Abschnitt, der genau ueber den
+    Tempowechsel faellt, wird von der Stetigkeitspruefung verworfen (gemessen
+    an dieser Attrappe: Haelften 0.365 gegen 0.500). Damit ein sauberer
+    schneller Abschnitt entsteht, muss einer vollstaendig dahinter liegen.
+    """
+    langsam = _fahrt(7, tempo=0.10)
+    ende = langsam[-1]
+    schnell = _fahrt(14, tempo=0.50, x0=ende["pose"][0],
+                     t0=ende["t_robot"] + 0.04)
+    tempi = sorted(t for _, t, _ in gang.segmente(langsam + schnell))
+    assert tempi, "gar keine Abschnitte"
+    assert min(tempi) == pytest.approx(0.10, abs=0.02)
+    assert max(tempi) == pytest.approx(0.50, abs=0.02)
+    # Und nichts dazwischen: der Uebergang selbst ist keine Gangart.
+    assert not [t for t in tempi if 0.15 < t < 0.45], tempi
+
+
+def test_ein_beschleunigender_abschnitt_faellt_weg():
+    """Eine gemittelte Gelenkbahn ueber eine Beschleunigung hinweg beschreibt
+    keine Gangart -- derselbe Grund wie beim verschmolzenen Zyklus."""
+    saetze = _fahrt(7, tempo=0.1)
+    # Zweite Haelfte kraeftig beschleunigen
+    mitte = len(saetze) // 2
+    for i, s in enumerate(saetze[mitte:], start=1):
+        s["pose"][0] = saetze[mitte - 1]["pose"][0] + 0.02 * i * i
+    stetig = [t for _, t, _ in gang.segmente(saetze)]
+    assert not any(t for t in stetig if t > 0.5), stetig
+
+
+def test_ein_start_stopp_fenster_erzeugt_keine_langsame_gangart():
+    """Der Fall vom 12.08.2026, B2-1 im Lauf 20260812T111801Z.
+
+    Der Fensterschnitt war 0.054 m/s; die Abschnitte darin lagen zwischen 0.08
+    und 0.77. Die alte Stuetzstelle behauptete eine langsame Gangart, die es
+    nie gab -- und war der UNTERSTE Punkt der Kennlinie.
+    """
+    steht = [
+        _satz(i * 0.04, [True] * 4) | {"pose": [0.0, 0.0, 0.0]}
+        for i in range(150)
+    ]
+    laeuft = _fahrt(10, tempo=0.7, t0=steht[-1]["t_robot"] + 0.04)
+    stuecke = gang.segmente(steht + laeuft)
+    tempi = [t for _, t, _ in stuecke]
+    assert tempi, "gar keine Abschnitte gefunden"
+    # Kein Abschnitt darf ein langsames Gehen behaupten: der Roboter stand
+    # entweder oder lief schnell.
+    assert all(t > 0.3 for t in tempi), tempi
+
+
+def test_die_herkunft_nennt_fenster_und_abschnitt(tmp_path):
+    """Mehrere Stuetzstellen aus demselben Fenster sind KEINE unabhaengigen
+    Messungen. Wer das nicht sieht, zaehlt sie als solche."""
+    inhalt = json.loads(gang.DATEI.read_text(encoding="utf-8"))
+    stellen = inhalt["stuetzstellen"]
+    assert stellen
+    for s in stellen:
+        assert "fenster" in s["herkunft"]
+        assert s["herkunft"]["abschnitt"] >= 1
+        assert s["herkunft"]["abschnitt"] <= s["herkunft"]["abschnitte_im_fenster"]
+
+
+def test_die_ausgelieferte_kennlinie_hat_keinen_anfahr_punkt():
+    """Gegenprobe an den echten Daten: der unterste Punkt muss eine Gangart
+    sein, kein Mittelwert aus Stehen und Rennen. Erkennbar an der Kadenz --
+    0.054 m/s bei 0.75 s Zyklusdauer waere ein Widerspruch."""
+    from spotlab.kalibrierung.modell import lade_modell
+
+    modell = lade_modell()
+    langsamste = min(modell.fahren, key=lambda s: s["tempo_m_s"])
+    # Langsam gehen heisst LANGE Zyklen. Ein kurzer Zyklus bei kleinem Tempo
+    # bedeutet Treten auf der Stelle.
+    assert langsamste["zyklusdauer_s"] > 1.5, langsamste["herkunft"]

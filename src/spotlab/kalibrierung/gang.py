@@ -48,6 +48,30 @@ MINDESTZYKLEN = 3
 # Gelenkbahn wird dadurch nicht ungenauer, sondern falsch.
 ZYKLUS_BAND = (0.7, 1.4)
 
+# Ein Messfenster wird in Abschnitte von so vielen Gangzyklen zerlegt, statt als
+# Ganzes gemittelt zu werden.
+#
+# Grund: der Fensterschnitt mittelt Anfahren, Suchen und Anhalten mit. B2-1 im
+# Lauf 20260812T111801Z hatte einen Schnitt von 0.054 m/s — die einzelnen
+# Abschnitte darin lagen zwischen 0.08 und 0.77. Die Stützstelle behauptete eine
+# langsame Gangart, die es nie gab, und war zugleich der unterste Punkt der
+# Kennlinie.
+#
+# Fünf Zyklen sind der Kompromiss: genug zum Mitteln (MINDESTZYKLEN ist 3), kurz
+# genug, dass das Tempo darin steht — bei 0.8 s Zyklusdauer sind das vier
+# Sekunden.
+SEGMENT_ZYKLEN = 5
+
+# Stetigkeit eines Abschnitts: die beiden Hälften müssen sich einig sein.
+#
+# Ein Abschnitt, der eine Beschleunigung überspannt, verschmiert die gemittelte
+# Gelenkbahn genauso wie ein verschmolzener Zyklus. 15 % lässt natürliche
+# Kadenzschwankung durch und schliesst Anfahren aus.
+#
+# VOR dem Blick in die Daten festgelegt. Ein Kriterium, das man nachträglich so
+# dreht, bis die Kennlinie schön aussieht, misst die eigene Erwartung.
+STETIGKEIT = 0.15
+
 DATEI = Path(__file__).parent / "daten" / "gang.json"
 
 
@@ -179,6 +203,62 @@ def brauchbare_zyklen(saetze, bein=0):
     )
 
 
+def _bewegung(saetze, von, bis):
+    """(Tempo, Drehrate) zwischen zwei Abtastungen, aus der Pose."""
+    a, b = saetze[von], saetze[bis]
+    dt = (b.get("t_robot") or 0.0) - (a.get("t_robot") or 0.0)
+    if dt <= 0 or not a.get("pose") or not b.get("pose"):
+        return None, None
+    tempo = math.hypot(b["pose"][0] - a["pose"][0], b["pose"][1] - a["pose"][1]) / dt
+    dyaw = (b["pose"][2] - a["pose"][2] + math.pi) % (2 * math.pi) - math.pi
+    return tempo / 1.0, dyaw / dt
+
+
+def _gieren(saetze, von, bis):
+    """Aufsummierter Gierwinkel — der Umschlag bei ±pi darf nicht durchschlagen."""
+    summe = 0.0
+    for i in range(von, bis):
+        a, b = saetze[i].get("pose"), saetze[i + 1].get("pose")
+        if not a or not b:
+            continue
+        summe += (b[2] - a[2] + math.pi) % (2 * math.pi) - math.pi
+    return summe
+
+
+def segmente(saetze, bein=0, zyklen=SEGMENT_ZYKLEN):
+    """Stetige Abschnitte von je `zyklen` Gangzyklen.
+
+    Gibt Tupel (grenzen, tempo, drehrate) zurück. Unstetige Abschnitte fallen
+    weg — nicht, weil ihr Tempo unpassend wäre, sondern weil eine gemittelte
+    Gelenkbahn über eine Beschleunigung hinweg keine Gangart beschreibt.
+    """
+    alle, _, _ = brauchbare_zyklen(saetze, bein)
+    gefunden = []
+    for i in range(0, len(alle) - zyklen + 1, zyklen):
+        gruppe = alle[i:i + zyklen]
+        von, bis = gruppe[0][0], gruppe[-1][1]
+        tempo, _ = _bewegung(saetze, von, bis)
+        if tempo is None:
+            continue
+        dauer = saetze[bis]["t_robot"] - saetze[von]["t_robot"]
+        drehrate = _gieren(saetze, von, bis) / dauer if dauer > 0 else 0.0
+
+        mitte = gruppe[len(gruppe) // 2]
+        erst, _ = _bewegung(saetze, von, mitte[1])
+        zweit, _ = _bewegung(saetze, mitte[0], bis)
+        if erst is None or zweit is None:
+            continue
+        if abs(erst - zweit) > STETIGKEIT * max(tempo, 1e-6):
+            continue
+        gefunden.append((gruppe, round(tempo, 4), round(drehrate, 4)))
+    return gefunden
+
+
+def mittlerer_zyklus_aus(saetze, grenzen, punkte=PHASENPUNKTE):
+    """Wie `mittlerer_zyklus`, aber über eine vorgegebene Zyklusliste."""
+    return _mitteln(saetze, grenzen, punkte)
+
+
 def mittlerer_zyklus(saetze, bein=0, punkte=PHASENPUNKTE):
     """Gemittelte Gelenkbahnen über die normierte Gangphase.
 
@@ -187,6 +267,10 @@ def mittlerer_zyklus(saetze, bein=0, punkte=PHASENPUNKTE):
     schwankende Kadenz die Form.
     """
     grenzen, _, _ = brauchbare_zyklen(saetze, bein)
+    return _mitteln(saetze, grenzen, punkte)
+
+
+def _mitteln(saetze, grenzen, punkte=PHASENPUNKTE):
     if len(grenzen) < MINDESTZYKLEN:
         return {}, {}, len(grenzen)
 
@@ -298,7 +382,16 @@ def _erreicht(messwerte):
 
 
 def stuetzstellen_aus_lauf(lauf_dir, mindestzyklen=MINDESTZYKLEN):
-    """Je Messfenster eine Stützstelle. Fenster ohne genug Zyklen fallen weg.
+    """Je STETIGEM ABSCHNITT eines Messfensters eine Stützstelle.
+
+    Nicht je Fenster: der Fensterschnitt mittelt Anfahren, Suchen und Anhalten
+    mit. B2-1 im Lauf 20260812T111801Z hatte einen Schnitt von 0.054 m/s,
+    während die Abschnitte darin zwischen 0.08 und 0.77 lagen — eine langsame
+    Gangart, die es nie gab, und zugleich der unterste Punkt der Kennlinie.
+
+    WICHTIG für die Auswertung: mehrere Stützstellen aus demselben Fenster sind
+    KEINE unabhängigen Messungen. Die Herkunft nennt deshalb Fenster und
+    Abschnittsnummer.
 
     Lesend. Es wird nichts in das Lauf-Verzeichnis geschrieben.
     """
@@ -310,55 +403,71 @@ def stuetzstellen_aus_lauf(lauf_dir, mindestzyklen=MINDESTZYKLEN):
     gefunden, verworfen = [], []
     for f in fenstermodul.fenster(lauf_dir):
         saetze = _saetze_im_fenster(lauf_dir, f.von_s, f.bis_s)
-        tempo, dreh = _erreicht(f.messwerte)
-        if tempo is None:
-            verworfen.append((f.name, "keine Dauer"))
-            continue
-        mittel, streuung, zyklen = mittlerer_zyklus(saetze)
-        if zyklen < mindestzyklen:
-            verworfen.append((f.name, f"nur {zyklen} Zyklen"))
-            continue
-        _, dauern, aussortiert = brauchbare_zyklen(saetze)
-        kadenz = _median(dauern)
-        kadenz_streuung = (
-            math.sqrt(sum((d - kadenz) ** 2 for d in dauern) / len(dauern))
-            if len(dauern) > 1 else None
-        )
-        schritt = f.messwerte.get("schritt") or {}
-        gefunden.append(
-            Stuetzstelle(
-                tempo_m_s=tempo,
-                drehrate_rad_s=dreh,
-                absicht={k: v for k, v in f.felder.items() if k.startswith("ziel")},
-                # Aus den BEHALTENEN Zyklen, nicht aus `messung/schritt.py`:
-                # jenes rechnet über alle, auch die verschmolzenen, und ist
-                # eine wörtliche Kopie in matura-spot — es wird hier nicht
-                # angefasst, sondern nur nicht für diese Zahl benutzt.
-                zyklusdauer_s=round(kadenz, 4) if kadenz else None,
-                zyklusdauer_streuung_s=(
-                    round(kadenz_streuung, 4) if kadenz_streuung is not None else None
-                ),
-                duty=duty(saetze),
-                phasen=schritt.get("phasen") or [],
-                muster=schritt.get("muster") or "unklar",
-                hoehe_m=standhoehe(saetze),
-                gelenke=mittel,
-                gelenke_streuung=streuung,
-                zyklen=zyklen,
-                herkunft={
-                    "lauf": lauf.id,
-                    "fenster": f.name,
-                    "gestartet": lauf.gestartet,
-                    "backend": lauf.backend,
-                    "hz_ist": f.hz_ist,
-                    "abtastungen": f.abtastungen,
-                    "beine": bein_zuordnung(saetze),
-                    # Ohne diese Zahl sähe eine gesäuberte Kennlinie sauberer
-                    # aus, als die Messung war.
-                    "zyklen_verworfen": aussortiert,
-                },
+        alle, _, aussortiert = brauchbare_zyklen(saetze)
+        stuecke = segmente(saetze)
+        if not stuecke:
+            grund = (
+                f"nur {len(alle)} Zyklen" if len(alle) < SEGMENT_ZYKLEN
+                else "kein stetiger Abschnitt"
             )
-        )
+            verworfen.append((f.name, grund))
+            continue
+
+        absicht = {k: v for k, v in f.felder.items() if k.startswith("ziel")}
+        schritt = f.messwerte.get("schritt") or {}
+        beine = bein_zuordnung(saetze)
+        for nummer, (grenzen, tempo, drehrate) in enumerate(stuecke, start=1):
+            mittel, streuung, zyklen = mittlerer_zyklus_aus(saetze, grenzen)
+            if zyklen < mindestzyklen:
+                continue
+            von, bis = grenzen[0][0], grenzen[-1][1]
+            teil = saetze[von:bis + 1]
+            dauern = [
+                saetze[b]["t_robot"] - saetze[a]["t_robot"] for a, b in grenzen
+            ]
+            kadenz = _median(dauern)
+            kadenz_streuung = (
+                math.sqrt(sum((d - kadenz) ** 2 for d in dauern) / len(dauern))
+                if len(dauern) > 1 else None
+            )
+            gefunden.append(
+                Stuetzstelle(
+                    tempo_m_s=tempo,
+                    drehrate_rad_s=drehrate,
+                    absicht=absicht,
+                    # Aus den BEHALTENEN Zyklen dieses Abschnitts, nicht aus
+                    # `messung/schritt.py`: jenes rechnet über das ganze Fenster
+                    # und ist eine wörtliche Kopie in matura-spot — es wird hier
+                    # nicht angefasst, sondern nur nicht für diese Zahl benutzt.
+                    zyklusdauer_s=round(kadenz, 4) if kadenz else None,
+                    zyklusdauer_streuung_s=(
+                        round(kadenz_streuung, 4)
+                        if kadenz_streuung is not None else None
+                    ),
+                    duty=duty(teil),
+                    # Muster und Phasenlage kommen aus dem GANZEN Fenster: sie
+                    # brauchen mehr Zyklen als ein Abschnitt hat.
+                    phasen=schritt.get("phasen") or [],
+                    muster=schritt.get("muster") or "unklar",
+                    hoehe_m=standhoehe(teil),
+                    gelenke=mittel,
+                    gelenke_streuung=streuung,
+                    zyklen=zyklen,
+                    herkunft={
+                        "lauf": lauf.id,
+                        "fenster": f.name,
+                        "abschnitt": nummer,
+                        "abschnitte_im_fenster": len(stuecke),
+                        "gestartet": lauf.gestartet,
+                        "backend": lauf.backend,
+                        "hz_ist": f.hz_ist,
+                        "beine": beine,
+                        # Ohne diese Zahl sähe eine gesäuberte Kennlinie
+                        # sauberer aus, als die Messung war.
+                        "zyklen_verworfen_im_fenster": aussortiert,
+                    },
+                )
+            )
     return gefunden, verworfen
 
 
