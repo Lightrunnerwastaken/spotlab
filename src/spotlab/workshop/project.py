@@ -6,7 +6,9 @@ import sys
 from importlib import resources
 from pathlib import Path
 
-PROJEKT_DATEIEN = ("hallo_spot.py", "README.md", ".vscode/settings.json")
+PROJEKT_DATEIEN = (
+    "hallo_spot.py", "uebungsraum.py", "README.md", ".vscode/settings.json",
+)
 
 README = """# {name}
 
@@ -30,6 +32,14 @@ spotlab run hallo_spot.py --dryrun
 
 Baut und prüft alle Kommandos, bewegt aber nichts. Kameras gibt es dabei nicht.
 
+Mehr sehen als nichts: `uebungsraum.py` lässt Spot durch ein gezeichnetes
+Zimmer fahren — mit Wänden, Hindernissen und AprilTags. Den Raum wählst du in
+der Ansicht „Übungsraum" der Oberfläche.
+
+```
+spotlab run uebungsraum.py
+```
+
 ## Läufe ansehen
 
 ```
@@ -52,10 +62,11 @@ def create_project(name, wurzel=None):
     (ordner / ".vscode").mkdir(parents=True)
     (ordner / "runs").mkdir()
 
-    vorlage = resources.files("spotlab.workshop.templates").joinpath("hallo_spot.py")
-    (ordner / "hallo_spot.py").write_text(
-        vorlage.read_text(encoding="utf-8"), encoding="utf-8"
-    )
+    vorlagen = resources.files("spotlab.workshop.templates")
+    for datei in ("hallo_spot.py", "uebungsraum.py"):
+        (ordner / datei).write_text(
+            vorlagen.joinpath(datei).read_text(encoding="utf-8"), encoding="utf-8"
+        )
     (ordner / "README.md").write_text(README.format(name=ordner.name), encoding="utf-8")
     (ordner / ".vscode" / "settings.json").write_text(
         json.dumps(

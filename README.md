@@ -75,11 +75,11 @@ pip install -e .[gui]
 spotlab gui
 ```
 
-Acht Ansichten in einer Seitenleiste: **Projekte** (anlegen, in VS Code öffnen, starten —
+Neun Ansichten in einer Seitenleiste: **Projekte** (anlegen, in VS Code öffnen, starten —
 mit Häkchen für Trockenlauf), **Code** (der eingebaute Editor), **Live-Lauf** (Ereignisse,
 Telemetrie, Kamerabild, Ausgabe), **Läufe** (vergangene Läufe mit der Kurve kommandiertes
 gegen gemessenes Tempo), **Karten** (GraphNav aufzeichnen und ansehen), **Umwelt** (was
-Spot gerade sieht), **Anbindungen** (fremde Projekte) und **Spot** (Zugangsdaten und
+Spot gerade sieht), **Übungsraum** (ohne Roboter fahren), **Anbindungen** (fremde Projekte) und **Spot** (Zugangsdaten und
 Prüfung). Hell und dunkel folgen der Windows-Einstellung.
 
 ### Der eingebaute Editor
@@ -156,6 +156,38 @@ with spotlab.connect() as spot:
 Karten liegen im **Format des SDK** unter `<arbeitsordner>/karten/<name>/`. Eine mit spotlab
 aufgezeichnete Karte lässt sich deshalb unverändert an `graph_nav_command_line.py` und
 `view_map.py` aus dem Spot-SDK verfüttern — und umgekehrt.
+
+## Übungsraum — ohne Roboter fahren
+
+Der Sim fährt nach den am 12.08.2026 **gemessenen Gangarten**. Ein Meter dauert
+dort so lange wie am echten Spot — ein Programm, das im Übungsraum ankommt,
+kommt auch am Gerät an.
+
+In der Ansicht **Übungsraum** wählst du ein Zimmer und klickst die
+Startposition hinein:
+
+| Vorlage | Inhalt |
+|---|---|
+| `leer` | vier Wände, ein Tag — für die ersten Schritte |
+| `moebliert` | Tisch, zwei Stuhlstapel, zwei Tags — Ausweichen üben |
+| `durchgang` | zwei Zimmer, eine Tür, der Tag liegt drüben |
+
+```python
+with spotlab.connect(backend="sim") as spot:      # oder raum="durchgang"
+    spot.power_on()
+    spot.stand()
+    spot.move(forward=1.5)
+    for tag in spot.tags():
+        print(f"Tag {tag.id}: {tag.distance:.1f} m")
+```
+
+**An Wänden bleibt Spot stehen** — kein Fehler, kein Abbruch, so wie am echten
+Gerät. Die Stelle wird in der Zeichnung markiert und im Protokoll vermerkt.
+`spot.tags()` und `spot.obstacles()` arbeiten dabei aus der Raumgeometrie, du
+kannst also die ganze Bibliothek ohne Roboter üben.
+
+Eigene Räume: eine TOML-Datei unter `<arbeitsordner>/raeume/<name>.toml`, gebaut
+wie die mitgelieferten unter `welt/vorlagen/`.
 
 ## Umwelt — was Spot gerade sieht
 
@@ -322,6 +354,7 @@ zu einem wirkungslosen Deckel.
 | Kalibrierung | [`2026-08-08-spotlab-kalibrierung-design.md`](docs/superpowers/specs/2026-08-08-spotlab-kalibrierung-design.md) |
 | Beobachter-Modus | [`2026-08-09-spotlab-beobachtung-design.md`](docs/superpowers/specs/2026-08-09-spotlab-beobachtung-design.md) |
 | Umwelt | [`2026-09-02-spotlab-umwelt-design.md`](docs/superpowers/specs/2026-09-02-spotlab-umwelt-design.md) |
+| Übungsraum | [`2026-09-02-spotlab-uebungsraum-design.md`](docs/superpowers/specs/2026-09-02-spotlab-uebungsraum-design.md) |
 
 - Umsetzungspläne: [`docs/superpowers/plans/`](docs/superpowers/plans/)
 - Härtung, Befunde und Fahrplan: [`docs/HAERTUNG.md`](docs/HAERTUNG.md)
