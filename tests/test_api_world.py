@@ -2,7 +2,9 @@ import math
 
 import pytest
 
+from spotlab.api import world
 from spotlab.api.world import ObstacleGrid, Tag, WorldObject, richtung
+from spotlab.backends.dryrun import DryRunBackend
 
 
 def test_richtung_rechnet_in_grad_und_meter():
@@ -68,3 +70,61 @@ def test_unbeobachtete_zelle_ist_nicht_frei_obwohl_der_wert_gross_ist():
     assert gitter.distance_at(3 * 0.03, 3 * 0.03) is None
     assert not gitter.is_free(3 * 0.03, 3 * 0.03)
     assert gitter.is_free(4 * 0.03, 4 * 0.03)
+
+
+class Mitschreiber:
+    def __init__(self):
+        self.ereignisse = []
+
+    def event(self, art, **daten):
+        self.ereignisse.append((art, daten))
+
+
+def test_tags_sind_nach_distanz_sortiert():
+    assert [t.id for t in world.tags(DryRunBackend(), None)] == [1, 2]
+
+
+def test_tags_filtert_auf_eine_nummer():
+    assert [t.id for t in world.tags(DryRunBackend(), None, id=2)] == [2]
+
+
+def test_tags_ohne_treffer_liefert_leere_liste_keinen_fehler():
+    assert world.tags(DryRunBackend(), None, id=99) == []
+
+
+def test_jede_abfrage_wird_protokolliert_auch_die_erfolglose():
+    schreiber = Mitschreiber()
+    world.tags(DryRunBackend(), schreiber, id=99)
+    _art, daten = schreiber.ereignisse[-1]
+    assert daten["name"] == "tags"
+    assert daten["treffer"] == 0
+
+
+def test_protokoll_nennt_ids_und_distanzen():
+    schreiber = Mitschreiber()
+    world.tags(DryRunBackend(), schreiber)
+    _art, daten = schreiber.ereignisse[-1]
+    assert daten["ids"] == [1, 2]
+    assert len(daten["distanzen"]) == 2
+
+
+def test_world_objects_liefert_auch_nicht_tags():
+    arten = {o.kind for o in world.world_objects(DryRunBackend(), None)}
+    assert "dock" in arten
+
+
+def test_obstacles_liefert_ein_gitter():
+    assert world.obstacles(DryRunBackend(), None).cell_size > 0
+
+
+def test_backend_ohne_faehigkeit_wird_deutlich_abgewiesen():
+    from spotlab.backends.base import Capability
+    from spotlab.errors import UnsupportedCapability
+
+    class Ohne:
+        def capabilities(self):
+            return Capability.LOCOMOTION
+
+    with pytest.raises(UnsupportedCapability) as fehler:
+        world.tags(Ohne(), None)
+    assert "Objekte" in str(fehler.value)
