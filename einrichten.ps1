@@ -94,8 +94,23 @@ print('spotlab', spotlab.__version__, 'einsatzbereit')
 "@
 if ($LASTEXITCODE -ne 0) { throw "Die Installation ist unvollstaendig" }
 
+# --------------------------------------------------------------- Verknuepfung
+# Der Grund fuer das ganze Skript: ein Schueler soll klicken koennen, nicht
+# tippen. Faellt das aus (gesperrtes Profil, kein Desktop), ist das kein
+# Abbruchgrund -- die Installation steht ja.
 Write-Host ""
-Write-Host "Fertig. Weiter geht es mit:" -ForegroundColor Green
+try {
+    & powershell -NoProfile -ExecutionPolicy Bypass `
+        -File (Join-Path $PSScriptRoot "verknuepfung.ps1")
+} catch {
+    Write-Host "Die Verknuepfung liess sich nicht anlegen: $_" -ForegroundColor Yellow
+    Write-Host "Das ist kein Fehler der Installation -- spotlab laeuft trotzdem." -ForegroundColor DarkGray
+}
+
+Write-Host ""
+Write-Host "Fertig. Auf dem Desktop liegt jetzt 'spotlab' -- doppelklicken genuegt." -ForegroundColor Green
+Write-Host ""
+Write-Host "Im Terminal geht es auch:" -ForegroundColor Green
 Write-Host "    .\.venv\Scripts\activate"
 Write-Host "    spotlab login       # IP, Benutzer, Passwort in den Windows-Tresor"
 Write-Host "    spotlab doctor      # prueft Netz, Anmeldung, Zeitsync, Not-Aus, Lease"

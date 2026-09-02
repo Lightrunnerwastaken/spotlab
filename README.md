@@ -20,8 +20,20 @@ powershell -ExecutionPolicy Bypass -File einrichten.ps1
 ```
 
 Das Skript legt eine eigene Umgebung unter `.venv` an, installiert spotlab mit
-allen drei Extras und **prüft danach nach**, dass SDK, Oberfläche, MCP und
-pytest wirklich da sind. Zweimal ausgeführt ändert es nichts.
+allen drei Extras, **prüft danach nach**, dass SDK, Oberfläche, MCP und pytest
+wirklich da sind, und legt zum Schluss eine **Verknüpfung „spotlab" auf den
+Desktop**. Zweimal ausgeführt ändert es nichts.
+
+Danach genügt ein Doppelklick auf das Symbol — kein Terminal, keine
+Umgebung aktivieren. Fehlt die Umgebung einmal (neu aufgesetzter Laptop,
+gelöschter Ordner), richtet der Klick sie zuerst selbst ein und startet dann;
+nur dieser erste Klick dauert ein paar Minuten.
+
+Die Verknüpfung allein noch einmal anlegen, ohne neu zu installieren:
+
+```
+powershell -ExecutionPolicy Bypass -File verknuepfung.ps1
+```
 
 Von Hand geht es auch — dann aber mit allen Extras:
 
