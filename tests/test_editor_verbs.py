@@ -147,3 +147,11 @@ def test_editor_zieht_weder_sdk_noch_qt_herein():
     )
     assert ergebnis.returncode == 0, ergebnis.stderr
     assert ergebnis.stdout.strip() == ""
+
+
+def test_art_unterscheidet_methode_und_eigenschaft():
+    """Ohne Art gibt es kein Icon — und eine Eigenschaft mit Methoden-Icon
+    verleitet dazu, Klammern zu tippen."""
+    nach_name = {v.name: v for v in methoden(QUELLE, "Beispiel")}
+    assert nach_name["geh"].art == "methode"
+    assert nach_name["akku"].art == "eigenschaft"

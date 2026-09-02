@@ -144,4 +144,21 @@ QComboBox {{
     padding: 5px 8px;
 }}
 QSplitter::handle {{ background: {p.rand}; }}
+QListView#Vorschlaege {{
+    background: {p.flaeche};
+    border: 1px solid {p.rand};
+    border-radius: 6px;
+    padding: 4px 0;
+    outline: none;
+    font-family: Consolas, monospace;
+    font-size: 12px;
+}}
+QFrame#Hilfekasten {{
+    background: {p.flaeche};
+    color: {p.text};
+    border: 1px solid {p.rand};
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 12px;
+}}
 """

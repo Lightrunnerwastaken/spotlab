@@ -28,6 +28,7 @@ class Vorschlag:
     name: str
     signatur: str   # "move(forward=0.0, left=0.0, ...)" — bei @property nur der Name
     hilfe: str      # erste Docstring-Zeile, deutsch; "" wenn keine
+    art: str = ""   # "methode" | "eigenschaft" | jedi-Arten; steuert das Icon
 
 
 def _erste_zeile(knoten):
@@ -44,13 +45,13 @@ def _ist_property(knoten):
 def _vorschlag(knoten):
     if _ist_property(knoten):
         # Eine Eigenschaft mit Klammern anzuzeigen waere eine Falle.
-        return Vorschlag(knoten.name, knoten.name, _erste_zeile(knoten))
+        return Vorschlag(knoten.name, knoten.name, _erste_zeile(knoten), "eigenschaft")
     try:
         args = ast.unparse(knoten.args)
     except Exception:
         args = ""
     args = args.removeprefix("self").removeprefix(", ")
-    return Vorschlag(knoten.name, f"{knoten.name}({args})", _erste_zeile(knoten))
+    return Vorschlag(knoten.name, f"{knoten.name}({args})", _erste_zeile(knoten), "methode")
 
 
 def _oeffentliche(koerper):

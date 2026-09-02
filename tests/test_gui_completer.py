@@ -109,17 +109,20 @@ def test_einfuegen_versteht_auch_den_anzeigetext(qapp, monkeypatch):
     assert feld.toPlainText() == f"spot.{name}"
 
 
-def test_anzeigetext_enthaelt_signatur_und_deutsche_hilfe(qapp, monkeypatch):
+def test_anzeige_ist_der_name_signatur_und_hilfe_haben_eigene_rollen(qapp, monkeypatch):
+    """Frueher stand alles in EINEM String -- das war das alte Design. Jetzt
+    zeichnet ein Delegate die Teile getrennt, also muss das Modell sie trennen."""
     monkeypatch.setattr(modul, "jedi", None)
     feld = CodeEdit(DUNKEL)
     hilfe = _hilfe_mit(feld, "spot.")
     hilfe.anfordern(erzwungen=True)
-    texte = [
-        hilfe.modell.data(hilfe.modell.index(z, 0))
-        for z in range(hilfe.modell.rowCount())
-    ]
-    passend = [t for t in texte if t.startswith("move(")]
-    assert passend and "Strecke" in passend[0]
+    m = hilfe.modell
+    zeile = next(z for z in range(m.rowCount()) if m.data(m.index(z, 0)) == "move")
+    index = m.index(zeile, 0)
+    assert m.data(index) == "move"
+    assert m.data(index, modul.SIGNATUR_ROLLE).startswith("move(")
+    assert "Strecke" in m.data(index, modul.HILFE_ROLLE)
+    assert m.data(index, modul.ART_ROLLE) == "methode"
 
 
 def test_mit_jedi_werden_fremde_namen_ergaenzt(qapp):
@@ -192,3 +195,65 @@ def test_eine_verspaetete_antwort_nach_dem_schliessen_wird_ignoriert(qapp):
     v._nummer = 5
     v.schliesse()
     v._jedi_fertig(5, [("os.path", "os.path")])       # darf nicht werfen
+
+
+# ------------------------------------------------ Aussehen wie in VS Code
+
+
+def test_jedi_art_wird_uebersetzt():
+    assert modul.art_von("function") == "funktion"
+    assert modul.art_von("module") == "modul"
+    assert modul.art_von("voellig_unbekannt") == ""
+
+
+def test_popup_traegt_den_namen_den_das_stylesheet_erwartet(qapp, monkeypatch):
+    """CLAUDE.md: Farben nur aus theme.py. Ein QCompleter-Popup ist ein eigenes
+    Toplevel-Widget und bekommt sonst Qts Standardlook."""
+    from spotlab.gui.theme import stylesheet
+
+    monkeypatch.setattr(modul, "jedi", None)
+    hilfe = _hilfe_mit(CodeEdit(DUNKEL), "spot.")
+    assert hilfe.completer.popup().objectName() == "Vorschlaege"
+    assert "QListView#Vorschlaege" in stylesheet(DUNKEL)
+    assert "QFrame#Hilfekasten" in stylesheet(DUNKEL)
+
+
+def test_popup_zeichnet_mit_eigenem_delegate(qapp, monkeypatch):
+    monkeypatch.setattr(modul, "jedi", None)
+    hilfe = _hilfe_mit(CodeEdit(DUNKEL), "spot.")
+    assert isinstance(hilfe.completer.popup().itemDelegate(), modul.VorschlagDelegate)
+
+
+def test_hilfekasten_zeigt_den_markierten_eintrag(qapp, monkeypatch):
+    monkeypatch.setattr(modul, "jedi", None)
+    feld = CodeEdit(DUNKEL)
+    hilfe = _hilfe_mit(feld, "spot.")
+    hilfe.anfordern(erzwungen=True)
+    m = hilfe.modell
+    zeile = next(z for z in range(m.rowCount()) if m.data(m.index(z, 0)) == "move")
+    hilfe._markiert(m.index(zeile, 0))
+    text = hilfe.hilfekasten.text()
+    assert "Strecke" in text
+    assert "move(" in text
+
+
+def test_hilfekasten_verschwindet_mit_dem_popup(qapp, monkeypatch):
+    monkeypatch.setattr(modul, "jedi", None)
+    feld = CodeEdit(DUNKEL)
+    hilfe = _hilfe_mit(feld, "spot.")
+    hilfe.anfordern(erzwungen=True)
+    hilfe._markiert(hilfe.modell.index(0, 0))
+    hilfe.completer.popup().hide()
+    assert not hilfe.hilfekasten.isVisible()
+
+
+def test_liste_faellt_nicht_auf_scrollbalkenbreite_zusammen(qapp, monkeypatch):
+    """Ein sizeHint, das option.rect.width() zurueckgibt, ist bei der
+    Spaltenmessung null -- das Popup war 70 px breit, jeder Name abgeschnitten."""
+    monkeypatch.setattr(modul, "jedi", None)
+    feld = CodeEdit(DUNKEL)
+    feld.resize(700, 300)
+    feld.show()
+    hilfe = _hilfe_mit(feld, "spot.")
+    hilfe.anfordern(erzwungen=True)
+    assert hilfe.completer.popup().width() >= 200
