@@ -153,38 +153,16 @@ def test_kaputtes_toml_wird_uebersetzt(tmp_path):
 
 
 @pytest.mark.parametrize("name", ["leer", "moebliert", "durchgang"])
-def test_jede_vorlage_ist_stimmig(name):
-    """Eine Vorlage mit Startpose in einer Wand waere im Unterricht ein Raetsel."""
-    from spotlab.welt.kollision import ROBOTER_RADIUS_M, frei
-
+def test_jede_vorlage_ist_geometrisch_stimmig(name):
+    """Was ohne kollision.py pruefbar ist. Die Frage, ob die Startpose FREI
+    liegt, kommt in Task 2 dazu -- sie braucht den Roboterradius."""
     raum = raum_laden(name)
     breite, hoehe = raum.groesse
     x, y, _grad = raum.start
     assert 0 < x < breite and 0 < y < hoehe, "Start liegt ausserhalb"
-    assert frei(raum, x, y), "Start liegt in einer Wand oder einem Hindernis"
     assert raum.tags, "jede Vorlage soll mindestens einen Tag haben"
     for tag in raum.tags:
         assert 0 <= tag.x <= breite and 0 <= tag.y <= hoehe
-
-
-def test_durchgang_ist_breiter_als_der_roboter():
-    """0.9 m Luecke gegen 0.70 m Durchmesser -- 10 cm Spiel je Seite."""
-    from spotlab.welt.kollision import ROBOTER_RADIUS_M
-
-    raum = raum_laden("durchgang")
-    # Die Luecke liegt zwischen zwei Wandstuecken auf derselben Geraden.
-    senkrechte = [w for w in raum.waende if w[0] == w[2]]
-    auf_x = {}
-    for x1, y1, _x2, y2 in senkrechte:
-        auf_x.setdefault(x1, []).append((min(y1, y2), max(y1, y2)))
-    luecken = []
-    for stuecke in auf_x.values():
-        stuecke.sort()
-        for (_a1, a2), (b1, _b2) in zip(stuecke, stuecke[1:]):
-            if b1 > a2:
-                luecken.append(b1 - a2)
-    assert luecken, "durchgang.toml hat keine Luecke"
-    assert max(luecken) >= 2 * ROBOTER_RADIUS_M + 0.15
 
 
 def test_vorlagen_nennt_die_drei():
@@ -215,13 +193,27 @@ def test_welt_importiert_nichts_verbotenes():
 
 
 def test_nur_wahrnehmung_darf_numpy():
-    """raum.py wird von der GUI importiert und bleibt deshalb leichtgewichtig."""
+    """raum.py wird von der GUI importiert und bleibt deshalb leichtgewichtig.
+
+    Ueber `ast`, nicht als Textsuche: der Docstring von raum.py ERWAEHNT numpy,
+    um zu begruenden, warum es dort fehlt. Eine Substring-Pruefung schluege
+    daran an und pruefte die Dokumentation statt des Codes.
+    """
+    import ast
     from pathlib import Path
 
     wurzel = Path(__file__).resolve().parents[1] / "src" / "spotlab" / "welt"
     for datei in ("raum.py", "kollision.py"):
-        quelle = (wurzel / datei).read_text(encoding="utf-8")
-        assert "numpy" not in quelle, f"{datei} soll ohne numpy auskommen"
+        pfad = wurzel / datei
+        if not pfad.is_file():
+            continue          # kollision.py kommt in Task 2 dazu
+        namen = set()
+        for knoten in ast.walk(ast.parse(pfad.read_text(encoding="utf-8"))):
+            if isinstance(knoten, ast.Import):
+                namen.update(t.name for t in knoten.names)
+            elif isinstance(knoten, ast.ImportFrom) and knoten.module:
+                namen.add(knoten.module)
+        assert not [n for n in namen if n.split(".")[0] == "numpy"],             f"{datei} soll ohne numpy auskommen"
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -418,7 +410,9 @@ pose = [8.9, 2.0, 180.0]
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `python -m pytest tests/test_welt_raum.py -q`
-Expected: die Tests, die nur `raum.py` brauchen, sind grün. `test_jede_vorlage_ist_stimmig` und `test_durchgang_ist_breiter_als_der_roboter` schlagen noch fehl — sie brauchen `kollision.py` aus Task 2. Das ist beabsichtigt: die Vorlagen sollen ab Task 2 gegen die echte Geometrie geprüft werden.
+Expected: PASS, alle Tests. Task 1 endet vollständig grün — die Prüfung, ob die
+Startpose auch *frei* liegt, kommt in Task 2 dazu, weil sie den Roboterradius
+braucht.
 
 - [ ] **Step 5: Commit**
 
@@ -525,6 +519,37 @@ def test_teilstrecke_bis_kurz_vor_das_hindernis():
     """Nicht am Startpunkt kleben bleiben: was frei ist, wird gefahren."""
     pose, _ = bewege(RAUM, (1.0, 5.0, 0.0), (0.0, 5.0, 0.0))
     assert pose[0] < 1.0 - MAX_SCHRITT_M
+
+
+@pytest.mark.parametrize("name", ["leer", "moebliert", "durchgang"])
+def test_jede_vorlage_hat_eine_freie_startpose(name):
+    """Eine Vorlage mit Startpose in einer Wand waere im Unterricht ein Raetsel.
+    Ergaenzt test_jede_vorlage_ist_geometrisch_stimmig aus Task 1."""
+    from spotlab.welt.raum import raum_laden
+
+    raum = raum_laden(name)
+    x, y, _grad = raum.start
+    assert frei(raum, x, y), "Start liegt in einer Wand oder einem Hindernis"
+
+
+def test_durchgang_ist_breiter_als_der_roboter():
+    """0.9 m Luecke gegen 0.70 m Durchmesser -- 10 cm Spiel je Seite."""
+    from spotlab.welt.raum import raum_laden
+
+    raum = raum_laden("durchgang")
+    senkrechte = [w for w in raum_laden("durchgang").waende if w[0] == w[2]]
+    auf_x = {}
+    for x1, y1, _x2, y2 in senkrechte:
+        auf_x.setdefault(x1, []).append((min(y1, y2), max(y1, y2)))
+    luecken = []
+    for stuecke in auf_x.values():
+        stuecke.sort()
+        for (_a1, a2), (b1, _b2) in zip(stuecke, stuecke[1:]):
+            if b1 > a2:
+                luecken.append(b1 - a2)
+    assert luecken, "durchgang.toml hat keine Luecke"
+    assert max(luecken) >= 2 * ROBOTER_RADIUS_M + 0.15
+    assert raum.name
 
 
 def test_sichtlinie_durch_den_freien_raum():
@@ -776,13 +801,14 @@ def test_verdeckte_zellen_sind_unbekannt_nicht_frei():
     """Der Fehler, der einen Roboter in eine Wand faehrt: unbekannt != frei."""
     raum = _raum(hindernisse=(Hindernis("Kiste", (5.5, 4.5, 0.4, 1.0)),))
     werte, bekannt, ursprung = abstandsgitter(raum, (5.0, 5.0, 0.0))
-    # Direkt hinter der Kiste, aus Sicht des Roboters.
-    spalte = int(round((6.2 - ursprung[0]) / GITTER_ZELLE_M))
     zeile = int(round((5.0 - ursprung[1]) / GITTER_ZELLE_M))
-    assert bekannt[zeile][spalte] is False
-    # Und direkt vor der Kiste sehr wohl bekannt.
-    spalte_vorne = int(round((5.2 - ursprung[0]) / GITTER_ZELLE_M))
-    assert bekannt[zeile][spalte_vorne] is True
+    # Deutlich hinter der Kiste (0.9 m), damit die Naehe-zum-Hindernis-Regel
+    # das Ergebnis nicht verfaelscht.
+    spalte_dahinter = int(round((6.8 - ursprung[0]) / GITTER_ZELLE_M))
+    assert bekannt[zeile][spalte_dahinter] is False
+    # Vor der Kiste sehr wohl bekannt.
+    spalte_davor = int(round((5.2 - ursprung[0]) / GITTER_ZELLE_M))
+    assert bekannt[zeile][spalte_davor] is True
 
 
 def test_gitter_liefert_listen_keine_numpy_arrays():
@@ -831,7 +857,7 @@ import math
 
 import numpy as np
 
-from spotlab.welt.kollision import ROBOTER_RADIUS_M, sicht_frei
+from spotlab.welt.kollision import sicht_frei
 
 # Geschaetzt, NICHT gemessen. Abnahmepunkt A22 misst den echten Wert am Geraet;
 # die Simulation rechnet bislang mit rund 12 m, real werden 2-3 m erwartet.
@@ -923,9 +949,11 @@ def abstandsgitter(raum, pose):
             if not sicht_frei(raum, (x, y), (zx, zy)):
                 bekannt[zeile:zeile + schritt, spalte:spalte + schritt] = False
 
-    # Belegte Zellen sind immer bekannt: der Roboter SIEHT das Hindernis, das
-    # ihm die Sicht nimmt.
-    bekannt |= werte < ROBOTER_RADIUS_M
+    # Zellen IM Hindernis sind bekannt: der Roboter sieht das Hindernis, das
+    # ihm die Sicht nimmt -- seine Vorderseite gehoert zum Bekannten.
+    # NICHT `werte < ROBOTER_RADIUS_M`: das machte auch Zellen 30 cm DAHINTER
+    # bekannt und widerspraeche genau der Zusicherung, um die es hier geht.
+    bekannt |= werte <= 0.0
 
     return werte.tolist(), bekannt.tolist(), ursprung
 ```

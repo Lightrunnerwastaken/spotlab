@@ -32,6 +32,7 @@ from spotlab.gui.views.live import LiveView
 from spotlab.gui.views.maps import MapsView
 from spotlab.gui.views.projects import ProjectsView
 from spotlab.gui.views.runs import RunsView
+from spotlab.gui.views.uebungsraum import UebungsraumView
 from spotlab.gui.views.umwelt import UmweltView
 from spotlab.gui.watcher import RunWatcher
 from spotlab.gui.workers import DoctorWorker, OutputReader
@@ -85,13 +86,14 @@ class MainWindow(QWidget):
             "laeufe": RunsView(self._palette),
             "karten": MapsView(self._palette),
             "umwelt": UmweltView(),
+            "uebungsraum": UebungsraumView(self._palette),
             "anbindungen": AnbindungenView(self._palette),
             "spot": CheckupView(),
         }
         self.stapel = QStackedWidget()
         for schluessel in (
             "projekte", "code", "live", "laeufe", "karten", "umwelt",
-            "anbindungen", "spot",
+            "uebungsraum", "anbindungen", "spot",
         ):
             self.stapel.addWidget(self.ansichten[schluessel])
 
@@ -127,6 +129,13 @@ class MainWindow(QWidget):
         self.ansichten["projekte"].lauf_gestartet.connect(self._lauf_gestartet)
         self.ansichten["projekte"].arbeitsordner_geaendert.connect(self._merke_arbeitsordner)
         self.ansichten["spot"].config_gespeichert.connect(self._config_gespeichert)
+        self.ansichten["uebungsraum"].meldung.connect(self._melde)
+        self.ansichten["uebungsraum"].config_gespeichert.connect(self._config_gespeichert)
+        # Delegation, kein zweiter Startweg: genau EIN Lauf ist der, auf den
+        # Stopp und NOT-AUS zeigen.
+        self.ansichten["uebungsraum"].start_gewuenscht.connect(
+            self.ansichten["projekte"].starte_aktuelles
+        )
         self.ansichten["spot"].pruefung_angefordert.connect(self._pruefe)
         self.ansichten["karten"].meldung.connect(self._melde)
         self.ansichten["karten"].aktive_karte_gewaehlt.connect(self._merke_aktive_karte)
@@ -162,6 +171,7 @@ class MainWindow(QWidget):
         self.ansichten["laeufe"].setze_arbeitsordner(pfad or None)
         self.ansichten["karten"].setze_arbeitsordner(pfad or None)
         self.ansichten["umwelt"].setze_arbeitsordner(pfad or None)
+        self.ansichten["uebungsraum"].setze_arbeitsordner(pfad or None)
         if self._watcher is not None:
             self._watcher.stop()
             self._watcher = None

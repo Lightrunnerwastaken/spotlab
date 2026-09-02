@@ -230,3 +230,15 @@ def test_ein_programmfehler_bleibt_sichtbar(monkeypatch):
     monkeypatch.setattr(cli, "_fuehre_aus", wirf)
     with pytest.raises(KeyError):
         cli.main(["runs"])
+
+
+def test_neues_projekt_bringt_ein_uebungsprogramm(tmp_path):
+    """Wer `spotlab new` macht, soll etwas haben, das ohne Roboter laeuft."""
+    from spotlab.workshop.project import create_project
+
+    ordner = create_project("probe", wurzel=tmp_path)
+    beispiel = ordner / "uebungsraum.py"
+    assert beispiel.is_file()
+    quelle = beispiel.read_text(encoding="utf-8")
+    assert 'backend="sim"' in quelle
+    assert "spot.tags()" in quelle

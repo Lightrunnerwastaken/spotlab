@@ -201,3 +201,29 @@ def test_kaputte_konfiguration_ist_kein_fehlende_konfiguration(tmp_path):
     with pytest.raises(ConfigBroken) as fehler:
         load_config(pfad)
     assert not isinstance(fehler.value, ConfigMissing)
+
+
+def test_raum_und_startpose_ueberleben_das_speichern(tmp_path, monkeypatch):
+    from spotlab.config import Config, Limits, load_config, save_config
+
+    monkeypatch.setattr("spotlab.config.CONFIG_PATH", tmp_path / "config.toml")
+    save_config(Config(ip="1.2.3.4", username="u", limits=Limits(),
+                       raum="moebliert", raum_start="1.5,2.0,90.0"))
+    wieder = load_config()
+    assert wieder.raum == "moebliert"
+    assert wieder.raum_start == "1.5,2.0,90.0"
+
+
+def test_startpose_wird_gelesen():
+    from spotlab.config import startpose_aus
+
+    assert startpose_aus("1.5,2.0,90.0") == (1.5, 2.0, 90.0)
+
+
+def test_leere_oder_kaputte_startpose_ist_None():
+    """Eine von Hand verdorbene Zeile darf die GUI nicht am Starten hindern."""
+    from spotlab.config import startpose_aus
+
+    assert startpose_aus("") is None
+    assert startpose_aus("murks") is None
+    assert startpose_aus("1.0,2.0") is None

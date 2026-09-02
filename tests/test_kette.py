@@ -184,3 +184,28 @@ def test_der_abtaster_ueberlebt_diese_tests_nicht(tmp_path, monkeypatch):
     nachher = {t for t in threading.enumerate()
                if t.name == "spotlab-sampler" and t.is_alive()}
     assert nachher <= vorher, f"Abtaster ueberlebt: {nachher - vorher}"
+
+
+def test_connect_nimmt_den_raum_aus_dem_argument(tmp_path, monkeypatch):
+    import spotlab
+
+    monkeypatch.setenv("SPOTLAB_BACKEND", "sim")
+    with spotlab.connect(runs_dir=tmp_path, raum="leer") as spot:
+        assert spot.backend._raum is not None
+        assert spot.backend._raum.name == "Leer"
+
+
+def test_verbunden_ereignis_nennt_den_raum(tmp_path, monkeypatch):
+    """Die Ansicht liest daraus, welcher Raum gilt."""
+    import json
+
+    import spotlab
+
+    monkeypatch.setenv("SPOTLAB_BACKEND", "sim")
+    with spotlab.connect(runs_dir=tmp_path, raum="leer") as spot:
+        verzeichnis = spot.recorder.dir
+    zeilen = [json.loads(z) for z
+              in (verzeichnis / "ereignisse.jsonl").read_text(encoding="utf-8").splitlines()
+              if z.strip()]
+    verbunden = [z for z in zeilen if z["art"] == "verbunden"][0]
+    assert verbunden["daten"]["raum"] == "leer"

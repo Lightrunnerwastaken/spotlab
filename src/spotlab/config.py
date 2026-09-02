@@ -37,6 +37,26 @@ class Config:
     default_backend: str = "real"
     workspace: str = ""  # Arbeitsordner der GUI; leer = noch nicht gewählt
     active_map: str = ""  # in der GUI gewählte Karte; leer = keine
+    raum: str = ""        # Übungsraum für den Sim; leer = keiner
+    # Startpose als "x,y,grad". Ein String statt dreier Felder oder einer Liste:
+    # der TOML-Schreiber hier ist bewusst minimal, und "1.5,2.0,90" ist in der
+    # Datei genauso lesbar wie drei einzelne Zeilen.
+    raum_start: str = ""
+
+
+def startpose_aus(text):
+    """(x, y, grad) aus "1.5,2.0,90" — oder None.
+
+    Wirft nie: die Datei ist von Hand änderbar, und eine verdorbene Zeile darf
+    die GUI nicht am Starten hindern. Ohne Startpose gilt die des Raums.
+    """
+    teile = str(text or "").split(",")
+    if len(teile) != 3:
+        return None
+    try:
+        return tuple(float(t) for t in teile)
+    except ValueError:
+        return None
 
 
 def _toml_string(wert):
@@ -67,6 +87,9 @@ def save_config(cfg, path=None):
         f"workspace = {_toml_string(cfg.workspace)}\n"
         "\n[maps]\n"
         f"active = {_toml_string(cfg.active_map)}\n"
+        "\n[uebungsraum]\n"
+        f"raum = {_toml_string(cfg.raum)}\n"
+        f"start = {_toml_string(cfg.raum_start)}\n"
     )
     path.write_text(text, encoding="utf-8")
 
@@ -137,6 +160,8 @@ def load_config(path=None):
         default_backend=backend,
         workspace=roh.get("gui", {}).get("workspace", ""),
         active_map=roh.get("maps", {}).get("active", ""),
+        raum=roh.get("uebungsraum", {}).get("raum", ""),
+        raum_start=roh.get("uebungsraum", {}).get("start", ""),
     )
 
 

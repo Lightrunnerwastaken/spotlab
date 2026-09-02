@@ -34,7 +34,14 @@ from bosdyn.client.frame_helpers import ODOM_FRAME_NAME
 from google.protobuf import wrappers_pb2
 
 from spotlab.backends import mobility
-from spotlab.backends.base import Capability, Feedback, SafetyStatus
+from spotlab.backends.base import (
+    Capability,
+    Feedback,
+    ObstacleGrid,
+    SafetyStatus,
+    Tag,
+    richtung,
+)
 from spotlab.errors import CommandRejected, NotPowered, UnsupportedCapability
 
 # Wie lange ein Fahrkommando gilt, wenn keine Endzeit mitkommt. Der echte Spot
@@ -58,8 +65,15 @@ HINWEIS = (
 class SimBackend:
     """Bewegt sich nach der Gangkennlinie. Kein Roboter, keine Physik."""
 
-    def __init__(self, recorder=None, jetzt=time.time, modell=None):
+    def __init__(self, recorder=None, jetzt=time.time, modell=None,
+                 raum=None, start=None):
         from spotlab.kalibrierung.modell import lade_modell
+
+        # Stufe 10: ein Zimmer um den Sim herum. OHNE Raum verhaelt sich alles
+        # exakt wie vorher -- daran haengt jeder bestehende Lauf und jeder
+        # bestehende Test.
+        self._raum = raum
+        self._angestossen = False      # Flanke, damit das Protokoll lesbar bleibt
 
         self._recorder = recorder
         self._jetzt = jetzt
@@ -70,7 +84,12 @@ class SimBackend:
         self.gesendet = []
 
         self._t = jetzt()
-        self._pose = (0.0, 0.0, 0.0)
+        if start is not None:
+            # Raum- und odom-Koordinaten fallen damit zusammen; die Ansicht muss
+            # nichts umrechnen.
+            self._pose = (float(start[0]), float(start[1]), math.radians(start[2]))
+        else:
+            self._pose = (0.0, 0.0, 0.0)
         self._phase = 0.0
         self._soll = (0.0, 0.0, 0.0)
         self._gueltig_bis = 0.0
@@ -85,25 +104,86 @@ class SimBackend:
     # ------------------------------------------------------------- Auskunft
 
     def capabilities(self):
-        # Keine Kameras, kein GraphNav, keine Wahrnehmung: dafür gibt es keine
-        # Messung. Ein erfundenes Bild wäre schlimmer als gar keins, und
-        # `require()` sagt dem Schüler dann ehrlich, was fehlt.
-        return Capability.LOCOMOTION | Capability.POSTURE | Capability.POWER
+        # Keine Kameras, kein GraphNav: dafür gibt es keine Messung. Ein
+        # erfundenes Bild wäre schlimmer als gar keins, und `require()` sagt
+        # dem Schüler dann ehrlich, was fehlt.
+        koennen = Capability.LOCOMOTION | Capability.POSTURE | Capability.POWER
+        if self._raum is not None:
+            # Mit Raum ist die Wahrnehmung keine Erfindung mehr, sondern
+            # Geometrie: sie folgt aus dem, was in der Raumdatei steht.
+            koennen |= Capability.WORLD_OBJECTS | Capability.LOCAL_GRID
+        return koennen
 
     def world_objects(self, kinds=None):
-        """Leer, und das ist die Wahrheit — nicht ein Fehler.
+        """Ohne Raum leer — und das ist die Wahrheit, nicht ein Fehler.
 
         Die Gangart-Interpolation weiss nichts über die Umgebung. Zwei erfundene
-        Tags sähen aus wie eine Messung und liefen in jede Auswertung; eine leere
-        Liste sagt korrekt: hier ist nichts zu sehen.
+        Tags sähen aus wie eine Messung und liefen in jede Auswertung.
+
+        MIT Raum ist es keine Erfindung, sondern Geometrie. Die Übersetzung in
+        `Tag` passiert HIER und nicht in `welt/`, weil `richtung()` in
+        `backends/base.py` wohnt und `welt/` nichts aus `backends/` importiert.
         """
-        return []
+        if self._raum is None:
+            return []
+        if kinds is not None and "apriltag" not in kinds:
+            return []
+        from spotlab.welt.wahrnehmung import sichtbare_tags
+
+        self._fortschreiben()
+        gefunden = []
+        for tag, dx, dy in sichtbare_tags(self._raum, self._pose):
+            peilung, distanz = richtung(dx, dy)
+            gefunden.append(Tag(
+                name=f"world_obj_apriltag_{tag.id:03d}", kind="apriltag",
+                bearing=peilung, distance=distanz, world_xy=(tag.x, tag.y),
+                time=self._jetzt(), id=tag.id, filtered=False,
+            ))
+        return gefunden
 
     def local_grid(self):
-        raise UnsupportedCapability(
-            "Die Simulation führt keine Hindernisgitter. Nutze den Trockenlauf "
-            "oder den echten Roboter."
+        if self._raum is None:
+            raise UnsupportedCapability(
+                "Die Simulation führt ohne Übungsraum kein Hindernisgitter. "
+                "Wähle einen Raum in der Ansicht 'Übungsraum' oder gib ihn an: "
+                "spotlab.connect(backend='sim', raum='moebliert')."
+            )
+        import numpy as np
+
+        from spotlab.welt.wahrnehmung import GITTER_ZELLE_M, abstandsgitter
+
+        self._fortschreiben()
+        werte, bekannt, ursprung = abstandsgitter(self._raum, self._pose)
+        return ObstacleGrid(
+            cells=np.asarray(werte), cell_size=GITTER_ZELLE_M,
+            origin=ursprung, time=self._jetzt(), known=np.asarray(bekannt),
         )
+
+    def _bewege_gegen_welt(self, von, nach):
+        """Ohne Raum unveraendert. Mit Raum: an Waenden bleibt Spot stehen.
+
+        Kein Fehler, kein Abbruch -- der echte Spot wirft auch keine Ausnahme,
+        wenn er vor einem Hindernis stehenbleibt. Das Programm laeuft weiter und
+        `move()` erreicht sein Ziel eben nicht.
+
+        Gemeldet wird nur die FLANKE. Ein Programm, das zehn Sekunden gegen eine
+        Wand drueckt, schriebe sonst hundert gleiche Zeilen ins Protokoll.
+        """
+        if self._raum is None:
+            return nach
+        from spotlab.welt.kollision import bewege
+
+        pose, getroffen = bewege(self._raum, von, nach)
+        if getroffen is None:
+            self._angestossen = False
+        elif not self._angestossen:
+            self._angestossen = True
+            if self._recorder is not None:
+                self._recorder.event(
+                    "angestossen",
+                    x=round(pose[0], 3), y=round(pose[1], 3), hindernis=getroffen,
+                )
+        return pose
 
     @staticmethod
     def hinweis_zur_gueltigkeit():
@@ -385,7 +465,8 @@ class SimBackend:
             dauer = self._modell.zyklusdauer(tempo, wz)
             if dauer > 0:
                 self._phase = (self._phase + dt / dauer) % 1.0
-            self._pose = integriere(self._pose, vx, vy, wz, dt)
+            neu = integriere(self._pose, vx, vy, wz, dt)
+            self._pose = self._bewege_gegen_welt(self._pose, neu)
 
     def robot_state(self):
         self._fortschreiben()

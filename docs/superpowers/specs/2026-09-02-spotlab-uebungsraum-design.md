@@ -67,6 +67,13 @@ hier aus sichtbar, mit rohem dx/dy) und **`sim.py` übersetzt** in `Tag` und
 genau deshalb darf die GUI es importieren, ohne die Regel „kein
 `spotlab.backends` unterhalb von `gui/`" zu berühren.
 
+**Nachtrag aus der Umsetzung (02.09.2026):** `raum.py` und `kollision.py` halten
+sich an stdlib plus `tomllib`; `wahrnehmung.py` benutzt zusätzlich **numpy**,
+weil das Gitter 16 384 Zellen hat und eine reine Python-Schleife rund 0.2 s je
+Abruf kostete — bei 2 Hz ein Drittel eines Kerns. Die GUI importiert nur
+`raum.py` und zieht damit weiterhin nichts Schweres herein. Zwei Tests halten
+beides fest.
+
 **Wände sind Strecken, Hindernisse achsparallele Rechtecke.** Nur Strecken
 erlauben einen Durchgang (zwei Strecken mit Lücke); Rechtecke decken Tisch,
 Kiste und Stuhlstapel ab und halten die Kollisionsprüfung bei einer Handvoll
