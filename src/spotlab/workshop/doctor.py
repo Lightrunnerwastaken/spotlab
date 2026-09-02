@@ -7,6 +7,7 @@ eigentlichen Problem ablenken.
 """
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from spotlab.errors import ConfigMissing, translate
 
@@ -22,9 +23,12 @@ class Check:
 STUFEN = (
     "Konfiguration", "Netz", "Anmeldung", "Zeitsync", "Zustandsstrom",
     "Not-Aus", "Not-Aus-Endpunkt", "Lease", "Akku",
+    "Lizenz", "Nutzlasten", "Dienste", "Zertifikat",
 )
 
 STROM_DIENST = "robot-state-streaming"
+# Ab hier wird vor dem Ablauf des Zertifikats gewarnt, statt ihn nur zu melden.
+WARNFRIST_TAGE = 30
 
 
 def _zustandsstrom(robot):
@@ -95,7 +99,11 @@ def _eigener_endpunkt(estop_client):
     )
 
 
-def diagnose(cfg=None, robot_bauen=None, passwort_lesen=None):
+def diagnose(cfg=None, robot_bauen=None, passwort_lesen=None,
+             zertifikat_holen=None):
+    """`zertifikat_holen` ist injizierbar wie `robot_bauen`: die Zeile macht
+    sonst einen echten TCP-Versuch und wartet dessen Frist ab — in einem Test
+    gegen eine Attrappen-IP sind das drei geschenkte Sekunden je Lauf."""
     from spotlab.backends.real.estop import LEVEL_NAMEN
     from spotlab.backends.real.lease import holder_of
     from spotlab.backends.real.verbindung import standard_robot
@@ -203,7 +211,120 @@ def diagnose(cfg=None, robot_bauen=None, passwort_lesen=None):
     except Exception as fehler:
         pruefungen.append(_fehler("Akku", fehler, cfg.ip))
 
+    # Geräte-Auskunft: was kann dieser Roboter überhaupt? Jede Zeile in eigenem
+    # try — ein fehlender Dienst darf die übrigen Antworten nicht mitreissen.
+    try:
+        from bosdyn.client.license import LicenseClient
+
+        pruefungen.append(
+            _lizenz(robot.ensure_client(LicenseClient.default_service_name))
+        )
+    except Exception as fehler:
+        pruefungen.append(
+            Check("Lizenz", True, f"nicht ermittelbar ({type(fehler).__name__})", "")
+        )
+
+    try:
+        from bosdyn.client.payload import PayloadClient
+
+        pruefungen.append(
+            _nutzlasten(robot.ensure_client(PayloadClient.default_service_name))
+        )
+    except Exception as fehler:
+        pruefungen.append(
+            Check("Nutzlasten", True, f"nicht ermittelbar ({type(fehler).__name__})", "")
+        )
+
+    pruefungen.append(_dienste(robot))
+    pruefungen.append(_zertifikat(cfg.ip, holen=zertifikat_holen))
+
     return pruefungen
+
+
+def _lizenz(license_client):
+    """Was ist auf diesem Roboter freigeschaltet — autoritativ, nicht geraten.
+
+    Loest die Heuristik in `_zustandsstrom` nicht ab, sondern ergaenzt sie:
+    „lizenziert, aber Dienst laeuft nicht" ist ein anderes Problem als „nicht
+    lizenziert", und nur wer beides fragt, kann sie unterscheiden.
+    """
+    try:
+        info = license_client.get_license_info()
+    except Exception as fehler:
+        return Check(
+            "Lizenz", True, f"nicht ermittelbar ({type(fehler).__name__})",
+            "Ohne die Angabe bleibt es bei der Auskunft aus der Dienstliste.",
+        )
+    features = list(getattr(info, "licensed_features", []) or [])
+    bis = str(getattr(info, "not_valid_after", "") or "")
+    detail = ", ".join(features) if features else "keine Features gemeldet"
+    if bis:
+        detail += f" — gültig bis {bis[:10]}"
+    return Check(
+        "Lizenz", True, detail,
+        "Auch die Lizenz hat ein Ablaufdatum. Vor einem Messtag hinschauen.",
+    )
+
+
+def _nutzlasten(payload_client):
+    """Beantwortet „GPS? Lidar?" — statt es zu vermuten."""
+    try:
+        nutzlasten = list(payload_client.list_payloads())
+    except Exception as fehler:
+        return Check("Nutzlasten", True, f"nicht ermittelbar ({type(fehler).__name__})", "")
+    if not nutzlasten:
+        return Check(
+            "Nutzlasten", True, "keine verbaut",
+            "Ohne Nutzlast gibt es an diesem Roboter kein GPS und kein Lidar.",
+        )
+    namen = ", ".join(
+        str(getattr(p, "name", "?"))
+        + ("" if getattr(p, "is_authorized", True) else " (nicht freigegeben)")
+        for p in nutzlasten
+    )
+    return Check("Nutzlasten", True, namen, "")
+
+
+def _dienste(robot):
+    try:
+        namen = sorted({getattr(d, "name", "") for d in robot.list_services()})
+    except Exception as fehler:
+        return Check("Dienste", True, f"nicht ermittelbar ({type(fehler).__name__})", "")
+    return Check("Dienste", True, f"{len(namen)} Dienste", ", ".join(namen))
+
+
+def _zertifikat(ip, jetzt=None, holen=None):
+    """Läuft das Roboter-Zertifikat bald ab? Die Lehre aus dem 02.09.2026.
+
+    Der Rat nennt, was damals geholfen hat, und behauptet KEINE Ursache — die
+    ist bis heute unbekannt.
+    """
+    from spotlab.workshop.zertifikat import fenster_von
+
+    jetzt = jetzt or datetime.now(UTC)
+    holen = holen or fenster_von
+    try:
+        _vor, nach = holen(ip)
+    except Exception as fehler:
+        return Check(
+            "Zertifikat", True, f"nicht ermittelbar ({type(fehler).__name__})",
+            "Nur im WLAN des Spot prüfbar.",
+        )
+    tage = (nach - jetzt).days
+    datum = nach.strftime("%Y-%m-%d")
+    if tage < 0:
+        return Check(
+            "Zertifikat", False, f"abgelaufen am {datum} (seit {-tage} Tagen)",
+            "Den Roboter neu starten — das hat am 02.09.2026 geholfen. "
+            "Die Laptop-Uhr NICHT zurückstellen: das behebt nichts und "
+            "verfälscht die Zeitstempel aller Läufe.",
+        )
+    if tage <= WARNFRIST_TAGE:
+        return Check(
+            "Zertifikat", True, f"gültig bis {datum} — noch {tage} Tage",
+            "Vor dem nächsten Messtag einen Neustart einplanen.",
+        )
+    return Check("Zertifikat", True, f"gültig bis {datum}", "")
 
 
 def _fehler(name, fehler, ip):

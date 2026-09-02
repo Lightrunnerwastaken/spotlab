@@ -1,3 +1,5 @@
+import pytest
+
 from spotlab.config import Config, Limits
 from spotlab.workshop.doctor import STUFEN, diagnose
 
@@ -43,9 +45,31 @@ def _cfg():
     return Config(ip="1.2.3.4", username="u", nickname="Spot", limits=Limits())
 
 
+def _gueltiges_zertifikat(_ip, _port=443):
+    """Kein echter TCP-Versuch im Test — sonst kostet jeder Lauf die volle Frist."""
+    from datetime import UTC, datetime, timedelta
+
+    jetzt = datetime.now(UTC)
+    return jetzt - timedelta(days=30), jetzt + timedelta(days=365)
+
+
+@pytest.fixture(autouse=True)
+def _kein_echter_zertifikatsabruf(monkeypatch):
+    """Die Zertifikatszeile telefoniert sonst gegen die Attrappen-IP.
+
+    Gemessen: fuenf Tests a 3.01 s, also genau die TCP-Frist. Ein Test, der auf
+    ein Netz-Timeout wartet, prueft nicht die Diagnose, sondern die Geduld.
+    Die Zeile selbst wird in den Zertifikatstests weiter unten geprueft — dort
+    mit ausdruecklich gereichten Fenstern.
+    """
+    monkeypatch.setattr(
+        "spotlab.workshop.zertifikat.fenster_von", _gueltiges_zertifikat
+    )
+
+
 def test_gesunder_spot_besteht_alle_stufen():
     pruefungen = diagnose(
-        _cfg(), robot_bauen=lambda cfg: GesunderRobot(), passwort_lesen=lambda u: "x"
+        _cfg(), robot_bauen=lambda cfg: GesunderRobot(), passwort_lesen=lambda u: "x",
     )
     assert [p.name for p in pruefungen] == list(STUFEN)
     assert all(p.ok for p in pruefungen)
@@ -255,3 +279,137 @@ def test_ein_erreichbarer_spot_bleibt_gruen():
         _cfg(), robot_bauen=lambda cfg: AntwortenderRobot(), passwort_lesen=lambda u: "x"
     )
     assert all(p.ok for p in pruefungen)
+
+
+# ------------------------------------------------------- Geraete-Auskunft
+#
+# Bis zum 02.09.2026 beantwortete `doctor` die Lizenzfrage INDIREKT ueber die
+# Dienstliste. Das war eine Heuristik, kein Befund.
+
+
+class AttrappenLizenz:
+    def __init__(self, features, bis="2027-01-01T00:00:00Z", werfen=False):
+        self._features = features
+        self._bis = bis
+        self._werfen = werfen
+
+    def get_license_info(self):
+        if self._werfen:
+            raise RuntimeError("kein Lizenzdienst")
+        class Info:
+            pass
+        info = Info()
+        info.licensed_features = self._features
+        info.not_valid_after = self._bis
+        return info
+
+
+def test_lizenz_nennt_die_freigeschalteten_features():
+    from spotlab.workshop.doctor import _lizenz
+
+    pruefung = _lizenz(AttrappenLizenz(["joint_control", "graph_nav"]))
+    assert pruefung.ok
+    assert "joint_control" in pruefung.detail
+
+
+def test_lizenz_ohne_dienst_ist_kein_defekt():
+    """Ein fehlender Befund ist kein Defekt — ein rotes Kreuz waere Falschaussage."""
+    from spotlab.workshop.doctor import _lizenz
+
+    pruefung = _lizenz(AttrappenLizenz([], werfen=True))
+    assert pruefung.ok is True
+    assert "nicht ermittelbar" in pruefung.detail
+
+
+def test_lizenz_nennt_ihr_eigenes_ablaufdatum():
+    from spotlab.workshop.doctor import _lizenz
+
+    pruefung = _lizenz(AttrappenLizenz(["graph_nav"], bis="2026-09-10T00:00:00Z"))
+    assert "2026-09-10" in pruefung.detail
+
+
+def test_nutzlasten_beantworten_die_gps_frage():
+    from spotlab.workshop.doctor import _nutzlasten
+
+    class Attrappe:
+        def list_payloads(self):
+            class P:
+                name = "Spot CORE"
+                is_authorized = True
+            return [P()]
+
+    assert "Spot CORE" in _nutzlasten(Attrappe()).detail
+
+
+def test_keine_nutzlast_ist_eine_gueltige_antwort():
+    from spotlab.workshop.doctor import _nutzlasten
+
+    class Leer:
+        def list_payloads(self):
+            return []
+
+    pruefung = _nutzlasten(Leer())
+    assert pruefung.ok
+    assert "keine" in pruefung.detail.lower()
+
+
+# ------------------------------------------------------------- Zertifikat
+
+
+def _fenster(nach):
+    from datetime import UTC, datetime
+    return lambda _ip: (datetime(2025, 1, 1, tzinfo=UTC), nach)
+
+
+def test_abgelaufenes_zertifikat_wird_als_nicht_ok_gemeldet():
+    from datetime import UTC, datetime
+
+    from spotlab.workshop.doctor import _zertifikat
+
+    pruefung = _zertifikat(
+        "192.168.80.3", jetzt=datetime(2026, 9, 2, tzinfo=UTC),
+        holen=_fenster(datetime(2026, 3, 10, tzinfo=UTC)),
+    )
+    assert pruefung.ok is False
+    assert "2026-03-10" in pruefung.detail
+    assert "neu" in pruefung.rat.lower()
+
+
+def test_gueltiges_zertifikat_nennt_das_ablaufdatum():
+    from datetime import UTC, datetime
+
+    from spotlab.workshop.doctor import _zertifikat
+
+    pruefung = _zertifikat(
+        "192.168.80.3", jetzt=datetime(2026, 9, 2, tzinfo=UTC),
+        holen=_fenster(datetime(2027, 6, 1, tzinfo=UTC)),
+    )
+    assert pruefung.ok is True
+    assert "2027-06-01" in pruefung.detail
+
+
+def test_bald_ablaufend_wird_zur_warnung():
+    from datetime import UTC, datetime
+
+    from spotlab.workshop.doctor import _zertifikat
+
+    pruefung = _zertifikat(
+        "192.168.80.3", jetzt=datetime(2026, 9, 2, tzinfo=UTC),
+        holen=_fenster(datetime(2026, 9, 20, tzinfo=UTC)),
+    )
+    assert pruefung.ok is True
+    assert "18" in pruefung.detail
+
+
+def test_zertifikat_nicht_erreichbar_ist_kein_defekt():
+    from datetime import UTC, datetime
+
+    from spotlab.workshop.doctor import _zertifikat
+
+    def holen(_ip):
+        raise OSError("keine Verbindung")
+
+    pruefung = _zertifikat("192.168.80.3", jetzt=datetime(2026, 9, 2, tzinfo=UTC),
+                           holen=holen)
+    assert pruefung.ok is True
+    assert "nicht ermittelbar" in pruefung.detail
