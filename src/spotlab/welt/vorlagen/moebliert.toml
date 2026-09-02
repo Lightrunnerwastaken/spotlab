@@ -1,0 +1,24 @@
+[raum]
+name         = "Möbliert"
+beschreibung = "Ein Zimmer mit Tisch und zwei Stuhlstapeln."
+groesse      = [6.0, 4.0]
+start        = [1.0, 1.0, 0.0]
+waende = [
+    [0.0, 0.0, 6.0, 0.0],
+    [6.0, 0.0, 6.0, 4.0],
+    [6.0, 4.0, 0.0, 4.0],
+    [0.0, 4.0, 0.0, 0.0],
+]
+hindernisse = [
+    { name = "Tisch",         rechteck = [2.5, 1.4, 1.2, 0.8] },
+    { name = "Stuhlstapel A", rechteck = [4.6, 2.9, 0.6, 0.6] },
+    { name = "Stuhlstapel B", rechteck = [1.4, 2.9, 0.6, 0.6] },
+]
+
+[[tag]]
+id = 1
+pose = [5.9, 2.0, 180.0]
+
+[[tag]]
+id = 2
+pose = [3.1, 3.9, 270.0]

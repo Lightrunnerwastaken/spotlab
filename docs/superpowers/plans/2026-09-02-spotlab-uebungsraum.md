@@ -193,13 +193,27 @@ def test_welt_importiert_nichts_verbotenes():
 
 
 def test_nur_wahrnehmung_darf_numpy():
-    """raum.py wird von der GUI importiert und bleibt deshalb leichtgewichtig."""
+    """raum.py wird von der GUI importiert und bleibt deshalb leichtgewichtig.
+
+    Ueber `ast`, nicht als Textsuche: der Docstring von raum.py ERWAEHNT numpy,
+    um zu begruenden, warum es dort fehlt. Eine Substring-Pruefung schluege
+    daran an und pruefte die Dokumentation statt des Codes.
+    """
+    import ast
     from pathlib import Path
 
     wurzel = Path(__file__).resolve().parents[1] / "src" / "spotlab" / "welt"
     for datei in ("raum.py", "kollision.py"):
-        quelle = (wurzel / datei).read_text(encoding="utf-8")
-        assert "numpy" not in quelle, f"{datei} soll ohne numpy auskommen"
+        pfad = wurzel / datei
+        if not pfad.is_file():
+            continue          # kollision.py kommt in Task 2 dazu
+        namen = set()
+        for knoten in ast.walk(ast.parse(pfad.read_text(encoding="utf-8"))):
+            if isinstance(knoten, ast.Import):
+                namen.update(t.name for t in knoten.names)
+            elif isinstance(knoten, ast.ImportFrom) and knoten.module:
+                namen.add(knoten.module)
+        assert not [n for n in namen if n.split(".")[0] == "numpy"],             f"{datei} soll ohne numpy auskommen"
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
