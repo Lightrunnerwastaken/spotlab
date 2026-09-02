@@ -373,3 +373,54 @@ def test_ein_sofort_gestorbener_prozess_gibt_den_knopf_frei(qapp, tmp_path):
     QTest.qWait(200)
     ansicht.pruefe_lauf_lebt()
     assert ansicht.start_knopf.text().startswith("▶"), "Knopf haengt auf Stopp fest"
+
+
+def _arbeite_zerstoerungen_ab():
+    """CLAUDE.md: wer deleteLater() ausloest, arbeitet es auch ab.
+
+    Sonst liegt die Zerstoerung in der Warteschlange, bis ein spaeterer Test
+    eine verschachtelte Ereignisschleife laufen laesst -- und stuerzt DORT ab.
+    Genau so ist schon einmal ein "Fatal Python error: Aborted" in
+    test_gui_tree.py entstanden, ausgeloest von hier.
+    """
+    from PySide6.QtCore import QCoreApplication, QEvent
+
+    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+
+
+def test_geloeschte_datei_schliesst_ihren_reiter(qapp, tmp_path):
+    """Sonst zeigt ein Reiter auf eine verschwundene Datei -- und das naechste
+    Speichern legte sie wortlos wieder an."""
+    from spotlab.gui.editor.view import EditorView
+    from spotlab.gui.theme import DUNKEL
+
+    projekt = tmp_path / "demo"
+    projekt.mkdir()
+    datei = projekt / "weg.py"
+    datei.write_text("x = 1\n", encoding="utf-8")
+
+    ansicht = EditorView(DUNKEL)
+    ansicht.setze_projekt(projekt)
+    ansicht.oeffne(datei)
+    assert ansicht.reiter.count() == 1
+
+    ansicht.schliesse_pfad(datei)
+    assert ansicht.reiter.count() == 0
+    _arbeite_zerstoerungen_ab()
+
+
+def test_unbekannter_pfad_schliesst_nichts(qapp, tmp_path):
+    from spotlab.gui.editor.view import EditorView
+    from spotlab.gui.theme import DUNKEL
+
+    projekt = tmp_path / "demo"
+    projekt.mkdir()
+    datei = projekt / "bleibt.py"
+    datei.write_text("x = 1\n", encoding="utf-8")
+
+    ansicht = EditorView(DUNKEL)
+    ansicht.setze_projekt(projekt)
+    ansicht.oeffne(datei)
+    ansicht.schliesse_pfad(projekt / "andere.py")
+    assert ansicht.reiter.count() == 1
+    _arbeite_zerstoerungen_ab()

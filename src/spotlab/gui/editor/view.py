@@ -156,6 +156,8 @@ class EditorView(QWidget):
         self.projektwahl.currentTextChanged.connect(self._projekt_gewechselt)
         self.baum = Dateibaum()
         self.baum.datei_gewaehlt.connect(self.oeffne)
+        self.baum.datei_entfernt.connect(self.schliesse_pfad)
+        self.baum.meldung.connect(self.meldung)
 
         links = QWidget()
         links_anordnung = QVBoxLayout(links)
@@ -391,6 +393,19 @@ class EditorView(QWidget):
         eintrag.mtime, eintrag.groesse = stempel(eintrag.pfad)
         eintrag.verschmutzt = False
         self._titel(eintrag)
+
+    def schliesse_pfad(self, pfad):
+        """Den Reiter zu `pfad` schliessen, falls einer offen ist.
+
+        Geht ueber `_schliesse`, damit die Rueckfrage bei ungespeicherten
+        Aenderungen gilt: die geloeschte Datei liegt im Papierkorb und ist
+        wiederherstellbar, ein ungespeicherter Puffer nicht.
+        """
+        pfad = Path(pfad)
+        for feld, eintrag in list(self._reiter.items()):
+            if eintrag.pfad == pfad:
+                self._schliesse(self.reiter.indexOf(feld))
+                return
 
     def _schliesse(self, index):
         feld = self.reiter.widget(index)

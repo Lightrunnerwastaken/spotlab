@@ -49,8 +49,10 @@ def test_klick_liefert_meter(qapp):
     gemeldet = []
     plot.start_gewaehlt.connect(lambda x, y: gemeldet.append((x, y)))
     px, py = plot.meter_zu_schirm(3.0, 2.0)
+    # Mit globalPos: die kuerzere Ueberladung ist in PySide6 veraltet und
+    # schreibt bei jedem Lauf eine DeprecationWarning in die Ausgabe.
     ereignis = QMouseEvent(
-        QMouseEvent.MouseButtonPress, QPointF(px, py),
+        QMouseEvent.MouseButtonPress, QPointF(px, py), QPointF(px, py),
         Qt.LeftButton, Qt.LeftButton, Qt.NoModifier,
     )
     plot.mousePressEvent(ereignis)
