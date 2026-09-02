@@ -242,13 +242,22 @@ NavStatus — dort, wo die backend-unabhaengigen Formen wohnen — und werden hi
 re-exportiert, weil `from spotlab.api.world import Tag` die Schuelertuer ist.
 """
 
-import math
-
-from spotlab.backends.base import ObstacleGrid, Tag, WorldObject  # noqa: F401  (Re-Export)
+from spotlab.backends.base import (  # noqa: F401  (Re-Export)
+    ObstacleGrid,
+    Tag,
+    WorldObject,
+    richtung,
+)
 
 __all__ = ["WorldObject", "Tag", "ObstacleGrid", "richtung"]
+```
 
+**`richtung()` liegt in `backends/base.py`, nicht hier.** Die Backends brauchen sie
+für die Umrechnung, und `backends/` importiert laut Global Constraints nie aus
+`api/`. Also gehört sie dorthin, wo schon `Feedback` und `NavStatus` wohnen — in
+`base.py`, direkt vor `WorldObject`, mit `import math` oben in der Datei:
 
+```python
 def richtung(x, y):
     """Aus einer Position im Koerper-Frame: (Peilung in Grad, Distanz in Meter).
 
@@ -365,7 +374,9 @@ In `backends/dryrun.py`:
 ```python
 import numpy as np
 
-from spotlab.backends.base import Capability, Feedback, ObstacleGrid, SafetyStatus, Tag, WorldObject
+from spotlab.backends.base import (
+    Capability, Feedback, ObstacleGrid, SafetyStatus, Tag, WorldObject, richtung,
+)
 
 # Feste Attrappen-Umgebung: zwei Tags und ein Dock in bekannter Lage, eine Wand
 # bei y = 2 m. Deterministisch, damit Tests darauf zusichern koennen.
@@ -392,8 +403,6 @@ Und die zwei Methoden:
 
 ```python
     def world_objects(self, kinds=None):
-        from spotlab.api.world import richtung
-
         gefunden = []
         for name, art, x, y, nummer in ATTRAPPEN_OBJEKTE:
             if kinds is not None and art not in kinds:
@@ -834,8 +843,7 @@ import numpy as np
 from bosdyn.api import world_object_pb2 as wo
 from bosdyn.client import frame_helpers as fh
 
-from spotlab.api.world import richtung
-from spotlab.backends.base import ObstacleGrid, Tag, WorldObject
+from spotlab.backends.base import ObstacleGrid, Tag, WorldObject, richtung
 
 GITTERTYP = "obstacle_distance"
 
