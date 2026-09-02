@@ -127,14 +127,18 @@ class MainWindow(QWidget):
         self.kopf.notaus.connect(lambda: self.ansichten["live"].notaus())
         self.ansichten["live"].meldung.connect(self._melde)
         self.ansichten["projekte"].lauf_gestartet.connect(self._lauf_gestartet)
+        self.ansichten["projekte"].meldung.connect(self._melde)
         self.ansichten["projekte"].arbeitsordner_geaendert.connect(self._merke_arbeitsordner)
         self.ansichten["spot"].config_gespeichert.connect(self._config_gespeichert)
         self.ansichten["uebungsraum"].meldung.connect(self._melde)
         self.ansichten["uebungsraum"].config_gespeichert.connect(self._config_gespeichert)
         # Delegation, kein zweiter Startweg: genau EIN Lauf ist der, auf den
         # Stopp und NOT-AUS zeigen.
+        # An den EDITOR, nicht an "Projekte": der Knopf soll die offene Datei
+        # starten. Ueber "Projekte" haette er stillschweigend nichts getan,
+        # solange dort nichts ausgewaehlt war.
         self.ansichten["uebungsraum"].start_gewuenscht.connect(
-            self.ansichten["projekte"].starte_aktuelles
+            self.ansichten["code"].starte_aktuelles
         )
         self.ansichten["spot"].pruefung_angefordert.connect(self._pruefe)
         self.ansichten["karten"].meldung.connect(self._melde)

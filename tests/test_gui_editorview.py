@@ -424,3 +424,48 @@ def test_unbekannter_pfad_schliesst_nichts(qapp, tmp_path):
     ansicht.schliesse_pfad(projekt / "andere.py")
     assert ansicht.reiter.count() == 1
     _arbeite_zerstoerungen_ab()
+
+
+def test_starte_aktuelles_ohne_offene_datei_meldet_klartext(qapp, tmp_path):
+    """Der Uebungsraum delegiert hierher -- schweigen waere dort ein toter Knopf."""
+    from spotlab.gui.editor.view import EditorView
+    from spotlab.gui.theme import DUNKEL
+
+    projekt = tmp_path / "demo"
+    projekt.mkdir()
+    ansicht = EditorView(DUNKEL)
+    ansicht.setze_projekt(projekt)
+    gemeldet = []
+    ansicht.meldung.connect(gemeldet.append)
+
+    ansicht.starte_aktuelles()
+    assert gemeldet and "ffne zuerst" in gemeldet[0]
+
+
+def test_starte_aktuelles_startet_die_offene_datei(qapp, tmp_path, monkeypatch):
+    from spotlab.gui.editor import view as modul
+    from spotlab.gui.editor.view import EditorView
+    from spotlab.gui.theme import DUNKEL
+
+    gestartet = []
+
+    class _Prozess:
+        stdout = None
+
+        def poll(self):
+            return None
+
+    monkeypatch.setattr(modul, "start_script",
+                        lambda pfad, dryrun=False: gestartet.append(pfad) or _Prozess())
+
+    projekt = tmp_path / "demo"
+    projekt.mkdir()
+    datei = projekt / "lauf.py"
+    datei.write_text("x = 1\n", encoding="utf-8")
+
+    ansicht = EditorView(DUNKEL)
+    ansicht.setze_projekt(projekt)
+    ansicht.oeffne(datei)
+    ansicht.starte_aktuelles()
+    assert gestartet == [datei]
+    _arbeite_zerstoerungen_ab()

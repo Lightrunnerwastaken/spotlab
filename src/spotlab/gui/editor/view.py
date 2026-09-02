@@ -442,6 +442,14 @@ class EditorView(QWidget):
 
     # ------------------------------------------------------------- Lauf
 
+    def starte_aktuelles(self):
+        """Startet die offene Datei -- oder haelt an, wenn schon etwas laeuft.
+
+        Oeffentlich, damit der Uebungsraum daran delegieren kann. Kein zweiter
+        Startweg: genau EIN Lauf ist der, auf den Stopp und NOT-AUS zeigen.
+        """
+        self._starten_oder_stoppen()
+
     def _starten_oder_stoppen(self):
         if self._laeuft:
             # Delegation ans Hauptfenster, das LiveView.stoppe() ruft: der

@@ -115,3 +115,18 @@ def test_startknopf_meldet_nur_den_wunsch(qapp):
     ansicht.start_gewuenscht.connect(lambda: gewuenscht.append(True))
     ansicht.starten.click()
     assert gewuenscht == [True]
+
+
+def test_startknopf_heisst_nach_der_offenen_datei(qapp):
+    """'Programm starten' verspricht eine Auswahl, die es nicht gibt."""
+    ansicht = UebungsraumView(DUNKEL)
+    assert "ffene Datei" in ansicht.starten.text()
+
+
+def test_knopf_wird_zum_stopp_waehrend_ein_lauf_laeuft(qapp):
+    """Sonst haette man im Uebungsraum einen Startknopf, der nichts tut."""
+    ansicht = UebungsraumView(DUNKEL)
+    ansicht.setze_laeuft(True)
+    assert "Stopp" in ansicht.starten.text()
+    ansicht.setze_laeuft(False)
+    assert "Stopp" not in ansicht.starten.text()

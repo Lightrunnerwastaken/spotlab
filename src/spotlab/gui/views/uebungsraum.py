@@ -31,6 +31,11 @@ from spotlab.gui.raumplot import RaumPlot
 from spotlab.welt.kollision import hindernis_bei
 from spotlab.welt.raum import raum_laden, vorlagen
 
+# Der Knopf startet, was im EDITOR offen ist -- nicht eine Auswahl irgendwo
+# sonst. Die Beschriftung sagt das, damit niemand eine Auswahl sucht.
+START_TEXT = "▶ Offene Datei starten"
+STOPP_TEXT = "■ Stopp"
+
 
 def _zeilen(pfad):
     """jsonl lesen, halbe letzte Zeile ueberspringen (wie record/read.py)."""
@@ -72,7 +77,7 @@ class UebungsraumView(QWidget):
 
         self.startzeile = QLabel("—")
         self.startzeile.setObjectName("Gedaempft")
-        self.starten = QPushButton("Programm starten")
+        self.starten = QPushButton(START_TEXT)
         self.starten.clicked.connect(self.start_gewuenscht.emit)
 
         rechts = QVBoxLayout()
@@ -91,6 +96,14 @@ class UebungsraumView(QWidget):
         self.waehle_raum(self.raeume.currentText())
 
     # ----------------------------------------------------------- Zustand
+
+    def setze_laeuft(self, laeuft):
+        """Waehrend eines Laufs haelt derselbe Knopf an.
+
+        Ohne das haette der Uebungsraum einen Startknopf, der mitten im Lauf
+        nichts tut -- und der Schueler suchte den Stopp anderswo.
+        """
+        self.starten.setText(STOPP_TEXT if laeuft else START_TEXT)
 
     def setze_arbeitsordner(self, pfad):
         self._arbeitsordner = Path(pfad) if pfad else None

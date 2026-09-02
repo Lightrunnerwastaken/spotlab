@@ -72,3 +72,21 @@ def test_sidebar_meldet_die_wahl(qapp):
     leiste.gewaehlt.connect(gewaehlt.append)
     leiste.knoepfe["laeufe"].click()
     assert gewaehlt == ["laeufe"]
+
+
+def test_starten_ohne_auswahl_meldet_klartext(qapp, tmp_path):
+    """Bisher kehrte _starte wortlos zurueck -- der Knopf sah kaputt aus.
+
+    Ueber ein Signal, nicht ueber QMessageBox: ein modaler Dialog blockiert den
+    Test fuer immer, weil ihn offscreen niemand wegklickt. Genau darauf bin ich
+    beim ersten Versuch hereingefallen.
+    """
+    from spotlab.gui.views.projects import ProjectsView
+
+    ansicht = ProjectsView()
+    ansicht.setze_arbeitsordner(tmp_path)
+    gemeldet = []
+    ansicht.meldung.connect(gemeldet.append)
+
+    ansicht.starte_aktuelles()
+    assert gemeldet and "Skript" in gemeldet[0]

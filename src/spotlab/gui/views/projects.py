@@ -38,6 +38,10 @@ def projekte_in(ordner):
 
 class ProjectsView(QWidget):
     lauf_gestartet = Signal(object, str)
+    # Wie LiveView, UmweltView und EditorView: Meldungen gehen in die
+    # Statuszeile, nicht in einen modalen Dialog. Ein QMessageBox hier
+    # blockiert im Test fuer immer -- offscreen klickt ihn niemand weg.
+    meldung = Signal(str)
     arbeitsordner_geaendert = Signal(str)
     projekt_oeffnen = Signal(object)
 
@@ -170,6 +174,8 @@ class ProjectsView(QWidget):
         projekt = self._gewaehltes_projekt()
         eintrag = self.skriptliste.currentItem()
         if projekt is None or eintrag is None:
+            # Frueher kehrte das wortlos zurueck, und der Knopf sah kaputt aus.
+            self.meldung.emit("Wähle links ein Projekt und rechts ein Skript.")
             return
         skript = projekt / eintrag.text()
         try:
