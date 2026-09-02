@@ -32,6 +32,7 @@ from spotlab.gui.views.live import LiveView
 from spotlab.gui.views.maps import MapsView
 from spotlab.gui.views.projects import ProjectsView
 from spotlab.gui.views.runs import RunsView
+from spotlab.gui.views.umwelt import UmweltView
 from spotlab.gui.watcher import RunWatcher
 from spotlab.gui.workers import DoctorWorker, OutputReader
 from spotlab.record.read import read_run
@@ -83,12 +84,14 @@ class MainWindow(QWidget):
             "live": LiveView(),
             "laeufe": RunsView(self._palette),
             "karten": MapsView(self._palette),
+            "umwelt": UmweltView(),
             "anbindungen": AnbindungenView(self._palette),
             "spot": CheckupView(),
         }
         self.stapel = QStackedWidget()
         for schluessel in (
-            "projekte", "code", "live", "laeufe", "karten", "anbindungen", "spot"
+            "projekte", "code", "live", "laeufe", "karten", "umwelt",
+            "anbindungen", "spot",
         ):
             self.stapel.addWidget(self.ansichten[schluessel])
 
@@ -158,6 +161,7 @@ class MainWindow(QWidget):
         self.ansichten["anbindungen"].setze_arbeitsordner(pfad or None)
         self.ansichten["laeufe"].setze_arbeitsordner(pfad or None)
         self.ansichten["karten"].setze_arbeitsordner(pfad or None)
+        self.ansichten["umwelt"].setze_arbeitsordner(pfad or None)
         if self._watcher is not None:
             self._watcher.stop()
             self._watcher = None

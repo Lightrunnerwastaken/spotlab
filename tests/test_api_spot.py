@@ -62,3 +62,27 @@ def test_navigate_ohne_karte_sagt_was_zu_tun_ist():
 
 def test_waypoints_ohne_karte_ist_leer():
     assert _spot().waypoints() == []
+
+
+def test_spot_reicht_tags_durch():
+    spot = Spot(DryRunBackend())
+    assert [t.id for t in spot.tags()] == [1, 2]
+
+
+def test_spot_tags_nimmt_eine_nummer():
+    spot = Spot(DryRunBackend())
+    assert [t.id for t in spot.tags(id=2)] == [2]
+
+
+def test_spot_bearing_taugt_direkt_fuer_move():
+    """Die Zusicherung hinter der Grad-Entscheidung: kein math.degrees noetig."""
+    spot = Spot(DryRunBackend())
+    spot.power_on()
+    spot.stand()
+    winkel = spot.tags()[0].bearing
+    assert -180.0 <= winkel <= 180.0
+    spot.move(turn=winkel)          # darf nicht werfen
+
+
+def test_spot_obstacles_liefert_gitter():
+    assert Spot(DryRunBackend()).obstacles().cell_size > 0

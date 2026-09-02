@@ -4,7 +4,7 @@ Die Abkürzung ist keine Mauer: `spot.robot` und `spot.send()` führen jederzeit
 zum vollen SDK — ohne Lease, Not-Aus und Aufzeichnung aufzugeben.
 """
 
-from spotlab.api import motion, navigation, perception, posture
+from spotlab.api import motion, navigation, perception, posture, world
 from spotlab.api.state import from_proto
 from spotlab.config import Limits
 from spotlab.record.messfenster import RESERVIERT, Messfenster  # noqa: F401  (Re-Export)
@@ -101,6 +101,21 @@ class Spot:
     def camera(self, name):
         """Holt ein Bild der genannten Kamera und zeichnet es auf."""
         return perception.camera(self.backend, self.recorder, name)
+
+    def world_objects(self, kinds=None):
+        """Nennt alles, was Spot gerade als Objekt führt — nächstes zuerst."""
+        return world.world_objects(self.backend, self.recorder, kinds=kinds)
+
+    def tags(self, id=None):
+        """Die sichtbaren AprilTags, nächstes zuerst. Peilung in Grad.
+
+        `spot.move(turn=spot.tags()[0].bearing)` dreht zum nächsten Tag.
+        """
+        return world.tags(self.backend, self.recorder, id=id)
+
+    def obstacles(self):
+        """Das Hindernisgitter: wo ist Platz, wo nicht."""
+        return world.obstacles(self.backend, self.recorder)
 
     @property
     def state(self):

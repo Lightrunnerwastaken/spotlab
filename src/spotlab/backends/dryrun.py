@@ -8,12 +8,21 @@ prüfen, ob sein Skript überhaupt durchläuft.
 import itertools
 import time
 
+import numpy as np
 from bosdyn.api import geometry_pb2, robot_command_pb2, robot_state_pb2
 from bosdyn.client.frame_helpers import BODY_FRAME_NAME, ODOM_FRAME_NAME, VISION_FRAME_NAME
 from google.protobuf import wrappers_pb2
 
 from spotlab.backends import mobility
-from spotlab.backends.base import Capability, Feedback, SafetyStatus
+from spotlab.backends.base import (
+    Capability,
+    Feedback,
+    ObstacleGrid,
+    SafetyStatus,
+    Tag,
+    WorldObject,
+    richtung,
+)
 from spotlab.errors import CommandRejected, NotPowered, UnsupportedCapability
 
 STANDHOEHE = 0.42       # m, plausible Standhöhe des echten Spot
@@ -22,6 +31,20 @@ REIBWERT = 0.6          # erfunden, aber plausibel — lauf.json sagt `backend: 
 # Schranke (`TooDistantError`); eine Stunde ist grosszügig gewählt und fängt
 # vor allem den Fall ab, dass jemand Millisekunden für Sekunden hält.
 ZU_WEIT_S = 3600.0
+
+# Feste Attrappen-Umgebung: zwei Tags und ein Dock in bekannter Lage, eine Wand
+# bei y = 2 m. Deterministisch, damit Tests darauf zusichern können — dieselbe
+# Rolle wie STANDHOEHE, nur für die Wahrnehmung.
+ATTRAPPEN_OBJEKTE = (
+    # (Name, Art, x, y, Tag-Nummer)
+    ("world_obj_apriltag_001", "apriltag", 2.0, 0.5, 1),
+    ("world_obj_apriltag_002", "apriltag", 4.0, -1.5, 2),
+    ("world_obj_dock_003", "dock", 1.0, 0.0, None),
+)
+GITTER_ZELLE_M = 0.03
+GITTER_ZELLEN = 128
+GITTER_FREI_M = 2.0     # Abstand in freier Fläche
+GITTER_WAND_M = 0.05    # Abstand direkt an der Wand
 
 GELENKE = [
     "fl.hx", "fl.hy", "fl.kn",
@@ -50,7 +73,45 @@ class DryRunBackend:
         self.endzeiten = []     # parallel zu `gesendet`, None wo keine gesetzt war
 
     def capabilities(self):
-        return Capability.LOCOMOTION | Capability.POSTURE | Capability.POWER
+        return (
+            Capability.LOCOMOTION | Capability.POSTURE | Capability.POWER
+            | Capability.WORLD_OBJECTS | Capability.LOCAL_GRID
+        )
+
+    # ----------------------------------------------------------- Wahrnehmung
+
+    def world_objects(self, kinds=None):
+        """Die feste Attrappen-Umgebung, nach Distanz sortiert.
+
+        Erfunden, aber als solche kenntlich: `lauf.json` sagt `backend: dryrun`.
+        Anders als bei Messwerten ist das hier unbedenklich — niemand kalibriert
+        gegen einen Trockenlauf, aber jeder will seine Skripte zu Hause prüfen.
+        """
+        gefunden = []
+        for name, art, x, y, nummer in ATTRAPPEN_OBJEKTE:
+            if kinds is not None and art not in kinds:
+                continue
+            peilung, distanz = richtung(x, y)
+            gemeinsam = dict(
+                name=name, kind=art, bearing=peilung, distance=distanz,
+                world_xy=(x, y), time=self._jetzt(),
+            )
+            if art == "apriltag":
+                gefunden.append(Tag(**gemeinsam, id=nummer, filtered=True))
+            else:
+                gefunden.append(WorldObject(**gemeinsam))
+        return sorted(gefunden, key=lambda o: o.distance)
+
+    def local_grid(self):
+        """Freies Feld mit einer Wand bei y = 2 m."""
+        zellen = np.full((GITTER_ZELLEN, GITTER_ZELLEN), GITTER_FREI_M)
+        wandzeile = int(2.0 / GITTER_ZELLE_M)
+        if wandzeile < GITTER_ZELLEN:
+            zellen[wandzeile, :] = GITTER_WAND_M
+        return ObstacleGrid(
+            cells=zellen, cell_size=GITTER_ZELLE_M, origin=(0.0, 0.0),
+            time=self._jetzt(),
+        )
 
     # ------------------------------------------------------------- Kommandos
 

@@ -178,3 +178,33 @@ def test_deckel_kommt_aus_derselben_quelle_wie_beim_echten_backend():
 
     grenzen = Limits(max_speed=0.4, max_turn_rate=0.7)
     assert DryRunBackend().mobility_params(grenzen) == mit_grenze(grenzen)
+
+
+def test_dryrun_meldet_wahrnehmungsfaehigkeiten():
+    backend = DryRunBackend()
+    assert backend.capabilities() & Capability.WORLD_OBJECTS
+    assert backend.capabilities() & Capability.LOCAL_GRID
+
+
+def test_dryrun_liefert_zwei_tags_und_ein_dock():
+    objekte = DryRunBackend().world_objects()
+    assert sorted(o.kind for o in objekte) == ["apriltag", "apriltag", "dock"]
+
+
+def test_dryrun_tags_sind_deterministisch():
+    erste = DryRunBackend().world_objects()
+    zweite = DryRunBackend().world_objects()
+    assert [(o.name, o.distance) for o in erste] == [(o.name, o.distance) for o in zweite]
+
+
+def test_dryrun_filtert_nach_art():
+    nur_tags = DryRunBackend().world_objects(kinds=["apriltag"])
+    assert len(nur_tags) == 2
+    assert all(o.kind == "apriltag" for o in nur_tags)
+
+
+def test_dryrun_gitter_hat_eine_wand():
+    gitter = DryRunBackend().local_grid()
+    assert gitter.cell_size > 0
+    assert gitter.cells.min() < 0.2      # irgendwo ist die Wand
+    assert gitter.cells.max() > 1.0      # und irgendwo ist frei

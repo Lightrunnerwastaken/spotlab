@@ -85,10 +85,25 @@ class SimBackend:
     # ------------------------------------------------------------- Auskunft
 
     def capabilities(self):
-        # Keine Kameras, kein GraphNav: dafür gibt es keine Messung. Ein
-        # erfundenes Bild wäre schlimmer als gar keins, und `require()` sagt
-        # dem Schüler dann ehrlich, was fehlt.
+        # Keine Kameras, kein GraphNav, keine Wahrnehmung: dafür gibt es keine
+        # Messung. Ein erfundenes Bild wäre schlimmer als gar keins, und
+        # `require()` sagt dem Schüler dann ehrlich, was fehlt.
         return Capability.LOCOMOTION | Capability.POSTURE | Capability.POWER
+
+    def world_objects(self, kinds=None):
+        """Leer, und das ist die Wahrheit — nicht ein Fehler.
+
+        Die Gangart-Interpolation weiss nichts über die Umgebung. Zwei erfundene
+        Tags sähen aus wie eine Messung und liefen in jede Auswertung; eine leere
+        Liste sagt korrekt: hier ist nichts zu sehen.
+        """
+        return []
+
+    def local_grid(self):
+        raise UnsupportedCapability(
+            "Die Simulation führt keine Hindernisgitter. Nutze den Trockenlauf "
+            "oder den echten Roboter."
+        )
 
     @staticmethod
     def hinweis_zur_gueltigkeit():

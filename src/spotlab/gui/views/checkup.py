@@ -77,6 +77,12 @@ class CheckupView(QWidget):
         anordnung.addLayout(knoepfe)
         anordnung.addWidget(QLabel("Prüfung"))
         anordnung.addWidget(self.ergebnisse, 1)
+        # Lizenz, Nutzlasten, Dienste und Zertifikatsablauf stehen seit Stufe 9
+        # in dieser Ausgabe. Wer sie an die Schule oder den BD-Support gibt, soll
+        # sie nicht abtippen müssen.
+        self.kopieren = QPushButton("Als Text kopieren")
+        self.kopieren.clicked.connect(self._kopiere)
+        anordnung.addWidget(self.kopieren)
 
         self.lade()
 
@@ -123,3 +129,8 @@ class CheckupView(QWidget):
             if pruefung.rat:
                 zeilen.append(f"       → {pruefung.rat}")
         self.ergebnisse.setPlainText("\n".join(zeilen))
+
+    def _kopiere(self):
+        from PySide6.QtWidgets import QApplication
+
+        QApplication.clipboard().setText(self.ergebnisse.toPlainText())

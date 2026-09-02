@@ -9,6 +9,7 @@ EINTRAEGE = (
     ("live", "Live-Lauf"),
     ("laeufe", "Läufe"),
     ("karten", "Karten"),
+    ("umwelt", "Umwelt"),
     ("anbindungen", "Anbindungen"),
     ("spot", "Spot"),
 )

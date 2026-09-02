@@ -498,6 +498,47 @@ im Alltag umgangen.
 
 ---
 
+## A21 — Die Sonde ist leaselos
+
+**Vorgehen** Mit dem Tablet das Lease nehmen und den Spot stehen lassen. Dann am
+Laptop in der Ansicht „Umwelt" auf „Umgebung abfragen" drücken.
+
+**Erwartung**
+- (1) Die Sonde läuft durch und listet Objekte — obwohl das Tablet das Lease hält.
+- (2) Das Tablet **verliert sein Lease nicht** und meldet keine Übernahme.
+- (3) Der Spot bewegt sich während der ganzen Abfrage um keinen Millimeter.
+
+**Gegenprobe** Während die Sonde läuft, am Tablet fahren. Muss ungestört gehen —
+ein reiner Lesedienst darf die Führung nicht beeinträchtigen.
+
+**Warum am Gerät** `tests/test_sonde.py` hält fest, dass das Modul keine
+Bewegungsfunktion aufruft. Dass `WorldObjectClient` und `LocalGridClient` neben
+einem FREMDEN Lease funktionieren, kann kein Test beantworten — nur der Roboter.
+
+**Ergebnis** _(offen)_
+
+---
+
+## A22 — Erkennungsreichweite der Fiducials
+
+**Vorgehen** Einen AprilTag an eine Wand kleben, gemessene Kantenlänge notieren
+(Soll 146 mm; ein auf A4 „an Seite angepasst" gedrucktes BD-PDF misst 133 mm und
+liefert alle Distanzen um den Faktor 146/gemessen zu kurz). Den Spot in
+1-m-Schritten entfernen, an jeder Stelle die Sonde auslösen.
+
+**Erwartung** Die Entfernung notieren, ab der der Tag nicht mehr gemeldet wird.
+Die Simulation rechnet mit rund 12 m; real werden 2–3 m erwartet.
+
+**Gegenprobe** Am Tablet nachsehen, ob Spot den Tag dort noch anzeigt. Zeigt das
+Tablet ihn und die Sonde nicht, liegt es an der Abfrage, nicht am Tag.
+
+**Der gemessene Wert gehört als Versuchsbedingung in die Maturaarbeit**, nicht
+nur in dieses Dokument.
+
+**Ergebnis** _(offen)_
+
+---
+
 ## Nach der Abnahme
 
 Ergebnisse hier eintragen, Abweichungen als Befund in die Spec zurückspielen, und erst
