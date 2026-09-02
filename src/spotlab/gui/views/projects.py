@@ -157,6 +157,15 @@ class ProjectsView(QWidget):
         except SpotlabError as fehler:
             QMessageBox.warning(self, "spotlab", str(fehler))
 
+    def starte_aktuelles(self):
+        """Startet, was in dieser Ansicht gewaehlt ist.
+
+        Oeffentlich, damit der Uebungsraum daran delegieren kann, statt einen
+        zweiten Startweg zu bauen: genau EIN Lauf ist der, auf den Stopp und
+        NOT-AUS zeigen.
+        """
+        self._starte()
+
     def _starte(self):
         projekt = self._gewaehltes_projekt()
         eintrag = self.skriptliste.currentItem()

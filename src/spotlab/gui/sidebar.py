@@ -10,6 +10,7 @@ EINTRAEGE = (
     ("laeufe", "Läufe"),
     ("karten", "Karten"),
     ("umwelt", "Umwelt"),
+    ("uebungsraum", "Übungsraum"),
     ("anbindungen", "Anbindungen"),
     ("spot", "Spot"),
 )

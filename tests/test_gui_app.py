@@ -103,13 +103,13 @@ def test_gui_importiert_kein_bosdyn():
     assert verstoesse == []
 
 
-def test_fenster_hat_jetzt_acht_ansichten(qapp):
+def test_fenster_hat_jetzt_neun_ansichten(qapp):
     fenster = MainWindow()
     assert set(fenster.ansichten) == {
         "projekte", "code", "live", "laeufe", "karten", "umwelt",
-        "anbindungen", "spot",
+        "uebungsraum", "anbindungen", "spot",
     }
-    assert fenster.stapel.count() == 8
+    assert fenster.stapel.count() == 9
 
 
 # --------------------------------------------------------------- Ansicht „Code"
