@@ -22,6 +22,26 @@ $ErrorActionPreference = "Stop"
 $wurzel  = $PSScriptRoot
 $pythonw = Join-Path $wurzel ".venv\Scripts\pythonw.exe"
 
+# Die eigene .venv hat Vorrang: auf einem Schul-Laptop ist sie das, was
+# einrichten.ps1 angelegt und geprueft hat.
+if (-not (Test-Path $pythonw)) {
+    # Steht schon ein spotlab im PATH? Das ist der Entwicklungsrechner-Fall --
+    # dort liegt spotlab oft in einer Conda-Umgebung. Ohne diese Suche legte ein
+    # Doppelklick dort ein ZWEITES Environment an (allein PySide6 sind 642 MB),
+    # obwohl alles laengst installiert ist.
+    $vorhanden = Get-Command spotlab -ErrorAction SilentlyContinue
+    if ($vorhanden) {
+        $skripte = Split-Path $vorhanden.Source -Parent
+        # conda legt pythonw.exe EINE Ebene ueber Scripts\ ab, ein venv darin.
+        foreach ($kandidat in @(
+            (Join-Path (Split-Path $skripte -Parent) "pythonw.exe"),
+            (Join-Path $skripte "pythonw.exe")
+        )) {
+            if (Test-Path $kandidat) { $pythonw = $kandidat; break }
+        }
+    }
+}
+
 if (-not (Test-Path $pythonw)) {
     $einrichten = Join-Path $wurzel "einrichten.ps1"
     if ($NurPruefen) {

@@ -21,12 +21,15 @@ POWERSHELL = shutil.which("powershell") or shutil.which("pwsh")
 pytestmark = pytest.mark.skipif(POWERSHELL is None, reason="PowerShell fehlt")
 
 
-def _ps(skript, *argumente, cwd=None):
+def _ps(skript, *argumente, cwd=None, pfad=None):
+    umgebung = None
+    if pfad is not None:
+        umgebung = dict(os.environ, PATH=str(pfad))
     return subprocess.run(
         [POWERSHELL, "-NoProfile", "-ExecutionPolicy", "Bypass",
          "-File", str(skript), *argumente],
         capture_output=True, text=True, timeout=TEST_TIMEOUT_S,
-        cwd=str(cwd or WURZEL), encoding="utf-8", errors="replace",
+        cwd=str(cwd or WURZEL), encoding="utf-8", errors="replace", env=umgebung,
     )
 
 
@@ -112,9 +115,16 @@ def test_mit_umgebung_wird_die_gui_gestartet(tmp_path):
 
 
 def test_ohne_umgebung_wird_zuerst_eingerichtet(tmp_path):
-    """Der selbstheilende Teil: ein frischer Laptop kommt mit einem Klick hin."""
+    """Der selbstheilende Teil: ein frischer Laptop kommt mit einem Klick hin.
+
+    Der PATH muss dafuer LEER sein. Ohne das fand der Test auf dem Rechner des
+    Autors dessen eigenes spotlab in miniconda -- und pruefte dann etwas ganz
+    anderes, als sein Name behauptet.
+    """
     repo = _falsches_repo(tmp_path, mit_venv=False)
-    ergebnis = _ps(repo / "starten.ps1", "-NurPruefen", cwd=repo)
+    leer = tmp_path / "leer"
+    leer.mkdir()
+    ergebnis = _ps(repo / "starten.ps1", "-NurPruefen", cwd=repo, pfad=leer)
     assert ergebnis.returncode == 0, ergebnis.stdout + ergebnis.stderr
     assert "einrichten.ps1" in ergebnis.stdout
 
@@ -153,3 +163,50 @@ def test_ohne_konfiguration_fuehrt_die_gui_zu_den_zugangsdaten(qapp, monkeypatch
     monkeypatch.setattr(modul, "load_config", keine)
     fenster = modul.MainWindow()
     assert fenster.stapel.currentWidget() is fenster.ansichten["spot"]
+
+
+# --------------------------------- vorhandene Installation statt Neubau
+#
+# Der Autor selbst hat spotlab in einer Conda-Umgebung, nicht in .venv. Ohne
+# diese Suche wuerde ein Doppelklick bei ihm ein ZWEITES Environment anlegen --
+# 642 MB PySide6, obwohl alles laengst da ist. Ein Werkzeug, das der Autor
+# umgehen muss, wird selten gut.
+
+
+def _falsche_installation(tmp_path, conda_layout):
+    """Ein spotlab im PATH. `pythonw.exe` liegt bei conda EINE Ebene ueber
+    dem Scripts-Ordner, bei einem venv darin -- beide Faelle kommen vor."""
+    umgebung = tmp_path / ("conda" if conda_layout else "venv")
+    skripte = umgebung / "Scripts"
+    skripte.mkdir(parents=True)
+    (skripte / "spotlab.exe").write_bytes(b"nicht wirklich spotlab")
+    ziel = umgebung if conda_layout else skripte
+    (ziel / "pythonw.exe").write_bytes(b"nicht wirklich Python")
+    return skripte, ziel / "pythonw.exe"
+
+
+def test_vorhandenes_spotlab_wird_genutzt_conda(tmp_path):
+    repo = _falsches_repo(tmp_path, mit_venv=False)
+    skripte, pythonw = _falsche_installation(tmp_path, conda_layout=True)
+    ergebnis = _ps(repo / "starten.ps1", "-NurPruefen", cwd=repo, pfad=skripte)
+    assert ergebnis.returncode == 0, ergebnis.stdout + ergebnis.stderr
+    assert str(pythonw) in ergebnis.stdout
+    assert "einrichten" not in ergebnis.stdout.lower()
+
+
+def test_vorhandenes_spotlab_wird_genutzt_venv(tmp_path):
+    repo = _falsches_repo(tmp_path, mit_venv=False)
+    skripte, pythonw = _falsche_installation(tmp_path, conda_layout=False)
+    ergebnis = _ps(repo / "starten.ps1", "-NurPruefen", cwd=repo, pfad=skripte)
+    assert ergebnis.returncode == 0, ergebnis.stdout + ergebnis.stderr
+    assert str(pythonw) in ergebnis.stdout
+
+
+def test_eigene_umgebung_geht_vor(tmp_path):
+    """Auf einem Schul-Laptop soll .venv gelten, auch wenn zufaellig noch
+    irgendein spotlab im PATH steht."""
+    repo = _falsches_repo(tmp_path, mit_venv=True)
+    skripte, fremdes = _falsche_installation(tmp_path, conda_layout=True)
+    ergebnis = _ps(repo / "starten.ps1", "-NurPruefen", cwd=repo, pfad=skripte)
+    assert ".venv" in ergebnis.stdout
+    assert str(fremdes) not in ergebnis.stdout
