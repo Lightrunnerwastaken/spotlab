@@ -58,3 +58,11 @@ def test_navstatus_ist_unveraenderlich():
     zustand = NavStatus(fertig=True, status="angekommen", gescheitert=False)
     with pytest.raises(AttributeError):
         zustand.fertig = False
+
+
+def test_neue_faehigkeiten_sind_einzeln_lesbar():
+    from spotlab.backends.base import _lesbar
+
+    text = _lesbar(Capability.WORLD_OBJECTS | Capability.LOCAL_GRID)
+    assert "world_objects" in text
+    assert "local_grid" in text

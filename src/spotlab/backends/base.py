@@ -29,6 +29,8 @@ class Capability(enum.Flag):
     LEASE = enum.auto()
     ESTOP = enum.auto()
     GRAPH_NAV = enum.auto()
+    WORLD_OBJECTS = enum.auto()
+    LOCAL_GRID = enum.auto()
 
     CAMERAS = DEPTH_CAMERAS | GRAY_CAMERAS | COLOR_CAMERAS
 
@@ -150,6 +152,8 @@ class SpotBackend(Protocol):
     def mobility_params(self, limits): ...
     def image_sources(self) -> list: ...
     def images(self, sources) -> list: ...
+    def world_objects(self, kinds=None) -> list: ...
+    def local_grid(self): ...
     def power_on(self) -> None: ...
     def power_off(self, safe=True) -> None: ...
     @property
@@ -168,6 +172,8 @@ _EINZELN = (
     Capability.LEASE,
     Capability.ESTOP,
     Capability.GRAPH_NAV,
+    Capability.WORLD_OBJECTS,
+    Capability.LOCAL_GRID,
 )
 
 
