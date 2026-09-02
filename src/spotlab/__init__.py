@@ -35,7 +35,8 @@ OHNE_ROBOTER = ("dryrun", "sim")
 
 @contextlib.contextmanager
 def connect(
-    backend=None, runs_dir=None, script=None, take=False, config_path=None, nickname=None
+    backend=None, runs_dir=None, script=None, take=False, config_path=None,
+    nickname=None, raum=None,
 ):
     """Verbindet, zeichnet auf und baut am Ende garantiert sauber ab.
 
@@ -89,12 +90,24 @@ def connect(
         recorder.event("verbunden", backend="dryrun")
     elif art == "sim":
         from spotlab.backends.sim import SimBackend
+        from spotlab.config import startpose_aus
+        from spotlab.welt.raum import raum_laden
 
-        roher_roboter, unten = None, SimBackend(recorder)
+        # Reihenfolge: Argument vor Konfiguration. Ein Skript, das seinen Raum
+        # nennt, soll nicht davon abhaengen, was zuletzt in der GUI stand.
+        name = raum or (cfg.raum if cfg else "")
+        gewaehlt = (raum_laden(name, workspace=cfg.workspace if cfg else None)
+                    if name else None)
+        start = startpose_aus(cfg.raum_start) if cfg else None
+        if gewaehlt is not None and start is None:
+            start = gewaehlt.start
+
+        roher_roboter, unten = None, SimBackend(recorder, raum=gewaehlt, start=start)
         # Der Hinweis gehört in die Aufzeichnung, nicht nur in den Docstring:
         # wer den Lauf später ansieht, muss sehen, dass hier nichts erprobt ist.
         recorder.event(
-            "verbunden", backend="sim", hinweis=unten.hinweis_zur_gueltigkeit()
+            "verbunden", backend="sim", raum=name or None,
+            hinweis=unten.hinweis_zur_gueltigkeit(),
         )
     else:
         from spotlab.backends.real import RealSpot
