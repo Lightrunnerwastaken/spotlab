@@ -541,3 +541,111 @@ def test_ein_trockenlauf_bekommt_keinen_sim_bericht(tmp_path):
 
     lauf = json.loads((verzeichnis / "lauf.json").read_text(encoding="utf-8"))
     assert "sim" not in lauf
+
+
+# ------------------------------------------------------- Uebungsraum (Stufe 10)
+
+
+def _uebungsraum():
+    from spotlab.welt.raum import Hindernis, Raum, RaumTag
+
+    return Raum(
+        name="T", beschreibung="", groesse=(10.0, 10.0), start=(5.0, 5.0, 0.0),
+        waende=(
+            (0.0, 0.0, 10.0, 0.0), (10.0, 0.0, 10.0, 10.0),
+            (10.0, 10.0, 0.0, 10.0), (0.0, 10.0, 0.0, 0.0),
+        ),
+        hindernisse=(Hindernis("Kiste", (7.0, 4.5, 0.5, 1.0)),),
+        tags=(RaumTag(1, 6.0, 5.0, 180.0),),
+    )
+
+
+class _Mitschreiber:
+    def __init__(self):
+        self.ereignisse = []
+
+    def event(self, art, **daten):
+        self.ereignisse.append((art, daten))
+
+    def sample(self, daten):
+        pass
+
+
+def test_ohne_raum_bleibt_alles_wie_vorher():
+    """Die wichtigste Zusicherung: kein bestehender Lauf aendert sich."""
+    from spotlab.backends.base import Capability
+    from spotlab.backends.sim import SimBackend
+
+    backend = SimBackend()
+    assert not backend.capabilities() & Capability.WORLD_OBJECTS
+    assert not backend.capabilities() & Capability.LOCAL_GRID
+    assert backend.world_objects() == []
+
+
+def test_mit_raum_kommen_die_faehigkeiten_dazu():
+    from spotlab.backends.base import Capability
+    from spotlab.backends.sim import SimBackend
+
+    backend = SimBackend(raum=_uebungsraum(), start=(5.0, 5.0, 0.0))
+    assert backend.capabilities() & Capability.WORLD_OBJECTS
+    assert backend.capabilities() & Capability.LOCAL_GRID
+
+
+def test_start_setzt_die_pose():
+    import math as _math
+
+    from spotlab.backends.sim import SimBackend
+
+    backend = SimBackend(raum=_uebungsraum(), start=(3.0, 2.0, 90.0))
+    assert backend._pose[0] == pytest.approx(3.0)
+    assert backend._pose[1] == pytest.approx(2.0)
+    assert backend._pose[2] == pytest.approx(_math.radians(90.0))
+
+
+def test_tags_kommen_in_grad_und_metern():
+    from spotlab.backends.base import Tag
+    from spotlab.backends.sim import SimBackend
+
+    backend = SimBackend(raum=_uebungsraum(), start=(5.0, 5.0, 0.0))
+    gefunden = backend.world_objects(kinds=["apriltag"])
+    assert len(gefunden) == 1
+    tag = gefunden[0]
+    assert isinstance(tag, Tag)
+    assert tag.id == 1
+    assert tag.distance == pytest.approx(1.0, abs=0.01)
+    assert tag.bearing == pytest.approx(0.0, abs=1.0)
+
+
+def test_gitter_traegt_die_bekannt_maske():
+    from spotlab.backends.sim import SimBackend
+
+    backend = SimBackend(raum=_uebungsraum(), start=(5.0, 5.0, 0.0))
+    gitter = backend.local_grid()
+    assert gitter.cell_size == pytest.approx(0.03)
+    assert gitter.known is not None
+    assert gitter.cells.shape == gitter.known.shape
+
+
+def test_anstossen_wird_genau_einmal_gemeldet():
+    """Ein Programm, das zehn Sekunden gegen eine Wand drueckt, darf das
+    Protokoll nicht mit hundert gleichen Zeilen fluten."""
+    from spotlab.backends.sim import SimBackend
+
+    schreiber = _Mitschreiber()
+    backend = SimBackend(recorder=schreiber, raum=_uebungsraum(), start=(0.5, 5.0, 0.0))
+    for _ in range(5):
+        backend._bewege_gegen_welt((0.5, 5.0, 0.0), (0.2, 5.0, 0.0))
+    anstoesse = [e for e in schreiber.ereignisse if e[0] == "angestossen"]
+    assert len(anstoesse) == 1
+    assert anstoesse[0][1]["hindernis"] == "Wand"
+
+
+def test_nach_freier_fahrt_wird_wieder_gemeldet():
+    from spotlab.backends.sim import SimBackend
+
+    schreiber = _Mitschreiber()
+    backend = SimBackend(recorder=schreiber, raum=_uebungsraum(), start=(0.5, 5.0, 0.0))
+    backend._bewege_gegen_welt((0.5, 5.0, 0.0), (0.2, 5.0, 0.0))
+    backend._bewege_gegen_welt((0.5, 5.0, 0.0), (0.6, 5.0, 0.0))   # frei
+    backend._bewege_gegen_welt((0.5, 5.0, 0.0), (0.2, 5.0, 0.0))
+    assert len([e for e in schreiber.ereignisse if e[0] == "angestossen"]) == 2
