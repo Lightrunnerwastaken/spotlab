@@ -1899,9 +1899,11 @@ Expected: alle grün, keine Warnungen aus den neuen Modulen
 
 Run:
 ```bash
-python -c "import spotlab; s=spotlab.connect(backend='dryrun'); print([ (t.id, round(t.distance,2), round(t.bearing)) for t in s.tags() ])"
+SPOTLAB_BACKEND=dryrun python -c "import spotlab; ziel='runs'
+with spotlab.connect(runs_dir=ziel) as s: print([(t.id, round(t.distance,2), round(t.bearing)) for t in s.tags()])"
 ```
-Expected: `[(1, 2.06, 14), (2, 4.27, -21)]`
+Expected: `[(1, 2.06, 14), (2, 4.27, -21)]`  — bestaetigt am 02.09.2026.
+`connect()` ist ein KONTEXTMANAGER; ohne `with` bekommt man den Manager selbst.
 
 - [ ] **Step 4: Die Sonde gegen den Trockenlauf**
 
