@@ -70,17 +70,22 @@ def _bericht(ergebnis, drucke=print):
 def _hauptprogramm():
     """Als Skript ueber `workshop/launcher.py` gestartet — schreibt einen Lauf.
 
-    Das Lauf-Verzeichnis wird AUSDRUECKLICH gesetzt. Die uebliche Herleitung
-    (`<skriptordner>/runs/`) taugt hier nicht: dieses Skript liegt im
-    installierten Paket, und Laeufe gehoeren nicht dorthin. Die GUI startet die
-    Sonde im Arbeitsordner, damit landen sie neben den anderen Laeufen.
+    Das Lauf-Verzeichnis wird AUSDRUECKLICH gesetzt: `--runs <ordner>`, sonst
+    `SPOTLAB_RUNS_DIR`, sonst `./runs`. Die uebliche Herleitung
+    (`<skriptordner>/runs/`) taugt hier nicht — dieses Skript liegt im
+    installierten Paket, und `start_script` setzt `cwd` auf den Skriptordner.
+    Ohne die Angabe schriebe die Sonde ihre Laeufe zwischen den Quelltext.
     """
     import os
+    import sys
     from pathlib import Path
 
     import spotlab
 
-    runs = os.environ.get("SPOTLAB_RUNS_DIR") or (Path.cwd() / "runs")
+    runs = None
+    if "--runs" in sys.argv:
+        runs = sys.argv[sys.argv.index("--runs") + 1]
+    runs = runs or os.environ.get("SPOTLAB_RUNS_DIR") or (Path.cwd() / "runs")
     with spotlab.connect(runs_dir=runs, script=__file__) as spot:
         ergebnis = sonde(spot)
     _bericht(ergebnis)
