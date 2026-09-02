@@ -1829,13 +1829,13 @@ CLAUDE.md macht das zur Pflicht, nicht zur Kür: „Neue Fähigkeit ⇒ neuer Ei
 beglichen. Und: „Was nur am Gerät prüfbar ist, gehört in `docs/ABNAHME.md`, nicht
 in einen Test, der Sicherheit bloss behauptet."
 
-- [ ] **Step 1: A19 und A20 im Hausformat anhängen**
+- [ ] **Step 1: A21 und A22 im Hausformat anhängen**
 
 Format wie die bestehenden Punkte — Überschrift, **Erwartung**, **Gegenprobe**,
 **Ergebnis** _(offen)_:
 
 ```markdown
-## A19 — Die Sonde ist leaselos
+## A21 — Die Sonde ist leaselos
 
 **Vorgehen** Mit dem Tablet das Lease nehmen und den Spot stehen lassen. Dann am
 Laptop in der Ansicht „Umwelt" auf „Umgebung abfragen" drücken.
@@ -1852,7 +1852,7 @@ ein reiner Lesedienst darf die Führung nicht beeinträchtigen.
 
 ---
 
-## A20 — Erkennungsreichweite der Fiducials
+## A22 — Erkennungsreichweite der Fiducials
 
 **Vorgehen** Einen AprilTag an eine Wand kleben, gemessene Kantenlänge notieren.
 Den Spot in 1-m-Schritten entfernen, an jeder Stelle die Sonde auslösen.
@@ -1866,14 +1866,14 @@ Tablet ihn und die Sonde nicht, liegt es an der Abfrage, nicht am Tag.
 **Ergebnis** _(offen)_
 ```
 
-**Der gemessene Wert aus A20 gehört als Versuchsbedingung in die Maturaarbeit**,
+**Der gemessene Wert aus A22 gehört als Versuchsbedingung in die Maturaarbeit**,
 nicht nur in dieses Dokument.
 
 - [ ] **Step 2: Commit**
 
 ```bash
 git add docs/ABNAHME.md
-git commit -m "docs(abnahme): A19 Sonde leaselos und A20 Tag-Reichweite"
+git commit -m "docs(abnahme): A21 Sonde leaselos und A22 Tag-Reichweite"
 ```
 
 ---
@@ -2087,7 +2087,7 @@ git commit -m "refactor(karte): Gitter-Mitschnitt kommt jetzt aus spotlab"
 | §5 Datenfluss | 3 (Protokoll), 6 (Gitterablage), 8 (Anzeige) |
 | §6 Fehlerbehandlung | 1 (`distance_at` → None), 3 (leer statt Fehler), 6 (Fehler gezählt), 7 (Gitter fehlt), 9/10 (`ok=True`) |
 | §7 Prüfung | in jedem Task, Gesamtlauf in 11 |
-| §8 Abnahme A19/A20 | 11 (Eintrag in ABNAHME.md); die Messung selbst am Gerät |
+| §8 Abnahme A21/A22 | 11 (Eintrag in ABNAHME.md); die Messung selbst am Gerät |
 | §11 Reihenfolge | Tasks 1–12 spotlab, 13–14 matura-spot zuletzt |
 
 **Korrekturen aus dieser Selbstprüfung** (alle bereits eingearbeitet):
@@ -2109,7 +2109,7 @@ git commit -m "refactor(karte): Gitter-Mitschnitt kommt jetzt aus spotlab"
 7. **Objektabfragen gehen nach `ereignisse.jsonl`**, nicht `zustand.jsonl` wie in
    der Spec; dessen Schlüssel dürfen sich laut CLAUDE.md nicht ändern.
 
-**Bewusst nicht im Plan:** die Messungen für A19 und A20 selbst. Sie finden am
+**Bewusst nicht im Plan:** die Messungen für A21 und A22 selbst. Sie finden am
 Roboter statt; Task 11 legt nur die Formulare dafür an.
 
 **Typkonsistenz geprüft:** `richtung()` gibt `(bearing, distance)` in dieser

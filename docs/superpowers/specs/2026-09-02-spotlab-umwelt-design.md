@@ -359,10 +359,10 @@ Umstellung. `test_explorer_naht.py` muss grün bleiben.
 
 ## 8 Abnahme am Gerät
 
-- **A19 — Sonde ist leaselos.** Die Sonde läuft, während das Tablet das Lease
+- **A21 — Sonde ist leaselos.** Die Sonde läuft, während das Tablet das Lease
   hält, ohne es zu stören. Erst danach gilt die Leaselosigkeit als belegt und
   nicht nur als getestet.
-- **A20 — Tag-Erkennungsreichweite.** Am Gerät messen. Die Sim rechnet mit
+- **A22 — Tag-Erkennungsreichweite.** Am Gerät messen. Die Sim rechnet mit
   ~12 m, real werden ~2–3 m erwartet. Das ist eine Versuchsbedingung der
   Maturaarbeit und gehört protokolliert.
 
@@ -388,7 +388,7 @@ Umstellung. `test_explorer_naht.py` muss grün bleiben.
   störungsfrei lief; ein Neustart behob es. Warum es an diesem Tag auftrat, ist
   offen. Die Diagnosezeile in 4.8 macht den Zustand künftig sichtbar, erklärt
   ihn aber nicht. Aufgehoben: `matura-spot: spot_zertifikat_vor_neustart.pem`.
-- **Erkennungsreichweite der Fiducials** ist geschätzt, nicht gemessen — A20.
+- **Erkennungsreichweite der Fiducials** ist geschätzt, nicht gemessen — A22.
 - **`world_object`-Typen ausserhalb von AprilTag und Dock** sind ungetestet an
   diesem Gerät. Die Schicht behandelt sie generisch; ob Spot sie überhaupt
   meldet, zeigt der erste Lauf.
