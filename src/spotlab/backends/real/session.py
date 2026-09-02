@@ -6,6 +6,8 @@ lässt die Keepalives sterben — dann geht der Roboter von selbst in den sicher
 Zustand, und genau das ist der Not-Aus, den man nicht kaputtprogrammieren kann.
 """
 
+import time
+
 from bosdyn.client.estop import EstopClient
 from bosdyn.client.image import ImageClient, build_image_request
 from bosdyn.client.lease import LeaseClient
@@ -69,6 +71,9 @@ class RealSpot:
         self._recorder = recorder
         self._geschlossen = False
         self._quellen = None
+        # Lesedienste, erst bei Bedarf angelegt (siehe Abschnitt Wahrnehmung).
+        self._welt = None
+        self._gitter = None
 
     # ------------------------------------------------------------- Aufbau
 
@@ -135,7 +140,43 @@ class RealSpot:
             | Capability.LEASE
             | Capability.ESTOP
             | Capability.GRAPH_NAV
+            | Capability.WORLD_OBJECTS
+            | Capability.LOCAL_GRID
         )
+
+    # ----------------------------------------------------------- Wahrnehmung
+    #
+    # Beide Clients werden bei Bedarf angelegt statt im Konstruktor: sie sind
+    # reine Lesedienste, und eine Sitzung, die sie nie benutzt, soll auch keine
+    # Verbindung dafür aufbauen.
+
+    def _welt_client(self):
+        from bosdyn.client.world_object import WorldObjectClient
+
+        if self._welt is None:
+            self._welt = self._robot.ensure_client(WorldObjectClient.default_service_name)
+        return self._welt
+
+    def _gitter_client(self):
+        from bosdyn.client.local_grid import LocalGridClient
+
+        if self._gitter is None:
+            self._gitter = self._robot.ensure_client(LocalGridClient.default_service_name)
+        return self._gitter
+
+    def world_objects(self, kinds=None):
+        """Kein Lease, kein Kommando — `WorldObjectClient` liest nur."""
+        from spotlab.backends.real import wahrnehmung
+
+        # Wanduhr, keine Roboterzeit: `t_robot` wird nicht umgerechnet (CLAUDE.md),
+        # und dieses Feld liegt in derselben Zeitbasis wie `t` in zustand.jsonl.
+        return wahrnehmung.objekte_holen(self._welt_client(), time.time(), kinds=kinds)
+
+    def local_grid(self):
+        """Kein Lease, kein Kommando — `LocalGridClient` liest nur."""
+        from spotlab.backends.real import wahrnehmung
+
+        return wahrnehmung.gitter_holen(self._gitter_client())
 
     def send_command(self, command, end_time_secs=None):
         self._lease.raise_if_lost()
