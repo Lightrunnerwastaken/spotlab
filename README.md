@@ -43,7 +43,8 @@ Getestet auf Windows mit Python 3.11 und 3.13.
 
 ```
 spotlab login                    # IP, Benutzer, Passwort (Passwort in den Windows-Tresor)
-spotlab doctor                   # Netz, Anmeldung, Zeitsync, Not-Aus, Lease, Akku
+spotlab doctor                   # Netz, Anmeldung, Zeitsync, Not-Aus, Lease, Akku,
+                                 # Lizenz, Nutzlasten, Dienste, Zertifikatsablauf
 spotlab new mein-projekt
 spotlab open mein-projekt
 spotlab run hallo_spot.py
@@ -62,12 +63,12 @@ pip install -e .[gui]
 spotlab gui
 ```
 
-Sieben Ansichten in einer Seitenleiste: **Projekte** (anlegen, in VS Code öffnen, starten —
+Acht Ansichten in einer Seitenleiste: **Projekte** (anlegen, in VS Code öffnen, starten —
 mit Häkchen für Trockenlauf), **Code** (der eingebaute Editor), **Live-Lauf** (Ereignisse,
 Telemetrie, Kamerabild, Ausgabe), **Läufe** (vergangene Läufe mit der Kurve kommandiertes
-gegen gemessenes Tempo), **Karten** (GraphNav aufzeichnen und ansehen), **Anbindungen**
-(fremde Projekte) und **Spot** (Zugangsdaten und Prüfung). Hell und dunkel folgen der
-Windows-Einstellung.
+gegen gemessenes Tempo), **Karten** (GraphNav aufzeichnen und ansehen), **Umwelt** (was
+Spot gerade sieht), **Anbindungen** (fremde Projekte) und **Spot** (Zugangsdaten und
+Prüfung). Hell und dunkel folgen der Windows-Einstellung.
 
 ### Der eingebaute Editor
 
@@ -144,6 +145,26 @@ Karten liegen im **Format des SDK** unter `<arbeitsordner>/karten/<name>/`. Eine
 aufgezeichnete Karte lässt sich deshalb unverändert an `graph_nav_command_line.py` und
 `view_map.py` aus dem Spot-SDK verfüttern — und umgekehrt.
 
+## Umwelt — was Spot gerade sieht
+
+Der Spot führt selbst eine Liste der Objekte, die er erkennt: AprilTags, Dockingstationen,
+Türen. Dazu ein Hindernisgitter mit dem Abstand zum nächsten Hindernis je Zelle.
+
+In der Ansicht **Umwelt** steht dafür ein Knopf: **„Umgebung abfragen"**.
+
+```
+   apriltag 1     2.06 m   +14 Grad   vor 3 s
+   dock 3         1.00 m     +0 Grad   vor 3 s
+```
+
+**Die Abfrage hält kein Lease und sendet kein Kommando.** Der Spot kann sich dadurch
+nicht bewegen, und sie funktioniert, während jemand anderes mit dem Tablet fährt. Genau
+dafür ist sie gedacht: nachsehen, ob Spot einen Tag überhaupt erkennt und aus welcher
+Entfernung — **bevor** ein Programm startet, das ihn bewegt.
+
+Im eigenen Programm sind es die Verben `spot.tags()`, `spot.world_objects()` und
+`spot.obstacles()` (siehe unten).
+
 ## Ein Programm
 
 ```python
@@ -177,8 +198,11 @@ ein Programm gestartet hat.
 | Leistung | `power_on()`, `power_off()`, `is_powered`, `battery` |
 | Haltung | `stand(height=0.0)`, `sit()` |
 | Bewegung | `move(forward, left, turn)`, `walk(vx, vy, wz, duration)`, `stop()` |
-| Wahrnehmung | `cameras()`, `camera(name)`, `state` |
-| Roh | `robot`, `send(command)` |
+| Kameras | `cameras()`, `camera(name)`, `state` |
+| Umwelt | `tags(id=None)`, `world_objects(kinds=None)`, `obstacles()` |
+| Karten | `load_map(name)`, `localize()`, `navigate_to(ziel)`, `waypoints()` |
+| Messen | `messfenster(name, hz=50)` |
+| Roh | `robot`, `send(command)`, `close()` |
 
 `move()` ist eine relative Zieltrajektorie und wartet auf die echte Rückmeldung des
 Roboters — `turn` in **Grad**. `walk()` ist das Geschwindigkeitskommando des SDK und
@@ -188,17 +212,35 @@ ablaufen.
 `spot.cameras()` meldet, was das aktive Backend **wirklich** hat. Fehlt eine Fähigkeit,
 gibt es einen klaren Fehler statt einer Attrappe.
 
+**Die Umwelt-Verben sprechen Grad und Meter**, dieselbe Einheit wie `move()`:
+
+```python
+for tag in spot.tags():
+    print(f"Tag {tag.id}: {tag.distance:.1f} m, {tag.bearing:+.0f} Grad")
+
+spot.move(turn=spot.tags()[0].bearing)      # dreh dich zum nächsten Tag
+```
+
+Die Liste ist nach Distanz sortiert, `spot.tags()[0]` ist also ohne Nachdenken das
+nächste Ziel. **Nichts gesehen ist eine Antwort, kein Fehler** — dann kommt `[]` zurück.
+`spot.obstacles()` liefert das Hindernisgitter mit `distance_at(x, y)` und
+`is_free(x, y)`; wo Spot nicht hingesehen hat, gilt „nicht frei", nicht „frei".
+
 ## Kommandos
 
 | Kommando | Zweck |
 |---|---|
 | `spotlab login` | IP, Benutzer und Passwort hinterlegen |
-| `spotlab doctor` | stufenweise Diagnose, bricht beim ersten Fehler ab |
+| `spotlab doctor` | stufenweise Diagnose, bricht beim ersten Fehler ab; sagt auch, was dieser Roboter **kann** (Lizenz, Nutzlasten, Dienste) und wann sein Zertifikat abläuft |
 | `spotlab new <name>` | Projekt mit lauffähiger Vorlage anlegen |
 | `spotlab open [projekt]` | in VS Code öffnen |
 | `spotlab run <datei> [--dryrun]` | starten und aufzeichnen |
 | `spotlab runs` · `runs <id>` | Läufe auflisten und ansehen |
 | `spotlab lease [--take]` | wer steuert den Spot; bewusste Übernahme |
+| `spotlab gui` | das Fenster öffnen (braucht `pip install -e .[gui]`) |
+| `spotlab maps` | aufgezeichnete Karten auflisten |
+| `spotlab record-map <name>` | eine GraphNav-Karte aufzeichnen |
+| `spotlab mcp` | MCP-Server für Agenten, über stdin/stdout |
 
 Die Aufzeichnung hängt an `connect()`, nicht an `spotlab run` — wer in VS Code F5
 drückt, bekommt sie genauso.
@@ -253,7 +295,7 @@ zu einem wirkungslosen Deckel.
 
 **Für die Benutzung**
 
-- Abnahme am Gerät: [`docs/ABNAHME.md`](docs/ABNAHME.md) — 20 Punkte, A1 ist der Sperrpunkt
+- Abnahme am Gerät: [`docs/ABNAHME.md`](docs/ABNAHME.md) — 22 Punkte, A1 ist der Sperrpunkt
 - Fremde Projekte anbinden: [`docs/ANBINDUNG.md`](docs/ANBINDUNG.md)
 
 **Für die Entwicklung** — jede Stufe hat ihren eigenen Entwurf mit Begründungen:
@@ -267,6 +309,7 @@ zu einem wirkungslosen Deckel.
 | Anbindung + MCP | [`2026-08-07-spotlab-anbindung-design.md`](docs/superpowers/specs/2026-08-07-spotlab-anbindung-design.md) |
 | Kalibrierung | [`2026-08-08-spotlab-kalibrierung-design.md`](docs/superpowers/specs/2026-08-08-spotlab-kalibrierung-design.md) |
 | Beobachter-Modus | [`2026-08-09-spotlab-beobachtung-design.md`](docs/superpowers/specs/2026-08-09-spotlab-beobachtung-design.md) |
+| Umwelt | [`2026-09-02-spotlab-umwelt-design.md`](docs/superpowers/specs/2026-09-02-spotlab-umwelt-design.md) |
 
 - Umsetzungspläne: [`docs/superpowers/plans/`](docs/superpowers/plans/)
 - Härtung, Befunde und Fahrplan: [`docs/HAERTUNG.md`](docs/HAERTUNG.md)
