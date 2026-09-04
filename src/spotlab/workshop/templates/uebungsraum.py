@@ -1,6 +1,8 @@
 """Ohne Roboter üben: Spot fährt durch ein gezeichnetes Zimmer.
 
-Starten: in der Ansicht „Übungsraum" auf „Programm starten" — oder hier F5.
+Starten: über dem Editor „Wo läuft es?" auf „Übungsraum (virtuell)" stellen
+und auf ▶ Starten drücken — dann geht das Fenster mit der Draufsicht auf.
+Derselbe Knopf steht in der Ansicht „Übungsraum" unten rechts.
 Raum und Startposition wählst du in derselben Ansicht; du kannst den Raum aber
 auch hier nennen: spotlab.connect(backend="sim", raum="durchgang").
 

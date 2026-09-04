@@ -15,7 +15,6 @@ from pathlib import Path
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import (
-    QCheckBox,
     QComboBox,
     QHBoxLayout,
     QLabel,
@@ -37,6 +36,15 @@ from spotlab.gui.editor.highlighter import Hervorheber
 from spotlab.gui.editor.tree import Dateibaum
 from spotlab.gui.views.projects import projekte_in
 from spotlab.workshop.launcher import start_script
+
+# Beschriftung -> Backend-Name. Drei Zustaende, nicht zwei: der Trockenlauf HAT
+# keine Position (Pose bleibt 0/0/0) und kann im Uebungsraum nichts zeigen.
+# `sim` war bis hierher aus der GUI ueberhaupt nicht erreichbar.
+BACKENDS = (
+    ("Echter Spot", "real"),
+    ("Trockenlauf (nur Text)", "dryrun"),
+    ("Übungsraum (virtuell)", "sim"),
+)
 
 
 def lade_text(pfad):
@@ -141,6 +149,10 @@ class EditorView(QWidget):
     meldung = Signal(str)
     lauf_gestartet = Signal(object, str)
     stopp_gewuenscht = Signal()
+    # Wer den Knopfzustand ANDERSWO spiegeln will, hoert hier zu statt eine
+    # zweite Buchfuehrung anzulegen: der Uebungsraum hat genau daran gefehlt --
+    # seine Methode war vorhanden und nirgends verbunden.
+    laeuft_geaendert = Signal(bool)
 
     def __init__(self, palette, parent=None):
         super().__init__(parent)
@@ -171,12 +183,15 @@ class EditorView(QWidget):
         self.reiter.setDocumentMode(True)
         self.reiter.tabCloseRequested.connect(self._schliesse)
 
-        self.trockenlauf = QCheckBox("Trockenlauf (ohne Roboter)")
+        self.backendwahl = QComboBox()
+        for beschriftung, name in BACKENDS:
+            self.backendwahl.addItem(beschriftung, name)
         self.start_knopf = QPushButton("▶ Starten")
         self.start_knopf.clicked.connect(self._starten_oder_stoppen)
 
         werkzeuge = QHBoxLayout()
-        werkzeuge.addWidget(self.trockenlauf)
+        werkzeuge.addWidget(QLabel("Wo läuft es?"))
+        werkzeuge.addWidget(self.backendwahl)
         werkzeuge.addStretch(1)
         werkzeuge.addWidget(self.start_knopf)
 
@@ -242,6 +257,23 @@ class EditorView(QWidget):
         if self._ordner is None or not name:
             return
         self.setze_projekt(self._ordner / name)
+
+    def laeuft(self):
+        return self._laeuft
+
+    def gewaehltes_backend(self):
+        return self.backendwahl.currentData()
+
+    def setze_backend(self, name):
+        """Ein UNBEKANNTER Name aendert nichts.
+
+        `load_config()` liefert `default_backend` aus einer Datei, die jemand von
+        Hand geschrieben haben kann. Die Auswahl darf davon nicht in einen
+        Zustand geraten, den sie gar nicht kennt.
+        """
+        index = self.backendwahl.findData(name)
+        if index >= 0:
+            self.backendwahl.setCurrentIndex(index)
 
     def aktueller_reiter(self):
         return self._reiter.get(self.reiter.currentWidget())
@@ -465,8 +497,14 @@ class EditorView(QWidget):
         # meint das Programm, wie es gerade dasteht — samt seiner Importe.
         if not self.speichere_alle_geaenderten():
             return
+        wo = self.gewaehltes_backend()
         try:
-            prozess = start_script(eintrag.pfad, dryrun=self.trockenlauf.isChecked())
+            # nur_trocken NUR beim Uebungsraum: `connect(backend="real")` im
+            # Skript schlaegt die Umgebungsvariable, und ein Lauf, den der
+            # Schueler als virtuell gewaehlt hat, darf den Roboter nicht
+            # bewegen koennen. Beim Trockenlauf bleibt es wie bisher -- dessen
+            # Bedeutung hier zu aendern, waere eine zweite, ungefragte Aenderung.
+            prozess = start_script(eintrag.pfad, backend=wo, nur_trocken=(wo == "sim"))
         except SpotlabError as fehler:
             self.meldung.emit(str(fehler))
             return
@@ -478,6 +516,7 @@ class EditorView(QWidget):
     def _setze_laeuft(self, laeuft):
         self._laeuft = laeuft
         self.start_knopf.setText("■ Stopp" if laeuft else "▶ Starten")
+        self.laeuft_geaendert.emit(laeuft)
 
     def zeige_ausgabe(self, zeile):
         self.ausgabe.haenge_an(zeile)

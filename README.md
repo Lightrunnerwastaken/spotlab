@@ -183,6 +183,22 @@ with spotlab.connect(backend="sim") as spot:      # oder raum="durchgang"
 
 **An Wänden bleibt Spot stehen** — kein Fehler, kein Abbruch, so wie am echten
 Gerät. Die Stelle wird in der Zeichnung markiert und im Protokoll vermerkt.
+
+### Zuschauen, während es läuft
+
+Über dem Editor steht **„Wo läuft es?"** mit drei Möglichkeiten:
+
+| Wahl | Was passiert |
+|---|---|
+| `Echter Spot` | der Roboter fährt |
+| `Trockenlauf (nur Text)` | nichts bewegt sich, das Programm läuft durch — **keine Position** |
+| `Übungsraum (virtuell)` | Spot fährt durch das gewählte Zimmer |
+
+Bei `Übungsraum (virtuell)` geht **ein eigenes Fenster** auf und zeichnet die
+Fahrt mit, während sie läuft — Weg, Blickrichtung, Anstösse, die letzte
+Ausgabezeile. Leg es neben den Editor, dann siehst du Code und Fahrt zugleich.
+Der Knopf **„▶ Offene Datei starten"** in der Ansicht „Übungsraum" stellt diese
+Wahl selbst ein; er kann den echten Spot nicht erreichen.
 `spot.tags()` und `spot.obstacles()` arbeiten dabei aus der Raumgeometrie, du
 kannst also die ganze Bibliothek ohne Roboter üben.
 

@@ -9,6 +9,7 @@ pytest.importorskip("PySide6.QtWidgets")
 from spotlab.config import Config, Limits  # noqa: E402
 from spotlab.gui.theme import DUNKEL  # noqa: E402
 from spotlab.gui.views.uebungsraum import UebungsraumView  # noqa: E402
+from spotlab.welt.raum import raum_laden  # noqa: E402
 
 QUELLE = (Path(__file__).resolve().parents[1] / "src" / "spotlab" / "gui"
           / "views" / "uebungsraum.py")
@@ -130,3 +131,53 @@ def test_knopf_wird_zum_stopp_waehrend_ein_lauf_laeuft(qapp):
     assert "Stopp" in ansicht.starten.text()
     ansicht.setze_laeuft(False)
     assert "Stopp" not in ansicht.starten.text()
+
+
+def test_der_geladene_raum_ist_abfragbar(qapp):
+    """Das Uebungsfenster belegt seine Zeichnung damit vor, damit sie nicht
+    leer beginnt."""
+    ansicht = UebungsraumView(DUNKEL)
+    ansicht.waehle_raum("durchgang")
+    assert ansicht.raum() is not None
+    assert ansicht.raum() is raum_laden("durchgang") or ansicht.raum().tags
+
+
+def test_die_raumwahl_wird_sofort_gespeichert(qapp):
+    """Vorher entstand `[uebungsraum]` erst beim Klick in die Zeichnung. Wer
+    nur den Raum umstellte und startete, fuhr in gar keinem Raum: `cfg.raum`
+    war leer, und connect() baute den Sim ohne Welt."""
+    ansicht = UebungsraumView(DUNKEL)
+    ansicht.setze_config(Config(ip="1.2.3.4", username="u", limits=Limits()))
+    gespeichert = []
+    ansicht.config_gespeichert.connect(gespeichert.append)
+
+    ansicht.raeume.setCurrentText("moebliert")
+    ansicht.raeume.activated.emit(ansicht.raeume.currentIndex())
+
+    assert gespeichert and gespeichert[-1].raum == "moebliert"
+
+
+def test_das_nachspielen_eines_laufs_speichert_nichts(qapp, tmp_path):
+    """`lade()` stellt die Liste auf den Raum des LAUFS. Wuerde das speichern,
+    ueberschriebe ein alter Lauf die Wahl des Schuelers."""
+    ansicht = UebungsraumView(DUNKEL)
+    ansicht.setze_config(Config(ip="1.2.3.4", username="u", limits=Limits()))
+    gespeichert = []
+    ansicht.config_gespeichert.connect(gespeichert.append)
+
+    (tmp_path / "ereignisse.jsonl").write_text(
+        json.dumps({"art": "verbunden", "daten": {"raum": "moebliert"}}) + "\n",
+        encoding="utf-8",
+    )
+    ansicht.lade(tmp_path)
+
+    assert gespeichert == []
+
+
+def test_die_gewaehlte_startpose_ist_abfragbar(qapp):
+    """Das Uebungsfenster belegt damit vor -- mit der Position, die der
+    Schueler geklickt hat, nicht mit der aus der Vorlage."""
+    ansicht = UebungsraumView(DUNKEL)
+    ansicht.waehle_raum("leer")
+    ansicht._start_gewaehlt(3.0, 2.5)      # frei; y = 4.0 waere die Wand
+    assert ansicht.startpose()[:2] == (3.0, 2.5)

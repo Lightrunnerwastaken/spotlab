@@ -189,3 +189,32 @@ def test_run_script_wartet_und_gibt_code_zurueck(tmp_path):
     skript = tmp_path / "x.py"
     skript.write_text("print(1)", encoding="utf-8")
     assert run_script(skript, starter=lambda *a, **k: FakeProzess(returncode=3)) == 3
+
+
+def _umgebung_von(tmp_path, **kw):
+    skript = tmp_path / "x.py"
+    skript.write_text("print(1)", encoding="utf-8")
+    aufrufe = []
+
+    def starter(argumente, **gesehen):
+        aufrufe.append(gesehen)
+        return FakeProzess()
+
+    start_script(skript, starter=starter, **kw)
+    return aufrufe[0]["env"]
+
+
+def test_backend_name_wird_durchgereicht(tmp_path):
+    """Der Uebungsraum braucht `sim` -- ueber `dryrun=True` allein ist das
+    Backend gar nicht erreichbar, und ein Trockenlauf hat keine Position."""
+    assert _umgebung_von(tmp_path, backend="sim")["SPOTLAB_BACKEND"] == "sim"
+
+
+def test_ohne_angabe_bleibt_die_variable_weg(tmp_path):
+    """Sonst uebersteuerte die GUI stillschweigend `default_backend`."""
+    assert "SPOTLAB_BACKEND" not in _umgebung_von(tmp_path)
+
+
+def test_backend_schlaegt_dryrun(tmp_path):
+    umgebung = _umgebung_von(tmp_path, backend="sim", dryrun=True)
+    assert umgebung["SPOTLAB_BACKEND"] == "sim"

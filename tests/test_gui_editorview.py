@@ -202,7 +202,7 @@ def test_starten_startet_wirklich_einen_prozess(qapp, tmp_path):
     skript = projekt / "hallo_spot.py"
     skript.write_text("raise ValueError('kaputt')\n", encoding="utf-8")
     ansicht.oeffne(skript)
-    ansicht.trockenlauf.setChecked(True)
+    ansicht.setze_backend("dryrun")
 
     gestartet = []
     ansicht.lauf_gestartet.connect(lambda p, s: gestartet.append((p, s)))
@@ -224,7 +224,7 @@ def test_starten_speichert_vorher(qapp, tmp_path):
     skript = projekt / "hallo_spot.py"
     ansicht.oeffne(skript)
     ansicht.reiter.currentWidget().setPlainText("print('neu')\n")
-    ansicht.trockenlauf.setChecked(True)
+    ansicht.setze_backend("dryrun")
     prozesse = []
     ansicht.lauf_gestartet.connect(lambda p, s: prozesse.append(p))
     ansicht.start_knopf.click()
@@ -236,7 +236,7 @@ def test_starten_speichert_vorher(qapp, tmp_path):
 def test_knopf_wird_zu_stopp_und_meldet_den_wunsch(qapp, tmp_path):
     ansicht, _ordner, projekt = _ansicht(tmp_path)
     ansicht.oeffne(projekt / "hallo_spot.py")
-    ansicht.trockenlauf.setChecked(True)
+    ansicht.setze_backend("dryrun")
     prozesse = []
     ansicht.lauf_gestartet.connect(lambda p, s: prozesse.append(p))
     ansicht.start_knopf.click()
@@ -364,7 +364,7 @@ def test_ein_sofort_gestorbener_prozess_gibt_den_knopf_frei(qapp, tmp_path):
     kaputt = projekt / "kaputt.py"
     kaputt.write_text("def f(\n", encoding="utf-8")     # Syntaxfehler
     ansicht.oeffne(kaputt)
-    ansicht.trockenlauf.setChecked(True)
+    ansicht.setze_backend("dryrun")
     prozesse = []
     ansicht.lauf_gestartet.connect(lambda p, s: prozesse.append(p))
     ansicht.start_knopf.click()
@@ -456,7 +456,7 @@ def test_starte_aktuelles_startet_die_offene_datei(qapp, tmp_path, monkeypatch):
             return None
 
     monkeypatch.setattr(modul, "start_script",
-                        lambda pfad, dryrun=False: gestartet.append(pfad) or _Prozess())
+                        lambda pfad, **kw: gestartet.append(pfad) or _Prozess())
 
     projekt = tmp_path / "demo"
     projekt.mkdir()
@@ -469,3 +469,124 @@ def test_starte_aktuelles_startet_die_offene_datei(qapp, tmp_path, monkeypatch):
     ansicht.starte_aktuelles()
     assert gestartet == [datei]
     _arbeite_zerstoerungen_ab()
+
+
+# ------------------------------------------------------- Wo laeuft es?
+
+
+def _abgefangener_start(ansicht, monkeypatch):
+    """start_script durch eine Attrappe ersetzen und die Argumente einsammeln."""
+    gesehen = {}
+
+    class Attrappe:
+        stdout = None
+
+        def poll(self):
+            return None
+
+        def wait(self, timeout=None):
+            return 0
+
+    def falscher_start(pfad, **kw):
+        gesehen.update(kw)
+        return Attrappe()
+
+    monkeypatch.setattr("spotlab.gui.editor.view.start_script", falscher_start)
+    return gesehen
+
+
+def test_die_wahl_uebungsraum_startet_das_sim_backend(qapp, tmp_path, monkeypatch):
+    """Der Trockenlauf HAT keine Position -- er kann im Raum gar nichts zeigen.
+    Genau daran scheiterte der erste Versuch: `backend: dryrun`, Pose blieb
+    (0, 0, 0)."""
+    ansicht, _ordner, projekt = _ansicht(tmp_path)
+    ansicht.oeffne(projekt / "hallo_spot.py")
+    gesehen = _abgefangener_start(ansicht, monkeypatch)
+
+    ansicht.setze_backend("sim")
+    ansicht.start_knopf.click()
+
+    assert gesehen["backend"] == "sim"
+
+
+def test_der_uebungsraum_kann_den_echten_spot_nicht_erreichen(qapp, tmp_path, monkeypatch):
+    """`connect(backend="real")` im Skript schlaegt die Umgebungsvariable.
+    Ohne die Obergrenze faehre ein virtueller Lauf den Roboter."""
+    ansicht, _ordner, projekt = _ansicht(tmp_path)
+    ansicht.oeffne(projekt / "hallo_spot.py")
+    gesehen = _abgefangener_start(ansicht, monkeypatch)
+
+    ansicht.setze_backend("sim")
+    ansicht.start_knopf.click()
+
+    assert gesehen["nur_trocken"] is True
+
+
+def test_echter_spot_bekommt_keine_obergrenze(qapp, tmp_path, monkeypatch):
+    ansicht, _ordner, projekt = _ansicht(tmp_path)
+    ansicht.oeffne(projekt / "hallo_spot.py")
+    gesehen = _abgefangener_start(ansicht, monkeypatch)
+
+    ansicht.setze_backend("real")
+    ansicht.start_knopf.click()
+
+    assert gesehen["backend"] == "real"
+    assert gesehen["nur_trocken"] is False
+
+
+def test_das_gewaehlte_backend_ist_abfragbar(qapp, tmp_path):
+    ansicht, _ordner, _projekt = _ansicht(tmp_path)
+    ansicht.setze_backend("sim")
+    assert ansicht.gewaehltes_backend() == "sim"
+    ansicht.setze_backend("dryrun")
+    assert ansicht.gewaehltes_backend() == "dryrun"
+
+
+def test_ein_unbekanntes_backend_aendert_die_wahl_nicht(qapp, tmp_path):
+    """load_config() darf die GUI nicht in einen Zustand bringen, den die
+    Auswahl gar nicht kennt."""
+    ansicht, _ordner, _projekt = _ansicht(tmp_path)
+    ansicht.setze_backend("sim")
+    ansicht.setze_backend("quatsch")
+    assert ansicht.gewaehltes_backend() == "sim"
+
+
+def test_der_laufzustand_wird_gemeldet(qapp, tmp_path):
+    """Damit der Uebungsraum-Knopf mitwandert, statt auf Start stehenzubleiben."""
+    ansicht, _ordner, _projekt = _ansicht(tmp_path)
+    gemeldet = []
+    ansicht.laeuft_geaendert.connect(gemeldet.append)
+    ansicht._setze_laeuft(True)
+    ansicht.lauf_beendet()
+    assert gemeldet == [True, False]
+
+
+def test_die_wahl_erreicht_wirklich_einen_kindprozess(qapp, tmp_path):
+    """CLAUDE.md: wo ein externer Prozess im Spiel ist, startet mindestens ein
+    Test ihn wirklich. Die Attrappe oben prueft nur, dass das Argument gebaut
+    wird -- nicht, dass `connect()` im Kind es auch sieht."""
+    import json
+
+    ansicht, _ordner, projekt = _ansicht(tmp_path)
+    skript = projekt / "virtuell.py"
+    skript.write_text(
+        "import spotlab\n"
+        "with spotlab.connect() as spot:\n"
+        "    spot.power_on()\n"
+        "    spot.move(forward=0.3)\n",
+        encoding="utf-8",
+    )
+    ansicht.oeffne(skript)
+    ansicht.setze_backend("sim")
+
+    prozesse = []
+    ansicht.lauf_gestartet.connect(lambda p, s: prozesse.append(p))
+    ansicht.start_knopf.click()
+    assert prozesse, "kein Prozess gestartet"
+    ausgabe = prozesse[0].stdout.read()
+    assert prozesse[0].wait(timeout=TEST_TIMEOUT_S) == 0, ausgabe
+
+    laeufe = sorted((projekt / "runs").glob("*/lauf.json"))
+    assert laeufe, f"kein Lauf angelegt. Ausgabe:\n{ausgabe}"
+    lauf = json.loads(laeufe[-1].read_text(encoding="utf-8"))
+    assert lauf["backend"] == "sim", "der Trockenlauf hat keine Position"
