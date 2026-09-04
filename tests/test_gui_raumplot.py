@@ -89,11 +89,18 @@ def test_kein_farbliteral():
     assert not re.search(r"#[0-9a-fA-F]{6}", quelle)
 
 
-def test_eine_pose_haengt_an_die_spur_an(qapp):
+def test_die_spur_zeigt_nur_gemessene_posen(qapp):
+    """Der eingetragene Start ist eine ANNAHME der GUI, keine Messung. Weicht
+    er vom echten Start ab, zeichnete er einen Weg, den Spot nie gefahren ist --
+    am 04.09.2026 eine Diagonale von (1, 1) nach (0, 0) quer durchs Zimmer.
+    Der Kreis steht trotzdem am gewaehlten Start, bis die erste Pose kommt."""
     plot = RaumPlot(DUNKEL)
     plot.setze_start((1.0, 2.0, 0.0))
+    assert plot.spur() == []
+    assert plot.start() == (1.0, 2.0, 0.0)
+
     plot.haenge_pose_an(1.5, 2.0, 30.0)
-    assert plot.spur() == [(1.0, 2.0), (1.5, 2.0)]
+    assert plot.spur() == [(1.5, 2.0)]
 
 
 def test_die_blickrichtung_folgt_der_pose(qapp):
@@ -110,5 +117,5 @@ def test_ein_neuer_start_setzt_spur_und_blick_zurueck(qapp):
     plot.setze_start((1.0, 2.0, 0.0))
     plot.haenge_pose_an(3.0, 2.0, 90.0)
     plot.setze_start((1.0, 2.0, 0.0))
-    assert plot.spur() == [(1.0, 2.0)]
+    assert plot.spur() == []
     assert plot.blick() == 0.0

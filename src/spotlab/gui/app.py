@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from spotlab import ENV_RAUM, ENV_RAUM_START
 from spotlab.config import load_config, save_config
 from spotlab.errors import SpotlabError
 from spotlab.gui.editor.view import EditorView
@@ -153,6 +154,7 @@ class MainWindow(QWidget):
         self.ansichten["spot"].pruefung_angefordert.connect(self._pruefe)
         self.ansichten["karten"].meldung.connect(self._melde)
         self.ansichten["karten"].aktive_karte_gewaehlt.connect(self._merke_aktive_karte)
+        self.ansichten["code"].zusatz_umgebung = self._umgebung_fuer_lauf
         self.ansichten["code"].lauf_gestartet.connect(self._lauf_aus_code)
         self.ansichten["code"].meldung.connect(self._melde)
         self.ansichten["projekte"].projekt_oeffnen.connect(self._oeffne_in_code)
@@ -279,6 +281,24 @@ class MainWindow(QWidget):
         self._starte_leser(prozess)
 
     # ------------------------------------------------------- Uebungsfenster
+
+    def _umgebung_fuer_lauf(self):
+        """Raum und Startpose fuer einen virtuellen Lauf.
+
+        Direkt aus der Ansicht, NICHT ueber die Konfigurationsdatei: die bekam
+        den Raum erst beim Klick in die Zeichnung. Wer nur startete, fuhr
+        deshalb in gar keinem Raum -- Start (0, 0), quer durch die Waende
+        (Lauf vom 04.09.2026 mit `"raum": null`). Und ein Laptop ohne
+        eingerichteten Spot hat ueberhaupt keine Konfiguration.
+        """
+        if self.ansichten["code"].gewaehltes_backend() != "sim":
+            return {}
+        ansicht = self.ansichten["uebungsraum"]
+        umgebung = {ENV_RAUM: ansicht.raumname()}
+        pose = ansicht.startpose()
+        if pose:
+            umgebung[ENV_RAUM_START] = f"{pose[0]:.2f},{pose[1]:.2f},{pose[2]:.1f}"
+        return umgebung
 
     def _starte_virtuell(self):
         """Der Knopf im Uebungsraum ERZWINGT das virtuelle Backend.

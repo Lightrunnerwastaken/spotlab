@@ -94,7 +94,7 @@ class Uebungsfenster(QWidget):
         # `verbunden`-Ereignis trifft erst nach den ersten Posen ein, und
         # `setze_start` leert die Spur. Sonst entstuende ein Strich von der
         # Schablonenposition zur echten -- ein Weg, den Spot nie gefahren ist.
-        if len(self.plot.spur()) <= 1:
+        if not self.plot.spur():
             self.plot.setze_start(raum.start)
 
     # ---------------------------------------------------------------- Lauf

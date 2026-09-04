@@ -140,6 +140,10 @@ class UebungsraumView(QWidget):
         vor, damit sie nicht leer beginnt."""
         return self._raum
 
+    def raumname(self):
+        """Der Name des GELADENEN Raums -- der geht mit an den Lauf."""
+        return self._raumname
+
     def startpose(self):
         """Die GEWAEHLTE Startpose -- was der Schueler geklickt hat, nicht was
         in der Vorlage steht."""

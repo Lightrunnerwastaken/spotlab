@@ -47,10 +47,15 @@ class RaumPlot(QWidget):
         self.update()
 
     def setze_start(self, pose):
-        # Ein neuer Start heisst: neuer Lauf. Die alte Spur stehenzulassen
-        # zeigte zwei Fahrten uebereinander.
+        # Ein neuer Start heisst: neuer Lauf, also leere Spur -- die alte
+        # stehenzulassen zeigte zwei Fahrten uebereinander.
+        #
+        # Und die Spur faengt LEER an, nicht mit dem Startpunkt darin: der ist
+        # eine Annahme der GUI, keine Messung. Weicht er vom echten Start ab,
+        # zeichnet er einen Weg, den Spot nie gefahren ist. Der Kreis steht
+        # trotzdem hier, bis die erste gemessene Pose kommt (siehe paintEvent).
         self._start = pose
-        self._spur = [(pose[0], pose[1])] if pose else []
+        self._spur = []
         self._blick = pose[2] if pose else 0.0
         self.update()
 

@@ -590,3 +590,54 @@ def test_die_wahl_erreicht_wirklich_einen_kindprozess(qapp, tmp_path):
     assert laeufe, f"kein Lauf angelegt. Ausgabe:\n{ausgabe}"
     lauf = json.loads(laeufe[-1].read_text(encoding="utf-8"))
     assert lauf["backend"] == "sim", "der Trockenlauf hat keine Position"
+
+
+def test_die_zusatzumgebung_geht_an_den_start(qapp, tmp_path, monkeypatch):
+    """Der Editor kennt keine Raeume -- das Hauptfenster haengt hier ein, was
+    in der Ansicht „Übungsraum" gewaehlt ist."""
+    ansicht, _ordner, projekt = _ansicht(tmp_path)
+    ansicht.oeffne(projekt / "hallo_spot.py")
+    gesehen = _abgefangener_start(ansicht, monkeypatch)
+
+    ansicht.zusatz_umgebung = lambda: {"SPOTLAB_RAUM": "moebliert"}
+    ansicht.setze_backend("sim")
+    ansicht.start_knopf.click()
+
+    assert gesehen["umgebung"] == {"SPOTLAB_RAUM": "moebliert"}
+
+
+def test_raum_und_startpose_erreichen_wirklich_den_sim(qapp, tmp_path):
+    """Die ganze Kette in einem echten Kindprozess: GUI -> Umgebung ->
+    connect() -> SimBackend. Genau hier riss sie am 04.09.2026 -- der Lauf
+    hatte `"raum": null` und startete bei (0, 0)."""
+    import json
+
+    ansicht, _ordner, projekt = _ansicht(tmp_path)
+    skript = projekt / "im_raum.py"
+    skript.write_text(
+        "import spotlab\n"
+        "with spotlab.connect() as spot:\n"
+        "    spot.power_on()\n"
+        "    spot.stand()\n",
+        encoding="utf-8",
+    )
+    ansicht.oeffne(skript)
+    ansicht.setze_backend("sim")
+    ansicht.zusatz_umgebung = lambda: {
+        "SPOTLAB_RAUM": "durchgang", "SPOTLAB_RAUM_START": "2.00,3.00,90.0",
+    }
+
+    prozesse = []
+    ansicht.lauf_gestartet.connect(lambda p, s: prozesse.append(p))
+    ansicht.start_knopf.click()
+    ausgabe = prozesse[0].stdout.read()
+    assert prozesse[0].wait(timeout=TEST_TIMEOUT_S) == 0, ausgabe
+
+    lauf = sorted((projekt / "runs").glob("*"))[-1]
+    verbunden = json.loads((lauf / "ereignisse.jsonl").read_text(encoding="utf-8")
+                           .splitlines()[0])
+    assert verbunden["daten"]["raum"] == "durchgang"
+
+    erste = json.loads((lauf / "zustand.jsonl").read_text(encoding="utf-8")
+                       .splitlines()[0])
+    assert erste["daten"]["pose"][:2] == [2.0, 3.0]

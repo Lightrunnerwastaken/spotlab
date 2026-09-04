@@ -532,3 +532,23 @@ def test_der_stopp_im_uebungsfenster_geht_an_die_live_ansicht(qapp, tmp_path, mo
     fenster._lauf_aus_code(_FakeProzess(), str(tmp_path / "x.py"))
     fenster.uebungsfenster.stopp.click()
     assert gestoppt == [True]
+
+
+def test_der_virtuelle_lauf_bekommt_raum_und_start_der_ansicht(qapp):
+    """Der Lauf vom 04.09.2026 hatte `"raum": null` und startete bei (0, 0):
+    die Konfiguration kannte den Raum nicht, weil niemand in die Zeichnung
+    geklickt hatte. Was auf dem Bildschirm steht, geht jetzt direkt mit."""
+    fenster = MainWindow()
+    fenster.ansichten["uebungsraum"].waehle_raum("moebliert")
+    fenster.ansichten["uebungsraum"]._start_gewaehlt(2.0, 1.0)
+    fenster.ansichten["code"].setze_backend("sim")
+
+    umgebung = fenster.ansichten["code"].zusatz_umgebung()
+    assert umgebung["SPOTLAB_RAUM"] == "moebliert"
+    assert umgebung["SPOTLAB_RAUM_START"].startswith("2.00,1.00")
+
+
+def test_ein_echter_lauf_bekommt_keinen_raum(qapp):
+    fenster = MainWindow()
+    fenster.ansichten["code"].setze_backend("real")
+    assert fenster.ansichten["code"].zusatz_umgebung() == {}

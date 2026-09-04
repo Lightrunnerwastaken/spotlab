@@ -218,3 +218,11 @@ def test_ohne_angabe_bleibt_die_variable_weg(tmp_path):
 def test_backend_schlaegt_dryrun(tmp_path):
     umgebung = _umgebung_von(tmp_path, backend="sim", dryrun=True)
     assert umgebung["SPOTLAB_BACKEND"] == "sim"
+
+
+def test_zusatzumgebung_wird_mitgegeben(tmp_path):
+    """Damit die GUI Raum und Startpose durchreichen kann, ohne den Umweg ueber
+    die Konfigurationsdatei."""
+    umgebung = _umgebung_von(tmp_path, umgebung={"SPOTLAB_RAUM": "durchgang"})
+    assert umgebung["SPOTLAB_RAUM"] == "durchgang"
+    assert umgebung["PYTHONUTF8"] == "1"        # das Uebrige bleibt stehen

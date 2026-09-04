@@ -28,7 +28,7 @@ def test_ein_lauf_zeichnet_die_spur_waehrend_er_laeuft(qapp):
     fenster.zeige_pose(1.5, 2.0, 0.0)
     fenster.zeige_pose(2.0, 2.0, 45.0)
 
-    assert fenster.plot.spur() == [(1.0, 2.0), (1.5, 2.0), (2.0, 2.0)]
+    assert fenster.plot.spur() == [(1.5, 2.0), (2.0, 2.0)]
 
 
 def test_ein_zweiter_lauf_faengt_leer_an(qapp):
@@ -37,7 +37,7 @@ def test_ein_zweiter_lauf_faengt_leer_an(qapp):
     fenster.zeige_pose(2.0, 1.0, 0.0)
     fenster.beginne(raum_laden("leer"), (1.0, 1.0, 0.0))
 
-    assert fenster.plot.spur() == [(1.0, 1.0)]
+    assert fenster.plot.spur() == []
 
 
 def test_der_raum_laesst_sich_ueber_den_namen_setzen(qapp):
@@ -99,4 +99,4 @@ def test_der_raumwechsel_verwirft_eine_schon_gefahrene_spur_nicht(qapp):
     fenster.zeige_pose(3.1, 4.0, 0.0)
     fenster.setze_raum_name("durchgang")
 
-    assert fenster.plot.spur() == [(3.0, 4.0), (3.1, 4.0)]
+    assert fenster.plot.spur() == [(3.1, 4.0)]

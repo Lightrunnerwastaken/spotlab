@@ -649,3 +649,44 @@ def test_nach_freier_fahrt_wird_wieder_gemeldet():
     backend._bewege_gegen_welt((0.5, 5.0, 0.0), (0.6, 5.0, 0.0))   # frei
     backend._bewege_gegen_welt((0.5, 5.0, 0.0), (0.2, 5.0, 0.0))
     assert len([e for e in schreiber.ereignisse if e[0] == "angestossen"]) == 2
+
+
+# ------------------------------------------------- Raum aus der Umgebung
+
+
+def test_connect_nimmt_den_raum_aus_der_umgebung(tmp_path, monkeypatch):
+    """Die GUI reicht durch, was auf dem BILDSCHIRM steht.
+
+    Ueber `cfg.raum` allein ging das schief: die Konfiguration bekam den Raum
+    erst beim Klick in die Zeichnung, und wer nur startete, fuhr in gar keinem
+    Raum -- Start (0, 0), quer durch die Waende (Lauf vom 04.09.2026,
+    `"raum": null`).
+    """
+    import spotlab
+
+    monkeypatch.setenv("SPOTLAB_BACKEND", "sim")
+    monkeypatch.setenv("SPOTLAB_RAUM", "durchgang")
+    with spotlab.connect(runs_dir=tmp_path) as spot:
+        assert spot.backend._raum is not None
+        assert spot.backend._pose[:2] == (1.0, 2.0)      # Start der Vorlage
+
+
+def test_connect_nimmt_die_startpose_aus_der_umgebung(tmp_path, monkeypatch):
+    import spotlab
+
+    monkeypatch.setenv("SPOTLAB_BACKEND", "sim")
+    monkeypatch.setenv("SPOTLAB_RAUM", "leer")
+    monkeypatch.setenv("SPOTLAB_RAUM_START", "3.00,2.50,90.0")
+    with spotlab.connect(runs_dir=tmp_path) as spot:
+        assert spot.backend._pose[:2] == (3.0, 2.5)
+
+
+def test_ein_ausdrueckliches_argument_schlaegt_die_umgebung(tmp_path, monkeypatch):
+    """Ein Skript, das seinen Raum nennt, haengt nicht davon ab, was in der
+    GUI stand."""
+    import spotlab
+
+    monkeypatch.setenv("SPOTLAB_BACKEND", "sim")
+    monkeypatch.setenv("SPOTLAB_RAUM", "leer")
+    with spotlab.connect(runs_dir=tmp_path, raum="durchgang") as spot:
+        assert spot.backend._pose[:2] == (1.0, 2.0)

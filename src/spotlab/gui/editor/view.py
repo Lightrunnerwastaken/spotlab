@@ -162,6 +162,10 @@ class EditorView(QWidget):
         self._reiter = {}          # CodeEdit -> Reiter
         self._laeuft = False
         self._prozess = None
+        # Zusaetzliche Umgebungsvariablen fuer den Kindprozess. Der Editor
+        # kennt keine Raeume; das Hauptfenster haengt hier ein, was in der
+        # Ansicht „Übungsraum" gewaehlt ist.
+        self.zusatz_umgebung = dict
 
         # -------------------------------------------------- links: Dateien
         self.projektwahl = QComboBox()
@@ -504,7 +508,10 @@ class EditorView(QWidget):
             # Schueler als virtuell gewaehlt hat, darf den Roboter nicht
             # bewegen koennen. Beim Trockenlauf bleibt es wie bisher -- dessen
             # Bedeutung hier zu aendern, waere eine zweite, ungefragte Aenderung.
-            prozess = start_script(eintrag.pfad, backend=wo, nur_trocken=(wo == "sim"))
+            prozess = start_script(
+                eintrag.pfad, backend=wo, nur_trocken=(wo == "sim"),
+                umgebung=self.zusatz_umgebung(),
+            )
         except SpotlabError as fehler:
             self.meldung.emit(str(fehler))
             return
