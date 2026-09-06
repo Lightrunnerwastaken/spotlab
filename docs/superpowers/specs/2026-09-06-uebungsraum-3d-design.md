@@ -32,7 +32,7 @@ Sichtlinie und Kamerablickfeld, Kollision an der echten Geometrie. Das
 | Grösse | Quelle | Status |
 |---|---|---|
 | Gelenkwinkel je Gangphase, Duty, Zyklusdauer | `kalibrierung/daten/gang.json`, 24 Stützstellen 0.07–0.85 m/s, Messfahrt 12.08.2026 | **gemessen** |
-| Körperantwort auf `move(forward=1.0)` und `move(turn=90)` | drei bzw. ein kommandierter Lauf vom 02.09.2026 (`spotProjects/run/runs/20260902T15*`) | **gemessen**, nur diese zwei Punkte |
+| Körperantwort auf `move(forward=1.0)` und `move(turn=90)` | zwei bzw. ein kommandierter Lauf vom 02.09.2026 (`spotProjects/run/runs/20260902T15*`) | **gemessen**, nur diese zwei Punkte |
 | Antwort auf andere Strecken/Winkel | Trapezprofil mit den gemessenen Beschleunigungen | **Annahme**, Real-Prozedur: `gates_real.py` hinter A1 |
 | Gitter 128×128 × 3 cm, INT16, Skala 0.001, `unknown_cells` | echte `LocalGridResponse` vom 12.08.2026 (`out/beobachtung/*/gitter/`) | **gemessen** — bestätigt die bisherige Annahme in `spotsim/local_grid.py` |
 | Kamera-Intrinsik, Auflösungen, Tiefenskala 999 | Steckbrief 12.08.2026 | **gemessen** |
