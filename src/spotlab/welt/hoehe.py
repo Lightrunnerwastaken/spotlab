@@ -255,15 +255,17 @@ def treppe_vor(raum, x, y, grad, z_nahe=None):
 
 
 def treppe_erlaubt(richtung, vx, achsenwinkel_grad):
-    """(erlaubt, verlangt): aufwaerts nur vorwaerts, abwaerts nur rueckwaerts --
-    beide mit der Nase bergauf (Achsenwinkel bis TREPPE_WINKEL_GRAD). Stehen darf man."""
+    """(erlaubt, verlangt): auf einer Treppe zeigt die Nase bergauf -- immer.
+
+    Das ist die ganze Regel: vorwaerts hoch und rueckwaerts runter sind beide
+    "Nase bergauf"; vorwaerts runter und rueckwaerts hoch sind beide "Nase
+    bergab" und verboten. Stehen und Drehen darf man. `richtung` ("auf" am
+    Fuss, "ab" am Kopf) bestimmt nur, was die Meldung verlangt.
+    """
     verlangt = "vorwärts hoch" if richtung == "auf" else "rückwärts runter"
     if abs(vx) <= 1e-9:
         return True, verlangt
-    nase_bergauf = achsenwinkel_grad <= TREPPE_WINKEL_GRAD
-    if richtung == "auf":
-        return (vx > 0 and nase_bergauf), verlangt
-    return (vx < 0 and nase_bergauf), verlangt
+    return achsenwinkel_grad <= TREPPE_WINKEL_GRAD, verlangt
 
 
 # ------------------------------------------------------------- Kaesten

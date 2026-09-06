@@ -783,3 +783,124 @@ def test_der_bericht_zaehlt_ziele_ausserhalb_der_gemessenen_antwort(uhr):
     assert antwort["ziele_ausserhalb_der_messung"] == 1
     assert antwort["fahrt"]["gemessen_bei_m"] == [1.0]
     assert antwort["drehung"]["gemessen_bei_grad"] == [90.0]
+
+
+# --------------------------------------------------------------- Hoehe
+
+
+def _raum_mit_rampe():
+    from spotlab.welt.raum import Boden, Raum
+
+    return Raum(name="H", beschreibung="", start=(1, 0, 0),
+                boeden=(Boden("R", 3, 0, 2, 2, anstieg=1.0),          # x 2..4: 0 -> 1
+                        Boden("P", 5, 0, 2, 2, z=1.0)))               # x 4..6
+
+
+def _raum_mit_treppe():
+    from spotlab.welt.raum import Boden, Raum
+
+    return Raum(name="H", beschreibung="", start=(1, 0, 0),
+                boeden=(Boden("T", 3, 0, 2, 2, anstieg=1.0, stufen=5),
+                        Boden("P", 5, 0, 2, 2, z=1.0)))
+
+
+def _ereignisse(schreiber):
+    pfad = schreiber.dir / "ereignisse.jsonl"
+    if not pfad.is_file():                                        # noch kein Ereignis geschrieben
+        return []
+    return [json.loads(z) for z in pfad.read_text(encoding="utf-8").splitlines() if z.strip()]
+
+
+def test_der_koerper_folgt_der_rampe_und_neigt_sich(uhr):
+    from spotlab.api.state import from_proto
+
+    sim = SimBackend(jetzt=uhr, raum=_raum_mit_rampe(), start=(1.0, 0.0, 0.0))
+    sim.power_on()
+    _fahre(sim, uhr, vx=0.3, sekunden=5)
+    mitte = from_proto(sim.robot_state())
+    assert 2.1 < mitte.pose[0] < 3.9, mitte.pose
+    assert mitte.z == pytest.approx(sim._hoehe + (mitte.pose[0] - 2.0) / 2, abs=0.05)
+    # Nase hoch heisst negativer Nick: Rechte-Hand-Regel um die y-Achse, wie `rpy_aus` liest.
+    assert mitte.pitch < -0.3 and mitte.roll == pytest.approx(0.0, abs=1e-6)
+    _fahre(sim, uhr, vx=0.3, sekunden=8)
+    oben = from_proto(sim.robot_state())
+    assert 4.2 < oben.pose[0] < 5.8, oben.pose
+    assert oben.z == pytest.approx(sim._hoehe + 1.0, abs=0.02)
+    assert oben.pitch == pytest.approx(0.0, abs=0.01)
+
+
+def test_die_klippe_haelt_wie_eine_wand(uhr, tmp_path):
+    from spotlab.record.run import RunRecorder
+
+    schreiber = RunRecorder(tmp_path, None, backend="sim")
+    sim = SimBackend(recorder=schreiber, jetzt=uhr, raum=_raum_mit_rampe(), start=(5.0, 0.0, 0.0))
+    sim.power_on()
+    _fahre(sim, uhr, vx=0.3, sekunden=6)                         # auf das Podestende bei x = 6 zu
+    x = sim._pose[0]
+    assert 5.6 < x < 6.0 and sim._z == pytest.approx(1.0)
+    stoesse = [e for e in _ereignisse(schreiber) if e["art"] == "angestossen"]
+    assert len(stoesse) == 1 and stoesse[0]["daten"]["hindernis"] == "Kante"
+
+
+def test_vorwaerts_abwaerts_wird_verweigert_und_gemeldet(uhr, tmp_path):
+    from bosdyn.client.robot_command import RobotCommandBuilder
+
+    from spotlab.record.run import RunRecorder
+
+    schreiber = RunRecorder(tmp_path, None, backend="sim")
+    sim = SimBackend(recorder=schreiber, jetzt=uhr, raum=_raum_mit_treppe(), start=(5.5, 0.0, 180.0))
+    sim.power_on()
+    _fahre(sim, uhr, vx=0.3, sekunden=6)
+    assert sim._pose[0] > 3.9 and sim._z == pytest.approx(1.0)      # an der Kopfkante geblieben
+    verweigert = [e for e in _ereignisse(schreiber) if e["art"] == "treppe_verweigert"]
+    assert len(verweigert) == 1, verweigert
+    assert verweigert[0]["daten"]["verlangt"] == "rückwärts runter"
+    assert verweigert[0]["daten"]["treppe"] == "T" and verweigert[0]["daten"]["richtung"] == "ab"
+    kennung = sim.send_command(
+        RobotCommandBuilder.synchro_velocity_command(v_x=0.3, v_y=0.0, v_rot=0.0),
+        end_time_secs=uhr.t + 1.0,
+    )
+    assert "rückwärts" in sim.command_feedback(kennung).status
+    assert sim.bericht()["hoehe"]["treppen"] == 1 and sim.bericht()["hoehe"]["treppengang"] == "nicht gemessen"
+
+
+def test_rueckwaerts_abwaerts_und_vorwaerts_aufwaerts_gehen(uhr, tmp_path):
+    from spotlab.record.run import RunRecorder
+
+    schreiber = RunRecorder(tmp_path, None, backend="sim")
+    sim = SimBackend(recorder=schreiber, jetzt=uhr, raum=_raum_mit_treppe(), start=(5.5, 0.0, 0.0))
+    sim.power_on()
+    _fahre(sim, uhr, vx=-0.3, sekunden=14)                        # rueckwaerts hinunter
+    assert sim._pose[0] < 2.0 and sim._z == pytest.approx(0.0), (sim._pose, sim._z)
+    _fahre(sim, uhr, vx=0.3, sekunden=14)                         # und vorwaerts wieder hinauf
+    assert sim._pose[0] > 4.0 and sim._z == pytest.approx(1.0), (sim._pose, sim._z)
+    arten = [e["art"] for e in _ereignisse(schreiber)]
+    assert "treppe_verweigert" not in arten and "angestossen" not in arten
+
+
+def test_mit_treppen_aus_ist_die_treppe_eine_klippe(uhr, tmp_path):
+    from spotlab.record.run import RunRecorder
+
+    schreiber = RunRecorder(tmp_path, None, backend="sim")
+    sim = SimBackend(recorder=schreiber, jetzt=uhr, raum=_raum_mit_treppe(), start=(1.0, 0.0, 0.0),
+                     treppen="aus")
+    sim.power_on()
+    _fahre(sim, uhr, vx=0.3, sekunden=6)
+    assert sim._pose[0] < 2.0 and sim._z == 0.0
+    stoesse = [e for e in _ereignisse(schreiber) if e["art"] == "angestossen"]
+    assert stoesse and stoesse[0]["daten"]["hindernis"] == "Kante"
+
+
+def test_gitter_und_tags_kennen_die_hoehe(uhr):
+    from spotlab.welt.raum import Boden, Raum, RaumTag
+
+    raum = Raum(name="H", beschreibung="", start=(1, 0, 0),
+                boeden=(Boden("P", 5, 0, 2, 2, z=2.0),), tags=(RaumTag(3, 5.9, 0.0, 180.0, z=2.0),))
+    sim = SimBackend(jetzt=uhr, raum=raum, start=(4.5, 0.0, 0.0))
+    assert sim._z == 2.0                                          # der Start liegt auf dem Podest
+    assert [t.id for t in sim.world_objects()] == [3]
+    unten = SimBackend(jetzt=uhr, raum=raum, start=(3.5, 0.0, 0.0))
+    assert unten._z == 0.0
+    assert unten.world_objects() == []                            # der Tag haengt 1.8 m ueber den Kameras
+    gitter = unten.local_grid()
+    assert gitter.free_distance(0.0) < 0.9                        # die Podestkante bei x = 4 ist belegt

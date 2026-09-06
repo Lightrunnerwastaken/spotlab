@@ -66,7 +66,7 @@ class SimBackend:
     """Bewegt sich nach der Gangkennlinie. Kein Roboter, keine Physik."""
 
     def __init__(self, recorder=None, jetzt=time.time, modell=None,
-                 raum=None, start=None, antwort=None):
+                 raum=None, start=None, antwort=None, treppen="auto"):
         from spotlab.kalibrierung.antwort import lade_modell as lade_antwort
         from spotlab.kalibrierung.modell import lade_modell
 
@@ -110,6 +110,22 @@ class SimBackend:
         self._sitzt = False
         self._ziel = None
         self._hoehe = self._modell.hoehe_m
+        # Stufe 13: Hoehe. `_z` ist der Boden unter der Koerpermitte, `_nick_grad`
+        # der Nick entlang der Fahrtrichtung (positiv = Nase hoch), `_klippen`
+        # die Kanten des Raums, an denen der Boden springt -- einmal je Raum.
+        # `treppen` ist der Treppenmodus aus der Konfiguration: bei "aus" sind
+        # Rampen und Treppen Klippen, so wie der Roboter sie dann meidet.
+        self._treppen = treppen
+        self._z, self._nick_grad = 0.0, 0.0
+        self._klippen = []
+        self._treppe_flanke = False
+        self._meldung = ""
+        if raum is not None:
+            from spotlab.welt.hoehe import boden_bei
+            from spotlab.welt.kollision import klippen_von
+
+            self._z, _ = boden_bei(raum, self._pose[0], self._pose[1])
+            self._klippen = klippen_von(raum, alles=(treppen == "aus"))
         # Getrennt gezaehlt: Takte sind Zeitschritte, Ziele sind Kommandos.
         self._takte_bewegt = 0
         self._ausserhalb_takte = 0
@@ -146,7 +162,7 @@ class SimBackend:
 
         self._fortschreiben()
         gefunden = []
-        for tag, dx, dy in sichtbare_tags(self._raum, self._pose):
+        for tag, dx, dy in sichtbare_tags(self._raum, self._pose, z=self._z):
             peilung, distanz = richtung(dx, dy)
             gefunden.append(Tag(
                 name=f"world_obj_apriltag_{tag.id:03d}", kind="apriltag",
@@ -167,7 +183,8 @@ class SimBackend:
         from spotlab.welt.wahrnehmung import GITTER_ZELLE_M, abstandsgitter
 
         self._fortschreiben()
-        werte, bekannt, ursprung = abstandsgitter(self._raum, self._pose)
+        werte, bekannt, ursprung = abstandsgitter(self._raum, self._pose, z=self._z,
+                                                  klippen_=self._klippen)
         return ObstacleGrid(
             cells=np.asarray(werte), cell_size=GITTER_ZELLE_M,
             origin=ursprung, time=self._jetzt(), known=np.asarray(bekannt),
@@ -185,9 +202,11 @@ class SimBackend:
         """
         if self._raum is None:
             return nach
-        from spotlab.welt.kollision import bewege
+        from spotlab.welt.kollision import bewege_mit_hoehe
 
-        pose, getroffen = bewege(self._raum, von, nach)
+        if self._treppen != "aus" and self._treppe_verweigert(von, nach):
+            return (von[0], von[1], nach[2])
+        pose, self._z, getroffen = bewege_mit_hoehe(self._raum, von, nach, self._z, self._klippen)
         if getroffen is None:
             self._angestossen = False
         elif not self._angestossen:
@@ -198,6 +217,65 @@ class SimBackend:
                     x=round(pose[0], 3), y=round(pose[1], 3), hindernis=getroffen,
                 )
         return pose
+
+    def _treppe_verweigert(self, von, nach):
+        """Die Treppenregel: auf einer Treppe zeigt die Nase bergauf.
+
+        Geprueft, sobald der Schritt auf die Treppe fuehrt oder ihre Kante
+        naeher als den Radius bringt. Verboten heisst: Spot bleibt stehen,
+        einmal je Flanke ein Ereignis, und die Rueckmeldung sagt, wie herum.
+        Was der echte Spot dabei tut, ist Abnahmepunkt A25.
+        """
+        from spotlab.welt.hoehe import boden_bei, treppe_erlaubt, treppe_vor
+        from spotlab.welt.kollision import ROBOTER_RADIUS_M
+
+        grad = math.degrees(nach[2])
+        lage = treppe_vor(self._raum, nach[0], nach[1], grad, self._z)
+        if lage is None:
+            self._treppe_flanke = False
+            return False
+        _z, boden = boden_bei(self._raum, nach[0], nach[1], z_nahe=self._z)
+        vorher = treppe_vor(self._raum, von[0], von[1], grad, self._z)
+        naehert = vorher is None or lage.abstand < vorher.abstand
+        betroffen = boden is lage.boden or (lage.abstand <= ROBOTER_RADIUS_M and naehert)
+        if not betroffen:
+            return False
+        erlaubt, verlangt = treppe_erlaubt(lage.richtung, self._soll[0], lage.achsenwinkel_grad)
+        if erlaubt:
+            self._treppe_flanke = False
+            self._meldung = ""
+            return False
+        self._meldung = (
+            f"Treppe {lage.boden.name}: nur mit der Nase bergauf — "
+            f"{'aufwärts' if lage.richtung == 'auf' else 'abwärts'} geht nur {verlangt}."
+        )
+        if not self._treppe_flanke:
+            self._treppe_flanke = True
+            if self._recorder is not None:
+                self._recorder.event(
+                    "treppe_verweigert", x=round(von[0], 3), y=round(von[1], 3),
+                    treppe=lage.boden.name, richtung=lage.richtung, verlangt=verlangt,
+                )
+        return True
+
+    def treppengang(self):
+        """"nicht gemessen", wenn der Raum Treppen hat -- die Puppe spielt den ebenen Gang."""
+        if self._raum is None or not any(b.art == "treppe" for b in self._raum.boeden):
+            return None
+        return "nicht gemessen"
+
+    def _hoehenbericht(self):
+        from spotlab.welt.hoehe import ebenen
+
+        boeden = self._raum.boeden if self._raum is not None else ()
+        return {
+            "boeden": len(boeden),
+            "treppen": sum(1 for b in boeden if b.art == "treppe"),
+            "rampen": sum(1 for b in boeden if b.art == "rampe"),
+            "ebenen": ebenen(self._raum) if self._raum is not None else [0.0],
+            "treppenmodus": self._treppen,
+            "treppengang": self.treppengang() or "eben",
+        }
 
     @staticmethod
     def hinweis_zur_gueltigkeit():
@@ -258,6 +336,7 @@ class SimBackend:
         )
         return {
             "hinweis": HINWEIS,
+            "hoehe": self._hoehenbericht(),
             "takte_in_bewegung": self._takte_bewegt,
             "takte_ausserhalb_der_messung": self._ausserhalb_takte,
             "anteil_ausserhalb": anteil,
@@ -489,6 +568,12 @@ class SimBackend:
             return 0.0
 
     def command_feedback(self, command_id):
+        rueck = self._rueckmeldung(command_id)
+        if self._meldung:
+            return Feedback(done=rueck.done, status=f"{rueck.status} — {self._meldung}")
+        return rueck
+
+    def _rueckmeldung(self, command_id):
         stand = self._offen.get(command_id, 0)
         if stand == "ziel":
             self._fortschreiben()
@@ -539,6 +624,10 @@ class SimBackend:
                 self._phase = (self._phase + dt / dauer) % 1.0
             neu = integriere(self._pose, vx, vy, wz, dt)
             self._pose = self._bewege_gegen_welt(self._pose, neu)
+            if self._raum is not None:
+                from spotlab.welt.hoehe import nick_grad
+
+                self._nick_grad = nick_grad(self._raum, *self._pose, z_nahe=self._z)
 
     def robot_state(self):
         self._fortschreiben()
@@ -632,8 +721,16 @@ class SimBackend:
         )
         koerper.parent_tform_child.position.x = x
         koerper.parent_tform_child.position.y = y
-        koerper.parent_tform_child.position.z = self._hoehe
-        koerper.parent_tform_child.rotation.w = math.cos(yaw / 2.0)
-        koerper.parent_tform_child.rotation.z = math.sin(yaw / 2.0)
+        koerper.parent_tform_child.position.z = self._z + self._hoehe
+        # Yaw um z, danach Nick um die eigene y-Achse. Nase hoch ist ein
+        # NEGATIVER Winkel um y (Rechte-Hand-Regel) -- genau so liest
+        # `api/state.py::rpy_aus` den Nick, und so meldet ihn der echte Spot.
+        cy, sy = math.cos(yaw / 2.0), math.sin(yaw / 2.0)
+        nick = -math.radians(self._nick_grad)
+        cp, sp = math.cos(nick / 2.0), math.sin(nick / 2.0)
+        koerper.parent_tform_child.rotation.w = cy * cp
+        koerper.parent_tform_child.rotation.x = -sy * sp
+        koerper.parent_tform_child.rotation.y = cy * sp
+        koerper.parent_tform_child.rotation.z = sy * cp
         baum.child_to_parent_edge_map[BODY_FRAME_NAME].CopyFrom(koerper)
         return baum

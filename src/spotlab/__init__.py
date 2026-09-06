@@ -125,13 +125,16 @@ def connect(
                 ansicht_ziel=recorder.dir / "ansicht.jpg",
             )
         else:
-            unten = SimBackend(recorder, raum=gewaehlt, start=start)
+            unten = SimBackend(recorder, raum=gewaehlt, start=start, treppen=grenzen.treppen)
         roher_roboter = None
         # Der Hinweis gehört in die Aufzeichnung, nicht nur in den Docstring:
         # wer den Lauf später ansieht, muss sehen, dass hier nichts erprobt ist.
+        # Dasselbe fuer den Treppengang: die Puppe spielt auf Stufen den ebenen
+        # Gang, und der Lauf sagt es (Stufe 13, Wahl C des Autors).
+        zusatz = {"treppengang": unten.treppengang()} if unten.treppengang() else {}
         recorder.event(
             "verbunden", backend=art, raum=name or None,
-            hinweis=unten.hinweis_zur_gueltigkeit(),
+            hinweis=unten.hinweis_zur_gueltigkeit(), **zusatz,
         )
     else:
         from spotlab.backends.real import RealSpot
