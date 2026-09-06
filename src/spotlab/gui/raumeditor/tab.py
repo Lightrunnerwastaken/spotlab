@@ -331,17 +331,37 @@ class RaumeditorView(QWidget):
 
     # -------------------------------------------------------------- Lauf
 
+    def bereit_fuer_lauf(self):
+        """None, wenn der offene Raum so gefahren werden darf -- sonst der Grund.
+
+        Zwei Bedingungen, fuer JEDEN virtuellen Startweg (Knopf hier oder „Code"):
+        der Start steht in keinem Hindernis, und der Raum liegt so auf der
+        Platte, wie er hier steht -- `SPOTLAB_RAUM` ist ein Name. Ein
+        geaenderter oder namenloser Raum (Neu, Rekonstruktion) wird vorher
+        gespeichert; bricht der Nutzer den Dialog ab, faehrt der Lauf NICHT
+        still ohne Raum. Am 06.09.2026 zeigte das Uebungsfenster die
+        rekonstruierten Katakomben, waehrend MuJoCo auf leerem Boden fuhr:
+        `raumname()` war leer, und der Start aus „Code" ging am Knopf vorbei.
+        """
+        if self.steuerung.raum is None:
+            return None
+        im_weg = [h for h in self.steuerung.hinweise() if h.startswith("Der Start steht")]
+        if im_weg:
+            return im_weg[0]
+        if (self.steuerung.geaendert or not self._raumname) and not self.speichern():
+            return ("Nicht gestartet: der Raum ist nicht gespeichert, und ein Lauf braucht "
+                    "einen Raum auf der Platte. Im Raumeditor speichern, dann starten.")
+        return None
+
     def _start_klick(self):
         if self._laeuft:
             self.start_gewuenscht.emit()          # derselbe Knopf heisst jetzt Stopp
             return
         if self.steuerung.raum is None:
             return
-        im_weg = [h for h in self.steuerung.hinweise() if h.startswith("Der Start steht")]
-        if im_weg:
-            self.meldung.emit(im_weg[0])
-            return
-        if self.steuerung.geaendert and not self.speichern():
+        grund = self.bereit_fuer_lauf()
+        if grund:
+            self.meldung.emit(grund)
             return
         self._config_merken()
         self.start_gewuenscht.emit()

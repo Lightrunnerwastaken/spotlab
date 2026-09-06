@@ -111,7 +111,17 @@ class Uebungsfenster(QWidget):
         nennen, und dann steht in der GUI etwas anderes.
         Ein unbekannter Name darf das Fenster nicht umbringen: dann bleibt die
         Zeichnung leer, statt dass der Lauf unsichtbar abbricht.
+        KEIN Name heisst: der Lauf faehrt in keinem Raum. Dann muss die
+        Vorbelegung aus der Ansicht weg -- am 06.09.2026 zeigte sie die
+        rekonstruierten Katakomben, waehrend MuJoCo auf leerem Boden fuhr.
         """
+        if not name:
+            self.plot.setze_raum(None)
+            self.zeile.setText(
+                "Dieser Lauf fährt in keinem Raum (das Ereignis „verbunden“ nennt keinen). "
+                "Im Raumeditor einen Raum speichern, dann neu starten."
+            )
+            return
         try:
             raum = raum_laden(name, workspace=self._arbeitsordner)
         except Exception as fehler:

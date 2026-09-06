@@ -302,10 +302,21 @@ class MainWindow(QWidget):
         deshalb in gar keinem Raum -- Start (0, 0), quer durch die Waende
         (Lauf vom 04.09.2026 mit `"raum": null`). Und ein Laptop ohne
         eingerichteten Spot hat ueberhaupt keine Konfiguration.
+
+        Und der Raum muss so auf der Platte liegen, wie die Ansicht ihn zeigt:
+        `SPOTLAB_RAUM` ist ein Name. Der Start aus „Code" ging bis zum
+        06.09.2026 am Raumeditor-Knopf vorbei, der vorher speichert -- die
+        rekonstruierten Katakomben waren namenlos, der Name ging leer mit,
+        MuJoCo fuhr auf leerem Boden, und das Uebungsfenster zeigte trotzdem
+        die Waende. Ein `SpotlabError` hier verweigert den Start; der Editor
+        faengt ihn wie einen Startfehler und zeigt den Grund.
         """
         if self.ansichten["code"].gewaehltes_backend() not in ("sim", "mujoco"):
             return {}
         ansicht = self.ansichten["raumeditor"]
+        grund = ansicht.bereit_fuer_lauf()
+        if grund:
+            raise SpotlabError(grund)
         umgebung = {ENV_RAUM: ansicht.raumname()}
         pose = ansicht.startpose()
         if pose:
@@ -400,8 +411,9 @@ class MainWindow(QWidget):
         if self.uebungsfenster is None or not self.uebungsfenster.isVisible():
             return
         daten = satz.get("daten") or {}
-        if satz.get("art") == "verbunden" and daten.get("raum"):
-            self.uebungsfenster.setze_raum_name(daten["raum"])
+        if satz.get("art") == "verbunden":
+            # Auch OHNE Raum: dann kommt die Vorbelegung aus der Ansicht weg.
+            self.uebungsfenster.setze_raum_name(daten.get("raum"))
         elif satz.get("art") == "angestossen":
             self.uebungsfenster.zeige_anstoss(daten.get("x", 0.0), daten.get("y", 0.0))
 

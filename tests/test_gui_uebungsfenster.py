@@ -132,3 +132,14 @@ def test_ein_neuer_lauf_versteckt_das_alte_bild(qapp, tmp_path):
     fenster.zeige_ansicht(pfad)
     fenster.beginne(raum_laden("leer"), (1.0, 1.0, 0.0))
     assert fenster.bild.isHidden(), "das Bild des letzten Laufs gehoert nicht zum neuen"
+
+
+def test_ohne_raum_wird_die_zeichnung_geleert_und_gesagt_warum(qapp):
+    """Vorbelegt aus der Ansicht, aber das `verbunden`-Ereignis nennt keinen
+    Raum: dann fuhr der Lauf in keinem -- und die Zeichnung darf keine Waende
+    zeigen, die es im Lauf nicht gab (06.09.2026, MuJoCo ohne Waende)."""
+    fenster = Uebungsfenster(DUNKEL)
+    fenster.beginne(raum_laden("durchgang"), None, "x.py")
+    fenster.setze_raum_name(None)
+    assert fenster.plot.raum() is None
+    assert "keinem Raum" in fenster.zeile.text()

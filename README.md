@@ -241,6 +241,11 @@ Fahrt mit, während sie läuft — Weg, Blickrichtung, Anstösse, die letzte
 Ausgabezeile. Leg es neben den Editor, dann siehst du Code und Fahrt zugleich.
 Der Knopf **„▶ Offene Datei starten"** im Raumeditor stellt diese Wahl selbst
 ein, speichert vorher, wenn nötig, und kann den echten Spot nicht erreichen.
+Auch ein Start aus „Code" fährt im Raum, der im Raumeditor offen ist — ist der
+noch nicht gespeichert (neu, rekonstruiert oder geändert), fragt spotlab nach
+einem Namen; wer abbricht, startet nichts. Das Übungsfenster zeigt danach den
+Raum, den der Lauf wirklich bekommen hat: fährt ein Programm ohne Raum, bleibt
+die Zeichnung leer und sagt es.
 `spot.tags()` und `spot.obstacles()` arbeiten dabei aus der Raumgeometrie, du
 kannst also die ganze Bibliothek ohne Roboter üben.
 

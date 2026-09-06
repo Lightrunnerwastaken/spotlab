@@ -292,9 +292,18 @@ versionsgepinntes Extra `spotlab[sim]`.
 - **Drehung nach einem Prinzip:** ein Punkt wird in den Rahmen des Blocks gedreht
   (`Block.lokal`), danach rechnet alles achsparallel — Kollision, Gitter, 3D-Welt. Eine
   zweite Formulierung fiele erst auf, wenn ein Block in 2D trifft und in 3D nicht.
-- **Der Startknopf im Raumeditor speichert vorher, wenn nötig, und lehnt einen Start im
-  Hindernis ab.** `SPOTLAB_RAUM` ist ein Name; ein Lauf in einem Raum, der so nicht auf der
-  Platte liegt, wäre nicht nachspielbar.
+- **Jeder virtuelle Start speichert den Raum vorher, wenn nötig, und lehnt einen Start im
+  Hindernis ab — nicht nur der Knopf im Raumeditor.** `SPOTLAB_RAUM` ist ein Name; ein Lauf
+  in einem Raum, der so nicht auf der Platte liegt, wäre nicht nachspielbar. Die Regel steht
+  an EINER Stelle, `RaumeditorView.bereit_fuer_lauf()`, und `app.py::_umgebung_fuer_lauf`
+  ruft sie für den Start aus „Code" — den einzigen Weg mit virtuellem Backend; „Projekte"
+  startet Trockenlauf oder Roboter, ohne Raum: ein ungespeicherter Raum verweigert den
+  Start mit `SpotlabError` (der Editor meldet ihn), statt still ohne Raum zu fahren. Bis zum
+  06.09.2026 ging der Start aus „Code" am Knopf vorbei — die rekonstruierten Katakomben waren
+  namenlos, `SPOTLAB_RAUM` ging leer mit, MuJoCo fuhr auf leerem Boden, und das
+  Übungsfenster zeigte trotzdem die Wände, weil es aus der Ansicht vorbelegt war. Deshalb
+  leert `Uebungsfenster.setze_raum_name(None)` die Zeichnung und sagt es: das
+  `verbunden`-Ereignis ist die einzige Wahrheit über den Raum des Laufs.
 - **PyOpenGL nur in `gui/raumeditor/sicht3d.py`, erst in `initializeGL` importiert.** Ohne
   das Paket oder ohne OpenGL-3.3-Kontext zeigt die Sicht eine Tafel und der Umschalter bleibt
   grau; ein Import auf Modulebene liesse die ganze GUI ohne PyOpenGL sterben

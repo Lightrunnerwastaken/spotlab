@@ -176,8 +176,10 @@ class EditorView(QWidget):
         self._laeuft = False
         self._prozess = None
         # Zusaetzliche Umgebungsvariablen fuer den Kindprozess. Der Editor
-        # kennt keine Raeume; das Hauptfenster haengt hier ein, was in der
-        # Ansicht „Übungsraum" gewaehlt ist.
+        # kennt keine Raeume; das Hauptfenster haengt hier ein, was im
+        # Raumeditor offen ist -- und darf den Start mit einem SpotlabError
+        # VERWEIGERN (Raum nicht auf der Platte): der wird unten wie ein
+        # Startfehler gemeldet, und kein Prozess laeuft an.
         self.zusatz_umgebung = dict
 
         # -------------------------------------------------- links: Dateien

@@ -538,18 +538,26 @@ def test_der_stopp_im_uebungsfenster_geht_an_die_live_ansicht(qapp, tmp_path, mo
     assert gestoppt == [True]
 
 
-def test_der_virtuelle_lauf_bekommt_raum_und_start_der_ansicht(qapp):
+def test_der_virtuelle_lauf_bekommt_raum_und_start_der_ansicht(qapp, tmp_path, monkeypatch):
     """Der Lauf vom 04.09.2026 hatte `"raum": null` und startete bei (0, 0):
     die Konfiguration kannte den Raum nicht, weil niemand in die Zeichnung
-    geklickt hatte. Was auf dem Bildschirm steht, geht jetzt direkt mit."""
+    geklickt hatte. Was auf dem Bildschirm steht, geht jetzt direkt mit --
+    so, wie es auf der Platte liegt: ein geaenderter Raum wird vorher
+    gespeichert, sonst faehrt der Lauf in einem anderen Raum als dem
+    gezeigten (06.09.2026)."""
+    from PySide6.QtWidgets import QInputDialog
+
     fenster = MainWindow()
+    fenster.ansichten["raumeditor"].setze_arbeitsordner(tmp_path)
     fenster.ansichten["raumeditor"].waehle_raum("moebliert")
     fenster.ansichten["raumeditor"].steuerung.setze_feld(("start",), "x", 2.0)
     fenster.ansichten["code"].setze_backend("sim")
+    monkeypatch.setattr(QInputDialog, "getText", lambda *a, **k: ("mein raum", True))
 
     umgebung = fenster.ansichten["code"].zusatz_umgebung()
-    assert umgebung["SPOTLAB_RAUM"] == "moebliert"
+    assert umgebung["SPOTLAB_RAUM"] == "mein raum"
     assert umgebung["SPOTLAB_RAUM_START"].startswith("2.00,1.00")
+    assert (tmp_path / "raeume" / "mein raum.toml").is_file()
 
 
 def test_ein_echter_lauf_bekommt_keinen_raum(qapp):
@@ -616,3 +624,35 @@ def test_der_arbeitsordner_bekommt_die_beispiele(qapp, tmp_path):
     assert (tmp_path / "Beispiele" / "durchgang_finden.py").is_file()
     wahl = fenster.ansichten["code"].projektwahl
     assert "Beispiele" in [wahl.itemText(i) for i in range(wahl.count())]
+
+
+def test_ein_ungespeicherter_raum_startet_keinen_lauf(qapp, tmp_path, monkeypatch):
+    """Der Lauf vom 06.09.2026: die rekonstruierten Katakomben waren nie
+    gespeichert, der Start kam aus „Code" -- am Raumeditor-Knopf vorbei.
+    `SPOTLAB_RAUM` ging leer mit, MuJoCo fuhr ohne Waende, und die Zeichnung
+    zeigte die Waende trotzdem."""
+    from PySide6.QtWidgets import QInputDialog
+
+    from spotlab.errors import SpotlabError
+
+    fenster = MainWindow()
+    fenster.ansichten["raumeditor"].setze_arbeitsordner(tmp_path)
+    fenster.ansichten["raumeditor"].neu()
+    fenster.ansichten["code"].setze_backend("sim")
+    monkeypatch.setattr(QInputDialog, "getText", lambda *a, **k: ("", False))
+    with pytest.raises(SpotlabError, match="gespeichert"):
+        fenster.ansichten["code"].zusatz_umgebung()
+
+
+def test_ein_lauf_ohne_raum_zeigt_keine_waende(qapp, tmp_path):
+    """Die Zeichnung ist aus der Ansicht vorbelegt; sagt das `verbunden`-
+    Ereignis „kein Raum", muss sie das zeigen, statt Waende zu behaupten,
+    die der Lauf nie hatte."""
+    fenster = MainWindow()
+    fenster.ansichten["raumeditor"].waehle_raum("moebliert")
+    fenster.ansichten["code"].setze_backend("sim")
+    fenster._lauf_aus_code(_FakeProzess(), str(tmp_path / "x.py"))
+    assert fenster.uebungsfenster.plot.raum() is not None            # vorbelegt
+    fenster._ereignis({"art": "verbunden", "daten": {"backend": "sim", "raum": None}})
+    assert fenster.uebungsfenster.plot.raum() is None
+    assert "keinem Raum" in fenster.uebungsfenster.zeile.text()

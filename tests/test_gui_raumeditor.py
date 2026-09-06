@@ -181,3 +181,36 @@ def test_der_umschalter_folgt_der_3d_verfuegbarkeit(qapp):
         ansicht.sicht3d.repaint()
         qapp.processEvents()
         assert ansicht.sicht3d.verfuegbar is False and "3D" in ansicht.sicht3d.tafel
+
+
+def test_bereit_fuer_lauf_verlangt_einen_raum_auf_der_platte(qapp, tmp_path, monkeypatch):
+    """Der Lauf vom 06.09.2026: die rekonstruierten Katakomben waren nie
+    gespeichert, `SPOTLAB_RAUM` ging leer mit, MuJoCo fuhr ohne Waende --
+    waehrend die Zeichnung die Waende zeigte."""
+    ansicht = RaumeditorView(DUNKEL)
+    ansicht.setze_arbeitsordner(tmp_path)
+    ansicht.neu()
+    monkeypatch.setattr(QInputDialog, "getText", lambda *a, **k: ("", False))   # abgebrochen
+    grund = ansicht.bereit_fuer_lauf()
+    assert grund and "gespeichert" in grund and ansicht.raumname() == ""
+    monkeypatch.setattr(QInputDialog, "getText", lambda *a, **k: ("katakomben", True))
+    assert ansicht.bereit_fuer_lauf() is None
+    assert ansicht.raumname() == "katakomben"
+    assert (tmp_path / "raeume" / "katakomben.toml").is_file()
+
+
+def test_bereit_fuer_lauf_nennt_das_hindernis_und_speichert_dann_nicht(qapp, tmp_path, monkeypatch):
+    ansicht = RaumeditorView(DUNKEL)
+    ansicht.setze_arbeitsordner(tmp_path)
+    ansicht.waehle_raum("moebliert")
+    ansicht.steuerung.setze_feld(("start",), "x", 3.1)
+    ansicht.steuerung.setze_feld(("start",), "y", 1.8)               # im Tisch
+    monkeypatch.setattr(QInputDialog, "getText", lambda *a, **k: ("x", True))
+    grund = ansicht.bereit_fuer_lauf()
+    assert "Tisch" in grund and not (tmp_path / "raeume").exists()
+
+
+def test_eine_unveraenderte_vorlage_ist_bereit(qapp):
+    ansicht = RaumeditorView(DUNKEL)
+    ansicht.waehle_raum("moebliert")
+    assert ansicht.bereit_fuer_lauf() is None and ansicht.raumname() == "moebliert"

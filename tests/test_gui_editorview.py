@@ -666,3 +666,26 @@ def test_die_auswahl_zeigt_die_verfuegbaren_backends(qapp, tmp_path, monkeypatch
     ansicht, _ordner, _projekt = _ansicht(tmp_path)
     namen = [ansicht.backendwahl.itemData(i) for i in range(ansicht.backendwahl.count())]
     assert namen == ["real", "dryrun", "sim", "mujoco"]
+
+
+def test_die_umgebung_darf_den_start_verweigern(qapp, tmp_path, monkeypatch):
+    """Das Hauptfenster haengt hier den Raum ein -- und lehnt ab, wenn der
+    Raum nicht auf der Platte liegt. Dann darf kein Prozess starten, und der
+    Grund muss in der Meldung stehen."""
+    from spotlab.errors import SpotlabError
+
+    ansicht, _ordner, projekt = _ansicht(tmp_path)
+    ansicht.oeffne(projekt / "hallo_spot.py")
+    gesehen = _abgefangener_start(ansicht, monkeypatch)
+    meldungen = []
+    ansicht.meldung.connect(meldungen.append)
+
+    def verweigert():
+        raise SpotlabError("Nicht gestartet: der Raum ist nicht gespeichert.")
+
+    ansicht.zusatz_umgebung = verweigert
+    ansicht.setze_backend("sim")
+    ansicht.start_knopf.click()
+
+    assert gesehen == {} and not ansicht.laeuft()
+    assert meldungen[-1].startswith("Nicht gestartet")
