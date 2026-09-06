@@ -14,6 +14,11 @@ Vereinfachung hat eine Richtung: ein Kreis kann sich nicht seitlich durch eine
 schmale Luecke drehen, ein echter Spot schon, und beim Drehen streift ein
 Kreis nie mit der Nase (siehe `bewege`). `tests/test_welt_kollision.py` haelt
 die Kopplung an den Gitter-Rand fest.
+
+Bloecke sind gedreht: ein Pruefpunkt wird in den Rahmen des Blocks gedreht
+(`Block.lokal`), danach ist der Abstand der zum achsparallelen Rechteck --
+dasselbe Prinzip in `wahrnehmung.py` und `backends/mujoco.py`. Waende haben
+eine Dicke je Raum; die halbe Dicke zaehlt zum Radius.
 """
 
 import math
@@ -34,20 +39,23 @@ def _abstand_punkt_strecke(px, py, x1, y1, x2, y2):
     return math.hypot(px - (x1 + t * dx), py - (y1 + t * dy))
 
 
-def _abstand_punkt_rechteck(px, py, x, y, breite, hoehe):
-    dx = max(x - px, 0.0, px - (x + breite))
-    dy = max(y - py, 0.0, py - (y + hoehe))
+def abstand_block(block, px, py):
+    """Abstand eines Weltpunkts zum (gedrehten) Block; 0 im Block."""
+    lx, ly = block.lokal(px, py)
+    dx = max(abs(lx) - block.breite / 2, 0.0)
+    dy = max(abs(ly) - block.tiefe / 2, 0.0)
     return math.hypot(dx, dy)
 
 
 def hindernis_bei(raum, x, y, radius=ROBOTER_RADIUS_M):
     """Name dessen, was hier im Weg steht -- oder None."""
+    halbe_dicke = raum.wand_dicke / 2
     for wand in raum.waende:
-        if _abstand_punkt_strecke(x, y, *wand) < radius:
+        if _abstand_punkt_strecke(x, y, *wand) < radius + halbe_dicke:
             return "Wand"
-    for hindernis in raum.hindernisse:
-        if _abstand_punkt_rechteck(x, y, *hindernis.rechteck) < radius:
-            return hindernis.name
+    for block in raum.bloecke:
+        if abstand_block(block, x, y) < radius:
+            return block.name
     return None
 
 
@@ -92,13 +100,12 @@ def _schneiden(a1, a2, b1, b2):
 
 
 def sicht_frei(raum, a, b):
-    """Freie Sichtlinie von a nach b? Waende und Hindernisse verdecken."""
+    """Freie Sichtlinie von a nach b? Waende und Bloecke verdecken."""
     for x1, y1, x2, y2 in raum.waende:
         if _schneiden(a, b, (x1, y1), (x2, y2)):
             return False
-    for hindernis in raum.hindernisse:
-        x, y, breite, hoehe = hindernis.rechteck
-        ecken = [(x, y), (x + breite, y), (x + breite, y + hoehe), (x, y + hoehe)]
+    for block in raum.bloecke:
+        ecken = block.ecken()
         for erste, zweite in zip(ecken, ecken[1:] + ecken[:1]):
             if _schneiden(a, b, erste, zweite):
                 return False
