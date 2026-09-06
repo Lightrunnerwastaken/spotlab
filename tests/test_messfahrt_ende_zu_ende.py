@@ -109,7 +109,10 @@ def test_die_messfahrt_meldet_keine_falschen_luecken(tmp_path, monkeypatch):
     # Der EIGENTLICHE Fehler, gegen den dieser Test steht, sieht anders aus:
     # rechnet der Detektor am Ratenwechsel mit der falschen Erwartung, meldet er
     # den ganzen 10-Hz-Takt als Luecke — also 100 ms, nicht 47. Deshalb die
-    # Grenze bei einem 10-Hz-Takt.
+    # Grenze bei einem 10-Hz-Takt. Genau so sah der Wettlauf im Abtaster aus
+    # (Periode vor dem Stempel gelesen, Startereignis vor dem Umschalten
+    # geschrieben): "Luecke 0.101 s", einmal in fuenf Laeufen, 06.09.2026 --
+    # siehe test_sampler.py und test_record_messfenster.py.
     laengen = [luecke["laenge_s"] for luecke in antwort["luecken"]]
     assert all(laenge < 0.1 for laenge in laengen), (
         f"Luecke in Groesse eines ganzen 10-Hz-Takts: {antwort['luecken']}"

@@ -135,9 +135,18 @@ class StateSampler:
         while not self._stopp.is_set():
             beginn = time.monotonic()
             with self._takt_sperre:
-                periode, reich = self._periode, self._reich
+                reich = self._reich
             self._pruefe_stopp()
-            if not self._einmal(reich):
+            geklappt = self._einmal(reich)
+            # Die Periode ERST NACH der Abtastung lesen, nicht davor. Sonst
+            # traegt eine Abtastung einen Stempel nach dem Fensterstart und
+            # schlaeft trotzdem den alten 100-ms-Takt -- und der Lueckenmelder
+            # misst diesen Takt gegen die 50-Hz-Erwartung des Fensters
+            # (Luecke 0.101 s, einmal in fuenf Messfahrten, 06.09.2026). Der
+            # Stempel und die Periode muessen aus derselben Zeit stammen.
+            with self._takt_sperre:
+                periode = self._periode
+            if not geklappt:
                 self._warte(periode)
                 continue
             # Nichts nachholen: dauert die RPC länger als die Periode, läuft die

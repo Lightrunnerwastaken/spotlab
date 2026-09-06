@@ -51,12 +51,16 @@ class Messfenster:
 
         self._offen = name
         vorher = self._sampler.takt() if self._sampler is not None else None
+        # Erst umschalten, dann das Startereignis schreiben: das Ereignis ist
+        # die Abschnittsgrenze des Lueckenmelders. Staende es VOR dem
+        # Umschalten, koennte eine Abtastung nach der Grenze noch den alten
+        # Takt schlafen, und der zaehlte als Luecke im Fenster.
+        if self._sampler is not None:
+            self._sampler.setze_takt(hz, reich)
         if self._recorder is not None:
             self._recorder.event(
                 "messfenster", phase="start", name=name, hz_soll=hz, **felder
             )
-        if self._sampler is not None:
-            self._sampler.setze_takt(hz, reich)
         try:
             yield
         finally:
