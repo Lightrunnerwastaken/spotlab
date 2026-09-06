@@ -28,8 +28,9 @@ def test_neigung_und_nick_folgen_der_gedrehten_rampe():
     dzdx, dzdy = h.neigung_bei(raum, 0, 0)
     assert dzdx == pytest.approx(0.0, abs=1e-9) and dzdy == pytest.approx(0.5)
     steil = math.degrees(math.atan(0.5))
-    assert h.nick_grad(raum, 0, 0, math.radians(90)) == pytest.approx(steil)
-    assert h.nick_grad(raum, 0, 0, math.radians(-90)) == pytest.approx(-steil)
+    # Rechte-Hand-Regel um y: bergauf fahren ist Nase hoch, also NEGATIVER Nick.
+    assert h.nick_grad(raum, 0, 0, math.radians(90)) == pytest.approx(-steil)
+    assert h.nick_grad(raum, 0, 0, math.radians(-90)) == pytest.approx(steil)
     assert h.nick_grad(raum, 0, 0, 0.0) == pytest.approx(0.0, abs=1e-9)      # quer zur Rampe
     assert h.nick_grad(RAUM, 6, 1, 0.0) == 0.0                                # Podest
 
@@ -119,7 +120,7 @@ def test_kaesten_fuer_treppe_rampe_und_podest():
     assert stufen[0][1] == pytest.approx(2.2) and stufen[-1][1] == pytest.approx(3.8)
     rampe = h.kaesten_fuer(Boden("R", 3, 0, 2, 1, anstieg=1.0), boden_z=0.0)
     geneigt = [k for k in rampe if k[8] != 0.0]
-    assert len(geneigt) == 1 and geneigt[0][8] == pytest.approx(math.degrees(math.atan(0.5)))
+    assert len(geneigt) == 1 and geneigt[0][8] == pytest.approx(-math.degrees(math.atan(0.5)))
     assert geneigt[0][0] == "rampe_R" and geneigt[0][4] == pytest.approx(math.hypot(2.0, 1.0) / 2)
     assert h.kaesten_fuer(Boden("P", 3, 0, 2, 1, z=0.0), boden_z=0.0) == []
     podest = h.kaesten_fuer(Boden("P", 3, 0, 2, 1, z=1.2), boden_z=-0.5)

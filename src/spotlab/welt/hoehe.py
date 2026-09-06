@@ -83,9 +83,15 @@ def neigung_bei(raum, x, y, z_nahe=None):
 
 
 def nick_grad(raum, x, y, yaw, z_nahe=None):
-    """Nick entlang der Fahrtrichtung in Grad, positiv = Nase hoch. `yaw` im Bogenmass."""
+    """Nick des Koerpers entlang der Fahrtrichtung in Grad. `yaw` im Bogenmass.
+
+    EINE Konvention fuer Nick, hier wie ueberall: Drehung um die y-Achse nach
+    der Rechte-Hand-Regel, also NEGATIV bei Nase hoch -- so liest
+    `api/state.py::rpy_aus` den echten Spot, so rechnet MuJoCo. Bergauf fahren
+    gibt einen negativen Wert.
+    """
     dzdx, dzdy = neigung_bei(raum, x, y, z_nahe)
-    return math.degrees(math.atan(dzdx * math.cos(yaw) + dzdy * math.sin(yaw)))
+    return -math.degrees(math.atan(dzdx * math.cos(yaw) + dzdy * math.sin(yaw)))
 
 
 def ebenen(raum):
@@ -283,8 +289,10 @@ def kaesten_fuer(boden, boden_z):
     """Die Kaesten eines Bodens ueber der Bodenebene `boden_z`.
 
     Tupel (name, x, y, z_mitte, hx, hy, hz, yaw_grad, pitch_grad) mit halben
-    Kantenlaengen wie MuJoCo; `pitch_grad` positiv heisst: das +x-Ende hebt
-    sich. Podest: ein Kasten von boden_z bis z (keiner, wenn z <= boden_z).
+    Kantenlaengen wie MuJoCo; `pitch_grad` ist die Drehung um die eigene
+    y-Achse nach der Rechte-Hand-Regel -- NEGATIV, wenn das +x-Ende sich hebt
+    (dieselbe Konvention wie `nick_grad`, `State.pitch` und MuJoCo).
+    Podest: ein Kasten von boden_z bis z (keiner, wenn z <= boden_z).
     Treppe: je Stufe ein Kasten bis zur Trittflaeche. Rampe: ein geneigter
     Kasten der Dicke RAMPE_DICKE_M, dessen Oberkante auf der Rampenlinie liegt,
     plus ein Fuellkasten bis zum tieferen Ende. Namen beginnen mit boden_,
@@ -316,7 +324,7 @@ def kaesten_fuer(boden, boden_z):
     c, s = math.cos(math.radians(boden.drehung)), math.sin(math.radians(boden.drehung))
     kaesten.append((f"rampe_{boden.name}", boden.x + lx * c, boden.y + lx * s, mitte_z,
                     hyp / 2, boden.tiefe / 2, RAMPE_DICKE_M / 2, boden.drehung,
-                    boden.neigung_grad))
+                    -boden.neigung_grad))
     tiefes_ende = min(boden.z, boden.z_oben)
     if tiefes_ende > boden_z + 1e-9:
         kaesten.append(_kasten(f"boden_{boden.name}", boden, 0.0, boden.breite, boden_z, tiefes_ende))

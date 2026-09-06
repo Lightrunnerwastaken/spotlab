@@ -903,4 +903,4 @@ def test_gitter_und_tags_kennen_die_hoehe(uhr):
     assert unten._z == 0.0
     assert unten.world_objects() == []                            # der Tag haengt 1.8 m ueber den Kameras
     gitter = unten.local_grid()
-    assert gitter.free_distance(0.0) < 0.9                        # die Podestkante bei x = 4 ist belegt
+    assert gitter.free_distance(3.5, 0.0, 0.0) < 0.9              # die Podestkante bei x = 4 ist belegt

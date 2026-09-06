@@ -111,7 +111,8 @@ class SimBackend:
         self._ziel = None
         self._hoehe = self._modell.hoehe_m
         # Stufe 13: Hoehe. `_z` ist der Boden unter der Koerpermitte, `_nick_grad`
-        # der Nick entlang der Fahrtrichtung (positiv = Nase hoch), `_klippen`
+        # der Nick entlang der Fahrtrichtung (Rechte-Hand-Regel um y: Nase hoch
+        # ist negativ, wie `State.pitch` am echten Spot), `_klippen`
         # die Kanten des Raums, an denen der Boden springt -- einmal je Raum.
         # `treppen` ist der Treppenmodus aus der Konfiguration: bei "aus" sind
         # Rampen und Treppen Klippen, so wie der Roboter sie dann meidet.
@@ -722,11 +723,10 @@ class SimBackend:
         koerper.parent_tform_child.position.x = x
         koerper.parent_tform_child.position.y = y
         koerper.parent_tform_child.position.z = self._z + self._hoehe
-        # Yaw um z, danach Nick um die eigene y-Achse. Nase hoch ist ein
-        # NEGATIVER Winkel um y (Rechte-Hand-Regel) -- genau so liest
-        # `api/state.py::rpy_aus` den Nick, und so meldet ihn der echte Spot.
+        # Yaw um z, danach Nick um die eigene y-Achse (Rechte-Hand-Regel, Nase
+        # hoch negativ -- `nick_grad` liefert es schon so, `rpy_aus` liest es so).
         cy, sy = math.cos(yaw / 2.0), math.sin(yaw / 2.0)
-        nick = -math.radians(self._nick_grad)
+        nick = math.radians(self._nick_grad)
         cp, sp = math.cos(nick / 2.0), math.sin(nick / 2.0)
         koerper.parent_tform_child.rotation.w = cy * cp
         koerper.parent_tform_child.rotation.x = -sy * sp
