@@ -109,7 +109,7 @@ def test_setze_feld_je_art():
     assert b.setze_feld(neu, ("block", 0), "breite", 0.0).bloecke[0].breite == b.MINDESTKANTE_M
     with pytest.raises(ValueError):
         b.setze_feld(neu, ("block", 0), "farbe", 1)
-    assert b.FELDER["block"] == ("name", "x", "y", "breite", "tiefe", "hoehe", "drehung")
+    assert b.FELDER["block"] == ("name", "x", "y", "breite", "tiefe", "hoehe", "drehung", "z")
 
 
 # ------------------------------------------- Rasten, Fang, Treffer, Griffe
@@ -258,3 +258,66 @@ def test_ohne_auswahl_beginnt_kein_modus():
     m = b.Modus()
     m.beginne(b.Modus.BEWEGEN, RAUM, frozenset(), zeiger=(0.0, 0.0))
     assert not m.aktiv and m.taste("x") is False
+
+
+# ---------------------------------------------------------------- Hoehe (Stufe 13)
+
+
+def _leer():
+    return Raum(name="L", beschreibung="", start=(1.0, 1.0, 0.0))
+
+
+def test_ein_boden_wird_gebaut_bewegt_gedreht_skaliert_kopiert_und_geloescht():
+    raum, s = b.neuer_boden(_leer(), 2, 2, 2, 1)
+    assert s == ("boden", 0) and raum.boeden[0].name == "Boden 1"
+    assert b.treffer(raum, 2, 2) == ("boden", 0) and b.lage(raum, s) == (2.0, 2.0)
+    raum = b.hebe(raum, {s}, 0.5)
+    assert raum.boeden[0].z == 0.5
+    raum = b.setze_feld(raum, s, "stufen", 4)
+    raum = b.setze_feld(raum, s, "anstieg", 0.8)
+    assert raum.boeden[0].art == "treppe" and raum.boeden[0].stufen == 4
+    raum = b.verschiebe(raum, {s}, 1.0, 0.0)
+    assert raum.boeden[0].x == 3.0
+    raum = b.drehe(raum, {s}, 90.0)
+    assert raum.boeden[0].drehung == 90.0
+    raum = b.skaliere(raum, {s}, 2.0, 1.0)
+    assert raum.boeden[0].breite == 4.0 and raum.boeden[0].anstieg == 0.8      # der Anstieg bleibt
+    kopie, neue = b.dupliziere(raum, {s})
+    assert len(kopie.boeden) == 2 and neue == {("boden", 1)} and kopie.boeden[1].name == "Boden 1 Kopie"
+    rest, _ = b.loesche(kopie, {("boden", 0)})
+    assert len(rest.boeden) == 1
+    assert s in b.im_rahmen(raum, 0, 0, 10, 10)
+    arten = {art for _s, art, _x, _y in b.griffe(raum, {s})}
+    assert {"ecke0", "ecke1", "ecke2", "ecke3", "drehring"} <= arten
+    gezogen = b.ziehe_ecke(raum, s, 2, 3.0, 5.0)
+    assert gezogen.boeden[0].breite != raum.boeden[0].breite
+    assert b.hebe(raum, {b.START}, 1.0) == raum                                # der Start hebt sich nicht
+
+
+def test_z_ist_ein_feld_von_wand_block_und_tag_und_hebe_nimmt_alle_mit():
+    raum = Raum(name="H", beschreibung="", start=(1, 1, 0), waende=((0, 0, 4, 0),),
+                bloecke=(Block("K", 2, 2, 1, 1),), tags=(RaumTag(1, 3, 3, 0.0),))
+    raum = b.setze_feld(raum, ("wand", 0), "z", 1.2)
+    assert raum.waende[0].z == 1.2
+    raum = b.hebe(raum, {("wand", 0), ("block", 0), ("tag", 0)}, 0.5)
+    assert (raum.waende[0].z, raum.bloecke[0].z, raum.tags[0].z) == (1.7, 0.5, 0.5)
+    assert "z" in b.FELDER["wand"] and "z" in b.FELDER["block"] and "z" in b.FELDER["tag"]
+    assert b.FELDER["boden"] == ("name", "x", "y", "breite", "tiefe", "z", "anstieg", "stufen", "drehung")
+    with pytest.raises(ValueError):
+        b.setze_feld(raum, ("boden", 0), "stufen", -1) if raum.boeden else b.setze_feld(
+            b.neuer_boden(raum, 5, 5, 1, 1)[0], ("boden", 0), "stufen", -1)
+
+
+def test_pruefe_nennt_kante_stufenhoehe_und_boden_unter_dem_grund():
+    from spotlab.welt.raum import Boden
+
+    raum = Raum(name="H", beschreibung="", start=(2.9, 0.0, 0.0),
+                boeden=(Boden("P", 2, 0, 2, 2, z=1.0),                       # der Start steht oben, 0.1 m vor der Kante
+                        Boden("T", 5, 0, 1, 1, anstieg=1.0, stufen=2),
+                        Boden("U", 8, 0, 1, 1, z=-0.3)))
+    hinweise = b.pruefe(raum)
+    assert any("Kante" in h for h in hinweise), hinweise
+    assert any("0.50 m je Stufe" in h for h in hinweise), hinweise
+    assert any("unter dem Grundboden" in h for h in hinweise), hinweise
+    frei = Raum(name="H", beschreibung="", start=(2.0, 0.0, 0.0), boeden=(Boden("P", 2, 0, 2, 2, z=1.0),))
+    assert b.pruefe(frei) == []
