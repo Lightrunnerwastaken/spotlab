@@ -133,12 +133,17 @@ def gitter_aus(antwort):
             unbekannt = np.unpackbits(roh, count=anzahl, bitorder="little").reshape(n).astype(bool)
         bekannt = ~unbekannt
 
-    ursprung = _pose(g.transforms_snapshot, g.frame_name_local_grid_data,
-                     fh.VISION_FRAME_NAME)
+    ecke = _pose(g.transforms_snapshot, g.frame_name_local_grid_data,
+                 fh.VISION_FRAME_NAME)
+    # `origin` ist die MITTE der Zelle [0, 0] -- so rechnet `ObstacleGrid._zelle`
+    # (round), und so liegt der Ursprung auch im 2D-Uebungsraum. Der Rahmen des
+    # Dienstes zeigt auf die ECKE des Gitters; die halbe Zelle dazu, sonst
+    # kippt jede Anfrage im zweiten Drittel einer Zelle in die Nachbarzelle.
+    halb = float(g.extent.cell_size) / 2.0
     return ObstacleGrid(
         cells=zellen,
         cell_size=g.extent.cell_size,
-        origin=(float(ursprung.x), float(ursprung.y)) if ursprung else (0.0, 0.0),
+        origin=(float(ecke.x) + halb, float(ecke.y) + halb) if ecke else (halb, halb),
         time=g.acquisition_time.seconds + g.acquisition_time.nanos / 1e9,
         known=bekannt,
     )
