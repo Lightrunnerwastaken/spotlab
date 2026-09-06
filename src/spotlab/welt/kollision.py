@@ -19,9 +19,18 @@ Bloecke sind gedreht: ein Pruefpunkt wird in den Rahmen des Blocks gedreht
 (`Block.lokal`), danach ist der Abstand der zum achsparallelen Rechteck --
 dasselbe Prinzip in `wahrnehmung.py` und `backends/mujoco.py`. Waende haben
 eine Dicke je Raum; die halbe Dicke zaehlt zum Radius.
+
+Hoehe (Fassung 3): mit `z` zaehlt eine Wand oder ein Block nur, wenn sein
+Hoehenband den Koerper trifft (`hoehe.trifft_koerper`), und Klippen -- Kanten,
+an denen der Boden um mehr als MAX_STUFE_M springt -- sind Hindernislinien
+namens "Kante". `bewege_mit_hoehe` fuehrt die Hoehe mit; `bewege` bleibt fuer
+alle, die keine kennen. Die Importe aus `hoehe.py` sind spaet, weil jenes
+`sicht_frei` von hier braucht.
 """
 
 import math
+
+from spotlab.welt.raum import MAX_STUFE_M
 
 ROBOTER_RADIUS_M = 0.27
 # Laengere Schritte werden zerlegt. `dt` kommt aus der Wanduhr und haengt daran,
@@ -47,15 +56,39 @@ def abstand_block(block, px, py):
     return math.hypot(dx, dy)
 
 
-def hindernis_bei(raum, x, y, radius=ROBOTER_RADIUS_M):
-    """Name dessen, was hier im Weg steht -- oder None."""
+def klippen_von(raum, alles=False):
+    """Die Klippen des Raums, einmal je Raum gerechnet (reine Geometrie ohne Pose)."""
+    from spotlab.welt.hoehe import klippen
+
+    return klippen(raum, alles=alles)
+
+
+def hindernis_bei(raum, x, y, radius=ROBOTER_RADIUS_M, z=None, klippen_=None):
+    """Name dessen, was hier im Weg steht -- oder None.
+
+    Ohne `z` wie immer: jede Wand, jeder Block. Mit `z` (Hoehe des Bodens unter
+    dem Koerper) nur, was das Koerperband trifft -- ein Block auf dem Podest
+    steht dem Roboter darunter nicht im Weg. Klippen zaehlen, sobald sie
+    uebergeben werden.
+    """
     halbe_dicke = raum.wand_dicke / 2
+    if z is None:
+        def trifft(_element):
+            return True
+    else:
+        from spotlab.welt.hoehe import hoehenband, trifft_koerper
+
+        def trifft(element):
+            return trifft_koerper(hoehenband(element, raum), z)
     for wand in raum.waende:
-        if _abstand_punkt_strecke(x, y, *wand) < radius + halbe_dicke:
+        if trifft(wand) and _abstand_punkt_strecke(x, y, *wand) < radius + halbe_dicke:
             return "Wand"
     for block in raum.bloecke:
-        if abstand_block(block, x, y) < radius:
+        if trifft(block) and abstand_block(block, x, y) < radius:
             return block.name
+    for kante in klippen_ or ():
+        if _abstand_punkt_strecke(x, y, *kante) < radius:
+            return "Kante"
     return None
 
 
@@ -87,6 +120,37 @@ def bewege(raum, von, nach):
             return (letztes_gutes[0], letztes_gutes[1], yaw1), getroffen
         letztes_gutes = (px, py)
     return (x1, y1, yaw1), None
+
+
+def bewege_mit_hoehe(raum, von, nach, z, klippen_):
+    """((x, y, yaw), z, Hindernis | None) -- wie `bewege`, mit der Hoehe im Gepaeck.
+
+    Nach jedem Teilschritt fragt `boden_bei` mit der bisherigen Hoehe als
+    `z_nahe`; springt der Boden um mehr als eine Stufe, ist das die Klippe von
+    innen gesehen, und Spot bleibt am letzten guten Punkt.
+    """
+    from spotlab.welt.hoehe import boden_bei
+
+    x0, y0, _yaw0 = von
+    x1, y1, yaw1 = nach
+    strecke = math.hypot(x1 - x0, y1 - y0)
+    if strecke < 1e-9:
+        return (x0, y0, yaw1), z, None
+
+    schritte = max(1, math.ceil(strecke / MAX_SCHRITT_M))
+    letztes_gutes, z_gut = (x0, y0), z
+    for i in range(1, schritte + 1):
+        anteil = i / schritte
+        px = x0 + (x1 - x0) * anteil
+        py = y0 + (y1 - y0) * anteil
+        getroffen = hindernis_bei(raum, px, py, z=z_gut, klippen_=klippen_)
+        if getroffen is not None:
+            return (letztes_gutes[0], letztes_gutes[1], yaw1), z_gut, getroffen
+        z_neu, _boden = boden_bei(raum, px, py, z_nahe=z_gut)
+        if abs(z_neu - z_gut) > MAX_STUFE_M:
+            return (letztes_gutes[0], letztes_gutes[1], yaw1), z_gut, "Kante"
+        letztes_gutes, z_gut = (px, py), z_neu
+    return (x1, y1, yaw1), z_gut, None
 
 
 def _schneiden(a1, a2, b1, b2):

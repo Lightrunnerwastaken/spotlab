@@ -175,3 +175,44 @@ def test_die_sichtlinie_kennt_die_gedrehten_kanten():
     assert not sicht_frei(GEDREHT, (4.0, 4.0), (6.0, 6.0))
     # Quer dazu, knapp an der schmalen Seite vorbei: frei.
     assert sicht_frei(GEDREHT, (6.0, 4.0), (6.5, 4.5))
+
+
+# ------------------------------------------------------------- Hoehe
+
+
+def test_ein_block_auf_dem_podest_trifft_unten_nicht():
+    from spotlab.welt.kollision import hindernis_bei, klippen_von
+    from spotlab.welt.raum import Boden
+
+    raum = Raum(name="H", beschreibung="", start=(0, 0, 0),
+                bloecke=(Block("K", 2, 0, 1, 1, z=1.2),), boeden=(Boden("P", 2, 0, 2, 2, z=1.2),))
+    kanten = klippen_von(raum)
+    assert hindernis_bei(raum, 0.8, 0.0, z=0.0, klippen_=kanten) == "Kante"     # die Podestkante bei x = 1
+    assert hindernis_bei(raum, 2.0, 0.0, z=1.2, klippen_=kanten) == "K"
+    assert hindernis_bei(raum, 2.0, 0.0) == "K"                                   # ohne z wie bisher
+    assert hindernis_bei(raum, 2.0, 0.0, z=0.0) is None                           # unter dem Block: nichts im Band
+
+
+def test_bewege_folgt_der_rampe_und_haelt_an_der_klippe():
+    from spotlab.welt.kollision import bewege_mit_hoehe, klippen_von
+    from spotlab.welt.raum import Boden
+
+    raum = Raum(name="H", beschreibung="", start=(0, 0, 0),
+                boeden=(Boden("R", 3, 0, 2, 2, anstieg=1.0),))                    # x 2..4, 0 -> 1
+    kanten = klippen_von(raum)
+    pose, z, wer = bewege_mit_hoehe(raum, (1.0, 0.0, 0.0), (3.0, 0.0, 0.0), 0.0, kanten)
+    assert wer is None and z == pytest.approx(0.5) and pose[0] == pytest.approx(3.0)
+    pose, z, wer = bewege_mit_hoehe(raum, (3.0, 0.0, 0.0), (4.6, 0.0, 0.0), 0.5, kanten)
+    assert wer == "Kante" and pose[0] < 4.3 and z > 0.8                           # oben an der Kante geblieben
+    # Von unten gegen die Kopfkante des Podests: ebenfalls Kante, z bleibt unten.
+    pose, z, wer = bewege_mit_hoehe(raum, (5.0, 0.0, 180.0), (3.8, 0.0, 180.0), 0.0, kanten)
+    assert wer == "Kante" and pose[0] > 4.2 and z == 0.0
+
+
+def test_ohne_boeden_ist_bewege_mit_hoehe_bewege():
+    from spotlab.welt.kollision import bewege_mit_hoehe
+
+    pose, z, wer = bewege_mit_hoehe(RAUM, (1.0, 1.0, 0.0), (2.0, 1.0, 0.0), 0.0, [])
+    assert (pose, z, wer) == ((2.0, 1.0, 0.0), 0.0, None)
+    pose, z, wer = bewege_mit_hoehe(RAUM, (4.0, 5.5, 0.0), (6.0, 5.5, 0.0), 0.0, [])
+    assert wer == "Kiste" and z == 0.0

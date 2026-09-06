@@ -134,3 +134,43 @@ def test_die_wanddicke_zaehlt_im_gitter():
                 waende=((0.0, 4.0, 10.0, 4.0),), wand_dicke=0.10)
     # 0.30 m vor der Wandlinie bleiben 0.25 m bis zur Wandflaeche.
     assert _wert_bei(raum, (5.0, 5.0, 0.0), 5.0, 4.30) == pytest.approx(0.25, abs=0.03)
+
+
+# ------------------------------------------------------------- Hoehe
+
+
+def _gitterwert(gitter, ursprung, x, y):
+    spalte = int(round((x - ursprung[0]) / GITTER_ZELLE_M))
+    zeile = int(round((y - ursprung[1]) / GITTER_ZELLE_M))
+    return gitter[zeile][spalte]
+
+
+def test_klippe_ist_belegt_treppe_frei_und_block_oben_unsichtbar_von_unten():
+    from spotlab.welt.kollision import klippen_von
+    from spotlab.welt.raum import Boden
+
+    raum = _raum(bloecke=(Block("K", 7.0, 5.0, 0.5, 0.5, z=1.0),))
+    raum = Raum(name=raum.name, beschreibung="", groesse=raum.groesse, start=raum.start,
+                waende=raum.waende, bloecke=raum.bloecke,
+                boeden=(Boden("T", 3.5, 5.0, 2.0, 2.0, anstieg=1.0, stufen=6),     # x 2.5..4.5
+                        Boden("P", 6.0, 5.0, 3.0, 2.0, z=1.0)))                     # x 4.5..7.5
+    kanten = klippen_von(raum)
+    pose = (5.0, 3.0, 0.0)                                                          # unten, neben dem Podest
+    werte, bekannt, ursprung = abstandsgitter(raum, pose, z=0.0, klippen_=kanten)
+    assert _gitterwert(werte, ursprung, 5.0, 4.0) == pytest.approx(0.0, abs=GITTER_ZELLE_M)   # Podestkante y = 4
+    assert _gitterwert(werte, ursprung, 3.5, 4.5) > 0.3                                # auf der Treppe frei
+    assert _gitterwert(werte, ursprung, 5.0, 3.0) > 0.5                                # der Block oben zaehlt unten nicht
+    oben = (6.0, 5.0, 0.0)
+    werte, bekannt, ursprung = abstandsgitter(raum, oben, z=1.0, klippen_=kanten)
+    assert _gitterwert(werte, ursprung, 6.75, 5.0) == pytest.approx(0.0, abs=GITTER_ZELLE_M)  # der Block, von oben
+
+
+def test_ein_tag_auf_der_anderen_ebene_ist_unsichtbar():
+    from spotlab.welt.raum import Boden
+
+    raum = _raum(tags=(RaumTag(3, 3.0, 5.0, 180.0, z=2.0),))
+    raum = Raum(name=raum.name, beschreibung="", groesse=raum.groesse, start=raum.start,
+                waende=raum.waende, tags=raum.tags, boeden=(Boden("P", 3.0, 5.0, 2, 2, z=2.0),))
+    assert sichtbare_tags(raum, (2.0, 5.0, 0.0), z=0.0) == []
+    assert len(sichtbare_tags(raum, (2.0, 5.0, 0.0), z=2.0)) == 1
+    assert len(sichtbare_tags(raum, (2.0, 5.0, 0.0))) == 0                          # ohne z: z = 0

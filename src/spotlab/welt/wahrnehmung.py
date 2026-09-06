@@ -14,6 +14,7 @@ import math
 
 import numpy as np
 
+from spotlab.welt.hoehe import TAG_HOEHENFENSTER_M, hoehenband, trifft_koerper
 from spotlab.welt.kollision import sicht_frei
 
 # Geschaetzt, NICHT gemessen. Abnahmepunkt A22 misst den echten Wert am Geraet;
@@ -32,17 +33,21 @@ GITTER_ZELLE_M = 0.03
 SICHT_RASTER = 4
 
 
-def sichtbare_tags(raum, pose):
+def sichtbare_tags(raum, pose, z=0.0):
     """[(RaumTag, dx, dy)] im Koerperframe, naechster zuerst.
 
     KEIN Blickfeld-Kegel: der echte Spot hat fuenf Kameras und sieht rundum.
-    Ein Tag zaehlt, wenn er in Reichweite ist und die Sichtlinie frei.
+    Ein Tag zaehlt, wenn er in Reichweite ist und die Sichtlinie frei -- und
+    nicht mehr als TAG_HOEHENFENSTER_M ueber oder unter den Kameras haengt
+    (`z` ist der Boden unter dem Roboter, die Kameras stehen 0.5 m darueber).
     """
     x, y, yaw = pose
     gefunden = []
     for tag in raum.tags:
         dx_welt, dy_welt = tag.x - x, tag.y - y
         if math.hypot(dx_welt, dy_welt) > TAG_REICHWEITE_M:
+            continue
+        if abs((tag.z + tag.hoehe) - (z + 0.5)) > TAG_HOEHENFENSTER_M:
             continue
         if not sicht_frei(raum, (x, y), (tag.x, tag.y)):
             continue
@@ -56,26 +61,41 @@ def sichtbare_tags(raum, pose):
     return gefunden
 
 
-def _abstaende(raum, xs, ys):
+def _zur_strecke(xs, ys, x1, y1, x2, y2):
+    dx, dy = x2 - x1, y2 - y1
+    laenge2 = dx * dx + dy * dy
+    if laenge2 == 0.0:
+        return np.hypot(xs - x1, ys - y1)
+    t = np.clip(((xs - x1) * dx + (ys - y1) * dy) / laenge2, 0.0, 1.0)
+    return np.hypot(xs - (x1 + t * dx), ys - (y1 + t * dy))
+
+
+def _abstaende(raum, xs, ys, z=None, klippen_=()):
     """Je Zelle der Abstand zum naechsten Hindernis, vektorisiert.
 
     Waende sind Linien mit Dicke: gemessen wird bis zur Wandflaeche, nie unter
     null. Bloecke sind gedreht: die Zellmitten werden in den Blockrahmen gedreht,
     danach ist es der Abstand zum achsparallelen Rechteck -- dieselbe Rechnung
     wie `kollision.abstand_block`, nur fuer 16384 Punkte auf einmal.
+    Mit `z` zaehlt nur, was das Koerperband trifft (wie `kollision.hindernis_bei`);
+    Klippen sind Linien ohne Dicke.
     """
     abstand = np.full(xs.shape, np.inf)
     halbe_dicke = raum.wand_dicke / 2
-    for x1, y1, x2, y2 in raum.waende:
-        dx, dy = x2 - x1, y2 - y1
-        laenge2 = dx * dx + dy * dy
-        if laenge2 == 0.0:
-            zur_linie = np.hypot(xs - x1, ys - y1)
-        else:
-            t = np.clip(((xs - x1) * dx + (ys - y1) * dy) / laenge2, 0.0, 1.0)
-            zur_linie = np.hypot(xs - (x1 + t * dx), ys - (y1 + t * dy))
+
+    def trifft(element):
+        return z is None or trifft_koerper(hoehenband(element, raum), z)
+
+    for wand in raum.waende:
+        if not trifft(wand):
+            continue
+        zur_linie = _zur_strecke(xs, ys, *wand)
         abstand = np.minimum(abstand, np.maximum(zur_linie - halbe_dicke, 0.0))
+    for kante in klippen_:
+        abstand = np.minimum(abstand, _zur_strecke(xs, ys, *kante))
     for block in raum.bloecke:
+        if not trifft(block):
+            continue
         c = math.cos(math.radians(-block.drehung))
         s = math.sin(math.radians(-block.drehung))
         dx, dy = xs - block.x, ys - block.y
@@ -87,12 +107,12 @@ def _abstaende(raum, xs, ys):
     return abstand
 
 
-def abstandsgitter(raum, pose):
+def abstandsgitter(raum, pose, z=None, klippen_=None):
     """(werte, bekannt, ursprung) -- Listen, damit welt/ formfrei bleibt.
 
     `bekannt` ist False, wo die Sichtlinie durch eine Wand oder ein Hindernis
     laeuft. Unbekannt ist NICHT frei -- das ist der Fehler, der einen Roboter in
-    eine Wand faehrt.
+    eine Wand faehrt. `z` und `klippen_` wie in `kollision.hindernis_bei`.
     """
     x, y, _yaw = pose
     kante = GITTER_ZELLEN * GITTER_ZELLE_M
@@ -103,7 +123,7 @@ def abstandsgitter(raum, pose):
     ys = ursprung[1] + achse[:, np.newaxis]
     xs, ys = np.broadcast_arrays(xs, ys)
 
-    werte = _abstaende(raum, xs, ys)
+    werte = _abstaende(raum, xs, ys, z, klippen_ or ())
 
     bekannt = np.ones(werte.shape, dtype=bool)
     for zeile in range(0, GITTER_ZELLEN, SICHT_RASTER):
