@@ -36,12 +36,24 @@ def se2_grenze(limits):
     )
 
 
+TREPPENMODUS = {
+    "auto": spot_command_pb2.MobilityParams.STAIRS_MODE_AUTO,
+    "aus": spot_command_pb2.MobilityParams.STAIRS_MODE_OFF,
+}
+
+
 def mit_grenze(limits):
-    """MobilityParams, die NICHTS anderes tun als den Deckel zu setzen.
+    """MobilityParams, die NICHTS anderes tun als Deckel und Treppenmodus zu setzen.
 
     Bewusst ein nacktes Protobuf statt `RobotCommandBuilder.mobility_params()`:
     jenes setzt zusätzlich eine Körperhöhen-Trajektorie und einen
     Fortbewegungs-Hinweis, die hier niemand bestellt hat. Alles Ungesetzte
-    entscheidet der Roboter selbst — das ist die Absicht.
+    entscheidet der Roboter selbst — das ist die Absicht. Kein `stair_hint`:
+    das ist eine Angabe für einen konkreten Schritt, die der Roboter selbst
+    besser weiss. `treppen` kommt aus `config.toml [limits]`, geprüft beim
+    Laden; der Sim liest denselben Wert (Treppen sind bei "aus" Klippen).
     """
-    return spot_command_pb2.MobilityParams(vel_limit=se2_grenze(limits))
+    return spot_command_pb2.MobilityParams(
+        vel_limit=se2_grenze(limits),
+        stairs_mode=TREPPENMODUS[getattr(limits, "treppen", "auto")],
+    )

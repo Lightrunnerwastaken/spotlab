@@ -227,3 +227,24 @@ def test_leere_oder_kaputte_startpose_ist_None():
     assert startpose_aus("") is None
     assert startpose_aus("murks") is None
     assert startpose_aus("1.0,2.0") is None
+
+
+# ------------------------------------------------------------- Treppenmodus
+
+
+def test_treppenmodus_hat_vorgabe_auto_und_ueberlebt_das_speichern(tmp_path):
+    pfad = tmp_path / "config.toml"
+    pfad.write_text('[robot]\nip = "10.0.0.1"\nusername = "u"\n', encoding="utf-8")
+    assert load_config(pfad).limits.treppen == "auto"
+    cfg = Config(ip="10.0.0.1", username="u", limits=Limits(treppen="aus"))
+    save_config(cfg, pfad)
+    assert load_config(pfad).limits.treppen == "aus"
+
+
+def test_ein_unbekannter_treppenmodus_wird_abgewiesen(tmp_path):
+    from spotlab.errors import ConfigBroken
+
+    pfad = _schreibe(tmp_path, 'max_speed = 0.6\nmax_turn_rate = 0.8\ntreppen = "vielleicht"\n')
+    with pytest.raises(ConfigBroken) as fehler:
+        load_config(pfad)
+    assert "treppen" in str(fehler.value) and "auto" in str(fehler.value)

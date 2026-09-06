@@ -19,12 +19,18 @@ KEYRING_SERVICE = "spotlab"
 BACKENDS = ("real", "dryrun", "sim")
 ENV_PASSWORD = "BOSDYN_CLIENT_PASSWORD"
 ENV_USERNAME = "BOSDYN_CLIENT_USERNAME"
+TREPPENMODI = ("auto", "aus")
 
 
 @dataclass(frozen=True)
 class Limits:
     max_speed: float = 0.6  # m/s
     max_turn_rate: float = 0.8  # rad/s
+    # Treppenmodus: "auto" -- der Roboter erkennt Treppen und nimmt sie;
+    # "aus" -- Treppen sind tabu. Ein Sicherheitswert wie die Deckel, deshalb
+    # hier: `backends/mobility.py::mit_grenze` setzt daraus `stairs_mode` an
+    # EINER Stelle, und der Sim liest denselben Wert.
+    treppen: str = "auto"
 
 
 @dataclass(frozen=True)
@@ -79,6 +85,7 @@ def save_config(cfg, path=None):
         "\n[limits]\n"
         f"max_speed = {float(cfg.limits.max_speed)}\n"
         f"max_turn_rate = {float(cfg.limits.max_turn_rate)}\n"
+        f"treppen = {_toml_string(cfg.limits.treppen)}\n"
         "\n[editor]\n"
         f"command = {_toml_string(cfg.editor_command)}\n"
         "\n[defaults]\n"
@@ -119,6 +126,16 @@ def _grenze(roh, schluessel, vorgabe, pfad):
     return zahl
 
 
+def _treppenmodus(limits, pfad):
+    wert = limits.get("treppen", Limits.treppen)
+    if wert not in TREPPENMODI:
+        raise ConfigBroken(
+            f"In {pfad} ist `treppen = {wert!r}` unbekannt. Erlaubt: "
+            + " oder ".join(TREPPENMODI) + "."
+        )
+    return wert
+
+
 def load_config(path=None):
     path = Path(path) if path else CONFIG_PATH
     if not path.exists():
@@ -155,6 +172,7 @@ def load_config(path=None):
         limits=Limits(
             max_speed=_grenze(limits, "max_speed", Limits.max_speed, path),
             max_turn_rate=_grenze(limits, "max_turn_rate", Limits.max_turn_rate, path),
+            treppen=_treppenmodus(limits, path),
         ),
         editor_command=roh.get("editor", {}).get("command", "code"),
         default_backend=backend,

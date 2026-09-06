@@ -208,3 +208,14 @@ def test_dryrun_gitter_hat_eine_wand():
     assert gitter.cell_size > 0
     assert gitter.cells.min() < 0.2      # irgendwo ist die Wand
     assert gitter.cells.max() > 1.0      # und irgendwo ist frei
+
+
+def test_der_treppenmodus_steht_in_denselben_mobility_params():
+    from bosdyn.api.spot import robot_command_pb2 as spot_pb2
+
+    from spotlab.backends.mobility import mit_grenze
+    from spotlab.config import Limits
+
+    assert mit_grenze(Limits()).stairs_mode == spot_pb2.MobilityParams.STAIRS_MODE_AUTO
+    assert mit_grenze(Limits(treppen="aus")).stairs_mode == spot_pb2.MobilityParams.STAIRS_MODE_OFF
+    assert not mit_grenze(Limits()).stair_hint
