@@ -128,3 +128,49 @@ def test_backend_ohne_faehigkeit_wird_deutlich_abgewiesen():
     with pytest.raises(UnsupportedCapability) as fehler:
         world.tags(Ohne(), None)
     assert "Objekte" in str(fehler.value)
+
+
+# ------------------------------------------------------------ free_distance
+
+
+def _raum_mit_wand(wand_x=1.5):
+    """5x5 m bekannt, eine Wand bei x = wand_x (Abstandsgitter, 0.05 m Zellen)."""
+    import numpy as np
+
+    n, c = 100, 0.05
+    xs = np.arange(n) * c
+    ys = np.arange(n) * c
+    X, Y = np.meshgrid(xs, ys)                        # [zeile=y, spalte=x]
+    abstand = np.abs(X - wand_x)
+    return ObstacleGrid(cells=abstand, cell_size=c, origin=(0.0, 0.0), time=0.0,
+                        known=np.ones((n, n), dtype=bool))
+
+
+def test_free_distance_misst_bis_zur_wand():
+    gitter = _raum_mit_wand(wand_x=2.0)
+    # Von (0.5, 2.5) nach Osten: die Wand steht 1.5 m entfernt, der Rand von
+    # 0.3 m gilt -- frei sind rund 1.2 m.
+    frei = gitter.free_distance(0.5, 2.5, 0.0)
+    assert 1.05 <= frei <= 1.25, frei
+
+
+def test_free_distance_ist_nach_hinten_offen():
+    gitter = _raum_mit_wand(wand_x=4.5)
+    assert gitter.free_distance(2.5, 2.5, 180.0) == pytest.approx(1.8)      # FREI_BIS_M
+
+
+def test_free_distance_faengt_erst_vor_dem_koerper_an():
+    """Unter Spot ist das Gitter unbekannt (Koerperschatten) -- die Messung
+    beginnt deshalb 0.6 m vor dem Punkt und meldet nicht faelschlich 0."""
+
+    gitter = _raum_mit_wand(wand_x=4.5)
+    bekannt = gitter.known.copy()
+    bekannt[45:55, 45:55] = False                     # Schatten um (2.5, 2.5)
+    gitter = ObstacleGrid(cells=gitter.cells, cell_size=gitter.cell_size,
+                          origin=gitter.origin, time=0.0, known=bekannt)
+    assert gitter.free_distance(2.5, 2.5, 0.0) > 1.0
+
+
+def test_free_distance_null_wenn_direkt_davor_zu():
+    gitter = _raum_mit_wand(wand_x=0.9)
+    assert gitter.free_distance(0.5, 2.5, 0.0) == 0.0

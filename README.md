@@ -206,6 +206,13 @@ kannst also die ganze Bibliothek ohne Roboter üben.
 Eigene Räume: eine TOML-Datei unter `<arbeitsordner>/raeume/<name>.toml`, gebaut
 wie die mitgelieferten unter `welt/vorlagen/`.
 
+**Beispiele.** Im Arbeitsordner liegt immer das Projekt `Beispiele` — die GUI
+legt es beim Start an und ergänzt, was fehlt; deine Änderungen bleiben.
+`durchgang_finden.py` zeigt, wie Spot mit `spot.obstacles().free_distance(…)`
+die offenste Richtung findet, durch die Tür in den Nachbarraum geht, den Tag
+dort als Beweis nimmt und sich setzt — im 2D-Raum, in 3D und am echten Spot
+dasselbe Programm.
+
 ### Übungsraum 3D
 
 `backend="mujoco"` ist derselbe Sim mit einem Körper: der Menagerie-Spot aus
