@@ -6,7 +6,6 @@ keine Attrappe: Kollision an der Mesh-Geometrie, Gitter aus gerenderter Tiefe,
 Tags per Strahl.
 """
 
-import math
 
 import pytest
 

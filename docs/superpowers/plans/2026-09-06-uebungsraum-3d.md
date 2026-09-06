@@ -20,49 +20,49 @@ steht als 0.0/null und wird im Bericht genannt.
 ## matura-spot
 
 ### T1 Puppe — Welt und Pose
-- [ ] `tests/test_puppe.py`: Welt mit einem Quader und einem Tag baut; `setze()` legt den Körper an (x, y, yaw); Standhöhe aus Kinematik liegt zwischen 0.35 und 0.60 m; Stand-Füsse berühren den Boden (|z − r| < 1 cm)
-- [ ] `src/spotsim/puppe.py`: `Welt`, `bau_modell(welt)`, `SpotPuppe.setze/standhoehe/pose`
-- [ ] Commit
+- [x] `tests/test_puppe.py`: Welt mit einem Quader und einem Tag baut; `setze()` legt den Körper an (x, y, yaw); Standhöhe aus Kinematik liegt zwischen 0.35 und 0.60 m; Stand-Füsse berühren den Boden (|z − r| < 1 cm)
+- [x] `src/spotsim/puppe.py`: `Welt`, `bau_modell(welt)`, `SpotPuppe.setze/standhoehe/pose`
+- [x] Commit
 
 ### T2 Puppe — Kollision, Tags, Ansicht
-- [ ] Test: Pose in einem Quader → `kollisionen()` nennt `hindernis_0`; frei → leer; Bodenkontakt zählt nicht
-- [ ] Test: Tag vor dem Roboter sichtbar, hinter einer Wand nicht (Raycast), ausserhalb der Reichweite nicht, von hinten (abgewandt) nicht, seitlich ausserhalb jedes Blickfelds nicht
-- [ ] Test: `ansicht()` liefert (H, B, 3) uint8, nicht einfarbig
-- [ ] Test: `gray_image_proto` hat GREYSCALE_U8, 480×640, Fisheye-Intrinsik
-- [ ] `robot_state_proto(sensors, fusskontakte=None, v_body=None)` — Überschreibungen für die Wiedergabe, Standard unverändert
-- [ ] Commit
+- [x] Test: Pose in einem Quader → `kollisionen()` nennt `hindernis_0`; frei → leer; Bodenkontakt zählt nicht
+- [x] Test: Tag vor dem Roboter sichtbar, hinter einer Wand nicht (Raycast), ausserhalb der Reichweite nicht, von hinten (abgewandt) nicht, seitlich ausserhalb jedes Blickfelds nicht
+- [x] Test: `ansicht()` liefert (H, B, 3) uint8, nicht einfarbig
+- [x] Test: `gray_image_proto` hat GREYSCALE_U8, 480×640, Fisheye-Intrinsik
+- [x] `robot_state_proto(sensors, fusskontakte=None, v_body=None)` — Überschreibungen für die Wiedergabe, Standard unverändert
+- [x] Commit
 
 ### T3 Gate G10 Gitterformat
-- [ ] `tests/daten/gitter_real_20260812/000001_obstacle_distance.pb` und `no_step.pb` kopieren (je ~31 KB) + `HERKUNFT.md`
-- [ ] `tests/test_gitterformat.py`: Sim-Proto gegen die Fixture (Zellen, Zellgrösse, Format, Skala, Frame-Suffix `_local_grid_corner`, `unknown_cells` vorhanden)
-- [ ] `local_grid.py`-Docstring: Annahme → „bestätigt am 12.08.2026"; G10 in `gates.py`-Katalog
-- [ ] Commit
+- [x] `tests/daten/gitter_real_20260812/000001_obstacle_distance.pb` und `no_step.pb` kopieren (je ~31 KB) + `HERKUNFT.md`
+- [x] `tests/test_gitterformat.py`: Sim-Proto gegen die Fixture (Zellen, Zellgrösse, Format, Skala, Frame-Suffix `_local_grid_corner`, `unknown_cells` vorhanden)
+- [x] `local_grid.py`-Docstring: Annahme → „bestätigt am 12.08.2026"; G10 in `gates.py`-Katalog
+- [x] Commit
 
 ### T4 Doku matura-spot
-- [ ] `notes/VISION_simulation.md`: RESEARCH DECISION 2026-09-06 (Weg A, Puppe neben der Physik)
-- [ ] `CLAUDE.md`: Regel „Realismus vor Bequemlichkeit" gilt für `SpotSdkSim`/Gates; `puppe.py` ist Wiedergabe gemessener Verläufe und sagt das
-- [ ] `pyproject.toml`: `scipy` fehlt als Abhängigkeit (local_grid importiert es) → eintragen
-- [ ] Commit
+- [x] `notes/VISION_simulation.md`: RESEARCH DECISION 2026-09-06 (Weg A, Puppe neben der Physik)
+- [x] `CLAUDE.md`: Regel „Realismus vor Bequemlichkeit" gilt für `SpotSdkSim`/Gates; `puppe.py` ist Wiedergabe gemessener Verläufe und sagt das
+- [x] `pyproject.toml`: `scipy` fehlt als Abhängigkeit (local_grid importiert es) → eintragen
+- [x] Commit
 
 ## spotlab
 
 ### T5 Körperantwort
-- [ ] `tests/test_kalibrierung_antwort.py`: aus einem synthetischen Lauf (Kommando + Rückmeldung + Geschwindigkeitsverlauf) kommen Spitze, Dauer, Beschleunigung; echte Läufe vom 02.09. liefern ≥ 3 Fahrt- und ≥ 1 Drehpunkt; `Antwortmodell.tempo(v, d_rest, dt)` steigt mit a, bremst mit sqrt(2·a·d), überschreitet den Deckel nie
-- [ ] `src/spotlab/kalibrierung/antwort.py` + `daten/antwort.json` (aus `spotProjects/run/runs`) + `python -m spotlab.kalibrierung.antwort <ordner>`
-- [ ] Commit
+- [x] `tests/test_kalibrierung_antwort.py`: aus einem synthetischen Lauf (Kommando + Rückmeldung + Geschwindigkeitsverlauf) kommen Spitze, Dauer, Beschleunigung; echte Läufe vom 02.09. liefern ≥ 3 Fahrt- und ≥ 1 Drehpunkt; `Antwortmodell.tempo(v, d_rest, dt)` steigt mit a, bremst mit sqrt(2·a·d), überschreitet den Deckel nie
+- [x] `src/spotlab/kalibrierung/antwort.py` + `daten/antwort.json` (aus `spotProjects/run/runs`) + `python -m spotlab.kalibrierung.antwort <ordner>`
+- [x] Commit
 
 ### T6 2D-Sim fährt die Antwort
-- [ ] Test: `move(forward=1.0)` im Sim dauert 1.8–3.0 s (Sim-Uhr) statt 1/tempo_vorschlag; Tempo überschreitet `limits.max_speed` nie; ausserhalb (1 m/90°) → `bericht()["antwort"]["ausserhalb_der_messung"]`
-- [ ] `SimBackend._zum_ziel` nutzt das Antwortmodell; bestehende Tests anpassen, die Dauer annehmen
-- [ ] Commit
+- [x] Test: `move(forward=1.0)` im Sim dauert 1.8–3.0 s (Sim-Uhr) statt 1/tempo_vorschlag; Tempo überschreitet `limits.max_speed` nie; ausserhalb (1 m/90°) → `bericht()["antwort"]["ausserhalb_der_messung"]`
+- [x] `SimBackend._zum_ziel` nutzt das Antwortmodell; bestehende Tests anpassen, die Dauer annehmen
+- [x] Commit
 
 ### T7 Adapter `backends/mujoco.py`
-- [ ] Tests (skip ohne spotsim/Asset): Backend läuft `power_on/stand/move` durch; Pose stimmt mit 2D-Rechnung überein; Kollision an einer Wand des Raums `durchgang` → `angestossen`; `local_grid()` liefert `ObstacleGrid` 128×128 mit `known`; `world_objects()` findet Tag 3 im `durchgang` erst durch die Tür; `images()` liefert zehn Quellen; `robot_state()` trägt Fusspositionen ≠ 0
-- [ ] `src/spotlab/backends/mujoco.py`; `welt_aus_raum(raum)`
-- [ ] `spotlab/__init__.py`: `"mujoco"` in `OHNE_ROBOTER`, Zweig in `connect()`, `ansicht_ziel`
-- [ ] `pyproject.toml`: Extra `sim`
-- [ ] Naht-Test: nur `backends/mujoco.py` importiert `spotsim` (ast)
-- [ ] Commit
+- [x] Tests (skip ohne spotsim/Asset): Backend läuft `power_on/stand/move` durch; Pose stimmt mit 2D-Rechnung überein; Kollision an einer Wand des Raums `durchgang` → `angestossen`; `local_grid()` liefert `ObstacleGrid` 128×128 mit `known`; `world_objects()` findet Tag 3 im `durchgang` erst durch die Tür; `images()` liefert zehn Quellen; `robot_state()` trägt Fusspositionen ≠ 0
+- [x] `src/spotlab/backends/mujoco.py`; `welt_aus_raum(raum)`
+- [x] `spotlab/__init__.py`: `"mujoco"` in `OHNE_ROBOTER`, Zweig in `connect()`, `ansicht_ziel`
+- [x] `pyproject.toml`: Extra `sim`
+- [x] Naht-Test: nur `backends/mujoco.py` importiert `spotsim` (ast)
+- [x] Commit
 
 ### T8 Gate G11 Wiedergabe
 - [ ] `tests/test_wiedergabe.py`: Stützstelle 5 Zyklen → Weg ± 2 %, Duty ± 0.1, Eindringen ≤ 1 cm, Standhöhe berichtet
