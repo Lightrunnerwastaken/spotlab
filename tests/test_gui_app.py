@@ -107,7 +107,7 @@ def test_fenster_hat_jetzt_neun_ansichten(qapp):
     fenster = MainWindow()
     assert set(fenster.ansichten) == {
         "projekte", "code", "live", "laeufe", "karten", "umwelt",
-        "uebungsraum", "anbindungen", "spot",
+        "raumeditor", "anbindungen", "spot",
     }
     assert fenster.stapel.count() == 9
 
@@ -512,7 +512,7 @@ def test_der_startknopf_im_uebungsraum_erzwingt_das_sim_backend(qapp):
     Knopf in der Ansicht „Übungsraum" den echten Spot."""
     fenster = MainWindow()
     fenster.ansichten["code"].setze_backend("real")
-    fenster.ansichten["uebungsraum"].starten.click()
+    fenster.ansichten["raumeditor"].starten.click()
     # 2D oder 3D, je nachdem, was auf diesem Laptop laeuft -- nie der Roboter.
     assert fenster.ansichten["code"].gewaehltes_backend() in ("sim", "mujoco")
 
@@ -520,9 +520,9 @@ def test_der_startknopf_im_uebungsraum_erzwingt_das_sim_backend(qapp):
 def test_der_knopf_im_uebungsraum_wandert_mit_dem_lauf(qapp):
     fenster = MainWindow()
     fenster.ansichten["code"]._setze_laeuft(True)
-    assert "Stopp" in fenster.ansichten["uebungsraum"].starten.text()
+    assert "Stopp" in fenster.ansichten["raumeditor"].starten.text()
     fenster.ansichten["code"].lauf_beendet()
-    assert "starten" in fenster.ansichten["uebungsraum"].starten.text()
+    assert "starten" in fenster.ansichten["raumeditor"].starten.text()
 
 
 def test_der_stopp_im_uebungsfenster_geht_an_die_live_ansicht(qapp, tmp_path, monkeypatch):
@@ -543,8 +543,8 @@ def test_der_virtuelle_lauf_bekommt_raum_und_start_der_ansicht(qapp):
     die Konfiguration kannte den Raum nicht, weil niemand in die Zeichnung
     geklickt hatte. Was auf dem Bildschirm steht, geht jetzt direkt mit."""
     fenster = MainWindow()
-    fenster.ansichten["uebungsraum"].waehle_raum("moebliert")
-    fenster.ansichten["uebungsraum"]._start_gewaehlt(2.0, 1.0)
+    fenster.ansichten["raumeditor"].waehle_raum("moebliert")
+    fenster.ansichten["raumeditor"].steuerung.setze_feld(("start",), "x", 2.0)
     fenster.ansichten["code"].setze_backend("sim")
 
     umgebung = fenster.ansichten["code"].zusatz_umgebung()
@@ -567,7 +567,7 @@ def test_der_uebungsraum_knopf_nimmt_3d_wenn_es_da_ist(qapp, monkeypatch):
     monkeypatch.setattr(modul.importlib.util, "find_spec", lambda name: object())
     fenster = MainWindow()
     fenster.ansichten["code"].setze_backend("real")
-    fenster.ansichten["uebungsraum"].starten.click()
+    fenster.ansichten["raumeditor"].starten.click()
     assert fenster.ansichten["code"].gewaehltes_backend() == "mujoco"
 
 
@@ -577,7 +577,7 @@ def test_der_uebungsraum_knopf_nimmt_2d_ohne_spotsim(qapp, monkeypatch):
     monkeypatch.setattr(modul.importlib.util, "find_spec", lambda name: None)
     fenster = MainWindow()
     fenster.ansichten["code"].setze_backend("real")
-    fenster.ansichten["uebungsraum"].starten.click()
+    fenster.ansichten["raumeditor"].starten.click()
     assert fenster.ansichten["code"].gewaehltes_backend() == "sim"
 
 

@@ -35,7 +35,7 @@ from spotlab.gui.views.live import LiveView
 from spotlab.gui.views.maps import MapsView
 from spotlab.gui.views.projects import ProjectsView
 from spotlab.gui.views.runs import RunsView
-from spotlab.gui.views.uebungsraum import UebungsraumView
+from spotlab.gui.raumeditor import RaumeditorView
 from spotlab.gui.views.umwelt import UmweltView
 from spotlab.gui.watcher import RunWatcher
 from spotlab.gui.workers import DoctorWorker, OutputReader
@@ -94,14 +94,14 @@ class MainWindow(QWidget):
             "laeufe": RunsView(self._palette),
             "karten": MapsView(self._palette),
             "umwelt": UmweltView(),
-            "uebungsraum": UebungsraumView(self._palette),
+            "raumeditor": RaumeditorView(self._palette),
             "anbindungen": AnbindungenView(self._palette),
             "spot": CheckupView(),
         }
         self.stapel = QStackedWidget()
         for schluessel in (
             "projekte", "code", "live", "laeufe", "karten", "umwelt",
-            "uebungsraum", "anbindungen", "spot",
+            "raumeditor", "anbindungen", "spot",
         ):
             self.stapel.addWidget(self.ansichten[schluessel])
 
@@ -138,19 +138,19 @@ class MainWindow(QWidget):
         self.ansichten["projekte"].meldung.connect(self._melde)
         self.ansichten["projekte"].arbeitsordner_geaendert.connect(self._merke_arbeitsordner)
         self.ansichten["spot"].config_gespeichert.connect(self._config_gespeichert)
-        self.ansichten["uebungsraum"].meldung.connect(self._melde)
-        self.ansichten["uebungsraum"].config_gespeichert.connect(self._config_gespeichert)
+        self.ansichten["raumeditor"].meldung.connect(self._melde)
+        self.ansichten["raumeditor"].config_gespeichert.connect(self._config_gespeichert)
         # Delegation, kein zweiter Startweg: genau EIN Lauf ist der, auf den
         # Stopp und NOT-AUS zeigen.
         # An den EDITOR, nicht an "Projekte": der Knopf soll die offene Datei
         # starten. Ueber "Projekte" haette er stillschweigend nichts getan,
         # solange dort nichts ausgewaehlt war.
-        self.ansichten["uebungsraum"].start_gewuenscht.connect(self._starte_virtuell)
-        # Der Knopf im Uebungsraum spiegelt den Laufzustand des Editors, statt
+        self.ansichten["raumeditor"].start_gewuenscht.connect(self._starte_virtuell)
+        # Der Knopf im Raumeditor spiegelt den Laufzustand des Editors, statt
         # ihn ein zweites Mal zu fuehren. Die Methode gab es schon; sie war
         # nirgends verbunden und der Knopf blieb deshalb auf „Starten" stehen.
         self.ansichten["code"].laeuft_geaendert.connect(
-            self.ansichten["uebungsraum"].setze_laeuft
+            self.ansichten["raumeditor"].setze_laeuft
         )
         self.ansichten["spot"].pruefung_angefordert.connect(self._pruefe)
         self.ansichten["karten"].meldung.connect(self._melde)
@@ -198,7 +198,7 @@ class MainWindow(QWidget):
         self.ansichten["laeufe"].setze_arbeitsordner(pfad or None)
         self.ansichten["karten"].setze_arbeitsordner(pfad or None)
         self.ansichten["umwelt"].setze_arbeitsordner(pfad or None)
-        self.ansichten["uebungsraum"].setze_arbeitsordner(pfad or None)
+        self.ansichten["raumeditor"].setze_arbeitsordner(pfad or None)
         if self.uebungsfenster is not None:
             self.uebungsfenster.setze_arbeitsordner(pfad or None)
         if self._watcher is not None:
@@ -305,7 +305,7 @@ class MainWindow(QWidget):
         """
         if self.ansichten["code"].gewaehltes_backend() not in ("sim", "mujoco"):
             return {}
-        ansicht = self.ansichten["uebungsraum"]
+        ansicht = self.ansichten["raumeditor"]
         umgebung = {ENV_RAUM: ansicht.raumname()}
         pose = ansicht.startpose()
         if pose:
@@ -313,10 +313,10 @@ class MainWindow(QWidget):
         return umgebung
 
     def _starte_virtuell(self):
-        """Der Knopf im Uebungsraum ERZWINGT das virtuelle Backend.
+        """Der Knopf im Raumeditor ERZWINGT das virtuelle Backend.
 
         Er erbt NICHT, was im Editor eingestellt ist: sonst startete ein Knopf
-        in der Ansicht „Übungsraum" den echten Spot. Gestartet wird trotzdem
+        im Raumeditor den echten Spot. Gestartet wird trotzdem
         ueber den Editor -- genau EIN Lauf ist der, auf den Stopp und NOT-AUS
         zeigen.
         """
@@ -340,12 +340,12 @@ class MainWindow(QWidget):
                 lambda: self.ansichten["live"].stoppe()
             )
             self.uebungsfenster.video_gewuenscht.connect(self._starte_film)
-        raum = self.ansichten["uebungsraum"].raum()
+        raum = self.ansichten["raumeditor"].raum()
         # Vorbelegt aus der Ansicht, damit die Zeichnung nicht leer beginnt --
         # das `verbunden`-Ereignis zieht Sekundenbruchteile spaeter nach, und
         # DAS ist die Wahrheit ueber den Raum, in dem wirklich gefahren wird.
         self.uebungsfenster.beginne(
-            raum, self.ansichten["uebungsraum"].startpose(), titel
+            raum, self.ansichten["raumeditor"].startpose(), titel
         )
         self.uebungsfenster.show()
         self.uebungsfenster.raise_()
@@ -478,7 +478,7 @@ class MainWindow(QWidget):
         self.ansichten["code"].lauf_beendet()
         # Die Ansicht zeigt danach die gefahrene Spur -- `lade()` gab es schon
         # und wurde nirgends gerufen, der Raum blieb nach jedem Lauf leer.
-        self.ansichten["uebungsraum"].lade(verzeichnis)
+        self.ansichten["raumeditor"].lade(verzeichnis)
         if self.uebungsfenster is not None:
             self.uebungsfenster.beendet(lauf=verzeichnis)
         self.ansichten["anbindungen"].lauf_laeuft(False)
