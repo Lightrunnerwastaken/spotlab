@@ -186,13 +186,14 @@ Gerät. Die Stelle wird in der Zeichnung markiert und im Protokoll vermerkt.
 
 ### Zuschauen, während es läuft
 
-Über dem Editor steht **„Wo läuft es?"** mit drei Möglichkeiten:
+Über dem Editor steht **„Wo läuft es?"** mit bis zu vier Möglichkeiten:
 
 | Wahl | Was passiert |
 |---|---|
 | `Echter Spot` | der Roboter fährt |
 | `Trockenlauf (nur Text)` | nichts bewegt sich, das Programm läuft durch — **keine Position** |
-| `Übungsraum (virtuell)` | Spot fährt durch das gewählte Zimmer |
+| `Übungsraum (virtuell)` | Spot fährt durch das gewählte Zimmer, als Zeichnung |
+| `Übungsraum 3D (MuJoCo)` | dasselbe im 3D-Zimmer mit Kameras, Tiefengitter und Kollision — nur, wenn `spotsim` installiert ist (unten) |
 
 Bei `Übungsraum (virtuell)` geht **ein eigenes Fenster** auf und zeichnet die
 Fahrt mit, während sie läuft — Weg, Blickrichtung, Anstösse, die letzte
@@ -204,6 +205,32 @@ kannst also die ganze Bibliothek ohne Roboter üben.
 
 Eigene Räume: eine TOML-Datei unter `<arbeitsordner>/raeume/<name>.toml`, gebaut
 wie die mitgelieferten unter `welt/vorlagen/`.
+
+### Übungsraum 3D
+
+`backend="mujoco"` ist derselbe Sim mit einem Körper: der Menagerie-Spot aus
+`matura-spot`, kinematisch gesetzt (Weg A — Wiedergabe statt Regelung, Spec
+`docs/superpowers/specs/2026-09-06-uebungsraum-3d-design.md`). Was dazukommt:
+
+- **Kollision an der echten Geometrie** statt an einem Kreis von 0.35 m.
+- **`spot.obstacles()` aus fünf gerenderten Tiefenbildern**, durch denselben
+  Entpacker wie am Roboter — mit Verdeckung und unbekannten Zellen: was hinter
+  dem Tisch liegt, ist *nicht frei*, weil ungesehen.
+- **`spot.tags()` mit Kamerablickfeld, Ausrichtung und Sichtstrahl** — ein Tag
+  hinter dem Tisch bleibt unsichtbar.
+- **`spot.camera("frontleft_fisheye_image")`** und die fünf Tiefenkameras.
+- Das Übungsfenster zeigt das gerenderte Zimmer über der Zeichnung.
+
+Gemessen sind Gangarten (12.08.2026) und die Antwort auf `move()` (02.09.2026:
+Anfahren, Reisetempo, Bremsen, Totzeiten); die Standhöhe folgt aus den
+gemessenen Winkeln über die Kinematik des Modells und liegt 2–8 mm neben der
+gemessenen. Annahmen stehen in `bericht()` und in `lauf.json`.
+
+Installation (einmalig; `matura-spot` liegt neben spotlab):
+
+    pip install -e .[sim]
+    pip install -e ../matura-spot
+    python ../matura-spot/scripts/fetch_menagerie.py
 
 ## Umwelt — was Spot gerade sieht
 

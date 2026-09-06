@@ -65,15 +65,15 @@ steht als 0.0/null und wird im Bericht genannt.
 - [x] Commit
 
 ### T8 Gate G11 Wiedergabe
-- [ ] `tests/test_wiedergabe.py`: Stützstelle 5 Zyklen → Weg ± 2 %, Duty ± 0.1, Eindringen ≤ 1 cm, Standhöhe berichtet
-- [ ] Commit
+- [x] `tests/test_wiedergabe.py`: Stützstelle 5 Zyklen → Weg ± 2 %, Duty ± 0.1, Eindringen ≤ 1 cm, Standhöhe berichtet
+- [x] Commit
 
 ### T9 GUI
-- [ ] Tests: `BACKENDS` enthält „mujoco" nur mit `find_spec("spotsim")`; `RunScanner` meldet `ansicht` bei neuer mtime; `Uebungsfenster.zeige_ansicht` zeigt ein Bild; Übungsraum-Knopf nimmt „mujoco" wenn vorhanden
-- [ ] `editor/view.py`, `watcher.py`, `uebungsfenster.py`, `app.py`
+- [x] Tests: `BACKENDS` enthält „mujoco" nur mit `find_spec("spotsim")`; `RunScanner` meldet `ansicht` bei neuer mtime; `Uebungsfenster.zeige_ansicht` zeigt ein Bild; Übungsraum-Knopf nimmt „mujoco" wenn vorhanden
+- [x] `editor/view.py`, `watcher.py`, `uebungsfenster.py`, `app.py`
 - [ ] Commit; Screenshot mit echtem Lauf
 
 ### T10 Abschluss
-- [ ] README (Übungsraum 3D, Installation `pip install -e .[sim]` + `pip install -e ../matura-spot`), `docs/ABNAHME.md` (A22 wirkt auch auf 3D), Vorlage `uebungsraum.py`
-- [ ] Volle Suiten beider Repos, ruff; Speicher aktualisieren
-- [ ] Commit
+- [x] README (Übungsraum 3D, Installation `pip install -e .[sim]` + `pip install -e ../matura-spot`), `docs/ABNAHME.md` (A22 wirkt auch auf 3D), Vorlage `uebungsraum.py`
+- [x] Volle Suiten beider Repos, ruff; Speicher aktualisieren
+- [x] Commit

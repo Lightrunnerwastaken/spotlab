@@ -250,6 +250,24 @@ versionsgepinntes Extra `spotlab[sim]`.
   einem. `ZYKLUS_BAND` sortiert nach dem Median aus, und die Zahl der verworfenen
   Zyklen steht in der Herkunft — sonst sähe eine gesäuberte Kennlinie sauberer
   aus, als die Messung war.
+- **Genau eine Datei unter `src/spotlab/` importiert `spotsim`: `backends/mujoco.py`.**
+  Die Kopplung an matura-spot ist das Extra `[sim]`; ein zweiter Import wäre der Anfang
+  einer Kopplung, die niemand entschieden hat, und fiele erst auf, wenn ein Laptop ohne
+  matura-spot beim Start stirbt. Die GUI bleibt frei von `mujoco` und `spotsim`; sie liest
+  das gerenderte Zimmer als `ansicht.jpg` aus dem Lauf-Verzeichnis
+  (`tests/test_naht_spotsim.py`). `MujocoBackend` ERBT von `SimBackend` — Kommandos,
+  Ziele, Gangphase, Antwort und Aufzeichnung gibt es genau einmal.
+- **`unknown_cells` im LocalGrid ist ein BYTE je Zelle, x läuft am schnellsten.** Gemessen
+  an einer echten `LocalGridResponse` vom 12.08.2026 (`tests/daten/gitter_real_20260812`);
+  bis zum 06.09.2026 entpackte `gitter_aus` bitweise, und `is_free()` hielt am echten Spot
+  Unbekanntes für frei. Das Gitter des echten Dienstes ist an den WELTACHSEN ausgerichtet;
+  `ObstacleGrid` rechnet in Weltkoordinaten — `is_free(0.5, 0.0)` ist ein Weltpunkt, nicht
+  „einen halben Meter voraus".
+- **Die Körperantwort auf `move()` ist gemessen, aber nur bei 1 m und 90°**
+  (`kalibrierung/antwort.py`, kommandierte Läufe vom 02.09.2026). Andere Ziele fahren
+  dasselbe Trapez und zählen in `bericht()` als ausserhalb der Messung. Kombinierte
+  Bewegung wurde nie gemessen. Der Deckel kommt aus `vel_limit` im Kommando — demselben
+  Feld, das der echte Roboter liest.
 - **`errors/` darf nichts aus `backends/` importieren.** `backends/base.py` importiert
   `UnsupportedCapability` aus `errors`; die Gegenrichtung schliesst den Kreis, sobald
   `backends.base` zuerst geladen wird. Die Position der Importzeile hilft dagegen nicht.
@@ -368,6 +386,13 @@ versionsgepinntes Extra `spotlab[sim]`.
   steht an genau EINER Stelle: `src/spotlab/__init__.py`.
 
 ## Umsetzungsstand
+
+**Stufe 11 (06.09.2026): Übungsraum 3D** — `backend="mujoco"`, der 2D-Sim mit dem
+Menagerie-Körper aus matura-spot (Weg A, Wiedergabe statt Regelung; Spec
+`docs/superpowers/specs/2026-09-06-uebungsraum-3d-design.md`). Gates: G10 Gitterformat
+(matura-spot, gegen eine echte Aufzeichnung — fand zwei Formatfehler), G11 Wiedergabe
+gegen die Messung (`tests/test_wiedergabe.py`). Offen in matura-spot: die Gitterachsen
+(real weltfest, Sim körperfest — RESEARCH DECISION).
 
 Fundament (1+2), GUI (3), GraphNav (4), der eingebaute Editor (5), die Anbindung fremder
 Projekte samt MCP-Server (6), die Kalibrier-Infrastruktur (7) und der Beobachter-Modus (8)
