@@ -20,6 +20,9 @@ class Palette:
     ok: str
     warnung: str
     gefahr: str
+    # Elemente auf einer ANDEREN Ebene des Raumeditors: sichtbar, aber blass,
+    # damit man beim Setzen einer Treppe sieht, wo sie oben ankommt.
+    blass: str
     # Syntaxhervorhebung. Angewendet werden sie ueber QTextCharFormat, nicht
     # ueber das Stylesheet — deshalb tauchen sie unten nicht noch einmal auf.
     schluesselwort: str
@@ -39,6 +42,7 @@ DUNKEL = Palette(
     ok="#3fb950",
     warnung="#d29922",
     gefahr="#e5484d",
+    blass="#3a3f4a",
     schluesselwort="#c678dd",
     zeichenkette="#98c379",
     kommentar="#7f848e",
@@ -56,6 +60,7 @@ HELL = Palette(
     ok="#1a7f37",
     warnung="#9a6700",
     gefahr="#d1372f",
+    blass="#d0d4da",
     schluesselwort="#a626a4",
     zeichenkette="#2a7d3f",
     kommentar="#8a9099",

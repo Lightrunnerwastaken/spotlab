@@ -73,3 +73,40 @@ def test_farb_ids_sind_umkehrbar():
         r, gg, b = g.farbe_fuer(index)
         assert g.index_aus(round(r * 255), round(gg * 255), round(b * 255)) == index
     assert g.index_aus(0, 0, 0) == 0
+
+
+# ------------------------------------------------------------- Hoehe (Stufe 13)
+
+
+def test_ein_kasten_mit_nick_hebt_bei_negativem_nick_sein_plus_x_ende():
+    daten = g.kasten(0.0, 0.0, 0.0, 1.0, 0.5, 0.1, pitch_grad=-30.0)
+    xs, zs = daten[0::6], daten[2::6]
+    vorne = [z for x, z in zip(xs, zs) if x > 0.5]
+    hinten = [z for x, z in zip(xs, zs) if x < -0.5]
+    assert min(vorne) > max(hinten)
+    normalen = {tuple(round(v, 6) for v in daten[i + 3:i + 6]) for i in range(0, len(daten), 6)}
+    assert len(normalen) == 6
+
+
+def test_boeden_kommen_als_dieselben_kaesten_wie_in_mujoco():
+    from spotlab.welt.hoehe import kaesten_fuer
+    from spotlab.welt.raum import Boden, Wand
+
+    raum = Raum(name="H", beschreibung="", start=(5.0, 0.0, 0.0), waende=(Wand(0, 3, 6, 3, z=1.0),),
+                boeden=(Boden("T", 3, 0, 2, 2, anstieg=1.0, stufen=5), Boden("P", 5, 0, 2, 2, z=1.0)))
+    kaesten = g.kaesten_aus_raum(raum, frozenset())
+    schluessel = [s for s, _ in kaesten]
+    assert schluessel.count(("boden", 0)) == 5 and schluessel.count(("boden", 1)) == 1
+    wand = next(v for s, v in kaesten if s == ("wand", 0))
+    assert min(wand[2::6]) == pytest.approx(1.0) and max(wand[2::6]) == pytest.approx(2.0)
+    spot = next(v for s, v in kaesten if s == ("start",))
+    assert min(spot[2::6]) == pytest.approx(1.4) and max(spot[2::6]) == pytest.approx(1.6)   # auf dem Podest
+    erwartet = kaesten_fuer(raum.boeden[1], 0.0)[0]
+    podest = next(v for s, v in kaesten if s == ("boden", 1))
+    assert (min(podest[2::6]), max(podest[2::6])) == (pytest.approx(0.0), pytest.approx(1.0))
+    assert erwartet[3] == pytest.approx(0.5)
+
+
+def test_bodenraster_liegt_auf_der_tiefsten_ebene():
+    linien = g.bodenraster((0.0, 0.0, 2.0, 1.0), schritt=1.0, z=-1.0)
+    assert set(linien[2::3]) == {-1.0}

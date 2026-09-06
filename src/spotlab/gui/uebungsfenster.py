@@ -72,8 +72,12 @@ class Uebungsfenster(QWidget):
         self.video_oeffnen.hide()
         self.video_oeffnen.clicked.connect(self._video_oeffnen)
 
+        # Hoehe und Neigung des Laufs -- leer, solange der Lauf nichts meldet.
+        self.hoehe = QLabel("")
+        self.hoehe.setObjectName("hoehe")
         unten = QHBoxLayout()
         unten.addWidget(self.zeile, 1)
+        unten.addWidget(self.hoehe)
         unten.addWidget(self.video_oeffnen)
         unten.addWidget(self.video)
         unten.addWidget(self.stopp)
@@ -96,6 +100,7 @@ class Uebungsfenster(QWidget):
         self.plot.setze_start(start if start else (raum.start if raum else None))
         self.kopf.setText(titel or "Läuft…")
         self.zeile.setText("")
+        self.hoehe.setText("")
         self.stopp.setEnabled(True)
         self.bild.hide()                   # das Bild des letzten Laufs gehoert nicht zum neuen
         self._lauf = None
@@ -137,8 +142,16 @@ class Uebungsfenster(QWidget):
 
     # ---------------------------------------------------------------- Lauf
 
-    def zeige_pose(self, x, y, grad=None):
+    def zeige_pose(self, x, y, grad=None, z=None, nick=None):
+        """`z` ist die Koerperhoehe aus dem Zustand, `nick` in Grad (Nase hoch negativ)."""
         self.plot.haenge_pose_an(x, y, grad)
+        if z is None:
+            self.hoehe.setText("")
+        else:
+            text = f"Höhe {z:.2f} m"
+            if nick is not None:
+                text += f" · Neigung {nick:.0f}°"
+            self.hoehe.setText(text)
 
     def zeige_anstoss(self, x, y):
         self.plot.setze_anstoesse([*self.plot.anstoesse(), (x, y)])

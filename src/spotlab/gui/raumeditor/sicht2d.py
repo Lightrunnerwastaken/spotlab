@@ -52,15 +52,19 @@ class Sicht2D(QWidget):
         self._spur = []
         self._anstoesse = []
         self._pauspapier = []
+        self._ebene = None
+        self._klippen = []
         self.skala = 60.0             # Pixel je Meter
         self._ursprung = (RAND, 0.0)  # Pixel des Weltpunkts (0, 0); y wird gespiegelt
         self._schwenk = None
 
     # ------------------------------------------------------------ Fuellen
 
-    def zeige(self, raum, auswahl=frozenset(), griffe=(), rahmen=None, kette=None):
+    def zeige(self, raum, auswahl=frozenset(), griffe=(), rahmen=None, kette=None,
+              ebene=None, klippen_=()):
         self._raum, self._auswahl = raum, frozenset(auswahl)
         self._griffe, self._rahmen, self._kette = list(griffe), rahmen, kette
+        self._ebene, self._klippen = ebene, list(klippen_)
         self.update()
 
     def setze_spur(self, punkte):
@@ -213,7 +217,8 @@ class Sicht2D(QWidget):
             for x, y in self._pauspapier:
                 maler.drawPoint(QPointF(*self.meter_zu_schirm(x, y)))
 
-        zeichne_raum(maler, self._raum, self.meter_zu_schirm, self.skala, self._p, self._auswahl)
+        zeichne_raum(maler, self._raum, self.meter_zu_schirm, self.skala, self._p, self._auswahl,
+                     ebene=self._ebene, klippen_=self._klippen)
         zeichne_spur(maler, self._spur, self.meter_zu_schirm, self._p)
         zeichne_anstoesse(maler, self._anstoesse, self.meter_zu_schirm, self._p)
         sx, sy, sgrad = self._raum.start

@@ -70,3 +70,9 @@ def test_zeichnen_mit_allem_stuerzt_nicht(qapp):
     sicht.setze_pauspapier([(0.1 * i, 0.2) for i in range(50)])
     sicht.grab()          # rendert offscreen
     assert sicht.toleranz_m() > 0
+
+
+def test_ebene_und_klippen_zeichnen_stuerzt_nicht(qapp):
+    sicht = _sicht()
+    sicht.zeige(RAUM, ebene=1.2, klippen_=[(0.0, 0.0, 1.0, 0.0)])
+    sicht.grab()

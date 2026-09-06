@@ -474,10 +474,15 @@ class MainWindow(QWidget):
         self.ansichten["live"].zeige_zustand(satz)
         if self.uebungsfenster is None or not self.uebungsfenster.isVisible():
             return
-        pose = (satz.get("daten") or {}).get("pose")
+        daten = satz.get("daten") or {}
+        pose = daten.get("pose")
         if pose and len(pose) >= 3:
-            # `zustand.jsonl` fuehrt yaw im BOGENMASS; gezeichnet wird in Grad.
-            self.uebungsfenster.zeige_pose(pose[0], pose[1], math.degrees(pose[2]))
+            # `zustand.jsonl` fuehrt yaw und Nick im BOGENMASS; gezeichnet wird in Grad.
+            nick = daten.get("pitch")
+            self.uebungsfenster.zeige_pose(
+                pose[0], pose[1], math.degrees(pose[2]), z=daten.get("z"),
+                nick=math.degrees(nick) if nick is not None else None,
+            )
 
     def _lauf_beendet(self, verzeichnis):
         if self._aktiver_lauf is not None and Path(verzeichnis) != self._aktiver_lauf:

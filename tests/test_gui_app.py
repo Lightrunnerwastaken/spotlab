@@ -656,3 +656,12 @@ def test_ein_lauf_ohne_raum_zeigt_keine_waende(qapp, tmp_path):
     fenster._ereignis({"art": "verbunden", "daten": {"backend": "sim", "raum": None}})
     assert fenster.uebungsfenster.plot.raum() is None
     assert "keinem Raum" in fenster.uebungsfenster.zeile.text()
+
+
+def test_hoehe_und_nick_des_laufs_erreichen_das_uebungsfenster(qapp, tmp_path):
+    fenster = MainWindow()
+    fenster.ansichten["raumeditor"].waehle_raum("moebliert")
+    fenster.ansichten["code"].setze_backend("sim")
+    fenster._lauf_aus_code(_FakeProzess(), str(tmp_path / "x.py"))
+    fenster._zustand({"t": 1.0, "daten": {"pose": [1.0, 2.0, 0.0], "z": 1.72, "pitch": -0.2094}})
+    assert "1.72 m" in fenster.uebungsfenster.hoehe.text() and "-12°" in fenster.uebungsfenster.hoehe.text()

@@ -25,17 +25,28 @@ _FLAECHEN = (
 )
 
 
-def kasten(x, y, z, hx, hy, hz, yaw_grad=0.0):
-    """36 Vertices (px, py, pz, nx, ny, nz) eines um die Hochachse gedrehten Kastens."""
+def _drehe(vx, vy, vz, c, s, cp, sp):
+    """Erst Nick um die eigene y-Achse (Rechte-Hand-Regel), dann Gieren um z."""
+    # Nick: x' = x cos p + z sin p, z' = -x sin p + z cos p
+    px, pz = vx * cp + vz * sp, -vx * sp + vz * cp
+    return px * c - vy * s, px * s + vy * c, pz
+
+
+def kasten(x, y, z, hx, hy, hz, yaw_grad=0.0, pitch_grad=0.0):
+    """36 Vertices (px, py, pz, nx, ny, nz) eines gedrehten und geneigten Kastens.
+
+    `pitch_grad` nach der Rechte-Hand-Regel um y: NEGATIV hebt das +x-Ende --
+    dieselbe Konvention wie `hoehe.kaesten_fuer`, MuJoCo und `State.pitch`.
+    """
     c, s = math.cos(math.radians(yaw_grad)), math.sin(math.radians(yaw_grad))
+    cp, sp = math.cos(math.radians(pitch_grad)), math.sin(math.radians(pitch_grad))
     daten = []
     for normale, ecken in _FLAECHEN:
-        nx, ny = normale[0] * c - normale[1] * s, normale[0] * s + normale[1] * c
-        n = (nx, ny, float(normale[2]))
+        n = _drehe(float(normale[0]), float(normale[1]), float(normale[2]), c, s, cp, sp)
         punkte = []
         for ex, ey, ez in ecken:
-            lx, ly, lz = ex * hx, ey * hy, ez * hz
-            punkte.append((x + lx * c - ly * s, y + lx * s + ly * c, z + lz))
+            dx, dy, dz = _drehe(ex * hx, ey * hy, ez * hz, c, s, cp, sp)
+            punkte.append((x + dx, y + dy, z + dz))
         for a, b_, d in ((0, 1, 2), (0, 2, 3)):
             for p in (punkte[a], punkte[b_], punkte[d]):
                 daten.extend(p)
@@ -44,47 +55,58 @@ def kasten(x, y, z, hx, hy, hz, yaw_grad=0.0):
 
 
 def kaesten_aus_raum(raum, auswahl):
-    """[(schluessel, vertices)] fuer Waende, Bloecke, Tags und den Spot am Start."""
+    """[(schluessel, vertices)] fuer Boeden, Waende, Bloecke, Tags und den Spot am Start.
+
+    Boeden kommen aus `hoehe.kaesten_fuer` -- derselben Zerlegung wie die
+    MuJoCo-Welt; ein Boden hat mehrere Kaesten, alle mit seinem Schluessel.
+    """
+    from spotlab.welt.hoehe import boden_bei, boden_z, kaesten_fuer
+
     kaesten = []
+    tiefster = boden_z(raum)
+    for i, boden in enumerate(raum.boeden):
+        for _name, x, y, z, hx, hy, hz, yaw, pitch in kaesten_fuer(boden, tiefster):
+            kaesten.append((("boden", i), kasten(x, y, z, hx, hy, hz, yaw, pitch)))
     for i, wand in enumerate(raum.waende):
         if wand.laenge <= 0:
             continue
         mx, my = wand.mitte
         kaesten.append((("wand", i), kasten(
-            mx, my, raum.wand_hoehe / 2, wand.laenge / 2, raum.wand_dicke / 2,
+            mx, my, wand.z + raum.wand_hoehe / 2, wand.laenge / 2, raum.wand_dicke / 2,
             raum.wand_hoehe / 2, wand.winkel)))
     for i, b in enumerate(raum.bloecke):
         kaesten.append((("block", i), kasten(
-            b.x, b.y, b.hoehe / 2, b.breite / 2, b.tiefe / 2, b.hoehe / 2, b.drehung)))
+            b.x, b.y, b.z + b.hoehe / 2, b.breite / 2, b.tiefe / 2, b.hoehe / 2, b.drehung)))
     for i, t in enumerate(raum.tags):
         kaesten.append((("tag", i), kasten(
-            t.x, t.y, t.hoehe, TAG_DICKE / 2, TAG_KANTE / 2, TAG_KANTE / 2, t.grad)))
+            t.x, t.y, t.z + t.hoehe, TAG_DICKE / 2, TAG_KANTE / 2, TAG_KANTE / 2, t.grad)))
     sx, sy, sgrad = raum.start
+    sz, _ = boden_bei(raum, sx, sy)
     kaesten.append((("start",), kasten(
-        sx, sy, SPOT_OBEN - SPOT_HOEHE / 2, SPOT_LAENGE / 2, SPOT_BREITE / 2,
+        sx, sy, sz + SPOT_OBEN - SPOT_HOEHE / 2, SPOT_LAENGE / 2, SPOT_BREITE / 2,
         SPOT_HOEHE / 2, sgrad)))
     return kaesten
 
 
-def bodenraster(huelle_, schritt=1.0):
-    """Linien (x, y, z) am Boden ueber die Huelle, ganze Meter."""
+def bodenraster(huelle_, schritt=1.0, z=0.0):
+    """Linien (x, y, z) am Boden ueber die Huelle, ganze Meter -- auf der Hoehe `z`."""
     x0, y0, x1, y1 = huelle_
     linien = []
     k = math.floor(x0 / schritt)
     while k * schritt <= x1 + 1e-9:
-        linien += [k * schritt, y0, 0.0, k * schritt, y1, 0.0]
+        linien += [k * schritt, y0, z, k * schritt, y1, z]
         k += 1
     k = math.floor(y0 / schritt)
     while k * schritt <= y1 + 1e-9:
-        linien += [x0, k * schritt, 0.0, x1, k * schritt, 0.0]
+        linien += [x0, k * schritt, z, x1, k * schritt, z]
         k += 1
     return linien
 
 
-def spot_pfeil(start):
+def spot_pfeil(start, z=0.0):
     x, y, grad = start
-    return [x, y, 0.3,
-            x + 0.6 * math.cos(math.radians(grad)), y + 0.6 * math.sin(math.radians(grad)), 0.3]
+    return [x, y, z + 0.3,
+            x + 0.6 * math.cos(math.radians(grad)), y + 0.6 * math.sin(math.radians(grad)), z + 0.3]
 
 
 def farbe_fuer(index):

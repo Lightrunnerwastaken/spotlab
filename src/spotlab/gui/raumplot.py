@@ -41,7 +41,10 @@ class RaumPlot(QWidget):
     # ------------------------------------------------------------- Fuellen
 
     def setze_raum(self, raum):
+        from spotlab.welt.kollision import klippen_von
+
         self._raum = raum
+        self._klippen = klippen_von(raum) if raum is not None and raum.boeden else []
         self.update()
 
     def setze_spur(self, punkte):
@@ -132,7 +135,8 @@ class RaumPlot(QWidget):
             return
 
         skala, _links, _unten = self._massstab()
-        zeichne_raum(maler, self._raum, self.meter_zu_schirm, skala, self._p)
+        zeichne_raum(maler, self._raum, self.meter_zu_schirm, skala, self._p,
+                     klippen_=getattr(self, "_klippen", ()))
         zeichne_spur(maler, self._spur, self.meter_zu_schirm, self._p)
         zeichne_anstoesse(maler, self._anstoesse, self.meter_zu_schirm, self._p)
 

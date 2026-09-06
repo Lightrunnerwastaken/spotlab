@@ -19,6 +19,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QButtonGroup,
+    QComboBox,
     QDoubleSpinBox,
     QFormLayout,
     QHBoxLayout,
@@ -51,7 +52,8 @@ from spotlab.welt.raum import (
 START_TEXT = "▶ Offene Datei starten"
 STOPP_TEXT = "■ Stopp"
 WERKZEUGE = (("auswahl", "Auswählen"), ("wand", "Wand"), ("block", "Block"),
-             ("tag", "Tag"), ("start", "Start"))
+             ("boden", "Boden"), ("tag", "Tag"), ("start", "Start"))
+ALLE_EBENEN = "alle Ebenen"
 NEUER_RAUM = Raum(
     name="Neuer Raum", beschreibung="", start=(1.0, 1.0, 0.0),
     waende=((0, 0, 6, 0), (6, 0, 6, 4), (6, 4, 0, 4), (0, 4, 0, 0)),
@@ -82,6 +84,9 @@ def _beschrifte(raum, schluessel):
         return f"Wand {schluessel[1] + 1}"
     if art == "block":
         return f"{raum.bloecke[schluessel[1]].name} (Block)"
+    if art == "boden":
+        boden = raum.boeden[schluessel[1]]
+        return f"{boden.name} ({ {'podest': 'Podest', 'rampe': 'Rampe', 'treppe': 'Treppe'}[boden.art] })"
     if art == "tag":
         return f"Tag {raum.tags[schluessel[1]].id}"
     return "Start"
@@ -135,8 +140,17 @@ class RaumeditorView(QWidget):
         self.umschalter.setToolTip("3D-Sicht (Tab): rechte Maustaste dreht, mittlere schwenkt, "
                                    "Rad zoomt, Home rahmt")
         self.umschalter.toggled.connect(self._umschalten)
+        # Die Ebene der 2D-Sicht: abgeleitet aus den Bodenhoehen des Raums
+        # (Entscheidung des Autors: keine benannten Stockwerke).
+        self.ebenenwahl = QComboBox()
+        self.ebenenwahl.setObjectName("ebenenwahl")
+        self.ebenenwahl.setToolTip("Ebene der 2D-Sicht: andere Ebenen erscheinen blass; "
+                                   "neue Elemente landen auf der gewählten Ebene")
+        self._ebenen_sperre = False
+        self.ebenenwahl.currentIndexChanged.connect(self._ebene_gewaehlt)
         kopf = QHBoxLayout()
         kopf.addWidget(self.titel, 1)
+        kopf.addWidget(self.ebenenwahl)
         kopf.addWidget(self.umschalter)
         self.sicht = Sicht2D(palette)
         self.sicht.gedrueckt.connect(self._gedrueckt)
@@ -444,6 +458,34 @@ class RaumeditorView(QWidget):
         )
         self._zeige()
 
+    def _ebene_gewaehlt(self, index):
+        if self._ebenen_sperre or index < 0:
+            return
+        self.steuerung.setze_ebene(self.ebenenwahl.itemData(index))
+        self._zeige(nur_sicht=True)
+
+    def _fuelle_ebenen(self):
+        from spotlab.welt.hoehe import ebenen
+
+        st = self.steuerung
+        self._ebenen_sperre = True
+        try:
+            self.ebenenwahl.clear()
+            self.ebenenwahl.addItem(ALLE_EBENEN, None)
+            for hoehe in ebenen(st.raum):
+                self.ebenenwahl.addItem(f"{hoehe:.2f} m", hoehe)
+            gewaehlt = 0
+            if st.ebene is not None:
+                for i in range(1, self.ebenenwahl.count()):
+                    if abs(self.ebenenwahl.itemData(i) - st.ebene) < 1e-6:
+                        gewaehlt = i
+            if gewaehlt == 0:
+                st.setze_ebene(None)            # die Ebene gibt es nicht mehr
+            self.ebenenwahl.setCurrentIndex(gewaehlt)
+            self.ebenenwahl.setVisible(self.ebenenwahl.count() > 2)
+        finally:
+            self._ebenen_sperre = False
+
     def _feld_geaendert(self, schluessel, feld, widget):
         wert = widget.text() if isinstance(widget, QLineEdit) else widget.value()
         try:
@@ -455,11 +497,16 @@ class RaumeditorView(QWidget):
     # ---------------------------------------------------------- Anzeige
 
     def _zeige(self, nur_sicht=False):
+        from spotlab.welt.kollision import klippen_von
+
         st = self.steuerung
-        self.sicht.zeige(st.raum, st.auswahl, st.griffe(), st.rahmen, st.kette)
+        klippen_ = klippen_von(st.raum) if st.raum is not None and st.raum.boeden else []
+        self.sicht.zeige(st.raum, st.auswahl, st.griffe(), st.rahmen, st.kette,
+                         ebene=st.ebene, klippen_=klippen_)
         self.sicht3d.zeige(st.raum, st.auswahl)
         if nur_sicht or st.raum is None:
             return
+        self._fuelle_ebenen()
         self._fuelle_liste()
         self._fuelle_eigenschaften()
         hinweise = st.hinweise()
@@ -497,7 +544,7 @@ class RaumeditorView(QWidget):
                 wert = getattr(e, feld)
             if feld in TEXT_FELDER:
                 widget = QLineEdit(str(wert))
-            elif feld == "id":
+            elif feld in ("id", "stufen"):
                 widget = QSpinBox()
                 widget.setRange(0, 9999)
                 widget.setValue(int(wert))

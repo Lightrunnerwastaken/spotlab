@@ -214,3 +214,47 @@ def test_eine_unveraenderte_vorlage_ist_bereit(qapp):
     ansicht = RaumeditorView(DUNKEL)
     ansicht.waehle_raum("moebliert")
     assert ansicht.bereit_fuer_lauf() is None and ansicht.raumname() == "moebliert"
+
+
+# ------------------------------------------------------------- Hoehe (Stufe 13)
+
+
+def _raum_mit_podest():
+    from spotlab.welt.raum import Boden, Raum
+
+    return Raum(name="H", beschreibung="", start=(1, 1, 0), waende=((0, 0, 6, 0),),
+                boeden=(Boden("P", 4, 2, 2, 2, z=1.2),))
+
+
+def test_die_ebenenwahl_listet_die_boeden_und_setzt_z(qapp):
+    ansicht = RaumeditorView(DUNKEL)
+    ansicht.steuerung.setze_raum(_raum_mit_podest())
+    ansicht._zeige()
+    eintraege = [ansicht.ebenenwahl.itemText(i) for i in range(ansicht.ebenenwahl.count())]
+    assert eintraege == ["alle Ebenen", "0.00 m", "1.20 m"]
+    ansicht.ebenenwahl.setCurrentIndex(2)
+    assert ansicht.steuerung.ebene == 1.2
+    assert ansicht.eigenschaften.findChild(object, "werkzeug_boden") is None      # der Knopf sitzt links
+    assert ansicht.findChild(object, "werkzeug_boden") is not None
+    st = ansicht.steuerung
+    st.setze_werkzeug("block")
+    st.druecke(1.0, 1.0)
+    st.bewege(2.0, 2.0)
+    st.lasse_los(2.0, 2.0)
+    assert ansicht.raum().bloecke[-1].z == 1.2
+    ansicht._zeige()
+    assert ansicht.ebenenwahl.currentIndex() == 2 and st.ebene == 1.2           # die Wahl ueberlebt das Neuzeichnen
+
+
+def test_die_felder_eines_bodens(qapp):
+    ansicht = RaumeditorView(DUNKEL)
+    ansicht.steuerung.setze_raum(_raum_mit_podest())
+    ansicht.steuerung.auswahl = frozenset({("boden", 0)})
+    ansicht._zeige()
+    for name in ("feld_z", "feld_anstieg", "feld_stufen", "feld_drehung"):
+        assert ansicht.eigenschaften.findChild(object, name) is not None, name
+    feld = ansicht.eigenschaften.findChild(object, "feld_stufen")
+    feld.setValue(6)
+    feld.editingFinished.emit()
+    assert ansicht.raum().boeden[0].stufen == 6
+    assert any("(Podest)" in ansicht.liste.item(i).text() for i in range(ansicht.liste.count()))

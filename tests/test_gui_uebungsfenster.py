@@ -143,3 +143,12 @@ def test_ohne_raum_wird_die_zeichnung_geleert_und_gesagt_warum(qapp):
     fenster.setze_raum_name(None)
     assert fenster.plot.raum() is None
     assert "keinem Raum" in fenster.zeile.text()
+
+
+def test_hoehe_und_neigung_stehen_im_fenster(qapp):
+    fenster = Uebungsfenster(DUNKEL)
+    fenster.beginne(raum_laden("durchgang"), None, "x.py")
+    fenster.zeige_pose(1.0, 2.0, 0.0, z=1.72, nick=-12.0)
+    assert "1.72 m" in fenster.hoehe.text() and "-12°" in fenster.hoehe.text()
+    fenster.zeige_pose(1.5, 2.0, 0.0)                                  # ohne Hoehe: nichts erfinden
+    assert fenster.hoehe.text() == ""

@@ -213,10 +213,13 @@ class Sicht3D(QOpenGLWidget):
             for schluessel, vertices in geo.kaesten_aus_raum(self._raum, self._auswahl):
                 self._geometrie.append((schluessel, len(daten) // 6, len(vertices) // 6))
                 daten.extend(vertices)
-            raster = geo.bodenraster(huelle(self._raum))
+            from spotlab.welt.hoehe import boden_bei, boden_z
+
+            raster = geo.bodenraster(huelle(self._raum), z=boden_z(self._raum))
             self._linien.append((self._p.rand, len(daten) // 6, len(raster) // 3, GL.GL_LINES))
             daten.extend(self._mit_normale(raster))
-            pfeil = geo.spot_pfeil(self._raum.start)
+            start_z, _ = boden_bei(self._raum, self._raum.start[0], self._raum.start[1])
+            pfeil = geo.spot_pfeil(self._raum.start, z=start_z)
             self._linien.append((self._p.funktion, len(daten) // 6, 2, GL.GL_LINES))
             daten.extend(self._mit_normale(pfeil))
         if len(self._spur) > 1:
@@ -263,6 +266,8 @@ class Sicht3D(QOpenGLWidget):
             return self._p.funktion
         if art == "wand":
             return self._p.text
+        if art == "boden":
+            return self._p.rand
         return self._p.flaeche
 
     def _zeichne_szene(self, ids=False):
