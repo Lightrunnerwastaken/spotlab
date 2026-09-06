@@ -120,6 +120,14 @@ class Spot:
         """
         return world.tags(self.backend, self.recorder, id=id)
 
+    def stairs(self):
+        """Die Treppen in Sicht, nächste zuerst: Richtung („auf"/„ab"), Stufen, Achse.
+
+        `spot.move(turn=treppe.axis_bearing)` stellt die Nase bergauf — und so
+        geht es: vorwärts hoch, rückwärts runter.
+        """
+        return world.stairs(self.backend, self.recorder)
+
     def obstacles(self):
         """Das Hindernisgitter: wo ist Platz, wo nicht."""
         return world.obstacles(self.backend, self.recorder)

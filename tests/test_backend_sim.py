@@ -904,3 +904,29 @@ def test_gitter_und_tags_kennen_die_hoehe(uhr):
     assert unten.world_objects() == []                            # der Tag haengt 1.8 m ueber den Kameras
     gitter = unten.local_grid()
     assert gitter.free_distance(3.5, 0.0, 0.0) < 0.9              # die Podestkante bei x = 4 ist belegt
+
+
+def test_stairs_nennt_treppen_mit_richtung_stufen_und_achse(uhr):
+    from spotlab.backends.base import Capability
+    from spotlab.welt.raum import Boden, Raum, Wand
+
+    raum = Raum(name="H", beschreibung="", start=(1, 0, 0),
+                boeden=(Boden("T", 3, 0, 2, 2, anstieg=1.0, stufen=5, drehung=0.0),      # x 2..4
+                        Boden("P", 5, 0, 2, 2, z=1.0),
+                        Boden("Hinten", 1, 6, 2, 1, anstieg=0.5, stufen=3, drehung=90.0)),
+                waende=(Wand(0, 4, 4, 4),))                                            # verdeckt "Hinten"
+    sim = SimBackend(jetzt=uhr, raum=raum, start=(1.0, 0.0, 0.0))
+    assert sim.capabilities() & Capability.STAIRS
+    treppen = sim.stairs()
+    assert [t.steps for t in treppen] == [5]                                           # die hinter der Wand fehlt
+    t = treppen[0]
+    assert t.kind == "staircase" and t.direction == "auf"
+    assert t.distance == pytest.approx(1.0) and t.bearing == pytest.approx(0.0)
+    assert t.rise_m == pytest.approx(1.0) and t.axis_bearing == pytest.approx(0.0)
+    oben = SimBackend(jetzt=uhr, raum=raum, start=(4.5, 0.0, 180.0))
+    t = oben.stairs()[0]
+    assert t.direction == "ab" and t.distance == pytest.approx(0.5)
+    assert abs(abs(t.axis_bearing) - 180.0) < 1e-6                                    # die Achse zeigt hinter ihn
+    weit = SimBackend(jetzt=uhr, raum=raum, start=(-2.0, 0.0, 0.0))
+    assert weit.stairs() == []                                                          # 4 m: ausser Reichweite
+    assert SimBackend(jetzt=uhr).stairs() == []                                         # ohne Raum

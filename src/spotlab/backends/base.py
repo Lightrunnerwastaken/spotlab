@@ -31,6 +31,7 @@ class Capability(enum.Flag):
     GRAPH_NAV = enum.auto()
     WORLD_OBJECTS = enum.auto()
     LOCAL_GRID = enum.auto()
+    STAIRS = enum.auto()          # Treppen nennen: Lage, Richtung, Stufen (Stufe 13)
 
     CAMERAS = DEPTH_CAMERAS | GRAY_CAMERAS | COLOR_CAMERAS
 
@@ -91,6 +92,23 @@ class Tag(WorldObject):
 
     id: int
     filtered: bool           # geglaettete Pose (True) oder rohe Einzelmessung
+
+
+@dataclass(frozen=True)
+class Staircase(WorldObject):
+    """Eine Treppe -- ein WorldObject mit Richtung, Stufen und Achse.
+
+    `bearing`/`distance` zeigen zur naechsten Kante (Fuss oder Kopf);
+    `direction` sagt, wo der Roboter steht: "auf" am Fuss, "ab" am Kopf.
+    `axis_bearing` ist die Peilung der Bergauf-Achse, links positiv --
+    `spot.move(turn=treppe.axis_bearing)` stellt die Nase bergauf, und so
+    (vorwaerts hoch, rueckwaerts runter) nimmt Spot jede Treppe.
+    """
+
+    direction: str           # "auf" | "ab"
+    steps: int
+    rise_m: float            # Gesamtanstieg, positiv
+    axis_bearing: float      # Grad, links positiv, im Koerper-Frame
 
 
 # Bis hierhin reicht der KOERPERSCHATTEN: die Frontkameras sind 30 Grad nach
@@ -204,6 +222,7 @@ class SpotBackend(Protocol):
     def image_sources(self) -> list: ...
     def images(self, sources) -> list: ...
     def world_objects(self, kinds=None) -> list: ...
+    def stairs(self) -> list: ...
     def local_grid(self): ...
     def power_on(self) -> None: ...
     def power_off(self, safe=True) -> None: ...

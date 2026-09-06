@@ -9,10 +9,13 @@ Hier fällt die Protobuf-Grenze: nach oben gehen ausschliesslich die Datenklasse
 aus `backends/base.py`.
 """
 
+import math
+
 import numpy as np
 from bosdyn.client import frame_helpers as fh
+from bosdyn.client.math_helpers import SE3Pose
 
-from spotlab.backends.base import ObstacleGrid, Tag, WorldObject, richtung
+from spotlab.backends.base import ObstacleGrid, Staircase, Tag, WorldObject, richtung
 
 GITTERTYP = "obstacle_distance"
 
@@ -48,6 +51,39 @@ def _pose(schnappschuss, rahmen, bezug):
         return None
 
 
+def _treppe_aus(obj, jetzt):
+    """Eine `Staircase` aus `staircase_properties` -- oder None ohne Rahmen.
+
+    Der Treppenrahmen der Firmware sitzt am Fuss der Treppe, x zeigt bergauf
+    (`stairs.proto`). Fuss und Kopf werden in den Koerper geholt; die naehere
+    Kante gibt Peilung und Abstand, die Lage des Roboters die Richtung.
+    """
+    treppe = obj.staircase_properties.staircase
+    rahmen = treppe.stair_tform.frame_name
+    koerper_tform_rahmen = _pose(obj.transforms_snapshot, rahmen, fh.BODY_FRAME_NAME) if rahmen else None
+    if koerper_tform_rahmen is None:
+        return None
+    koerper_tform_treppe = koerper_tform_rahmen * SE3Pose.from_proto(treppe.stair_tform.frame_tform_stairs)
+    stufen = int(treppe.number_of_steps)
+    laenge = stufen * float(treppe.average_run)
+    achse = koerper_tform_treppe.rot.to_yaw()
+    fuss = (float(koerper_tform_treppe.x), float(koerper_tform_treppe.y))
+    kopf = (fuss[0] + laenge * math.cos(achse), fuss[1] + laenge * math.sin(achse))
+    am_fuss = math.hypot(*fuss) <= math.hypot(*kopf)
+    peilung, distanz = richtung(*(fuss if am_fuss else kopf))
+    welt = _pose(obj.transforms_snapshot, rahmen, fh.VISION_FRAME_NAME)
+    welt_xy = None
+    if welt is not None:
+        w = welt * SE3Pose.from_proto(treppe.stair_tform.frame_tform_stairs)
+        welt_xy = (float(w.x), float(w.y))
+    return Staircase(
+        name=obj.name, kind="staircase", bearing=peilung, distance=distanz,
+        world_xy=welt_xy, time=jetzt, direction="auf" if am_fuss else "ab",
+        steps=stufen, rise_m=round(stufen * float(treppe.average_rise), 3),
+        axis_bearing=math.degrees(achse),
+    )
+
+
 def objekte_aus(antwort, jetzt):
     """Protobuf-Antwort in Datenklassen, nächstes Objekt zuerst.
 
@@ -56,6 +92,11 @@ def objekte_aus(antwort, jetzt):
     """
     gefunden = []
     for obj in antwort.world_objects:
+        if obj.HasField("staircase_properties"):
+            treppe = _treppe_aus(obj, jetzt)
+            if treppe is not None:
+                gefunden.append(treppe)
+            continue
         art, rahmen, gefiltert = _art_und_rahmen(obj)
         if art is None or not rahmen:
             continue
@@ -156,6 +197,8 @@ def objekte_holen(client, jetzt, kinds=None):
     typen = None
     if kinds is not None and set(kinds) == {"apriltag"}:
         typen = [wo.WORLD_OBJECT_APRILTAG]
+    elif kinds is not None and set(kinds) == {"staircase"}:
+        typen = [wo.WORLD_OBJECT_STAIRCASE]
     antwort = (client.list_world_objects(object_type=typen) if typen
                else client.list_world_objects())
     gefunden = objekte_aus(antwort, jetzt)

@@ -37,8 +37,8 @@ __all__ = [
     "MAX_STUFE_M", "KOERPER_BAND_M", "TREPPE_SICHT_M", "TREPPE_WINKEL_GRAD",
     "RAMPE_DICKE_M", "TAG_HOEHENFENSTER_M", "Treppenlage",
     "boden_bei", "neigung_bei", "nick_grad", "ebenen", "boden_z", "hoehenband",
-    "auf_ebene", "trifft_koerper", "klippen", "treppe_vor", "treppe_erlaubt",
-    "kaesten_fuer",
+    "auf_ebene", "trifft_koerper", "klippen", "treppe_vor", "treppen_in_sicht",
+    "bergauf_achse", "treppe_erlaubt", "kaesten_fuer",
 ]
 
 
@@ -220,16 +220,20 @@ def _winkel_diff(a, b):
     return d
 
 
-def treppe_vor(raum, x, y, grad, z_nahe=None):
-    """Die naechste Treppe im Weg -- oder None.
+def bergauf_achse(boden):
+    """Richtung der Bergauf-Achse eines Bodens in Grad (Weltframe)."""
+    return (boden.drehung + (180.0 if boden.anstieg < 0 else 0.0)) % 360.0
 
-    Im Weg heisst: Fuss- oder Kopfkante liegt naeher als TREPPE_SICHT_M, vor
-    oder hinter dem Roboter (Peilung innerhalb 45 Grad von 0 oder 180), und die
-    Sichtlinie zur Kante ist frei. `richtung` sagt, wo der Roboter steht:
-    am Fuss ("auf") oder am Kopf ("ab"). `achsenwinkel_grad` ist der Winkel
-    zwischen seiner Nase und der Bergauf-Achse; die Regel entscheidet daraus.
+
+def treppen_in_sicht(raum, x, y, grad, reichweite, z_nahe=None):
+    """Alle Treppen, deren naechste Kante (Fuss oder Kopf) in `reichweite` liegt
+    und frei zu sehen ist -- als Treppenlagen, naechste zuerst.
+
+    `richtung` sagt, wo der Roboter steht: am Fuss ("auf") oder am Kopf ("ab");
+    `peilung_grad` zeigt zur naechsten Kante; `achsenwinkel_grad` ist der
+    Winkel zwischen seiner Nase und der Bergauf-Achse.
     """
-    beste = None
+    lagen = []
     for boden in raum.boeden:
         if boden.stufen <= 0 or boden.anstieg == 0.0:
             continue
@@ -240,24 +244,38 @@ def treppe_vor(raum, x, y, grad, z_nahe=None):
         fuss, kopf = (ecken[3], ecken[0]), (ecken[1], ecken[2])
         if boden.anstieg < 0:
             fuss, kopf = kopf, fuss
+        beste = None
         for richtung, kante in (("auf", fuss), ("ab", kopf)):
             punkt = _naechster_punkt(x, y, *kante)
             abstand = math.hypot(punkt[0] - x, punkt[1] - y)
-            if abstand > TREPPE_SICHT_M:
+            if abstand > reichweite or not sicht_frei(raum, (x, y), punkt):
                 continue
             peilung = math.degrees(math.atan2(punkt[1] - y, punkt[0] - x)) - grad
             peilung = (peilung + 180.0) % 360.0 - 180.0
             if peilung <= -180.0 + 1e-9:
                 peilung = 180.0
-            if abstand > 1e-9 and min(_winkel_diff(peilung, 0.0), _winkel_diff(peilung, 180.0)) > TREPPE_WINKEL_GRAD:
-                continue
-            if not sicht_frei(raum, (x, y), punkt):
-                continue
-            achse = boden.drehung + (180.0 if boden.anstieg < 0 else 0.0)
-            lage = Treppenlage(boden, richtung, abstand, peilung, _winkel_diff(grad, achse))
+            lage = Treppenlage(boden, richtung, abstand, peilung,
+                               _winkel_diff(grad, bergauf_achse(boden)))
             if beste is None or lage.abstand < beste.abstand:
                 beste = lage
-    return beste
+        if beste is not None:
+            lagen.append(beste)
+    return sorted(lagen, key=lambda lage: lage.abstand)
+
+
+def treppe_vor(raum, x, y, grad, z_nahe=None):
+    """Die naechste Treppe im Weg -- oder None.
+
+    Im Weg heisst: Fuss- oder Kopfkante liegt naeher als TREPPE_SICHT_M, vor
+    oder hinter dem Roboter (Peilung innerhalb 45 Grad von 0 oder 180), und die
+    Sichtlinie zur Kante ist frei. Die Regel (`treppe_erlaubt`) entscheidet
+    aus dem Achsenwinkel.
+    """
+    for lage in treppen_in_sicht(raum, x, y, grad, TREPPE_SICHT_M, z_nahe):
+        if lage.abstand <= 1e-9 or min(_winkel_diff(lage.peilung_grad, 0.0),
+                                        _winkel_diff(lage.peilung_grad, 180.0)) <= TREPPE_WINKEL_GRAD:
+            return lage
+    return None
 
 
 def treppe_erlaubt(richtung, vx, achsenwinkel_grad):

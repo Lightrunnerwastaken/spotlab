@@ -11,6 +11,7 @@ die backend-unabhaengigen Formen wohnen; hier werden sie re-exportiert, weil
 from spotlab.backends.base import (  # noqa: F401  (Re-Export)
     Capability,
     ObstacleGrid,
+    Staircase,
     Tag,
     WorldObject,
     require,
@@ -18,8 +19,8 @@ from spotlab.backends.base import (  # noqa: F401  (Re-Export)
 )
 
 __all__ = [
-    "WorldObject", "Tag", "ObstacleGrid", "richtung",
-    "world_objects", "tags", "obstacles",
+    "WorldObject", "Tag", "Staircase", "ObstacleGrid", "richtung",
+    "world_objects", "tags", "stairs", "obstacles",
 ]
 
 
@@ -58,6 +59,22 @@ def tags(backend, recorder, id=None):
         recorder, "tags",
         treffer=len(gefunden),
         ids=[t.id for t in gefunden],
+        distanzen=[round(t.distance, 2) for t in gefunden],
+    )
+    return gefunden
+
+
+def stairs(backend, recorder):
+    """Die Treppen in Sicht, nächste zuerst -- mit Richtung, Stufen und Achse.
+
+    Am Roboter aus den Weltobjekten seiner Firmware, im Sim aus dem Raum.
+    """
+    require(backend, Capability.STAIRS, "Treppen nennen")
+    gefunden = sorted(backend.stairs(), key=lambda t: t.distance)
+    _protokolliere(
+        recorder, "stairs",
+        treffer=len(gefunden),
+        richtungen=[t.direction for t in gefunden],
         distanzen=[round(t.distance, 2) for t in gefunden],
     )
     return gefunden

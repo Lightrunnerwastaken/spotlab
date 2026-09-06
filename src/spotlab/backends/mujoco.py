@@ -38,7 +38,7 @@ import time
 from pathlib import Path
 
 from spotlab.backends.base import Capability, Tag, richtung
-from spotlab.backends.sim import SimBackend
+from spotlab.backends.sim import SimBackend, synchronisiert
 from spotlab.errors import SpotlabError
 from spotlab.welt.hoehe import boden_bei, boden_z, kaesten_fuer, nick_grad
 from spotlab.welt.kollision import MAX_SCHRITT_M
@@ -237,7 +237,7 @@ class MujocoBackend(SimBackend):
     # ---------------------------------------------------------- Bewegung
 
     def _winkel(self):
-        vx, vy, wz = self._soll
+        vx, vy, wz = self._geschwindigkeit()
         return self._modell.gelenke(math.hypot(vx, vy), wz, self._phase)
 
     def _setze_puppe(self, pose, winkel, z):
@@ -251,6 +251,7 @@ class MujocoBackend(SimBackend):
         """Die Puppe auf den Stand des 2D-Sim bringen: Pose, Winkel, Hoehe, Nick."""
         self._setze_puppe(self._pose, self._winkel(), self._z)
 
+    @synchronisiert
     def _fortschreiben(self):
         super()._fortschreiben()
         self._synchronisiere()
@@ -308,6 +309,7 @@ class MujocoBackend(SimBackend):
 
     # ---------------------------------------------------------- Wahrnehmung
 
+    @synchronisiert
     def world_objects(self, kinds=None):
         if kinds is not None and "apriltag" not in kinds:
             return []
@@ -322,6 +324,7 @@ class MujocoBackend(SimBackend):
             ))
         return gefunden
 
+    @synchronisiert
     def local_grid(self):
         """Aus den fünf Tiefenbildern — durch denselben Entpacker wie am Roboter.
 
@@ -339,6 +342,7 @@ class MujocoBackend(SimBackend):
 
         return [f"{n}_depth" for n in CAMERAS] + [f"{n}_fisheye_image" for n in CAMERAS]
 
+    @synchronisiert
     def images(self, sources):
         self._fortschreiben()
         antworten = []
@@ -354,6 +358,7 @@ class MujocoBackend(SimBackend):
                 )
         return antworten
 
+    @synchronisiert
     def robot_state(self):
         """Kopf (Akku, Motoren, Verhalten) vom 2D-Sim, Kinematik von der Puppe.
 
@@ -362,7 +367,7 @@ class MujocoBackend(SimBackend):
         Tempo kommen vom Gangmodell — die Puppe hat keine Physik.
         """
         zustand = super().robot_state()          # ruft _fortschreiben, synchronisiert
-        vx, vy, wz = self._soll if self._powered and not self._sitzt else (0.0, 0.0, 0.0)
+        vx, vy, wz = self._geschwindigkeit()
         steht_still = math.hypot(vx, vy) <= 1e-6 and abs(wz) <= 1e-6
         kontakte = ([True] * 4 if steht_still
                     else self._modell.fusskontakte(math.hypot(vx, vy), wz, self._phase))
@@ -377,8 +382,12 @@ class MujocoBackend(SimBackend):
             zustand.foot_state.add().CopyFrom(fuss)
         return zustand
 
+    @synchronisiert
     def frame_tree_snapshot(self):
-        self._synchronisiere()
+        self._fortschreiben()
+        return self._frame_tree_snapshot()
+
+    def _frame_tree_snapshot(self):
         return self.puppe.frame_tree_snapshot()
 
 # ======================================================================

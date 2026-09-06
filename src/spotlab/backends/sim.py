@@ -27,7 +27,10 @@ WAS DAS NICHT IST
 
 import itertools
 import math
+import threading
 import time
+from contextlib import nullcontext
+from functools import wraps
 
 from bosdyn.api import robot_command_pb2, robot_state_pb2
 from bosdyn.client.frame_helpers import ODOM_FRAME_NAME
@@ -39,6 +42,7 @@ from spotlab.backends.base import (
     Feedback,
     ObstacleGrid,
     SafetyStatus,
+    Staircase,
     Tag,
     richtung,
 )
@@ -62,6 +66,25 @@ HINWEIS = (
 )
 
 
+# Begrenzter Integrationsschritt, unabhaengig vom Abtaster (10 oder 50 Hz).
+MAX_DT_S = 0.005
+
+
+def synchronisiert(methode):
+    """Eine Backend-Transaktion, einschliesslich aller Puppen-Zwischenposen.
+
+    Immer Backend vor Puppe sperren. Der Bildthread braucht nur die Puppe;
+    er sieht damit ausschliesslich den fertig uebernommenen Zustand.
+    """
+    @wraps(methode)
+    def aufruf(self, *args, **kwargs):
+        with self._sperre:
+            puppe = getattr(self, "puppe", None)
+            with puppe.lock if puppe is not None else nullcontext():
+                return methode(self, *args, **kwargs)
+    return aufruf
+
+
 class SimBackend:
     """Bewegt sich nach der Gangkennlinie. Kein Roboter, keine Physik."""
 
@@ -76,6 +99,8 @@ class SimBackend:
         self._raum = raum
         self._angestossen = False      # Flanke, damit das Protokoll lesbar bleibt
 
+        self._sperre = threading.RLock()
+        self._aktives_ziel = None
         self._recorder = recorder
         self._jetzt = jetzt
         self._modell = modell or lade_modell()
@@ -142,9 +167,10 @@ class SimBackend:
         if self._raum is not None:
             # Mit Raum ist die Wahrnehmung keine Erfindung mehr, sondern
             # Geometrie: sie folgt aus dem, was in der Raumdatei steht.
-            koennen |= Capability.WORLD_OBJECTS | Capability.LOCAL_GRID
+            koennen |= Capability.WORLD_OBJECTS | Capability.LOCAL_GRID | Capability.STAIRS
         return koennen
 
+    @synchronisiert
     def world_objects(self, kinds=None):
         """Ohne Raum leer — und das ist die Wahrheit, nicht ein Fehler.
 
@@ -169,6 +195,29 @@ class SimBackend:
                 name=f"world_obj_apriltag_{tag.id:03d}", kind="apriltag",
                 bearing=peilung, distance=distanz, world_xy=(tag.x, tag.y),
                 time=self._jetzt(), id=tag.id, filtered=False,
+            ))
+        return gefunden
+
+    @synchronisiert
+    def stairs(self):
+        """Die Treppen des Raums in Sicht -- Geometrie, keine Erfindung (wie die Tags)."""
+        if self._raum is None:
+            return []
+        from spotlab.welt.hoehe import bergauf_achse, treppen_in_sicht
+        from spotlab.welt.wahrnehmung import TAG_REICHWEITE_M
+
+        self._fortschreiben()
+        x, y, yaw = self._pose
+        grad = math.degrees(yaw)
+        gefunden = []
+        for i, lage in enumerate(treppen_in_sicht(self._raum, x, y, grad, TAG_REICHWEITE_M, self._z)):
+            achse = (bergauf_achse(lage.boden) - grad + 180.0) % 360.0 - 180.0
+            gefunden.append(Staircase(
+                name=f"world_obj_staircase_{i + 1:03d}", kind="staircase",
+                bearing=lage.peilung_grad, distance=lage.abstand,
+                world_xy=(lage.boden.x, lage.boden.y), time=self._jetzt(),
+                direction=lage.richtung, steps=lage.boden.stufen,
+                rise_m=abs(lage.boden.anstieg), axis_bearing=achse,
             ))
         return gefunden
 
@@ -301,17 +350,20 @@ class SimBackend:
     def is_powered(self):
         return self._powered
 
+    @synchronisiert
     def power_on(self):
         self._powered = True
 
+    @synchronisiert
     def power_off(self, safe=True):
         self._fortschreiben()
+        self._beende_ziel("Motoren aus (Sim)", rejected=True)
         self._powered = False
         self._soll = (0.0, 0.0, 0.0)
         self._sitzt = True
 
     def close(self):
-        self._powered = False
+        self.power_off()
 
     @property
     def ausserhalb_der_messung(self):
@@ -359,6 +411,7 @@ class SimBackend:
 
     # ------------------------------------------------------------- Kommandos
 
+    @synchronisiert
     def send_command(self, command, end_time_secs=None):
         if not self._powered:
             raise NotPowered("Die Motoren sind aus — rufe zuerst `spot.power_on()` auf.")
@@ -366,14 +419,20 @@ class SimBackend:
         if end_time_secs is not None:
             self._pruefe_endzeit(float(end_time_secs), jetzt)
         kommando = self._als_robot_command(command)
+        mobil = kommando.synchronized_command.mobility_command
+        if mobil.WhichOneof("command") == "se2_trajectory_request":
+            self._ziel_aus(mobil.se2_trajectory_request)  # vor jeder Zustandsaenderung pruefen
         self.gesendet.append(kommando)
         self._fortschreiben()
+        self._beende_ziel("ersetzt (Sim)", rejected=True)
         self._uebernehmen(kommando, end_time_secs, jetzt)
         kennung = f"sim-{next(self._zaehler)}"
         # Merken, ob dieses Kommando ein ZIEL hatte: nur dann darf die
         # Rückmeldung erst bei Ankunft „fertig" sagen. Sonst kehrte `move()`
         # zurück, während der Roboter noch unterwegs ist.
         self._offen[kennung] = "ziel" if self._ziel is not None else 0
+        if self._ziel is not None:
+            self._aktives_ziel = kennung
         return kennung
 
     @staticmethod
@@ -459,11 +518,11 @@ class SimBackend:
 
         `synchro_trajectory_command_in_body_frame()` rechnet das Körperziel
         schon in den odom-Frame um — der Rahmenname steht in der Anfrage. Ein
-        anderer Rahmen wird NICHT geraten: dann gibt es kein Ziel, und
-        `command_feedback` meldet sofort fertig, statt woandershin zu fahren.
+        anderer Rahmen wird NICHT geraten: die Anfrage wird abgewiesen,
+        bevor sie ein bereits laufendes Kommando ersetzen kann.
         """
         if anfrage.se2_frame_name != ODOM_FRAME_NAME or not anfrage.trajectory.points:
-            return None
+            raise CommandRejected("Sim-Ziel braucht odom und mindestens einen Trajektorienpunkt.")
         pose = anfrage.trajectory.points[-1].pose
         return (pose.position.x, pose.position.y, pose.angle)
 
@@ -496,7 +555,7 @@ class SimBackend:
         except Exception:
             return None, None
 
-    def _zum_ziel(self, dt):
+    def _zum_ziel(self, dt, jetzt):
         """Sollgeschwindigkeit im Körperframe, um dem Ziel näherzukommen.
 
         Das Tempo kommt aus dem Antwortmodell: anfahren mit der gemessenen
@@ -517,7 +576,6 @@ class SimBackend:
 
         fertig_weg = abstand <= ZIEL_TOLERANZ_M
         fertig_dreh = abs(dyaw) <= ZIEL_TOLERANZ_RAD
-        jetzt = self._jetzt()
         if fertig_weg and fertig_dreh:
             # Angekommen -- aber gemeldet wird es erst nach der gemessenen
             # Totzeit; solange steht der Roboter still und ist "unterwegs".
@@ -536,6 +594,7 @@ class SimBackend:
             )
             # Richtung in den Körperframe drehen: die Geschwindigkeit im
             # Kommando ist körperfest, der Abstand steht in odom.
+            tempo = min(tempo, abstand / dt)
             richtung = math.atan2(dy, dx) - yaw
             vx, vy = tempo * math.cos(richtung), tempo * math.sin(richtung)
         wz = 0.0
@@ -544,6 +603,7 @@ class SimBackend:
                 self._antwort.drehrate(abs(self._soll[2]), abs(dyaw), dt, self._deckel[1]),
                 dyaw,
             )
+        wz = math.copysign(min(abs(wz), abs(dyaw) / dt), wz)
         return vx, vy, wz
 
     @staticmethod
@@ -568,53 +628,81 @@ class SimBackend:
         except Exception:
             return 0.0
 
+    @synchronisiert
     def command_feedback(self, command_id):
         rueck = self._rueckmeldung(command_id)
         if self._meldung:
-            return Feedback(done=rueck.done, status=f"{rueck.status} — {self._meldung}")
+            return Feedback(done=rueck.done, status=f"{rueck.status} — {self._meldung}",
+                            rejected=rueck.rejected)
         return rueck
 
+    def _beende_ziel(self, status, rejected=False):
+        if self._aktives_ziel is not None:
+            self._offen[self._aktives_ziel] = Feedback(
+                done=not rejected, status=status, rejected=rejected,
+            )
+        self._aktives_ziel = None
+        self._ziel = None
+
     def _rueckmeldung(self, command_id):
-        stand = self._offen.get(command_id, 0)
+        self._fortschreiben()
+        stand = self._offen.get(command_id)
+        if isinstance(stand, Feedback):
+            return stand
+        if stand is None:
+            return Feedback(done=False, status="unbekanntes Kommando (Sim)", rejected=True)
         if stand == "ziel":
-            self._fortschreiben()
-            if self._ziel is None:
-                return Feedback(done=True, status="angekommen (Sim)")
             return Feedback(done=False, status="unterwegs (Sim)")
         self._offen[command_id] = stand + 1
-        if stand == 0:
-            return Feedback(done=False, status="unterwegs (Sim)")
-        return Feedback(done=True, status="fertig (Sim)")
+        return Feedback(done=stand > 0, status="fertig (Sim)" if stand else "unterwegs (Sim)")
 
     # ------------------------------------------------------------- Zustand
 
+    @synchronisiert
     def _fortschreiben(self):
-        """Die Welt bis jetzt weiterlaufen lassen."""
+        """Gueltige Teilintervalle integrieren, auch nach einer Abfragepause.
+
+        Startverzug und Ablauf sind Zeitgrenzen, keine Eigenschaften des
+        letzten Abfragezeitpunkts. Rueckwaertsspruenge werden nicht doppelt
+        integriert. Kleine Schritte begrenzen den Fehler des Zielprofils.
+        """
+        jetzt = self._jetzt()
+        if jetzt <= self._t:
+            return
+        ende = min(jetzt, self._gueltig_bis)
+        while self._t < ende:
+            if not self._powered or self._sitzt or (
+                self._ziel is None and self._soll == (0.0, 0.0, 0.0)
+            ):
+                break
+            if self._ziel is not None and self._t < self._ziel_ab:
+                self._t = min(ende, self._ziel_ab)
+                continue
+            weiter = min(ende, self._t + MAX_DT_S)
+            dt = weiter - self._t
+            self._schritt(dt, self._t)
+            self._t = weiter
+        if jetzt >= self._gueltig_bis:
+            self._beende_ziel("abgelaufen (Sim)", rejected=True)
+            self._soll = (0.0, 0.0, 0.0)
+        self._t = jetzt
+
+    def _geschwindigkeit(self):
+        if self._powered and not self._sitzt and self._t < self._gueltig_bis:
+            return self._soll
+        return 0.0, 0.0, 0.0
+
+    def _schritt(self, dt, jetzt):
         from spotlab.kalibrierung.modell import integriere
 
-        jetzt = self._jetzt()
-        dt = jetzt - self._t
-        self._t = jetzt
-        if dt <= 0:
-            return
-
-        abgelaufen = jetzt > self._gueltig_bis
-        if abgelaufen:
-            # Ein verfallenes Kommando gilt auch für eine Zieltrajektorie: der
-            # echte Spot hält an, wenn die Endzeit erreicht ist, ohne das Ziel
-            # zu haben. `api/motion.move()` setzt sie genau auf seine Geduld.
-            self._ziel = None
         if self._ziel is not None:
-            gefunden = self._zum_ziel(dt)
+            gefunden = self._zum_ziel(dt, jetzt)
             if gefunden is None:
-                self._ziel = None
+                self._beende_ziel("angekommen (Sim)")
                 self._soll = (0.0, 0.0, 0.0)
             else:
                 self._soll = gefunden
-
-        vx, vy, wz = self._soll if not abgelaufen else (0.0, 0.0, 0.0)
-        if not self._powered or self._sitzt:
-            vx = vy = wz = 0.0
+        vx, vy, wz = self._soll
         tempo = math.hypot(vx, vy)
         if tempo > 1e-6 or abs(wz) > 1e-6:
             self._takte_bewegt += 1
@@ -630,13 +718,10 @@ class SimBackend:
 
                 self._nick_grad = nick_grad(self._raum, *self._pose, z_nahe=self._z)
 
+    @synchronisiert
     def robot_state(self):
         self._fortschreiben()
-        vx, vy, wz = (
-            self._soll if (self._powered and not self._sitzt
-                           and self._jetzt() <= self._gueltig_bis)
-            else (0.0, 0.0, 0.0)
-        )
+        vx, vy, wz = self._geschwindigkeit()
         tempo = math.hypot(vx, vy)
         steht_still = tempo <= 1e-6 and abs(wz) <= 1e-6
 
@@ -692,13 +777,19 @@ class SimBackend:
         zustand.kinematic_state.acquisition_timestamp.seconds = int(self._t)
         zustand.kinematic_state.acquisition_timestamp.nanos = int((self._t % 1) * 1e9)
         geschwindigkeit = zustand.kinematic_state.velocity_of_body_in_odom
-        geschwindigkeit.linear.x = vx
-        geschwindigkeit.linear.y = vy
+        yaw = self._pose[2]
+        geschwindigkeit.linear.x = vx * math.cos(yaw) - vy * math.sin(yaw)
+        geschwindigkeit.linear.y = vx * math.sin(yaw) + vy * math.cos(yaw)
         geschwindigkeit.angular.z = wz
-        zustand.kinematic_state.transforms_snapshot.CopyFrom(self.frame_tree_snapshot())
+        zustand.kinematic_state.transforms_snapshot.CopyFrom(self._frame_tree_snapshot())
         return zustand
 
+    @synchronisiert
     def frame_tree_snapshot(self):
+        self._fortschreiben()
+        return self._frame_tree_snapshot()
+
+    def _frame_tree_snapshot(self):
         from bosdyn.api import geometry_pb2
         from bosdyn.client.frame_helpers import (
             BODY_FRAME_NAME,

@@ -80,3 +80,45 @@ def test_nicht_tag_objekt_wird_zu_worldobject():
 def test_naechstes_objekt_steht_vorne():
     antwort = Antwort([_apriltag(2, 9.0, 0.0), _apriltag(1, 2.0, 0.0)])
     assert [t.id for t in objekte_aus(antwort, jetzt=100.0)] == [1, 2]
+
+
+# ------------------------------------------------------------- Treppen (Stufe 13)
+
+
+def _treppe(bottom_x, koerper_x, stufen=6, rise=0.17, run=0.3):
+    """Eine Treppe im odom-Rahmen bei x = bottom_x, bergauf nach +x; der Koerper bei koerper_x."""
+    obj = world_object_pb2.WorldObject()
+    obj.name = "world_obj_staircase_1"
+    st = obj.staircase_properties.staircase
+    st.stair_tform.frame_name = "odom"
+    st.stair_tform.frame_tform_stairs.position.x = bottom_x
+    st.stair_tform.frame_tform_stairs.rotation.w = 1.0
+    st.number_of_steps = stufen
+    st.average_rise = rise
+    st.average_run = run
+    baum = obj.transforms_snapshot.child_to_parent_edge_map
+    baum["odom"].SetInParent()
+    baum[BODY_FRAME_NAME].parent_frame_name = "odom"
+    baum[BODY_FRAME_NAME].parent_tform_child.position.x = koerper_x
+    baum[BODY_FRAME_NAME].parent_tform_child.rotation.w = 1.0
+    return obj
+
+
+def test_eine_treppe_wird_zu_einer_staircase_mit_richtung():
+    from spotlab.backends.base import Staircase
+
+    unten = objekte_aus(Antwort([_treppe(2.0, 0.0)]), jetzt=5.0)
+    assert len(unten) == 1 and isinstance(unten[0], Staircase)
+    t = unten[0]
+    assert t.kind == "staircase" and t.direction == "auf" and t.steps == 6
+    assert t.rise_m == pytest.approx(1.02) and t.distance == pytest.approx(2.0)
+    assert t.bearing == pytest.approx(0.0) and t.axis_bearing == pytest.approx(0.0)
+    oben = objekte_aus(Antwort([_treppe(2.0, 5.0)]), jetzt=5.0)[0]
+    assert oben.direction == "ab" and oben.distance == pytest.approx(5.0 - 2.0 - 6 * 0.3)
+    assert abs(oben.bearing) == pytest.approx(180.0)
+
+
+def test_eine_treppe_ohne_rahmen_wird_uebersprungen():
+    obj = _treppe(2.0, 0.0)
+    obj.staircase_properties.staircase.stair_tform.frame_name = "gibt_es_nicht"
+    assert objekte_aus(Antwort([obj]), jetzt=5.0) == []

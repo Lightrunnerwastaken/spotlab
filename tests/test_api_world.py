@@ -195,3 +195,57 @@ def test_free_distance_ignoriert_unbekanntes_nur_im_koerperschatten():
                           origin=gitter.origin, time=0.0, known=bekannt)
     frei = gitter.free_distance(0.5, 2.5, 0.0)
     assert 0.9 <= frei <= 1.05, frei                   # bis zur Sichtgrenze, nicht weiter
+
+
+# ------------------------------------------------------------- Treppen (Stufe 13)
+
+
+class MitTreppe:
+    def __init__(self, treppen):
+        self._treppen = treppen
+
+    def capabilities(self):
+        from spotlab.backends.base import Capability
+
+        return Capability.STAIRS | Capability.WORLD_OBJECTS
+
+    def stairs(self):
+        return list(self._treppen)
+
+
+def _treppe(distance, direction="auf"):
+    from spotlab.backends.base import Staircase
+
+    return Staircase(name="world_obj_staircase_1", kind="staircase", bearing=10.0, distance=distance,
+                     world_xy=(3.0, 0.0), time=1.0, direction=direction, steps=6, rise_m=1.02,
+                     axis_bearing=5.0)
+
+
+def test_stairs_ist_ein_worldobject_mit_richtung_stufen_und_achse():
+    from spotlab.backends.base import Staircase
+
+    t = _treppe(2.0)
+    assert isinstance(t, WorldObject) and isinstance(t, Staircase)
+    assert (t.direction, t.steps, t.rise_m, t.axis_bearing) == ("auf", 6, 1.02, 5.0)
+
+
+def test_stairs_sortiert_nach_distanz_und_protokolliert():
+    schreiber = Mitschreiber()
+    gefunden = world.stairs(MitTreppe([_treppe(3.0, "ab"), _treppe(1.5)]), schreiber)
+    assert [t.distance for t in gefunden] == [1.5, 3.0]
+    _art, daten = schreiber.ereignisse[-1]
+    assert daten["name"] == "stairs" and daten["treffer"] == 2 and daten["richtungen"] == ["auf", "ab"]
+
+
+def test_stairs_braucht_die_faehigkeit_und_der_trockenlauf_sieht_keine():
+    from spotlab.backends.base import Capability
+    from spotlab.errors import UnsupportedCapability
+
+    class Ohne:
+        def capabilities(self):
+            return Capability.WORLD_OBJECTS
+
+    with pytest.raises(UnsupportedCapability) as fehler:
+        world.stairs(Ohne(), None)
+    assert "Treppen" in str(fehler.value)
+    assert world.stairs(DryRunBackend(), None) == []

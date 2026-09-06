@@ -139,6 +139,7 @@ class RealSpot:
             | Capability.GRAY_CAMERAS
             | Capability.LEASE
             | Capability.ESTOP
+            | Capability.STAIRS
             | Capability.GRAPH_NAV
             | Capability.WORLD_OBJECTS
             | Capability.LOCAL_GRID
@@ -171,6 +172,10 @@ class RealSpot:
         # Wanduhr, keine Roboterzeit: `t_robot` wird nicht umgerechnet (CLAUDE.md),
         # und dieses Feld liegt in derselben Zeitbasis wie `t` in zustand.jsonl.
         return wahrnehmung.objekte_holen(self._welt_client(), time.time(), kinds=kinds)
+
+    def stairs(self):
+        """Erkannte Treppen der Firmware -- derselbe Lesedienst wie `world_objects`."""
+        return self.world_objects(kinds=["staircase"])
 
     def local_grid(self):
         """Kein Lease, kein Kommando — `LocalGridClient` liest nur."""

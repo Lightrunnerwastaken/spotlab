@@ -75,8 +75,12 @@ class DryRunBackend:
     def capabilities(self):
         return (
             Capability.LOCOMOTION | Capability.POSTURE | Capability.POWER
-            | Capability.WORLD_OBJECTS | Capability.LOCAL_GRID
+            | Capability.WORLD_OBJECTS | Capability.LOCAL_GRID | Capability.STAIRS
         )
+
+    def stairs(self):
+        """Keine Treppen in der Attrappe -- eine leere Liste, kein Fehler."""
+        return []
 
     # ----------------------------------------------------------- Wahrnehmung
 
