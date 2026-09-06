@@ -82,10 +82,17 @@ class Spot:
             timeout=timeout,
         )
 
-    def walk(self, vx=0.0, vy=0.0, wz=0.0, duration=1.0):
-        """Fährt duration Sekunden lang mit den angegebenen Geschwindigkeiten."""
+    def walk(self, vx=0.0, vy=0.0, wz=0.0, duration=1.0, stop=True):
+        """Fährt duration Sekunden lang mit den angegebenen Geschwindigkeiten.
+
+        vx, vy in m/s (vorwärts, links), wz in rad/s (links positiv). Mit
+        `stop=False` kehrt der Aufruf sofort zurück und hält am Ende nicht an —
+        für Schleifen, die laufend neu lenken; Spot fährt dann höchstens eine
+        Sekunde weiter, bis das nächste Kommando kommt.
+        """
         motion.walk(
-            self.backend, self.recorder, self.limits, vx=vx, vy=vy, wz=wz, duration=duration
+            self.backend, self.recorder, self.limits, vx=vx, vy=vy, wz=wz,
+            duration=duration, stop=stop,
         )
 
     def stop(self):

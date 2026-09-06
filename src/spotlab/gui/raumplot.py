@@ -3,8 +3,8 @@
 Gezeichnet mit QPainter, wie mapplot.py -- jenes zeichnet GraphNav-Grundrisse
 und hat mit Raumgeometrie nichts gemein ausser der Technik.
 
-Importiert `welt.raum` (reine Standardbibliothek), aber weder bosdyn noch
-`spotlab.backends`: die Regel aus CLAUDE.md gilt auch hier.
+Importiert `welt.raum` und `welt.kollision` (reine Standardbibliothek), aber
+weder bosdyn noch `spotlab.backends`: die Regel aus CLAUDE.md gilt auch hier.
 """
 
 import math
@@ -13,8 +13,10 @@ from PySide6.QtCore import QPointF, Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QPainter, QPen
 from PySide6.QtWidgets import QWidget
 
+from spotlab.welt.kollision import ROBOTER_RADIUS_M
+
 RAND = 16
-SPOT_R_M = 0.35
+SPOT_R_M = ROBOTER_RADIUS_M            # derselbe Kreis, gegen den der Sim prueft
 
 
 class RaumPlot(QWidget):

@@ -55,6 +55,7 @@ def walk(
     vy=0.0,
     wz=0.0,
     duration=1.0,
+    stop=True,
     schlaf=time.sleep,
     jetzt=time.monotonic,
     wanduhr=time.time,
@@ -68,11 +69,24 @@ def walk(
     ab, bleibt der Roboter nach `KOMMANDO_GUELTIGKEIT_S` stehen, statt mit dem
     letzten Kommando weiterzulaufen. Das ist eine Sicherheitseigenschaft, keine
     Sparsamkeit — sie wirkt nur, wenn die Endzeit ein echter Zeitpunkt ist.
+
+    `stop=False` ist für Regelschleifen, die laufend neu lenken: das Kommando
+    wird EINMAL gesendet, die Funktion kehrt sofort zurück, und am Ende steht
+    kein Stopp. Spot fährt damit höchstens `KOMMANDO_GUELTIGKEIT_S` weiter —
+    wer ihn fahren lassen will, ruft schneller nach. Mit `stop=True` (Vorgabe)
+    hält jeder Aufruf am Ende an; eine Schleife daraus fährt in Schüben.
     """
     require(backend, Capability.LOCOMOTION, "gehen")
     vx, vy, wz = clamp(vx, vy, wz, limits)
     if recorder is not None:
-        recorder.event("kommando", name="walk", vx=vx, vy=vy, wz=wz, duration=duration)
+        recorder.event("kommando", name="walk", vx=vx, vy=vy, wz=wz, duration=duration,
+                       stop=stop)
+    if not stop:
+        backend.send_command(
+            RobotCommandBuilder.synchro_velocity_command(v_x=vx, v_y=vy, v_rot=wz),
+            end_time_secs=wanduhr() + KOMMANDO_GUELTIGKEIT_S,
+        )
+        return
 
     ende = jetzt() + float(duration)
     while jetzt() < ende:
@@ -81,7 +95,7 @@ def walk(
             end_time_secs=wanduhr() + KOMMANDO_GUELTIGKEIT_S,
         )
         schlaf(NACHSENDE_INTERVALL_S)
-    stop(backend, recorder)
+    _anhalten(backend, recorder)
 
 
 def move(backend, recorder, limits, forward=0.0, left=0.0, turn=0.0, timeout=30.0,
@@ -127,3 +141,8 @@ def stop(backend, recorder):
     if recorder is not None:
         recorder.event("kommando", name="stop")
     backend.send_command(RobotCommandBuilder.stop_command())
+
+
+# `walk()` hat einen Parameter `stop` -- der verdeckt dort den Funktionsnamen.
+# Gefunden von sechs Tests auf einmal: 'bool' object is not callable.
+_anhalten = stop

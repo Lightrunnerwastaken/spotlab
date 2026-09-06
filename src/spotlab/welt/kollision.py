@@ -4,16 +4,21 @@ Reine Standardbibliothek, keine Physik -- Abstaende zwischen Punkten, Strecken
 und achsparallelen Rechtecken. Was daraus eine spotlab-Form macht, tut
 `backends/sim.py`.
 
-DER ROBOTER IST EIN KREIS mit 0.35 m Radius, abgeleitet aus Spots Grundflaeche
-(rund 1.1 x 0.5 m). Die Vereinfachung ist bewusst und hat eine Richtung: ein
-Kreis kann sich nicht seitlich durch eine schmale Luecke drehen, ein echter Spot
-schon. Der Sim bleibt damit eher zu vorsichtig als zu optimistisch -- ausser
-beim Drehen (siehe `bewege`).
+DER ROBOTER IST EIN KREIS mit 0.27 m Radius: breiter als Spots halbe Breite
+(0.25 m bei rund 1.1 x 0.5 m Grundflaeche), aber eine Gitterzelle KLEINER als
+der Vorgabe-Rand von `ObstacleGrid.is_free` (0.3 m). Was das Gitter frei nennt,
+muss im Sim auch begehbar sein -- sonst folgt ein Programm der freien Strecke
+und bleibt an einer Tuerkante haengen, wie am 06.09.2026 mit 0.35 m Radius; die
+Zelle Luft braucht es, weil das Gitter Abstaende nur je Zellmitte kennt. Die
+Vereinfachung hat eine Richtung: ein Kreis kann sich nicht seitlich durch eine
+schmale Luecke drehen, ein echter Spot schon, und beim Drehen streift ein
+Kreis nie mit der Nase (siehe `bewege`). `tests/test_welt_kollision.py` haelt
+die Kopplung an den Gitter-Rand fest.
 """
 
 import math
 
-ROBOTER_RADIUS_M = 0.35
+ROBOTER_RADIUS_M = 0.27
 # Laengere Schritte werden zerlegt. `dt` kommt aus der Wanduhr und haengt daran,
 # wie oft ein Skript den Zustand abfragt; ohne Zerlegung haenge die Zusicherung
 # "kein Programm faehrt durch eine Wand" an der Abfragehaeufigkeit.

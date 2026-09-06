@@ -201,14 +201,33 @@ def test_die_faehigkeiten_nennen_die_kameras(uhr):
 
 
 def test_die_ansicht_wird_als_jpeg_geschrieben(uhr, tmp_path):
+    """Aus einem eigenen Thread -- der Aufrufer wartet nicht darauf."""
+    import time
+
     ziel = tmp_path / "ansicht.jpg"
     backend = _backend(uhr, (1.0, 2.0, 0.0), ansicht_ziel=ziel)
-    for _ in range(3):
-        uhr.weiter(0.2)
-        backend.robot_state()
-    assert ziel.is_file()
+    frist = time.monotonic() + 15.0
+    while not ziel.is_file() and time.monotonic() < frist:
+        time.sleep(0.05)
+    assert ziel.is_file(), "keine Ansicht geschrieben"
     assert ziel.read_bytes()[:2] == b"\xff\xd8", "kein JPEG"
+    backend.close()
+    assert not backend._ansicht.is_alive(), "der Ansichtsthread muss mit close() enden"
     assert not list(tmp_path.glob("*.tmp")), "temporaere Datei liegen geblieben"
+
+
+def test_die_wahrnehmung_rendert_keine_ansicht_mehr_nebenbei(uhr, tmp_path, monkeypatch):
+    """Gemessen 06.09.2026: spot.state und spot.tags() kosteten je 160 ms,
+    weil jeder Aufruf aus dem Hauptthread das Ansichtsbild rendertete."""
+    backend = _backend(uhr, (1.0, 2.0, 0.0), ansicht_ziel=tmp_path / "ansicht.jpg")
+
+    def verboten(*_a, **_k):
+        raise AssertionError("Ansicht im Hauptthread gerendert")
+
+    monkeypatch.setattr(backend.puppe, "ansicht", verboten)
+    backend.robot_state()
+    backend.world_objects()
+    backend.close()
 
 
 # ------------------------------------------------------------------ Bericht

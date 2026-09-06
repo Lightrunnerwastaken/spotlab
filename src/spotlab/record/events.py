@@ -16,6 +16,7 @@ ARTEN = frozenset(
         "fehler",
         "lease_verloren",
         "lease_übernommen",
+        "angestossen",      # Übungsraum: Spot steht an einer Wand an (nur die Flanke)
         "ende",
     }
 )

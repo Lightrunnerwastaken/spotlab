@@ -263,6 +263,18 @@ versionsgepinntes Extra `spotlab[sim]`.
   Unbekanntes für frei. Das Gitter des echten Dienstes ist an den WELTACHSEN ausgerichtet;
   `ObstacleGrid` rechnet in Weltkoordinaten — `is_free(0.5, 0.0)` ist ein Weltpunkt, nicht
   „einen halben Meter voraus".
+- **`ObstacleGrid.free_distance` übergeht Unbekanntes nur im Körperschatten (bis
+  `FREI_AB_M`), Bekanntes nie.** Dicht am Körper sieht Spot nichts — die Frontkameras
+  treffen den Boden erst 0.9 m vor der Mitte; ein Strahl, der deshalb 0.0 meldete, wäre
+  wertlos, und bis zum 06.09.2026 sprang die freie Strecke von Zyklus zu Zyklus zwischen
+  1.8 und 0.0. Aber eine BEKANNTE Wand 0.4 m vor der Nase (nach einer Drehung auf der
+  Stelle) zählt: sie zu überspringen hiess hineinlaufen. Weiter draussen gilt Unbekanntes
+  als zu, wie in `is_free`.
+- **Der Kreis des 2D-Sims (`welt/kollision.py::ROBOTER_RADIUS_M`) ist eine Gitterzelle
+  KLEINER als der Vorgabe-Rand von `ObstacleGrid.is_free`.** Was das Gitter frei nennt,
+  muss im Sim begehbar sein; mit 0.35 m blieb ein Programm, das der freien Strecke
+  folgte, an der Türkante hängen (06.09.2026). Die Zelle Luft braucht es, weil das Gitter
+  Abstände nur je Zellmitte kennt. `tests/test_welt_kollision.py` hält die Kopplung fest.
 - **Die Körperantwort auf `move()` ist gemessen, aber nur bei 1 m und 90°**
   (`kalibrierung/antwort.py`, kommandierte Läufe vom 02.09.2026). Andere Ziele fahren
   dasselbe Trapez und zählen in `bericht()` als ausserhalb der Messung. Kombinierte
@@ -364,6 +376,11 @@ versionsgepinntes Extra `spotlab[sim]`.
   20-ms-Takt rutscht unter Windows regelmässig auf 31 ms (Zeitgeberauflösung 15.6 ms).
   Nicht die Abwesenheit von Jitter behaupten, sondern die ART des Fehlers prüfen, gegen
   den der Test steht — siehe `test_die_messfahrt_meldet_keine_falschen_luecken`.
+- **Eine Mitschreiber-Attrappe beweist nicht, dass die Ereignisart erlaubt ist.**
+  `angestossen` fehlte bis zum 06.09.2026 in `record/events.py::ARTEN`; die Sim-Tests mit
+  Attrappe waren grün, und jeder 2D-Lauf starb beim ersten Wandkontakt mitten in
+  `robot_state()`. Wo ein Backend ein neues Ereignis schreibt, prüft ein Test es gegen
+  den echten `RunRecorder`.
 
 ## Linter und CI
 
@@ -391,8 +408,11 @@ versionsgepinntes Extra `spotlab[sim]`.
 Menagerie-Körper aus matura-spot (Weg A, Wiedergabe statt Regelung; Spec
 `docs/superpowers/specs/2026-09-06-uebungsraum-3d-design.md`). Gates: G10 Gitterformat
 (matura-spot, gegen eine echte Aufzeichnung — fand zwei Formatfehler), G11 Wiedergabe
-gegen die Messung (`tests/test_wiedergabe.py`). Offen in matura-spot: die Gitterachsen
-(real weltfest, Sim körperfest — RESEARCH DECISION).
+gegen die Messung (`tests/test_wiedergabe.py`). Die Gitterachsen sind seit dem
+06.09.2026 auch im Sim weltfest (matura-spot, LocalGrid v3). In jedem Arbeitsordner liegt
+das Projekt `Beispiele` (`workshop/beispiele/`); `durchgang_finden.py` fährt laufend
+(`walk(…, stop=False)`), den Kurs aus `free_distance` alle 5°, durch Lücken in der Mitte —
+geprüft in 2D und 3D (`tests/test_workshop_beispiele.py`). Videos: `spotlab film <lauf>`.
 
 Fundament (1+2), GUI (3), GraphNav (4), der eingebaute Editor (5), die Anbindung fremder
 Projekte samt MCP-Server (6), die Kalibrier-Infrastruktur (7) und der Beobachter-Modus (8)

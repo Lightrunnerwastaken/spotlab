@@ -187,3 +187,21 @@ def test_bewegung_ohne_faehigkeit_wird_verweigert():
             backend, None, Limits(), vx=0.1, duration=0.1,
             schlaf=lambda _: None, jetzt=lambda: 0.0,
         )
+
+
+def test_walk_ohne_stopp_sendet_einmal_und_kehrt_sofort_zurueck():
+    """Fuer Regelschleifen: kein Nachsenden, kein Schlafen, kein Stopp -- das
+    Kommando bleibt KOMMANDO_GUELTIGKEIT_S gueltig, dann steht Spot."""
+    from spotlab.api import motion
+    from spotlab.backends.dryrun import DryRunBackend
+    from spotlab.config import Limits
+
+    backend = DryRunBackend()
+    backend.power_on()
+    geschlafen = []
+    motion.walk(backend, None, Limits(), vx=0.3, wz=0.1, stop=False,
+                schlaf=lambda s: geschlafen.append(s))
+    assert geschlafen == []
+    assert len(backend.gesendet) == 1, "genau ein Kommando, kein Stopp"
+    kommando = backend.gesendet[-1]
+    assert kommando.synchronized_command.mobility_command.HasField("se2_velocity_request")

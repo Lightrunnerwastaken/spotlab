@@ -7,7 +7,7 @@ kann. Kommandos, Ziele, Gangphase, Körperantwort und Aufzeichnung bleiben dort
 den Sensoren der Physik-Sim.
 
     2D-Sim                       MujocoBackend
-    Kreis 0.35 m gegen Segmente  Kontakte der Mesh-Geometrie
+    Kreis gegen Segmente         Kontakte der Mesh-Geometrie
     Abstandsgitter aus Geometrie Tiefenbilder → LocalGrid → derselbe Entpacker
                                  wie am echten Spot (`gitter_aus`)
     Tags: Reichweite+Sichtlinie  dazu Kamerablickfeld, Ausrichtung, Strahl
@@ -23,10 +23,12 @@ der Hinweis steht im `verbunden`-Ereignis.
 
 THREADS. Der Abtaster ruft `robot_state()` aus seinem Thread; das Schülerskript
 ruft `local_grid()`, `images()`, `world_objects()` aus dem Hauptthread. Die
-Puppe führt ein Lock um ihren Zustand. Gerendert (OpenGL) wird nur im Thread,
-der das Backend gebaut hat — Tiefe, Graubilder und die Ansicht; der Abtaster
-setzt nur Posen. Ein GL-Kontext, den zwei Threads benutzen, ist ein Absturz
-ohne Traceback.
+Puppe führt ein Lock um ihren Zustand. Jeder GL-Kontext gehört genau EINEM
+Thread: Tiefe und Graubilder dem Hauptthread, die Zimmeransicht einem eigenen
+Thread mit eigenem Renderer und privatem MjData (`spotsim.puppe.Zimmeransicht`).
+Bis zum 06.09.2026 rendertete der Hauptthread die Ansicht nebenbei — und
+`spot.state` kostete 160 ms für ein Bild, das es nicht brauchte. Ein
+GL-Kontext, den zwei Threads benutzen, ist ein Absturz ohne Traceback.
 """
 
 import math
@@ -120,6 +122,48 @@ def welt_aus_raum(raum, puppe):
     return puppe.Welt(quader=tuple(quader), tags=tags)
 
 
+class _Ansichtsschreiber(threading.Thread):
+    """Schreibt `ansicht.jpg` aus einem eigenen Thread — höchstens ANSICHT_TAKT_S.
+
+    Eigener Renderer, eigener GL-Kontext, privates MjData: der Schülerthread
+    zahlt für das Bild nichts. Steht der Roboter still, wird nicht gerendert.
+    Eine Datei, atomar ersetzt — kein Strom. Ein Fehler beim Rendern beendet
+    den Thread, nie den Lauf.
+    """
+
+    def __init__(self, puppe_modul, puppe, ziel):
+        super().__init__(name="spotlab-ansicht", daemon=True)
+        self._modul = puppe_modul
+        self._puppe = puppe
+        self._ziel = ziel
+        self._halt = threading.Event()
+
+    def beenden(self, frist_s=2.0):
+        self._halt.set()
+        self.join(timeout=frist_s)
+
+    def run(self):
+        from PIL import Image
+
+        ansicht = self._modul.Zimmeransicht(self._puppe, ANSICHT_BREITE, ANSICHT_HOEHE)
+        letzte = None
+        try:
+            while not self._halt.wait(ANSICHT_TAKT_S):
+                qpos = self._puppe.qpos()
+                if letzte is not None and (qpos == letzte).all():
+                    continue
+                letzte = qpos
+                temporaer = self._ziel.with_suffix(".tmp")
+                Image.fromarray(ansicht.bild(qpos)).save(temporaer, format="JPEG", quality=82)
+                os.replace(temporaer, self._ziel)
+        except Exception as fehler:            # die Ansicht darf den Lauf nie anhalten
+            from spotlab import protokoll
+
+            protokoll.notiere(f"Ansicht nicht geschrieben: {fehler}")
+        finally:
+            ansicht.close()
+
+
 class MujocoBackend(SimBackend):
     """Bewegt sich nach Gangkennlinie und Antwortmodell — in einem 3D-Zimmer."""
 
@@ -130,10 +174,11 @@ class MujocoBackend(SimBackend):
         puppe = _puppe_laden()
         self.puppe = puppe.SpotPuppe(welt_aus_raum(raum, puppe))
         self._fassung = puppe.FASSUNG
-        self._thread = threading.get_ident()
-        self._ansicht_ziel = Path(ansicht_ziel) if ansicht_ziel else None
-        self._ansicht_zuletzt = -math.inf
         self._synchronisiere()
+        self._ansicht = None
+        if ansicht_ziel:
+            self._ansicht = _Ansichtsschreiber(puppe, self.puppe, Path(ansicht_ziel))
+            self._ansicht.start()
 
     # ------------------------------------------------------------- Auskunft
 
@@ -150,6 +195,8 @@ class MujocoBackend(SimBackend):
 
     def close(self):
         super().close()
+        if self._ansicht is not None:
+            self._ansicht.beenden()
         # Renderer freigeben: ein GL-Kontext ueberlebt den Garbage-Collector.
         self.puppe.close()
 
@@ -185,7 +232,6 @@ class MujocoBackend(SimBackend):
     def _fortschreiben(self):
         super()._fortschreiben()
         self._synchronisiere()
-        self._ansicht_schreiben()
 
     def _bewege_gegen_welt(self, von, nach):
         """An Wänden und Kisten bleibt Spot stehen — an seiner echten Geometrie.
@@ -297,35 +343,6 @@ class MujocoBackend(SimBackend):
     def frame_tree_snapshot(self):
         self._synchronisiere()
         return self.puppe.frame_tree_snapshot()
-
-    # -------------------------------------------------------------- Ansicht
-
-    def _ansicht_schreiben(self):
-        """Ein Bild der Zimmeransicht, atomar, höchstens zehnmal je Sekunde.
-
-        Nur im Thread, der das Backend gebaut hat (siehe Kopf der Datei).
-        Eine Datei, die ersetzt wird — kein Strom: ein Zehn-Minuten-Lauf
-        hinterliesse sonst 180 MB, und die GUI will nur das neueste Bild.
-        """
-        if self._ansicht_ziel is None or threading.get_ident() != self._thread:
-            return
-        jetzt = self._jetzt()
-        if jetzt - self._ansicht_zuletzt < ANSICHT_TAKT_S:
-            return
-        self._ansicht_zuletzt = jetzt
-        try:
-            from PIL import Image
-
-            bild = self.puppe.ansicht(ANSICHT_BREITE, ANSICHT_HOEHE)
-            temporaer = self._ansicht_ziel.with_suffix(".tmp")
-            Image.fromarray(bild).save(temporaer, format="JPEG", quality=82)
-            os.replace(temporaer, self._ansicht_ziel)
-        except Exception as fehler:          # die Ansicht darf den Lauf nie anhalten
-            from spotlab import protokoll
-
-            protokoll.notiere(f"Ansicht nicht geschrieben: {fehler}")
-            self._ansicht_ziel = None
-
 
 # ======================================================================
 # Das Video eines Laufs -- nachträglich aus der Aufzeichnung gerendert.

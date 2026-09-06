@@ -160,8 +160,9 @@ def test_free_distance_ist_nach_hinten_offen():
 
 
 def test_free_distance_faengt_erst_vor_dem_koerper_an():
-    """Unter Spot ist das Gitter unbekannt (Koerperschatten) -- die Messung
-    beginnt deshalb 0.6 m vor dem Punkt und meldet nicht faelschlich 0."""
+    """Unter und dicht vor Spot ist das Gitter unbekannt (Koerperschatten) --
+    die Messung beginnt deshalb FREI_AB_M vor dem Punkt und meldet nicht
+    faelschlich 0."""
 
     gitter = _raum_mit_wand(wand_x=4.5)
     bekannt = gitter.known.copy()
@@ -172,5 +173,25 @@ def test_free_distance_faengt_erst_vor_dem_koerper_an():
 
 
 def test_free_distance_null_wenn_direkt_davor_zu():
-    gitter = _raum_mit_wand(wand_x=0.9)
+    gitter = _raum_mit_wand(wand_x=0.6)
     assert gitter.free_distance(0.5, 2.5, 0.0) == 0.0
+
+
+def test_free_distance_sieht_ein_bekanntes_hindernis_auch_dicht_vor_der_nase():
+    """Nach einer Drehung auf der Stelle steht die Wand, die eben noch seitlich
+    war, 0.4 m vor der Nase -- BEKANNT, im Gitter. Ab FREI_AB_M zu messen und
+    sie zu uebersehen, hiesse hineinzulaufen (2D-Uebungsraum, 06.09.2026)."""
+    gitter = _raum_mit_wand(wand_x=0.9)                # 0.4 m voraus, weit vor FREI_AB_M
+    assert gitter.free_distance(0.5, 2.5, 0.0) < 0.2
+
+
+def test_free_distance_ignoriert_unbekanntes_nur_im_koerperschatten():
+    """Dicht am Koerper zaehlt Unbekanntes nicht (dort sieht Spot nie etwas),
+    weiter draussen sehr wohl: hinter der Sichtgrenze ist nicht frei."""
+    gitter = _raum_mit_wand(wand_x=4.5)
+    bekannt = gitter.known.copy()
+    bekannt[:, 30:] = False                            # ab x = 1.5 m nichts mehr bekannt
+    gitter = ObstacleGrid(cells=gitter.cells, cell_size=gitter.cell_size,
+                          origin=gitter.origin, time=0.0, known=bekannt)
+    frei = gitter.free_distance(0.5, 2.5, 0.0)
+    assert 0.9 <= frei <= 1.05, frei                   # bis zur Sichtgrenze, nicht weiter
