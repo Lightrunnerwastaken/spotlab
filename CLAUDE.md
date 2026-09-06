@@ -480,7 +480,7 @@ versionsgepinntes Extra `spotlab[sim]`.
 
 ## Umsetzungsstand
 
-**Stufe 13 (06.09.2026): Höhe, Rampen und Treppen — Etappe 1 von 4 „Kern"** — Raumformat
+**Stufe 13 (06.09.2026): Höhe, Rampen und Treppen — Etappen 1 „Kern" und 2 „Editor"** — Raumformat
 v3 (`Boden` als Podest, Rampe oder Treppe; `z` an Wand, Block, Tag), `welt/hoehe.py`
 (Boden unter einem Punkt, Neigung, Ebenen, Klippen, Treppenlage und -regel, Kästen),
 Körperband und Klippen in Kollision und Gitter, der 2D-Sim mit `z` und Nick (vorhandene
@@ -488,8 +488,11 @@ Felder, jetzt mit echten Werten), Treppenmodus `treppen` in Konfiguration und
 Mobility-Parametern, Puppe Fassung 4 (Nick, Bodenhöhe, Sprungregel im Tiefengitter),
 MuJoCo-Welt mit Stufen, Rampen und Podesten aus `kaesten_fuer`, Video mit Höhe und Nick.
 Spec `docs/superpowers/specs/2026-09-06-hoehe-treppen-design.md`, Pläne
-`docs/superpowers/plans/2026-09-06-hoehe-*.md`. Offen: Etappe 2 (Editor mit Ebenen),
-3 (Rekonstruktion von Treppen, Rampen, Ebenen), 4 (`spot.stairs()`, Beispiel, Abnahme).
+`docs/superpowers/plans/2026-09-06-hoehe-*.md`. Etappe 2: Werkzeug Boden, Ebenenwahl
+der 2D-Sicht (andere Ebenen blass, `Palette.blass`), `G` dann `Z` hebt, Zahlenfelder `z`,
+`anstieg`, `stufen`, Böden und Klippen in 2D, dieselben Kästen wie MuJoCo in 3D, Höhe und
+Neigung im Übungsfenster. Offen: Etappe 3 (Rekonstruktion von Treppen, Rampen, Ebenen),
+4 (`spot.stairs()`, Beispiel, Abnahme).
 
 **Stufe 12 (06.09.2026): Raumeditor, Etappe 1 von 3** — der Tab „Übungsraum" ist der
 Tab „Raumeditor": Wände (Linien mit Dicke und Höhe je Raum), drehbare Blöcke mit Höhe,

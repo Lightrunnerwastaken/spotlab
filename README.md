@@ -174,14 +174,30 @@ eigenen Raum —, setzt den Start und baust um, was du brauchst:
 
 **Bauen.** Links die Werkzeuge: *Auswählen* (klicken, ziehen, Rahmen aufziehen,
 `Shift` ergänzt), *Wand* (Klick-Klick zeichnet eine Wandkette, `Esc` beendet;
-Wandenden fangen sich), *Block* (Rechteck aufziehen), *Tag* (Klick), *Start*
-(Klick setzt, Ziehen dreht den Blick). Am gewählten Element erscheinen Griffe:
-Wandenden, Blockecken, ein Drehring. Rechts stehen die Elementliste, die
-Zahlenfelder (Mitte, Grösse, Drehung, Höhe …) und Hinweise. Blöcke lassen sich
-drehen und haben eine Höhe; in der Datei heissen sie `[[block]]`, die alte
+Wandenden fangen sich), *Block* (Rechteck aufziehen), *Boden* (Rechteck
+aufziehen: ein Podest; mit `anstieg` wird es eine Rampe, mit `anstieg` und
+`stufen` eine Treppe — der Anstieg läuft entlang der langen Seite, ein Pfeil
+zeigt bergauf), *Tag* (Klick), *Start* (Klick setzt, Ziehen dreht den Blick).
+Am gewählten Element erscheinen Griffe: Wandenden, Block- und Bodenecken, ein
+Drehring. Rechts stehen die Elementliste, die Zahlenfelder (Mitte, Grösse,
+Drehung, Höhe, `z` …) und Hinweise. Blöcke lassen sich drehen und haben eine
+Höhe; in der Datei heissen sie `[[block]]`, Böden `[[boden]]`, die alte
 Schreibweise `hindernisse` wird weiter gelesen. Eigene Räume liegen unter
 `<arbeitsordner>/raeume/<name>.toml`; die Vorlagen bleiben unverändert, ein
 geänderter Raum fragt beim Speichern nach einem Namen.
+
+**Ebenen.** Jedes Element hat ein `z`, seine Unterkante über dem Grundboden.
+Über der Zeichnung wählst du die Ebene (die Bodenhöhen des Raums, „alle
+Ebenen" zeigt alles): was auf einer anderen Ebene liegt, erscheint blass, neue
+Elemente landen auf der gewählten Ebene, und `G` gefolgt von `Z` hebt die
+Auswahl. Absturzkanten (mehr als eine Stufe, 0.25 m) zeichnet der Editor als
+Kammlinie; Spot bleibt dort stehen wie an einer Wand. Der Grundboden liegt
+überall bei 0, Böden liegen darauf. Auf einer Treppe zeigt Spots Nase immer
+bergauf: **vorwärts hoch, rückwärts runter** — nimmt ein Programm sie falsch
+herum, bleibt Spot an der Kante stehen und der Lauf sagt es
+(`treppe_verweigert`). In `config.toml` steht unter `[limits]` der Treppenmodus
+`treppen = "auto"`; mit `"aus"` sind Rampen und Treppen für Spot tabu, im Sim
+wie am Roboter.
 
 **2D | 3D.** Der Knopf rechts über der Zeichnung (oder `Tab`) schaltet auf eine
 3D-Sicht: linke Maustaste wählt, rechte dreht die Kamera, mittlere (oder
@@ -205,7 +221,7 @@ Tasten wie in Blender, in beiden Sichten:
 | Taste | Wirkung |
 |---|---|
 | `G` / `R` / `S` | Bewegen / Drehen / Skalieren der Auswahl |
-| `X` / `Y` / `Z` | Achse sperren (`Z`: die Höhe beim Skalieren) |
+| `X` / `Y` / `Z` | Achse sperren (`Z`: beim Bewegen heben, beim Skalieren die Höhe) |
 | Ziffern, `.`, `-` | Zahl eingeben; `Enter` bestätigt, `Esc` bricht ab |
 | `Shift+D` / `Entf` | duplizieren / löschen |
 | `Ctrl+Z` / `Ctrl+Y` | zurück / vor |
