@@ -480,7 +480,7 @@ versionsgepinntes Extra `spotlab[sim]`.
 
 ## Umsetzungsstand
 
-**Stufe 13 (06.09.2026): Höhe, Rampen und Treppen — Etappen 1 „Kern" und 2 „Editor"** — Raumformat
+**Stufe 13 (06.09.2026): Höhe, Rampen und Treppen — Etappen 1 „Kern", 2 „Editor", 3 „Rekonstruktion"** — Raumformat
 v3 (`Boden` als Podest, Rampe oder Treppe; `z` an Wand, Block, Tag), `welt/hoehe.py`
 (Boden unter einem Punkt, Neigung, Ebenen, Klippen, Treppenlage und -regel, Kästen),
 Körperband und Klippen in Kollision und Gitter, der 2D-Sim mit `z` und Nick (vorhandene
@@ -491,8 +491,15 @@ Spec `docs/superpowers/specs/2026-09-06-hoehe-treppen-design.md`, Pläne
 `docs/superpowers/plans/2026-09-06-hoehe-*.md`. Etappe 2: Werkzeug Boden, Ebenenwahl
 der 2D-Sicht (andere Ebenen blass, `Palette.blass`), `G` dann `Z` hebt, Zahlenfelder `z`,
 `anstieg`, `stufen`, Böden und Klippen in 2D, dieselben Kästen wie MuJoCo in 3D, Höhe und
-Neigung im Übungsfenster. Offen: Etappe 3 (Rekonstruktion von Treppen, Rampen, Ebenen),
-4 (`spot.stairs()`, Beispiel, Abnahme).
+Neigung im Übungsfenster. Etappe 3: das Höhenprofil kommt aus den WEGPUNKTEN (Körper
+0.54 m über dem Boden) — das 5. Perzentil der Wolke bliebe auf einer Treppe unten; Treppen
+aus den Treppenkanten des SDK (Kette in Laufreihenfolge, Fuss und Kopf an den Enden, Stufen
+aus Anstieg / 0.17 m, Breite aus den Bandpunkten quer zur Achse, dieselbe Treppe hoch und
+runter ist EINE), Rampen und Podeste aus dem Profil (Douglas-Peucker 10 cm, je gerader
+Teilstrecke ein Rechteck so breit wie der Gang, kurze Stücke gehen im Nachbarn auf — eine
+Lücke im Schlauch wäre eine Klippe); der tiefste Boden ist die 0, Wände und Tags tragen ihre
+Ebene. Katakomben: 1 Treppe (1.78 m, 10 Stufen), 10 Rampen, grösstes Gefälle 5.3°, 6 s.
+Offen: Etappe 4 (`spot.stairs()`, Beispiel, Abnahme).
 
 **Stufe 12 (06.09.2026): Raumeditor, Etappe 1 von 3** — der Tab „Übungsraum" ist der
 Tab „Raumeditor": Wände (Linien mit Dicke und Höhe je Raum), drehbare Blöcke mit Höhe,

@@ -606,3 +606,25 @@ Programm, das vorwärts hinunterfährt, und erwartet `treppe_verweigert` mit
   einer hohen Kante ist von oben nicht sichtbar und bleibt unbekannt (§ 4
   formulierte die Regel als Nachbarsprung; die Flutfüllung ist dieselbe Regel
   mit Anschluss an den eigenen Boden).
+
+## 14 Nachträge beim Bau von Etappe 3 (06.09.2026)
+
+- **Das Höhenprofil kommt aus den Wegpunkten**, nicht aus dem Boden je
+  Schnappschuss (§ 6 Schritt 1): auf einer Treppe zeigt die Wolke immer auch
+  den Fuss, und das 5. Perzentil bliebe unten. `profil()` = Wegpunkt-z minus
+  `KOERPER_UEBER_BODEN_M`; die Böden je Schnappschuss bleiben für das Band der
+  Wände. Tags tragen `hoehe` über dem Profil und `z` = Profil.
+- **Ebenen als Schlauch entlang des Wegs**, nicht aus Bodenzellen der Wolke
+  (§ 6 Schritt 4): jedes ebene Profilstück über dem tiefsten Boden wird je
+  gerader Teilstrecke ein Podest so breit wie der Gang (Bandpunkte quer zur
+  Achse, 20. Perzentil je Seite, Vorgabe 2 m, Deckel 3 m). Das deckt, was
+  gefahren wurde; Räume abseits des Wegs zieht man im Editor nach. Kurze
+  Teilstrecken (< 1 m) gehen im Nachbarn auf, damit der Schlauch keine
+  Lücke hat.
+- **Dieselbe Treppe hoch und runter ist eine:** `verschmelze_treppen` behält
+  bei überlappenden Treppen (Mitte ≤ 1 m, Achse ≤ 30°) die mit dem grösseren
+  Anstieg. Die Katakomben trugen sie zweimal (+1.78 m, −1.39 m, Drift).
+- **`ausrichten` gibt `(waende, tags, start, pauspapier, boeden, Ausrichtung)`**
+  zurück; Böden drehen und verschieben mit, `z` bleibt.
+- Der Bericht trägt `boeden`, `treppen`, `rampen`, `ebenen`, `gefaelle_grad`,
+  `stufe_m`; der Dialog zeigt sie, die Vorschau nennt Treppen und Rampen.
