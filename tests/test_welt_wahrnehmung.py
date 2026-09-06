@@ -2,7 +2,7 @@ import math
 
 import pytest
 
-from spotlab.welt.raum import Hindernis, Raum, RaumTag
+from spotlab.welt.raum import Block, Raum, RaumTag
 from spotlab.welt.wahrnehmung import (
     GITTER_ZELLE_M,
     GITTER_ZELLEN,
@@ -12,14 +12,14 @@ from spotlab.welt.wahrnehmung import (
 )
 
 
-def _raum(tags=(), hindernisse=()):
+def _raum(tags=(), bloecke=()):
     return Raum(
         name="T", beschreibung="", groesse=(10.0, 10.0), start=(1.0, 1.0, 0.0),
         waende=(
             (0.0, 0.0, 10.0, 0.0), (10.0, 0.0, 10.0, 10.0),
             (10.0, 10.0, 0.0, 10.0), (0.0, 10.0, 0.0, 0.0),
         ),
-        hindernisse=tuple(hindernisse), tags=tuple(tags),
+        bloecke=tuple(bloecke), tags=tuple(tags),
     )
 
 
@@ -50,7 +50,7 @@ def test_tag_ausser_reichweite_wird_nicht_gemeldet():
 def test_tag_hinter_einem_hindernis_wird_nicht_gemeldet():
     raum = _raum(
         tags=(RaumTag(1, 7.0, 5.0, 180.0),),
-        hindernisse=(Hindernis("Kiste", (6.0, 4.5, 0.4, 1.0)),),
+        bloecke=(Block("Kiste", 6.2, 5.0, 0.4, 1.0),),
     )
     assert sichtbare_tags(raum, (5.0, 5.0, 0.0)) == []
 
@@ -81,7 +81,7 @@ def test_gitter_kennt_die_wand():
 
 def test_verdeckte_zellen_sind_unbekannt_nicht_frei():
     """Der Fehler, der einen Roboter in eine Wand faehrt: unbekannt != frei."""
-    raum = _raum(hindernisse=(Hindernis("Kiste", (5.5, 4.5, 0.4, 1.0)),))
+    raum = _raum(bloecke=(Block("Kiste", 5.7, 5.0, 0.4, 1.0),))
     _werte, bekannt, ursprung = abstandsgitter(raum, (5.0, 5.0, 0.0))
     zeile = int(round((5.0 - ursprung[1]) / GITTER_ZELLE_M))
     spalte_dahinter = int(round((6.8 - ursprung[0]) / GITTER_ZELLE_M))
@@ -101,9 +101,36 @@ def test_gitter_ist_schnell_genug_fuer_zwei_hertz():
     """Bei 2 Hz darf ein Abruf nicht laenger als eine viertel Sekunde dauern."""
     import time
 
-    raum = _raum(hindernisse=tuple(
-        Hindernis(f"H{i}", (float(i), 2.0, 0.5, 0.5)) for i in range(8)
+    raum = _raum(bloecke=tuple(
+        Block(f"H{i}", i + 0.25, 2.25, 0.5, 0.5) for i in range(8)
     ))
     beginn = time.perf_counter()
     abstandsgitter(raum, (5.0, 5.0, 0.0))
     assert time.perf_counter() - beginn < 0.25
+
+
+# ------------------------------------------------------- gedrehte Bloecke
+
+
+def _wert_bei(raum, pose, x, y):
+    from spotlab.welt.wahrnehmung import GITTER_ZELLE_M, abstandsgitter
+
+    werte, _bekannt, ursprung = abstandsgitter(raum, pose)
+    spalte = int(round((x - ursprung[0]) / GITTER_ZELLE_M))
+    zeile = int(round((y - ursprung[1]) / GITTER_ZELLE_M))
+    return werte[zeile][spalte]
+
+
+def test_das_gitter_kennt_gedrehte_bloecke():
+    raum = Raum(name="G", beschreibung="", start=(5.0, 5.0, 0.0),
+                bloecke=(Block("Balken", 5.0, 5.0, 2.0, 0.5, drehung=45.0),))
+    pose = (5.0, 5.0, 0.0)
+    assert _wert_bei(raum, pose, 5.0 + 0.9 * 0.7071, 5.0 + 0.9 * 0.7071) == pytest.approx(0.0, abs=0.03)
+    assert _wert_bei(raum, pose, 5.6, 5.0) == pytest.approx(0.174, abs=0.03)
+
+
+def test_die_wanddicke_zaehlt_im_gitter():
+    raum = Raum(name="W", beschreibung="", start=(5.0, 5.0, 0.0),
+                waende=((0.0, 4.0, 10.0, 4.0),), wand_dicke=0.10)
+    # 0.30 m vor der Wandlinie bleiben 0.25 m bis zur Wandflaeche.
+    assert _wert_bei(raum, (5.0, 5.0, 0.0), 5.0, 4.30) == pytest.approx(0.25, abs=0.03)

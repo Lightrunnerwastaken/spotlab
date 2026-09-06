@@ -282,6 +282,40 @@ versionsgepinntes Extra `spotlab[sim]`.
   muss im Sim begehbar sein; mit 0.35 m blieb ein Programm, das der freien Strecke
   folgte, an der Türkante hängen (06.09.2026). Die Zelle Luft braucht es, weil das Gitter
   Abstände nur je Zellmitte kennt. `tests/test_welt_kollision.py` hält die Kopplung fest.
+- **`welt/` bleibt Standardbibliothek — auch `bearbeitung.py`.** Das ist der Grund, warum
+  die GUI es importieren darf (`tests/test_welt_raum.py`); numpy nur in `wahrnehmung.py`.
+- **Der Raumeditor arbeitet auf unveränderlichen Räumen; Undo ist eine Liste von
+  Schnappschüssen, kein Kommando-Muster.** Griffe, Blender-Tasten und Zahlenfelder rufen
+  dieselben Funktionen aus `welt/bearbeitung.py`; die Steuerung
+  (`gui/raumeditor/steuerung.py`) kennt keine Pixel und kein Qt — jeder Bedienfall ist ein
+  Test ohne Fenster.
+- **Drehung nach einem Prinzip:** ein Punkt wird in den Rahmen des Blocks gedreht
+  (`Block.lokal`), danach rechnet alles achsparallel — Kollision, Gitter, 3D-Welt. Eine
+  zweite Formulierung fiele erst auf, wenn ein Block in 2D trifft und in 3D nicht.
+- **Der Startknopf im Raumeditor speichert vorher, wenn nötig, und lehnt einen Start im
+  Hindernis ab.** `SPOTLAB_RAUM` ist ein Name; ein Lauf in einem Raum, der so nicht auf der
+  Platte liegt, wäre nicht nachspielbar.
+- **PyOpenGL nur in `gui/raumeditor/sicht3d.py`, erst in `initializeGL` importiert.** Ohne
+  das Paket oder ohne OpenGL-3.3-Kontext zeigt die Sicht eine Tafel und der Umschalter bleibt
+  grau; ein Import auf Modulebene liesse die ganze GUI ohne PyOpenGL sterben
+  (`tests/test_gui_raumeditor_sicht3d.py`). Und `QOpenGLContext.create()` ohne
+  `QGuiApplication` ist kein Fehler, sondern eine Zugriffsverletzung — `gl_verfuegbar()` prüft
+  die Anwendung zuerst. Uniforms gehen über PyOpenGL, nicht über
+  `QOpenGLShaderProgram.setUniformValue`: PySide6 wählt für `(location, 0.0)` die
+  int-Überladung, und `glUniform1i` auf ein float-Uniform ist GL_INVALID_OPERATION.
+- **Protobufs (`bosdyn.api`) nur unter `maps/` und `backends/`.** Die Rekonstruktion
+  (`maps/rekonstruktion.py`) liefert der GUI `Raum`, Punkte und Bericht; das Pauspapier ist
+  eine Standardbibliotheks-Datei (`welt/pauspapier.py`), damit die GUI sie ohne numpy liest.
+  Gemessen an der Katakomben-Karte (06.09.2026): die **z-Achse** des Fiducial-Rahmens zeigt
+  aus der Tag-Fläche zu den Beobachtern — sie ist die Blickrichtung; der Boden gilt **je
+  Schnappschuss** (Niveauunterschiede), nicht für die ganze Karte; nach jeder RANSAC-Linie
+  fallen die Nachbarreihen (3 × Inlier-Abstand) weg, sonst wird jede Zellreihe einer dicken
+  Wand eine eigene „Wand". **Die Sichtprüfung ist der eigentliche Filter:** eine Zelle, die
+  von mehr Schnappschüssen durchquert als getroffen wurde, ist frei — Tiefen-Artefakte liegen
+  auf dem Strahl vor der Wand, und die Strahlen zu den Punkten dahinter entlarven sie. Ohne
+  sie bestanden die Katakomben aus 261 Stücken voller Strahlen im Ganginneren, mit ihr aus 61,
+  die Gänge sauber umrandet (Bilder vom 06.09.2026). Ein Schichten-Filter („eine Wand füllt
+  das Höhenband") war der falsche Weg: er zerhackt Wände, die eine Kamera nur teilweise sieht.
 - **Die Körperantwort auf `move()` ist gemessen, aber nur bei 1 m und 90°**
   (`kalibrierung/antwort.py`, kommandierte Läufe vom 02.09.2026). Andere Ziele fahren
   dasselbe Trapez und zählen in `bericht()` als ausserhalb der Messung. Kombinierte
@@ -388,6 +422,8 @@ versionsgepinntes Extra `spotlab[sim]`.
   Attrappe waren grün, und jeder 2D-Lauf starb beim ersten Wandkontakt mitten in
   `robot_state()`. Wo ein Backend ein neues Ereignis schreibt, prüft ein Test es gegen
   den echten `RunRecorder`.
+- **Der Raumeditor wird über `Steuerung` getestet** (Meter, Tastennamen, kein Fenster);
+  die Qt-Tests prüfen nur die Haut: Klick → Auswahl, Feld → Modell, Speichern → Datei.
 
 ## Linter und CI
 
@@ -410,6 +446,17 @@ versionsgepinntes Extra `spotlab[sim]`.
   steht an genau EINER Stelle: `src/spotlab/__init__.py`.
 
 ## Umsetzungsstand
+
+**Stufe 12 (06.09.2026): Raumeditor, Etappe 1 von 3** — der Tab „Übungsraum" ist der
+Tab „Raumeditor": Wände (Linien mit Dicke und Höhe je Raum), drehbare Blöcke mit Höhe,
+Tags mit Hängehöhe; Griffe und Blender-Tasten, Liste, Zahlenfelder, Hinweise, eigene Räume
+unter `raeume/`. Raumformat v2 (`welt/raum.py`, alte Schreibweise wird gelesen), Drehung in
+Kollision, Gitter und Puppe (`PUPPE_FASSUNG = 3`). Etappe 2: die 3D-Sicht (OpenGL 3.3 über
+`QOpenGLWidget` + PyOpenGL, Orbit-Kamera, Farb-ID-Auswahl, Rückfall auf 2D; Geometrie und
+Kamera GL-frei in `geometrie3d.py`). Etappe 3: Rekonstruktion aus GraphNav-Karten
+(`maps/rekonstruktion.py`, Dialog mit Arbeiter-Thread, Pauspapier in beiden Sichten;
+Katakomben-Karte: 31 Tags, 261 Wandstücke, 2.6 s) — Spec
+`docs/superpowers/specs/2026-09-06-raumeditor-design.md`. Alle drei Etappen gebaut.
 
 **Stufe 11 (06.09.2026): Übungsraum 3D** — `backend="mujoco"`, der 2D-Sim mit dem
 Menagerie-Körper aus matura-spot (Weg A, Wiedergabe statt Regelung; Spec

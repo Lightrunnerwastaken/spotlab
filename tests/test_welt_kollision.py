@@ -7,16 +7,16 @@ from spotlab.welt.kollision import (
     frei,
     sicht_frei,
 )
-from spotlab.welt.raum import Hindernis, Raum, raum_laden
+from spotlab.welt.raum import Block, Raum, raum_laden
 
-# Ein 10 x 10 m grosser Kasten mit einer Kiste in der Mitte.
+# Ein 10 x 10 m grosser Kasten mit einer Kiste in der Mitte (5..6, 5..6).
 RAUM = Raum(
     name="T", beschreibung="", groesse=(10.0, 10.0), start=(1.0, 1.0, 0.0),
     waende=(
         (0.0, 0.0, 10.0, 0.0), (10.0, 0.0, 10.0, 10.0),
         (10.0, 10.0, 0.0, 10.0), (0.0, 10.0, 0.0, 0.0),
     ),
-    hindernisse=(Hindernis("Kiste", (5.0, 5.0, 1.0, 1.0)),),
+    bloecke=(Block("Kiste", 5.5, 5.5, 1.0, 1.0),),
     tags=(),
 )
 
@@ -41,8 +41,10 @@ def test_der_kreis_passt_durch_alles_was_das_gitter_frei_nennt():
 
 
 def test_zu_nah_an_der_wand_ist_nicht_frei():
-    assert not frei(RAUM, ROBOTER_RADIUS_M - 0.01, 5.0)
-    assert frei(RAUM, ROBOTER_RADIUS_M + 0.01, 5.0)
+    # Die Wand hat eine Dicke: der Kreis darf erst ab radius + dicke/2 stehen.
+    halb = RAUM.wand_dicke / 2
+    assert not frei(RAUM, ROBOTER_RADIUS_M + halb - 0.01, 5.0)
+    assert frei(RAUM, ROBOTER_RADIUS_M + halb + 0.01, 5.0)
 
 
 def test_im_hindernis_ist_nicht_frei():
@@ -107,7 +109,7 @@ def test_jede_vorlage_hat_eine_freie_startpose(name):
 def test_durchgang_ist_breiter_als_der_roboter():
     """0.9 m Luecke gegen 0.70 m Durchmesser -- 10 cm Spiel je Seite."""
     raum = raum_laden("durchgang")
-    senkrechte = [w for w in raum.waende if w[0] == w[2]]
+    senkrechte = [w for w in raum.waende if w.x1 == w.x2]
     auf_x = {}
     for x1, y1, _x2, y2 in senkrechte:
         auf_x.setdefault(x1, []).append((min(y1, y2), max(y1, y2)))
@@ -137,8 +139,39 @@ def test_beruehrende_und_parallele_strecken():
     """Grenzfaelle der Schnittpruefung -- hier entstehen die stillen Fehler."""
     parallel = Raum(
         name="P", beschreibung="", groesse=(10.0, 10.0), start=(1.0, 1.0, 0.0),
-        waende=((2.0, 0.0, 2.0, 10.0),), hindernisse=(), tags=(),
+        waende=((2.0, 0.0, 2.0, 10.0),), tags=(),
     )
     assert not sicht_frei(parallel, (1.0, 1.0), (3.0, 1.0))   # kreuzt
     assert sicht_frei(parallel, (3.0, 1.0), (5.0, 1.0))       # dahinter, kreuzt nicht
     assert sicht_frei(parallel, (0.5, 1.0), (1.5, 1.0))       # davor, kreuzt nicht
+
+
+# ------------------------------------------------------- gedrehte Bloecke
+
+GEDREHT = Raum(
+    name="G", beschreibung="", start=(1.0, 1.0, 0.0),
+    waende=((0.0, 0.0, 10.0, 0.0),),
+    # 2 m lang, 0.5 m tief, um 45 Grad gedreht: die Laengsachse zeigt nach Nordost.
+    bloecke=(Block("Balken", 5.0, 5.0, 2.0, 0.5, drehung=45.0),),
+)
+
+
+def test_ein_gedrehter_block_trifft_dort_wo_seine_ecke_ist():
+    from spotlab.welt.kollision import abstand_block, hindernis_bei
+
+    balken = GEDREHT.bloecke[0]
+    # Auf der Laengsachse, 0.9 m von der Mitte: im Block (halbe Laenge 1.0).
+    auf_achse = (5.0 + 0.9 * 0.7071, 5.0 + 0.9 * 0.7071)
+    assert abstand_block(balken, *auf_achse) == 0.0
+    assert hindernis_bei(GEDREHT, *auf_achse, radius=0.05) == "Balken"
+    # In der Huelle des ungedrehten Blocks, aber neben dem gedrehten: frei.
+    neben = (5.6, 5.0)
+    assert abstand_block(balken, *neben) == pytest.approx(0.174, abs=0.01)
+    assert hindernis_bei(GEDREHT, *neben, radius=0.05) is None
+
+
+def test_die_sichtlinie_kennt_die_gedrehten_kanten():
+    # Von Suedwest nach Nordost durch den Balken: versperrt.
+    assert not sicht_frei(GEDREHT, (4.0, 4.0), (6.0, 6.0))
+    # Quer dazu, knapp an der schmalen Seite vorbei: frei.
+    assert sicht_frei(GEDREHT, (6.0, 4.0), (6.5, 4.5))
