@@ -1,0 +1,38 @@
+[raum]
+name         = "Treppe"
+fassung      = 3
+beschreibung = "Ein Zimmer mit Podest und Treppe hinauf; der Tag hängt oben. Vorwärts hoch, rückwärts runter."
+groesse      = [7.0, 4.0]
+start        = [1.0, 2.0, 0.0]
+wand_dicke   = 0.06
+wand_hoehe   = 2.5
+waende = [
+    [0.0, 0.0, 7.0, 0.0],
+    [7.0, 0.0, 7.0, 4.0],
+    [7.0, 4.0, 0.0, 4.0],
+    [0.0, 4.0, 0.0, 0.0],
+]
+
+[[boden]]
+name    = "Treppe"
+mitte   = [3.5, 2.0]
+groesse = [2.0, 2.4]
+z       = 0.0
+anstieg = 1.2
+stufen  = 7
+drehung = 0.0
+
+[[boden]]
+name    = "Podest"
+mitte   = [5.75, 2.0]
+groesse = [2.5, 4.0]
+z       = 1.2
+anstieg = 0.0
+stufen  = 0
+drehung = 0.0
+
+[[tag]]
+id    = 3
+pose  = [6.9, 2.0, 180.0]
+hoehe = 0.3
+z     = 1.2

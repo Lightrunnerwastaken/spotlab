@@ -196,7 +196,7 @@ class MujocoBackend(SimBackend):
         # den Boden. Ein leerer Raum liefert leere Tags, das ist die Wahrheit.
         return (Capability.LOCOMOTION | Capability.POSTURE | Capability.POWER
                 | Capability.DEPTH_CAMERAS | Capability.GRAY_CAMERAS
-                | Capability.WORLD_OBJECTS | Capability.LOCAL_GRID)
+                | Capability.WORLD_OBJECTS | Capability.LOCAL_GRID | Capability.STAIRS)
 
     @staticmethod
     def hinweis_zur_gueltigkeit():

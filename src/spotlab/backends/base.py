@@ -241,6 +241,7 @@ _EINZELN = (
     Capability.COLOR_CAMERAS,
     Capability.LEASE,
     Capability.ESTOP,
+    Capability.STAIRS,
     Capability.GRAPH_NAV,
     Capability.WORLD_OBJECTS,
     Capability.LOCAL_GRID,

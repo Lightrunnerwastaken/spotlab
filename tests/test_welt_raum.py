@@ -102,8 +102,8 @@ def test_jede_vorlage_ist_geometrisch_stimmig(name):
         assert 0 <= tag.x <= breite and 0 <= tag.y <= hoehe
 
 
-def test_vorlagen_nennt_die_drei():
-    assert sorted(vorlagen()) == ["durchgang", "leer", "moebliert"]
+def test_vorlagen_nennt_die_vier():
+    assert sorted(vorlagen()) == ["durchgang", "leer", "moebliert", "treppe"]
 
 
 # ------------------------------------------------------- die Schichtregel

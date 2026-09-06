@@ -98,3 +98,76 @@ def test_das_beispiel_findet_die_tuer_auch_in_3d(tmp_path):
     assert "Tag gesehen" in ergebnis.stdout, ergebnis.stdout
     letzte = json.loads((lauf / "zustand.jsonl").read_text(encoding="utf-8").splitlines()[-1])
     assert letzte["daten"]["pose"][0] > 4.5
+
+
+# ------------------------------------------------------------- Treppe (Stufe 13)
+
+
+def _lauf_von(tmp_path, skript, backend="sim", raum="treppe", start="1.00,2.00,0.0", quelle=None):
+    """Ein Beispiel (oder ein eigenes Skript `quelle`) als Kindprozess im Raum."""
+    ziel, _ = bereitstellen(tmp_path)
+    if quelle is not None:
+        (ziel / skript).write_text(quelle, encoding="utf-8")
+    umgebung = dict(os.environ, SPOTLAB_BACKEND=backend, SPOTLAB_RAUM=raum,
+                    SPOTLAB_RAUM_START=start, PYTHONUTF8="1",
+                    PYTHONPATH=os.pathsep.join(p for p in sys.path if p))
+    ergebnis = subprocess.run(
+        [sys.executable, "-u", str(ziel / skript)],
+        cwd=str(ziel), env=umgebung, capture_output=True, text=True,
+        encoding="utf-8", errors="replace", timeout=TEST_TIMEOUT_S * 4,
+    )
+    laeufe = sorted((ziel / "runs").glob("*"))
+    return ergebnis, laeufe[-1] if laeufe else None
+
+
+def _zustaende(lauf):
+    return [json.loads(z) for z in (lauf / "zustand.jsonl").read_text(encoding="utf-8").splitlines() if z.strip()]
+
+
+def _arten(lauf):
+    return [json.loads(z)["art"] for z in (lauf / "ereignisse.jsonl").read_text(encoding="utf-8").splitlines() if z.strip()]
+
+
+def test_das_beispiel_steigt_die_treppe_vorwaerts_hoch_und_rueckwaerts_runter(tmp_path):
+    ergebnis, lauf = _lauf_von(tmp_path, "treppe_steigen.py")
+    assert ergebnis.returncode == 0, ergebnis.stdout + ergebnis.stderr
+    assert "Oben" in ergebnis.stdout and "Unten" in ergebnis.stdout and "Tag 3" in ergebnis.stdout, ergebnis.stdout
+    arten = _arten(lauf)
+    assert "treppe_verweigert" not in arten and "angestossen" not in arten, arten
+    zs = [z["daten"]["z"] for z in _zustaende(lauf) if "z" in z["daten"]]
+    assert max(zs) > 1.5 and zs[-1] < 0.8, (max(zs), zs[-1])          # oben auf 1.2 + Standhoehe, am Ende unten
+
+
+@pytest.mark.skipif(not __import__("importlib").util.find_spec("spotsim"),
+                    reason="3D braucht spotsim")
+def test_das_beispiel_steigt_die_treppe_auch_in_3d(tmp_path):
+    import spotsim
+
+    if not spotsim.spot_asset_available():
+        pytest.skip("Menagerie-Asset fehlt")
+    ergebnis, lauf = _lauf_von(tmp_path, "treppe_steigen.py", backend="mujoco")
+    assert ergebnis.returncode == 0, ergebnis.stdout + ergebnis.stderr
+    assert "Oben" in ergebnis.stdout and "Unten" in ergebnis.stdout, ergebnis.stdout
+    assert "treppe_verweigert" not in _arten(lauf)
+    zs = [z["daten"]["z"] for z in _zustaende(lauf) if "z" in z["daten"]]
+    assert max(zs) > 1.5 and zs[-1] < 0.8, (max(zs), zs[-1])
+
+
+FALSCH_HERUM = '''
+import spotlab
+with spotlab.connect() as spot:
+    spot.power_on()
+    spot.stand()
+    spot.walk(vx=0.25, duration=6.0)      # vorwaerts die Treppe hinunter -- falsch herum
+    spot.sit()
+'''
+
+
+def test_vorwaerts_abwaerts_wird_im_beispielraum_verweigert(tmp_path):
+    ergebnis, lauf = _lauf_von(tmp_path, "treppe_falsch.py", start="5.50,2.00,180.0", quelle=FALSCH_HERUM)
+    assert ergebnis.returncode == 0, ergebnis.stdout + ergebnis.stderr
+    ereignisse = [json.loads(z) for z in (lauf / "ereignisse.jsonl").read_text(encoding="utf-8").splitlines() if z.strip()]
+    verweigert = [e for e in ereignisse if e["art"] == "treppe_verweigert"]
+    assert len(verweigert) == 1 and verweigert[0]["daten"]["verlangt"] == "rückwärts runter", ereignisse
+    zs = [z["daten"]["z"] for z in _zustaende(lauf) if "z" in z["daten"]]
+    assert min(zs) > 1.5                                                # nie hinuntergekommen
