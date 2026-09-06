@@ -246,3 +246,63 @@ def test_speichern_schreibt_lf_und_utf8(tmp_path):
     roh = pfad.read_bytes()
     assert b"\r\n" not in roh
     assert raum_laden("ae", workspace=tmp_path).beschreibung == 'sagt "hallo"'
+
+
+# ------------------------------------------------------------- Fassung 3: Hoehe
+
+
+def test_ein_boden_ist_podest_rampe_oder_treppe_und_kennt_seine_hoehe():
+    import math
+
+    from spotlab.welt.raum import Boden
+
+    podest = Boden("P", 2, 2, 2, 1, z=1.2)
+    rampe = Boden("R", 2, 2, 2, 1, z=0.0, anstieg=1.0)
+    treppe = Boden("T", 2, 2, 2, 1, z=0.0, anstieg=1.0, stufen=5)
+    assert (podest.art, rampe.art, treppe.art) == ("podest", "rampe", "treppe")
+    assert rampe.hoehe_lokal(-1.0) == pytest.approx(0.0)
+    assert rampe.hoehe_lokal(0.0) == pytest.approx(0.5)
+    assert rampe.hoehe_lokal(1.0) == pytest.approx(1.0)
+    assert treppe.stufe_lokal(-0.99) == pytest.approx(0.2)      # erste Trittflaeche
+    assert treppe.stufe_lokal(0.99) == pytest.approx(1.0)
+    assert podest.stufe_lokal(0.3) == pytest.approx(1.2)         # ohne Stufen: die Flaeche
+    assert rampe.neigung_grad == pytest.approx(math.degrees(math.atan(0.5)))
+    assert podest.neigung_grad == 0.0
+    assert treppe.z_oben == pytest.approx(1.0)
+    gedreht = Boden("G", 0, 0, 2, 1, drehung=90.0)
+    assert gedreht.lokal(0.0, 1.0)[0] == pytest.approx(1.0)      # +y der Welt ist +x des Bodens
+
+
+def test_v3_geht_rund_und_ein_raum_ohne_hoehe_sieht_aus_wie_v2(tmp_path):
+    from spotlab.welt.raum import Boden, raum_laden_pfad
+
+    raum = Raum(name="H", beschreibung="", start=(1, 1, 0),
+                waende=(Wand(0, 0, 4, 0), Wand(0, 3, 4, 3, z=1.2)),
+                bloecke=(Block("K", 2, 2, 1, 1, z=1.2),),
+                tags=(RaumTag(3, 3, 3, 90.0, z=1.2),),
+                boeden=(Boden("T", 2, 1, 2, 1, anstieg=1.2, stufen=7),))
+    raum_speichern(raum, tmp_path / "h.toml")
+    assert raum_laden_pfad(tmp_path / "h.toml") == raum
+    flach = Raum(name="F", beschreibung="", start=(1, 1, 0), waende=((0, 0, 4, 0),))
+    raum_speichern(flach, tmp_path / "f.toml")
+    text = (tmp_path / "f.toml").read_text(encoding="utf-8")
+    assert "boden" not in text and "\nz " not in text and "[0.0, 0.0, 4.0, 0.0]" in text
+
+
+def test_alte_dateien_bekommen_z_null():
+    raum = raum_laden("moebliert")
+    assert all(w.z == 0.0 for w in raum.waende) and all(b.z == 0.0 for b in raum.bloecke)
+    assert raum.boeden == () and all(t.z == 0.0 for t in raum.tags)
+
+
+def test_die_huelle_nimmt_boeden_mit():
+    from spotlab.welt.raum import Boden
+
+    raum = Raum(name="H", beschreibung="", start=(0, 0, 0), boeden=(Boden("P", 5, 5, 2, 2),))
+    assert huelle(raum)[2] == pytest.approx(6.5) and huelle(raum)[3] == pytest.approx(6.5)
+
+
+def test_die_stufenkonstanten_passen_zusammen():
+    from spotlab.welt.raum import MAX_STUFE_M, STUFE_VORGABE_M
+
+    assert 0.0 < STUFE_VORGABE_M < MAX_STUFE_M
