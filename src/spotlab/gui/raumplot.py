@@ -28,6 +28,9 @@ class RaumPlot(QWidget):
         self._spur = []
         self._anstoesse = []
         self._start = None
+        # Blickrichtung in Grad. Frueher las paintEvent sie fest aus `_start` --
+        # ein `move(turn=90)` war in der Zeichnung dadurch nicht zu sehen.
+        self._blick = 0.0
 
     # ------------------------------------------------------------- Fuellen
 
@@ -44,8 +47,41 @@ class RaumPlot(QWidget):
         self.update()
 
     def setze_start(self, pose):
+        # Ein neuer Start heisst: neuer Lauf, also leere Spur -- die alte
+        # stehenzulassen zeigte zwei Fahrten uebereinander.
+        #
+        # Und die Spur faengt LEER an, nicht mit dem Startpunkt darin: der ist
+        # eine Annahme der GUI, keine Messung. Weicht er vom echten Start ab,
+        # zeichnet er einen Weg, den Spot nie gefahren ist. Der Kreis steht
+        # trotzdem hier, bis die erste gemessene Pose kommt (siehe paintEvent).
         self._start = pose
+        self._spur = []
+        self._blick = pose[2] if pose else 0.0
         self.update()
+
+    def haenge_pose_an(self, x, y, grad=None):
+        """Eine gemessene Pose anfuegen -- der Weg fuer den laufenden Lauf."""
+        self._spur.append((x, y))
+        if grad is not None:
+            self._blick = grad
+        self.update()
+
+    # ------------------------------------------------------------- Auskunft
+
+    def raum(self):
+        return self._raum
+
+    def start(self):
+        return self._start
+
+    def spur(self):
+        return list(self._spur)
+
+    def anstoesse(self):
+        return list(self._anstoesse)
+
+    def blick(self):
+        return self._blick
 
     # --------------------------------------------------------- Umrechnung
 
@@ -124,7 +160,7 @@ class RaumPlot(QWidget):
             maler.drawLine(int(px) - 5, int(py) + 5, int(px) + 5, int(py) - 5)
 
         pose = self._spur[-1] if self._spur else None
-        blick = self._start[2] if self._start else 0.0
+        blick = self._blick
         if pose is None and self._start is not None:
             pose = (self._start[0], self._start[1])
         if pose is not None:

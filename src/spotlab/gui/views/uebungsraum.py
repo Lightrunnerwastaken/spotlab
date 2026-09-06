@@ -7,10 +7,13 @@ das Lauf-Verzeichnis (`ereignisse.jsonl` fuer Raum und Anstoesse, `zustand.jsonl
 fuer die Spur) und `welt.raum` fuer die Geometrie. Letzteres ist reine
 Standardbibliothek.
 
-DER STARTKNOPF STARTET NICHT SELBST. Er meldet den Wunsch; das Fenster reicht
-ihn an die Ansicht „Projekte" weiter -- so wie der Stopp-Knopf im Editor an
-„Live-Lauf" delegiert. Grund ist die Invariante aus CLAUDE.md: genau EIN Lauf ist
-der, auf den Stopp und NOT-AUS zeigen.
+DER STARTKNOPF STARTET NICHT SELBST. Er meldet den Wunsch; das Hauptfenster
+stellt das Backend auf „sim" und laesst den EDITOR starten -- so wie der
+Stopp-Knopf im Editor an „Live-Lauf" delegiert. Grund ist die Invariante aus
+CLAUDE.md: genau EIN Lauf ist der, auf den Stopp und NOT-AUS zeigen.
+
+Gezeichnet wird waehrend des Laufs im eigenen Fenster (`gui/uebungsfenster.py`);
+diese Ansicht ist der Platz zum EINRICHTEN und zeigt danach die gefahrene Spur.
 """
 
 import json
@@ -30,6 +33,11 @@ from PySide6.QtWidgets import (
 from spotlab.gui.raumplot import RaumPlot
 from spotlab.welt.kollision import hindernis_bei
 from spotlab.welt.raum import raum_laden, vorlagen
+
+# Der Knopf startet, was im EDITOR offen ist -- nicht eine Auswahl irgendwo
+# sonst. Die Beschriftung sagt das, damit niemand eine Auswahl sucht.
+START_TEXT = "▶ Offene Datei starten"
+STOPP_TEXT = "■ Stopp"
 
 
 def _zeilen(pfad):
@@ -69,10 +77,14 @@ class UebungsraumView(QWidget):
         self.raeume = QComboBox()
         self.raeume.addItems(vorlagen())
         self.raeume.currentTextChanged.connect(self.waehle_raum)
+        # `activated` statt `currentTextChanged` fuers Speichern: jenes feuert
+        # auch, wenn `lade()` die Liste auf den Raum eines alten Laufs stellt --
+        # das Nachspielen ueberschriebe sonst die Wahl des Schuelers.
+        self.raeume.activated.connect(self._raum_gemerkt)
 
         self.startzeile = QLabel("—")
         self.startzeile.setObjectName("Gedaempft")
-        self.starten = QPushButton("Programm starten")
+        self.starten = QPushButton(START_TEXT)
         self.starten.clicked.connect(self.start_gewuenscht.emit)
 
         rechts = QVBoxLayout()
@@ -91,6 +103,14 @@ class UebungsraumView(QWidget):
         self.waehle_raum(self.raeume.currentText())
 
     # ----------------------------------------------------------- Zustand
+
+    def setze_laeuft(self, laeuft):
+        """Waehrend eines Laufs haelt derselbe Knopf an.
+
+        Ohne das haette der Uebungsraum einen Startknopf, der mitten im Lauf
+        nichts tut -- und der Schueler suchte den Stopp anderswo.
+        """
+        self.starten.setText(STOPP_TEXT if laeuft else START_TEXT)
 
     def setze_arbeitsordner(self, pfad):
         self._arbeitsordner = Path(pfad) if pfad else None
@@ -114,6 +134,32 @@ class UebungsraumView(QWidget):
         self.plot.setze_raum(self._raum)
         self.plot.setze_start(self._raum.start)
         self._zeige_start(self._raum.start)
+
+    def raum(self):
+        """Der GELADENE Raum. Das Uebungsfenster belegt seine Zeichnung damit
+        vor, damit sie nicht leer beginnt."""
+        return self._raum
+
+    def raumname(self):
+        """Der Name des GELADENEN Raums -- der geht mit an den Lauf."""
+        return self._raumname
+
+    def startpose(self):
+        """Die GEWAEHLTE Startpose -- was der Schueler geklickt hat, nicht was
+        in der Vorlage steht."""
+        return self.plot.start()
+
+    def _raum_gemerkt(self, _index):
+        """Die Raumwahl sofort sichern.
+
+        Vorher entstand `[uebungsraum]` erst beim Klick in die Zeichnung. Wer
+        nur den Raum umstellte und startete, fuhr in GAR KEINEM Raum: `cfg.raum`
+        blieb leer, und connect() baute den Sim ohne Welt.
+        """
+        if self._config is None or not self._raumname:
+            return
+        self._config = replace(self._config, raum=self._raumname)
+        self.config_gespeichert.emit(self._config)
 
     def _zeige_start(self, pose):
         self.startzeile.setText(f"({pose[0]:.2f}, {pose[1]:.2f}) bei {pose[2]:.0f}°")

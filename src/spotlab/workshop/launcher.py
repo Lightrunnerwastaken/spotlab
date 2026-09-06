@@ -20,10 +20,15 @@ ENV_BACKEND = "SPOTLAB_BACKEND"
 ENV_NUR_TROCKEN = "SPOTLAB_NUR_TROCKEN"
 
 
-def _umgebung(dryrun, nur_trocken=False):
+def _umgebung(dryrun, nur_trocken=False, backend=None, zusatz=None):
     umgebung = dict(os.environ)
-    if dryrun:
-        umgebung[ENV_BACKEND] = "dryrun"
+    umgebung.update(zusatz or {})
+    # `backend` schlaegt `dryrun`: jenes ist nur die aeltere Schreibweise fuer
+    # denselben Schalter. Ohne beides bleibt die Variable WEG -- dann
+    # entscheidet `default_backend` aus der Konfiguration, wie bisher.
+    name = backend or ("dryrun" if dryrun else None)
+    if name:
+        umgebung[ENV_BACKEND] = name
     if nur_trocken:
         # Obergrenze: connect() weist damit auch ein explizites backend="real" ab.
         umgebung[ENV_NUR_TROCKEN] = "1"
@@ -42,7 +47,8 @@ def _umgebung(dryrun, nur_trocken=False):
 
 
 def start_script(
-    pfad, dryrun=False, argumente=(), nur_trocken=False, starter=subprocess.Popen, ausgabe=None
+    pfad, dryrun=False, argumente=(), nur_trocken=False, starter=subprocess.Popen,
+    ausgabe=None, backend=None, umgebung=None,
 ):
     """Startet das Skript und kehrt SOFORT zurück. Gibt den Prozess-Handle zurück.
 
@@ -59,6 +65,12 @@ def start_script(
 
     `argumente` wird als Liste an den Prozess gereicht, nie über eine Shell
     zusammengesetzt. `nur_trocken` setzt die Obergrenze aus __init__.py.
+
+    `backend` nennt das Backend beim Namen ("real", "dryrun", "sim") und ist
+    der Weg der GUI; `dryrun=True` bleibt die Kurzform für "dryrun".
+
+    `umgebung` sind zusätzliche Variablen für den Kindprozess — die GUI
+    reicht damit Raum und Startpose des Übungsraums durch.
     """
     skript = Path(pfad).resolve()
     if not skript.exists():
@@ -67,7 +79,8 @@ def start_script(
     return starter(
         [sys.executable, "-u", str(skript), *argumente],
         cwd=str(skript.parent),
-        env=_umgebung(dryrun, nur_trocken=nur_trocken),
+        env=_umgebung(dryrun, nur_trocken=nur_trocken, backend=backend,
+                      zusatz=umgebung),
         stdout=subprocess.PIPE if ausgabe is None else ausgabe,
         stderr=subprocess.STDOUT,
         text=True,

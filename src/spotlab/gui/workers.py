@@ -26,7 +26,11 @@ class DoctorWorker(QThread):
 
 class OutputReader(QThread):
     zeile = Signal(str)
-    ende = Signal(int)
+    # Signal(object), nicht Signal(int): Windows meldet Abstuerze als
+    # NTSTATUS -- 0xC000013A (Strg+C) ist 3221225786 und passt in kein
+    # signed int. Qt schnitt den Wert ab und schrieb OverflowError auf
+    # stderr; der Ausstiegscode des Schuelerprogramms war danach falsch.
+    ende = Signal(object)
 
     def __init__(self, prozess, parent=None):
         super().__init__(parent)

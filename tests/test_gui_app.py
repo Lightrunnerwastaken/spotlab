@@ -440,3 +440,115 @@ def test_ohne_ungespeicherte_aenderungen_wird_nicht_gefragt(qapp, tmp_path):
     fenster.closeEvent(ereignis)
     assert gefragt == []
     assert ereignis.isAccepted()
+
+
+# ------------------------------------------------- Der virtuelle Lauf
+
+
+class _FakeProzess:
+    stdout = None
+
+    def poll(self):
+        return None
+
+    def wait(self, timeout=None):
+        return 0
+
+
+def test_ein_virtueller_lauf_oeffnet_das_eigene_fenster(qapp, tmp_path):
+    fenster = MainWindow()
+    fenster.ansichten["code"].setze_backend("sim")
+    fenster._lauf_aus_code(_FakeProzess(), str(tmp_path / "x.py"))
+    assert fenster.uebungsfenster is not None
+    assert fenster.uebungsfenster.isVisible()
+
+
+def test_ein_trockenlauf_oeffnet_kein_fenster(qapp, tmp_path):
+    """Ein Fenster, das bei jedem Lauf aufspringt, wird weggeklickt und dann
+    ignoriert."""
+    fenster = MainWindow()
+    fenster.ansichten["code"].setze_backend("dryrun")
+    fenster._lauf_aus_code(_FakeProzess(), str(tmp_path / "x.py"))
+    assert fenster.uebungsfenster is None
+
+
+def test_die_posen_des_laufs_landen_im_uebungsfenster(qapp, tmp_path):
+    """Die Aufzeichnung fuehrt yaw im BOGENMASS (`zustand.jsonl`), gezeichnet
+    wird in Grad. Ohne Umrechnung zeigte der Strich in eine falsche Richtung."""
+    import math
+
+    fenster = MainWindow()
+    fenster.ansichten["code"].setze_backend("sim")
+    fenster._lauf_aus_code(_FakeProzess(), str(tmp_path / "x.py"))
+    fenster._zustand({"daten": {"battery": 90.0, "pose": [1.5, 2.0, math.pi / 2]}})
+
+    assert fenster.uebungsfenster.plot.spur()[-1] == (1.5, 2.0)
+    assert round(fenster.uebungsfenster.plot.blick()) == 90
+
+
+def test_der_raum_kommt_aus_dem_verbunden_ereignis(qapp, tmp_path):
+    fenster = MainWindow()
+    fenster.ansichten["code"].setze_backend("sim")
+    fenster._lauf_aus_code(_FakeProzess(), str(tmp_path / "x.py"))
+    fenster._ereignis({"art": "verbunden", "daten": {"backend": "sim", "raum": "durchgang"}})
+
+    assert fenster.uebungsfenster.plot.raum() is not None
+
+
+def test_ein_anstoss_wird_im_uebungsfenster_vermerkt(qapp, tmp_path):
+    fenster = MainWindow()
+    fenster.ansichten["code"].setze_backend("sim")
+    fenster._lauf_aus_code(_FakeProzess(), str(tmp_path / "x.py"))
+    fenster._ereignis({"art": "angestossen", "daten": {"x": 2.0, "y": 3.0}})
+
+    assert fenster.uebungsfenster.plot.anstoesse() == [(2.0, 3.0)]
+
+
+def test_der_startknopf_im_uebungsraum_erzwingt_das_sim_backend(qapp):
+    """Er darf NICHT erben, was im Editor eingestellt ist -- sonst startet ein
+    Knopf in der Ansicht „Übungsraum" den echten Spot."""
+    fenster = MainWindow()
+    fenster.ansichten["code"].setze_backend("real")
+    fenster.ansichten["uebungsraum"].starten.click()
+    assert fenster.ansichten["code"].gewaehltes_backend() == "sim"
+
+
+def test_der_knopf_im_uebungsraum_wandert_mit_dem_lauf(qapp):
+    fenster = MainWindow()
+    fenster.ansichten["code"]._setze_laeuft(True)
+    assert "Stopp" in fenster.ansichten["uebungsraum"].starten.text()
+    fenster.ansichten["code"].lauf_beendet()
+    assert "starten" in fenster.ansichten["uebungsraum"].starten.text()
+
+
+def test_der_stopp_im_uebungsfenster_geht_an_die_live_ansicht(qapp, tmp_path, monkeypatch):
+    """Delegation, keine zweite Kopie: der freundliche Stopp haengt am
+    Lauf-Verzeichnis, das nur LiveView vom Watcher bekommt."""
+    fenster = MainWindow()
+    gestoppt = []
+    monkeypatch.setattr(fenster.ansichten["live"], "stoppe",
+                        lambda: gestoppt.append(True))
+    fenster.ansichten["code"].setze_backend("sim")
+    fenster._lauf_aus_code(_FakeProzess(), str(tmp_path / "x.py"))
+    fenster.uebungsfenster.stopp.click()
+    assert gestoppt == [True]
+
+
+def test_der_virtuelle_lauf_bekommt_raum_und_start_der_ansicht(qapp):
+    """Der Lauf vom 04.09.2026 hatte `"raum": null` und startete bei (0, 0):
+    die Konfiguration kannte den Raum nicht, weil niemand in die Zeichnung
+    geklickt hatte. Was auf dem Bildschirm steht, geht jetzt direkt mit."""
+    fenster = MainWindow()
+    fenster.ansichten["uebungsraum"].waehle_raum("moebliert")
+    fenster.ansichten["uebungsraum"]._start_gewaehlt(2.0, 1.0)
+    fenster.ansichten["code"].setze_backend("sim")
+
+    umgebung = fenster.ansichten["code"].zusatz_umgebung()
+    assert umgebung["SPOTLAB_RAUM"] == "moebliert"
+    assert umgebung["SPOTLAB_RAUM_START"].startswith("2.00,1.00")
+
+
+def test_ein_echter_lauf_bekommt_keinen_raum(qapp):
+    fenster = MainWindow()
+    fenster.ansichten["code"].setze_backend("real")
+    assert fenster.ansichten["code"].zusatz_umgebung() == {}

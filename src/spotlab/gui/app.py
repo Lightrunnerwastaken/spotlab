@@ -5,6 +5,7 @@ nach dem Farbschema fragt, ist system_ist_dunkel() — theme.py bleibt dadurch
 Qt-frei und prüfbar.
 """
 
+import math
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -20,12 +21,14 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from spotlab import ENV_RAUM, ENV_RAUM_START
 from spotlab.config import load_config, save_config
 from spotlab.errors import SpotlabError
 from spotlab.gui.editor.view import EditorView
 from spotlab.gui.header import Header
 from spotlab.gui.sidebar import Sidebar
 from spotlab.gui.theme import palette_fuer, stylesheet
+from spotlab.gui.uebungsfenster import Uebungsfenster
 from spotlab.gui.views.anbindungen import AnbindungenView
 from spotlab.gui.views.checkup import CheckupView
 from spotlab.gui.views.live import LiveView
@@ -71,6 +74,10 @@ class MainWindow(QWidget):
         # anderen Prozess als den, der gerade den Roboter hält.
         self._aktiver_lauf = None
         self._wartende_laeufe = []
+        # Das Turtle-Fenster fuer virtuelle Laeufe. Erst beim ersten solchen
+        # Lauf gebaut: ein Fenster, das bei jedem Start aufspringt, wird
+        # weggeklickt und danach ignoriert.
+        self.uebungsfenster = None
 
         self.kopf = Header()
         self.leiste = Sidebar()
@@ -127,18 +134,27 @@ class MainWindow(QWidget):
         self.kopf.notaus.connect(lambda: self.ansichten["live"].notaus())
         self.ansichten["live"].meldung.connect(self._melde)
         self.ansichten["projekte"].lauf_gestartet.connect(self._lauf_gestartet)
+        self.ansichten["projekte"].meldung.connect(self._melde)
         self.ansichten["projekte"].arbeitsordner_geaendert.connect(self._merke_arbeitsordner)
         self.ansichten["spot"].config_gespeichert.connect(self._config_gespeichert)
         self.ansichten["uebungsraum"].meldung.connect(self._melde)
         self.ansichten["uebungsraum"].config_gespeichert.connect(self._config_gespeichert)
         # Delegation, kein zweiter Startweg: genau EIN Lauf ist der, auf den
         # Stopp und NOT-AUS zeigen.
-        self.ansichten["uebungsraum"].start_gewuenscht.connect(
-            self.ansichten["projekte"].starte_aktuelles
+        # An den EDITOR, nicht an "Projekte": der Knopf soll die offene Datei
+        # starten. Ueber "Projekte" haette er stillschweigend nichts getan,
+        # solange dort nichts ausgewaehlt war.
+        self.ansichten["uebungsraum"].start_gewuenscht.connect(self._starte_virtuell)
+        # Der Knopf im Uebungsraum spiegelt den Laufzustand des Editors, statt
+        # ihn ein zweites Mal zu fuehren. Die Methode gab es schon; sie war
+        # nirgends verbunden und der Knopf blieb deshalb auf „Starten" stehen.
+        self.ansichten["code"].laeuft_geaendert.connect(
+            self.ansichten["uebungsraum"].setze_laeuft
         )
         self.ansichten["spot"].pruefung_angefordert.connect(self._pruefe)
         self.ansichten["karten"].meldung.connect(self._melde)
         self.ansichten["karten"].aktive_karte_gewaehlt.connect(self._merke_aktive_karte)
+        self.ansichten["code"].zusatz_umgebung = self._umgebung_fuer_lauf
         self.ansichten["code"].lauf_gestartet.connect(self._lauf_aus_code)
         self.ansichten["code"].meldung.connect(self._melde)
         self.ansichten["projekte"].projekt_oeffnen.connect(self._oeffne_in_code)
@@ -172,6 +188,8 @@ class MainWindow(QWidget):
         self.ansichten["karten"].setze_arbeitsordner(pfad or None)
         self.ansichten["umwelt"].setze_arbeitsordner(pfad or None)
         self.ansichten["uebungsraum"].setze_arbeitsordner(pfad or None)
+        if self.uebungsfenster is not None:
+            self.uebungsfenster.setze_arbeitsordner(pfad or None)
         if self._watcher is not None:
             self._watcher.stop()
             self._watcher = None
@@ -180,7 +198,7 @@ class MainWindow(QWidget):
         self._watcher = RunWatcher(Path(pfad))
         self._watcher.lauf_begonnen.connect(self._lauf_begonnen)
         self._watcher.zustand.connect(self._zustand)
-        self._watcher.ereignis.connect(self.ansichten["live"].zeige_ereignis)
+        self._watcher.ereignis.connect(self._ereignis)
         self._watcher.bild.connect(self.ansichten["live"].zeige_bild)
         self._watcher.lauf_beendet.connect(self._lauf_beendet)
         self._watcher.fehler.connect(self._melde)
@@ -241,6 +259,7 @@ class MainWindow(QWidget):
         self._leser = OutputReader(prozess, self)
         self._leser.zeile.connect(self.ansichten["live"].zeige_ausgabe)
         self._leser.zeile.connect(self.ansichten["code"].zeige_ausgabe)
+        self._leser.zeile.connect(self._zeile_ins_uebungsfenster)
         # Der Leser weiss als Erster, dass der Prozess weg ist. Ein Skript mit
         # Syntaxfehler stirbt, bevor es ein Lauf-Verzeichnis anlegt — der
         # Watcher meldet dann nie ein Ende, und der Stopp-Knopf im Editor bliebe
@@ -257,7 +276,79 @@ class MainWindow(QWidget):
     def _lauf_aus_code(self, prozess, skript):
         # Kein Ansichtswechsel: wer aus „Code" startet, will dort bleiben.
         self._start_aus = "code"
+        if self.ansichten["code"].gewaehltes_backend() == "sim":
+            self._oeffne_uebungsfenster(Path(skript).name)
         self._starte_leser(prozess)
+
+    # ------------------------------------------------------- Uebungsfenster
+
+    def _umgebung_fuer_lauf(self):
+        """Raum und Startpose fuer einen virtuellen Lauf.
+
+        Direkt aus der Ansicht, NICHT ueber die Konfigurationsdatei: die bekam
+        den Raum erst beim Klick in die Zeichnung. Wer nur startete, fuhr
+        deshalb in gar keinem Raum -- Start (0, 0), quer durch die Waende
+        (Lauf vom 04.09.2026 mit `"raum": null`). Und ein Laptop ohne
+        eingerichteten Spot hat ueberhaupt keine Konfiguration.
+        """
+        if self.ansichten["code"].gewaehltes_backend() != "sim":
+            return {}
+        ansicht = self.ansichten["uebungsraum"]
+        umgebung = {ENV_RAUM: ansicht.raumname()}
+        pose = ansicht.startpose()
+        if pose:
+            umgebung[ENV_RAUM_START] = f"{pose[0]:.2f},{pose[1]:.2f},{pose[2]:.1f}"
+        return umgebung
+
+    def _starte_virtuell(self):
+        """Der Knopf im Uebungsraum ERZWINGT das virtuelle Backend.
+
+        Er erbt NICHT, was im Editor eingestellt ist: sonst startete ein Knopf
+        in der Ansicht „Übungsraum" den echten Spot. Gestartet wird trotzdem
+        ueber den Editor -- genau EIN Lauf ist der, auf den Stopp und NOT-AUS
+        zeigen.
+        """
+        # Nur beim START umstellen: laeuft schon etwas, heisst derselbe Knopf
+        # „Stopp", und die Wahl im Editor darf dabei nicht umspringen.
+        if not self.ansichten["code"].laeuft():
+            self.ansichten["code"].setze_backend("sim")
+        self.ansichten["code"].starte_aktuelles()
+
+    def _oeffne_uebungsfenster(self, titel=""):
+        if self.uebungsfenster is None:
+            self.uebungsfenster = Uebungsfenster(self._palette)
+            self.uebungsfenster.setze_arbeitsordner(
+                self._config.workspace if self._config else None
+            )
+            # Delegation wie beim Stopp im Editor: dasselbe Objekt mit
+            # demselben Zustand, nicht eine zweite Kopie der Logik.
+            self.uebungsfenster.stopp_gewuenscht.connect(
+                lambda: self.ansichten["live"].stoppe()
+            )
+        raum = self.ansichten["uebungsraum"].raum()
+        # Vorbelegt aus der Ansicht, damit die Zeichnung nicht leer beginnt --
+        # das `verbunden`-Ereignis zieht Sekundenbruchteile spaeter nach, und
+        # DAS ist die Wahrheit ueber den Raum, in dem wirklich gefahren wird.
+        self.uebungsfenster.beginne(
+            raum, self.ansichten["uebungsraum"].startpose(), titel
+        )
+        self.uebungsfenster.show()
+        self.uebungsfenster.raise_()
+
+    def _zeile_ins_uebungsfenster(self, zeile):
+        if self.uebungsfenster is not None and self.uebungsfenster.isVisible():
+            self.uebungsfenster.zeige_ausgabe(zeile)
+
+    def _ereignis(self, satz):
+        """Ereignisse gehen an die Live-Ansicht UND -- wenn offen -- ans Fenster."""
+        self.ansichten["live"].zeige_ereignis(satz)
+        if self.uebungsfenster is None or not self.uebungsfenster.isVisible():
+            return
+        daten = satz.get("daten") or {}
+        if satz.get("art") == "verbunden" and daten.get("raum"):
+            self.uebungsfenster.setze_raum_name(daten["raum"])
+        elif satz.get("art") == "angestossen":
+            self.uebungsfenster.zeige_anstoss(daten.get("x", 0.0), daten.get("y", 0.0))
 
     def _lauf_aus_anbindungen(self, prozess, skript):
         # Aus demselben Grund: wer dort startet, will die Panels sehen, nicht
@@ -314,6 +405,12 @@ class MainWindow(QWidget):
     def _zustand(self, satz):
         self.kopf.zeige_zustand(satz)
         self.ansichten["live"].zeige_zustand(satz)
+        if self.uebungsfenster is None or not self.uebungsfenster.isVisible():
+            return
+        pose = (satz.get("daten") or {}).get("pose")
+        if pose and len(pose) >= 3:
+            # `zustand.jsonl` fuehrt yaw im BOGENMASS; gezeichnet wird in Grad.
+            self.uebungsfenster.zeige_pose(pose[0], pose[1], math.degrees(pose[2]))
 
     def _lauf_beendet(self, verzeichnis):
         if self._aktiver_lauf is not None and Path(verzeichnis) != self._aktiver_lauf:
@@ -324,6 +421,11 @@ class MainWindow(QWidget):
             return
         self.ansichten["live"].lauf_beendet()
         self.ansichten["code"].lauf_beendet()
+        # Die Ansicht zeigt danach die gefahrene Spur -- `lade()` gab es schon
+        # und wurde nirgends gerufen, der Raum blieb nach jedem Lauf leer.
+        self.ansichten["uebungsraum"].lade(verzeichnis)
+        if self.uebungsfenster is not None:
+            self.uebungsfenster.beendet()
         self.ansichten["anbindungen"].lauf_laeuft(False)
         self.ansichten["anbindungen"].aktualisiere()
         self.ansichten["laeufe"].aktualisiere()
@@ -366,6 +468,10 @@ class MainWindow(QWidget):
                 return
         if self._watcher is not None:
             self._watcher.stop()
+        # Sonst bliebe das Uebungsfenster ohne Hauptfenster offen stehen, und
+        # die Anwendung liesse sich nicht mehr beenden.
+        if self.uebungsfenster is not None:
+            self.uebungsfenster.close()
         # Die Kartenaufnahme ist ein QThread mit einer OFFENEN Robotersitzung.
         # Ohne diesen Aufruf bliebe er als Kind eines zerstörten Widgets zurück —
         # dasselbe Absturzmuster wie beim JediWorker, hier aber mit einer

@@ -68,3 +68,15 @@ def test_ausgabe_leser_ohne_pipe(qapp):
     leser.run()  # darf nicht werfen
 
     assert enden == [1]
+
+
+def test_windows_statuscode_kommt_heil_an(qapp):
+    """0xC000013A passt nicht in ein signed int -- Signal(int) warf dort
+    OverflowError, und das Ende des Laufs ging verloren. Der Knopf im Editor
+    blieb danach fuer immer auf Stopp."""
+    enden = []
+    leser = OutputReader(FakeProzess([], returncode=3221225786))
+    leser.ende.connect(enden.append)
+    leser.run()
+
+    assert enden == [3221225786]

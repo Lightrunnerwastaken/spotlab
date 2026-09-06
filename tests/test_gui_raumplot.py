@@ -49,8 +49,10 @@ def test_klick_liefert_meter(qapp):
     gemeldet = []
     plot.start_gewaehlt.connect(lambda x, y: gemeldet.append((x, y)))
     px, py = plot.meter_zu_schirm(3.0, 2.0)
+    # Mit globalPos: die kuerzere Ueberladung ist in PySide6 veraltet und
+    # schreibt bei jedem Lauf eine DeprecationWarning in die Ausgabe.
     ereignis = QMouseEvent(
-        QMouseEvent.MouseButtonPress, QPointF(px, py),
+        QMouseEvent.MouseButtonPress, QPointF(px, py), QPointF(px, py),
         Qt.LeftButton, Qt.LeftButton, Qt.NoModifier,
     )
     plot.mousePressEvent(ereignis)
@@ -85,3 +87,35 @@ def test_kein_farbliteral():
     quelle = (Path(__file__).resolve().parents[1]
               / "src" / "spotlab" / "gui" / "raumplot.py").read_text(encoding="utf-8")
     assert not re.search(r"#[0-9a-fA-F]{6}", quelle)
+
+
+def test_die_spur_zeigt_nur_gemessene_posen(qapp):
+    """Der eingetragene Start ist eine ANNAHME der GUI, keine Messung. Weicht
+    er vom echten Start ab, zeichnete er einen Weg, den Spot nie gefahren ist --
+    am 04.09.2026 eine Diagonale von (1, 1) nach (0, 0) quer durchs Zimmer.
+    Der Kreis steht trotzdem am gewaehlten Start, bis die erste Pose kommt."""
+    plot = RaumPlot(DUNKEL)
+    plot.setze_start((1.0, 2.0, 0.0))
+    assert plot.spur() == []
+    assert plot.start() == (1.0, 2.0, 0.0)
+
+    plot.haenge_pose_an(1.5, 2.0, 30.0)
+    assert plot.spur() == [(1.5, 2.0)]
+
+
+def test_die_blickrichtung_folgt_der_pose(qapp):
+    """Vorher stand sie fest auf dem Startwinkel -- ein `move(turn=90)` war in
+    der Zeichnung nicht zu sehen."""
+    plot = RaumPlot(DUNKEL)
+    plot.setze_start((1.0, 2.0, 0.0))
+    plot.haenge_pose_an(1.0, 2.0, 90.0)
+    assert plot.blick() == 90.0
+
+
+def test_ein_neuer_start_setzt_spur_und_blick_zurueck(qapp):
+    plot = RaumPlot(DUNKEL)
+    plot.setze_start((1.0, 2.0, 0.0))
+    plot.haenge_pose_an(3.0, 2.0, 90.0)
+    plot.setze_start((1.0, 2.0, 0.0))
+    assert plot.spur() == []
+    assert plot.blick() == 0.0

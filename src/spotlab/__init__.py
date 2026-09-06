@@ -12,6 +12,13 @@ ENV_BACKEND = "SPOTLAB_BACKEND"
 # Obergrenze, nicht Vorgabe. Gesetzt von allem, was ohne Aufsicht startet —
 # heute vom MCP-Server, wenn ein Agent ein Skript startet.
 ENV_NUR_TROCKEN = "SPOTLAB_NUR_TROCKEN"
+# Raum und Startpose des Uebungsraums. Die GUI reicht damit durch, was auf
+# dem BILDSCHIRM steht, statt sich auf die Konfiguration zu verlassen: die
+# bekam den Raum erst beim Klick in die Zeichnung, und wer nur startete, fuhr
+# in gar keinem Raum -- Start (0, 0), quer durch die Waende. Und ein Laptop
+# ohne eingerichteten Spot hat ueberhaupt keine Konfiguration.
+ENV_RAUM = "SPOTLAB_RAUM"
+ENV_RAUM_START = "SPOTLAB_RAUM_START"
 
 # EINMAL beim Import eingefroren, nicht bei jedem Aufruf frisch gelesen.
 # `os.environ.pop("SPOTLAB_NUR_TROCKEN")` in Zeile eins eines Skripts hätte die
@@ -93,12 +100,15 @@ def connect(
         from spotlab.config import startpose_aus
         from spotlab.welt.raum import raum_laden
 
-        # Reihenfolge: Argument vor Konfiguration. Ein Skript, das seinen Raum
-        # nennt, soll nicht davon abhaengen, was zuletzt in der GUI stand.
-        name = raum or (cfg.raum if cfg else "")
+        # Reihenfolge: Argument vor Umgebung vor Konfiguration. Ein Skript, das
+        # seinen Raum nennt, soll nicht davon abhaengen, was zuletzt in der GUI
+        # stand; die GUI wiederum soll nicht davon abhaengen, was zuletzt in der
+        # Konfiguration gelandet ist.
+        name = raum or os.environ.get(ENV_RAUM) or (cfg.raum if cfg else "")
         gewaehlt = (raum_laden(name, workspace=cfg.workspace if cfg else None)
                     if name else None)
-        start = startpose_aus(cfg.raum_start) if cfg else None
+        roher_start = os.environ.get(ENV_RAUM_START) or (cfg.raum_start if cfg else "")
+        start = startpose_aus(roher_start)
         if gewaehlt is not None and start is None:
             start = gewaehlt.start
 
