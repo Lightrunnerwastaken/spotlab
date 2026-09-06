@@ -557,8 +557,16 @@ def treppen_aus(graph, weg_, posen_, profil_, band_xy, e):
     return treppen, kanten
 
 
+MIN_STUECK_M = 1.0     # kuerzere Teilstrecken gehen im Nachbarn auf -- keine Luecken im Schlauch
+
+
 def _gerade_stuecke(punkte, a, b, knick_grad):
-    """[(i0, i1)]: die Teilstrecke a..b an Knicken ueber `knick_grad` zerlegt."""
+    """[(i0, i1)]: die Teilstrecke a..b an Knicken ueber `knick_grad` zerlegt.
+
+    Stuecke unter MIN_STUECK_M verschmelzen mit dem Vorgaenger (oder dem
+    Nachfolger): ein Rechteck schneidet dann eine Ecke ab, aber der Schlauch
+    bleibt ohne Luecke -- eine Luecke waere fuer den Sim eine Klippe.
+    """
     stuecke, i0, richtung = [], a, None
     for k in range(a, b):
         p, q = punkte[k], punkte[k + 1]
@@ -569,7 +577,40 @@ def _gerade_stuecke(punkte, a, b, knick_grad):
             stuecke.append((i0, k))
             i0, richtung = k, h
     stuecke.append((i0, b))
-    return [(i0, i1) for i0, i1 in stuecke if i1 > i0]
+    stuecke = [(i0, i1) for i0, i1 in stuecke if i1 > i0]
+
+    def laenge(st):
+        return sum(math.hypot(punkte[k + 1][0] - punkte[k][0], punkte[k + 1][1] - punkte[k][1])
+                   for k in range(st[0], st[1]))
+
+    verschmolzen = []
+    for st in stuecke:
+        if verschmolzen and (laenge(st) < MIN_STUECK_M or laenge(verschmolzen[-1]) < MIN_STUECK_M):
+            verschmolzen[-1] = (verschmolzen[-1][0], st[1])
+        else:
+            verschmolzen.append(st)
+    return verschmolzen
+
+
+def verschmelze_treppen(treppen, abstand=1.0, winkel_grad=30.0):
+    """Zwei Treppen an derselben Stelle (hoch und wieder runter gelaufen) sind eine.
+
+    Die Katakomben-Karte hat dieselbe Treppe zweimal: einmal +1.78 m, einmal
+    -1.39 m -- die Odometrie driftet zwischen den beiden Gaengen. Es bleibt
+    die mit dem groesseren Anstieg; sie hat die meisten Stufen gesehen.
+    """
+    behalten = []
+    for t in sorted(treppen, key=lambda b: -abs(b.anstieg)):
+        doppelt = False
+        for b in behalten:
+            nah = math.hypot(t.x - b.x, t.y - b.y) <= abstand
+            d = abs((t.drehung - b.drehung + 90.0) % 180.0 - 90.0)
+            if nah and d <= winkel_grad:
+                doppelt = True
+                break
+        if not doppelt:
+            behalten.append(t)
+    return [replace(t, name=f"Treppe {i + 1}") for i, t in enumerate(behalten)]
 
 
 def rampen_und_podeste_aus(weg_, posen_, profil_, treppen_kanten, band_xy, e, z_min):
@@ -813,6 +854,7 @@ def rekonstruiere(ordner, einstellungen=None, fortschritt=None):
     z_min = min(profil_.values()) if profil_ else 0.0
     band_xy = band[:, :2] if baender else None
     treppen, treppen_kanten = treppen_aus(graph, weg_, posen_, profil_, band_xy, e)
+    treppen = verschmelze_treppen(treppen)
     rampen, podeste, gefaelle = rampen_und_podeste_aus(
         weg_, posen_, profil_, treppen_kanten, band_xy, e, z_min)
     boeden_ = treppen + rampen + podeste

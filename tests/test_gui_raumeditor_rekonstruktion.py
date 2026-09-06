@@ -66,6 +66,7 @@ def test_der_dialog_uebernimmt_das_ergebnis_in_den_tab(qapp, tmp_path):
     gekommen = _warte_auf(dialog.ergebnis_da, qapp)
     assert gekommen and dialog.ergebnis is not None
     assert "Wände" in dialog.bericht.toPlainText() or "waende" in dialog.bericht.toPlainText()
+    assert "Treppen: 0" in dialog.bericht.toPlainText() and "Treppen" in dialog.status.text()
     ansicht.uebernimm_rekonstruktion(dialog.ergebnis)
     assert ansicht.raumname() == "" and ansicht.steuerung.geaendert
     assert len(ansicht.raum().waende) >= 3

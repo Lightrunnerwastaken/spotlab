@@ -62,6 +62,10 @@ def _berichtstext(bericht):
         f"  ·  durchquert (frei): {bericht.get('durchquert', 0)}",
         f"Tags: {bericht['tags']}  ·  Ausrichtung: {bericht['ausricht_grad']:+.0f}°"
         f"  ·  Quelle: {bericht['quelle']}  ·  {bericht.get('dauer_s', 0):.1f} s",
+        f"Böden: {bericht.get('boeden', 0)}  ·  Treppen: {bericht.get('treppen', 0)}"
+        f"  ·  Rampen: {bericht.get('rampen', 0)}  ·  grösstes Gefälle: {bericht.get('gefaelle_grad', 0):.1f}°"
+        f"  ·  Ebenen: " + ", ".join(f"{e:.1f}" for e in bericht.get("ebenen", [0.0]))
+        + f"  ·  Stufe: {bericht.get('stufe_m', 0):.2f} m (Annahme)",
     ]
     zeilen += [f"⚠ {h}" for h in bericht.get("hinweise", [])]
     return "\n".join(zeilen)
@@ -185,8 +189,10 @@ class RekonstruktionsDialog(QDialog):
     def _fertig(self, ergebnis):
         self.ergebnis = ergebnis
         self.bericht.setPlainText(_berichtstext(ergebnis.bericht))
-        self.status.setText(f"Vorschlag: {ergebnis.bericht['waende']} Wände, "
-                            f"{ergebnis.bericht['tags']} Tags — im Editor nachziehen.")
+        b = ergebnis.bericht
+        self.status.setText(f"Vorschlag: {b['waende']} Wände, {b['tags']} Tags, "
+                            f"{b.get('treppen', 0)} Treppen, {b.get('rampen', 0)} Rampen — "
+                            f"im Editor nachziehen.")
         self.vorschau_knopf.setEnabled(True)
         self.knoepfe.button(QDialogButtonBox.Ok).setEnabled(True)
         self.ergebnis_da.emit(ergebnis)

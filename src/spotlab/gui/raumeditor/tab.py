@@ -257,8 +257,10 @@ class RaumeditorView(QWidget):
         """Das Ergebnis als neuen, ungespeicherten Raum oeffnen -- mit Pauspapier."""
         self._setze(ergebnis.raum, "", False, True, ergebnis.pauspapier)
         hinweise = ergebnis.bericht.get("hinweise") or []
+        b = ergebnis.bericht
         self.meldung.emit(
-            f"Rekonstruiert: {ergebnis.bericht['waende']} Wände, {ergebnis.bericht['tags']} Tags"
+            f"Rekonstruiert: {b['waende']} Wände, {b['tags']} Tags, "
+            f"{b.get('treppen', 0)} Treppen, {b.get('rampen', 0)} Rampen, {b.get('boeden', 0)} Böden"
             + (" — " + " ".join(hinweise) if hinweise else "")
         )
 

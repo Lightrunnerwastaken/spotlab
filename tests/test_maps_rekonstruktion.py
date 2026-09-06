@@ -365,6 +365,22 @@ def test_die_karte_mit_hoehe_liefert_treppe_rampe_und_podest(karte_mit_hoehe):
     assert any(abs(w.z - 1.0) < 0.15 for w in raum.waende), sorted({round(w.z, 1) for w in raum.waende})
 
 
+def test_dieselbe_treppe_hoch_und_runter_ist_eine_treppe():
+    from spotlab.welt.raum import Boden
+
+    hoch = Boden("Treppe 1", 5.0, 2.0, 3.4, 0.9, z=0.16, anstieg=1.78, stufen=10, drehung=2.0)
+    runter = Boden("Treppe 2", 5.4, 2.1, 2.5, 0.9, z=0.18, anstieg=1.39, stufen=8, drehung=181.0)
+    andere = Boden("Treppe 3", 12.0, 2.0, 2.0, 1.0, z=0.0, anstieg=1.0, stufen=6, drehung=90.0)
+    eine = rk.verschmelze_treppen([hoch, runter, andere])
+    assert [t.anstieg for t in eine] == [1.78, 1.0] and [t.name for t in eine] == ["Treppe 1", "Treppe 2"]
+
+
+def test_kurze_teilstuecke_gehen_im_nachbarn_auf():
+    punkte = [(0.0, 0.0), (2.0, 0.0), (2.3, 0.3), (2.5, 2.5), (2.5, 5.0)]
+    stuecke = rk._gerade_stuecke(punkte, 0, 4, 20.0)
+    assert stuecke == [(0, 2), (2, 4)]                          # das 0.4-m-Stueck haengt am ersten
+
+
 def test_der_tiefste_boden_wird_zur_null(tmp_path):
     tief = synthetische_karte_mit_hoehe(tmp_path / "tief", versatz_z=-1.8)
     ergebnis = rk.rekonstruiere(tief)
