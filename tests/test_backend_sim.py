@@ -547,7 +547,7 @@ def test_ein_trockenlauf_bekommt_keinen_sim_bericht(tmp_path):
 
 
 def _uebungsraum():
-    from spotlab.welt.raum import Hindernis, Raum, RaumTag
+    from spotlab.welt.raum import Block, Raum, RaumTag
 
     return Raum(
         name="T", beschreibung="", groesse=(10.0, 10.0), start=(5.0, 5.0, 0.0),
@@ -555,7 +555,7 @@ def _uebungsraum():
             (0.0, 0.0, 10.0, 0.0), (10.0, 0.0, 10.0, 10.0),
             (10.0, 10.0, 0.0, 10.0), (0.0, 10.0, 0.0, 0.0),
         ),
-        hindernisse=(Hindernis("Kiste", (7.0, 4.5, 0.5, 1.0)),),
+        bloecke=(Block("Kiste", 7.25, 5.0, 0.5, 1.0),),
         tags=(RaumTag(1, 6.0, 5.0, 180.0),),
     )
 

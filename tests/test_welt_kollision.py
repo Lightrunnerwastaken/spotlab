@@ -7,16 +7,16 @@ from spotlab.welt.kollision import (
     frei,
     sicht_frei,
 )
-from spotlab.welt.raum import Hindernis, Raum, raum_laden
+from spotlab.welt.raum import Block, Raum, raum_laden
 
-# Ein 10 x 10 m grosser Kasten mit einer Kiste in der Mitte.
+# Ein 10 x 10 m grosser Kasten mit einer Kiste in der Mitte (5..6, 5..6).
 RAUM = Raum(
     name="T", beschreibung="", groesse=(10.0, 10.0), start=(1.0, 1.0, 0.0),
     waende=(
         (0.0, 0.0, 10.0, 0.0), (10.0, 0.0, 10.0, 10.0),
         (10.0, 10.0, 0.0, 10.0), (0.0, 10.0, 0.0, 0.0),
     ),
-    hindernisse=(Hindernis("Kiste", (5.0, 5.0, 1.0, 1.0)),),
+    bloecke=(Block("Kiste", 5.5, 5.5, 1.0, 1.0),),
     tags=(),
 )
 
