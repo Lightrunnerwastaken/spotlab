@@ -251,3 +251,39 @@ def test_ein_gesetzter_stopp_beendet_die_wartezeit_sofort(tmp_path):
     abtaster._warte(1.0)
     rec.finish("ok")
     assert (time.perf_counter() - t) < 0.05
+
+
+def test_ein_ratenwechsel_waehrend_der_abtastung_wirkt_schon_auf_den_naechsten_tick(tmp_path):
+    """Die Periode wird NACH dem Zeitstempel der Abtastung gelesen.
+
+    Vorher las die Schleife die Periode, holte dann den Zustand und stempelte
+    ihn. Fiel das Hochschalten auf 50 Hz dazwischen, trug die Abtastung einen
+    Stempel NACH dem Fensterstart, schlief aber noch den alten 100-ms-Takt --
+    und der Lueckenmelder mass diesen Takt gegen die 50-Hz-Erwartung des
+    Fensters: "Luecke 0.101 s", einmal in fuenf Laeufen (06.09.2026,
+    test_die_messfahrt_meldet_keine_falschen_luecken). Hier faellt der
+    Wechsel absichtlich IN die Abtastung.
+    """
+
+    class Umschalter(DryRunBackend):
+        abtaster = None
+
+        def robot_state(self):
+            zustand = super().robot_state()
+            if self.abtaster is not None and self.abtaster.takt()[0] == 10.0:
+                self.abtaster.setze_takt(50.0, True)
+            return zustand
+
+    backend = Umschalter()
+    rec = RunRecorder(tmp_path, None, backend="dryrun")
+    abtaster = StateSampler(backend, rec, hz=10.0)
+    backend.abtaster = abtaster
+    abtaster.start()
+    threading.Event().wait(0.25)
+    abtaster.stop()
+    rec.finish("ok")
+
+    saetze = _saetze(rec)
+    assert len(saetze) >= 3, len(saetze)
+    abstand = saetze[1]["t"] - saetze[0]["t"]
+    assert abstand < 0.06, f"alter 100-ms-Takt nach dem Wechsel: {abstand:.3f} s"

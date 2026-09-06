@@ -37,6 +37,28 @@ def test_fenster_hebt_die_rate_und_setzt_sie_zurueck():
     assert abt.takt() == (10.0, False)
 
 
+def test_der_takt_wird_umgeschaltet_bevor_das_startereignis_steht():
+    """Das Startereignis ist die Abschnittsgrenze des Lueckenmelders. Steht es
+    VOR dem Umschalten, kann eine Abtastung nach der Grenze noch den alten
+    100-ms-Takt schlafen -- und der zaehlt dann gegen die 50-Hz-Erwartung des
+    Fensters als Luecke (06.09.2026)."""
+    reihenfolge = []
+
+    class Recorder(FakeRecorder):
+        def event(self, art, **daten):
+            super().event(art, **daten)
+            reihenfolge.append(("ereignis", daten.get("phase")))
+
+    class Sampler(FakeSampler):
+        def setze_takt(self, hz, reich):
+            super().setze_takt(hz, reich)
+            reihenfolge.append(("takt", hz))
+
+    with Messfenster(Recorder(), Sampler()).oeffne("G3", hz=50.0):
+        pass
+    assert reihenfolge[:2] == [("takt", 50.0), ("ereignis", "start")], reihenfolge
+
+
 def test_fenster_schreibt_start_und_ende():
     rec, abt = FakeRecorder(), FakeSampler()
     with Messfenster(rec, abt).oeffne("G3", hz=50.0, stuetzstelle="0.30"):

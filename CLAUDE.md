@@ -150,6 +150,13 @@ versionsgepinntes Extra `spotlab[sim]`.
   sondern diese eine Zeile.** Der Preis ist eine Stopp-Verzögerung von bis zu 20 ms;
   `_warte()` schläft deshalb in Stücken. Ein Ratentest dazu wäre lastabhängig — geprüft
   wird der Quelltext, plus eine grosszügige Gegenprobe auf die Wartezeit selbst.
+- **Der Abtaster liest die Periode NACH dem Zeitstempel der Abtastung, und das
+  Messfenster schaltet den Takt um, BEVOR es das Startereignis schreibt.** Das
+  Startereignis ist die Abschnittsgrenze des Lückenmelders. Lag die Periode vor dem
+  Stempel und die Grenze vor dem Umschalten, trug eine Abtastung einen Stempel nach der
+  Grenze und schlief trotzdem den alten 100-ms-Takt — gemessen gegen die 50-Hz-Erwartung
+  des Fensters war das „Lücke 0.101 s", einmal in fünf Messfahrten (06.09.2026). Kein
+  Jitter: ein Wettlauf um 0.6 ms. Stempel und Periode müssen aus derselben Zeit stammen.
 - **`messung/` importiert nichts aus `api/`, `backends/`, `gui/` und kein `bosdyn`.**
   `spotlab.record.read` und `spotlab.errors` sind erlaubt.
 - **`end_time_secs` ist ein ZEITPUNKT in Sekunden seit dem 1.1.1970, keine Dauer.**
