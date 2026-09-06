@@ -510,7 +510,8 @@ def test_der_startknopf_im_uebungsraum_erzwingt_das_sim_backend(qapp):
     fenster = MainWindow()
     fenster.ansichten["code"].setze_backend("real")
     fenster.ansichten["uebungsraum"].starten.click()
-    assert fenster.ansichten["code"].gewaehltes_backend() == "sim"
+    # 2D oder 3D, je nachdem, was auf diesem Laptop laeuft -- nie der Roboter.
+    assert fenster.ansichten["code"].gewaehltes_backend() in ("sim", "mujoco")
 
 
 def test_der_knopf_im_uebungsraum_wandert_mit_dem_lauf(qapp):
@@ -552,3 +553,54 @@ def test_ein_echter_lauf_bekommt_keinen_raum(qapp):
     fenster = MainWindow()
     fenster.ansichten["code"].setze_backend("real")
     assert fenster.ansichten["code"].zusatz_umgebung() == {}
+
+
+# ------------------------------------------------- Uebungsraum 3D
+
+
+def test_der_uebungsraum_knopf_nimmt_3d_wenn_es_da_ist(qapp, monkeypatch):
+    from spotlab.gui.editor import view as modul
+
+    monkeypatch.setattr(modul.importlib.util, "find_spec", lambda name: object())
+    fenster = MainWindow()
+    fenster.ansichten["code"].setze_backend("real")
+    fenster.ansichten["uebungsraum"].starten.click()
+    assert fenster.ansichten["code"].gewaehltes_backend() == "mujoco"
+
+
+def test_der_uebungsraum_knopf_nimmt_2d_ohne_spotsim(qapp, monkeypatch):
+    from spotlab.gui.editor import view as modul
+
+    monkeypatch.setattr(modul.importlib.util, "find_spec", lambda name: None)
+    fenster = MainWindow()
+    fenster.ansichten["code"].setze_backend("real")
+    fenster.ansichten["uebungsraum"].starten.click()
+    assert fenster.ansichten["code"].gewaehltes_backend() == "sim"
+
+
+def test_auch_der_3d_lauf_bekommt_raum_und_start(qapp, monkeypatch):
+    from spotlab.gui.editor import view as modul
+
+    monkeypatch.setattr(modul.importlib.util, "find_spec", lambda name: object())
+    fenster = MainWindow()
+    fenster.ansichten["code"].setze_backend("mujoco")
+    assert fenster.ansichten["code"].zusatz_umgebung().get("SPOTLAB_RAUM")
+
+
+def test_die_ansicht_des_laufs_erreicht_das_uebungsfenster(qapp, tmp_path, monkeypatch):
+    from PySide6.QtGui import QColor, QImage
+
+    from spotlab.gui.editor import view as modul
+
+    monkeypatch.setattr(modul.importlib.util, "find_spec", lambda name: object())
+    fenster = MainWindow()
+    fenster.ansichten["code"].setze_backend("mujoco")
+    fenster._lauf_aus_code(_FakeProzess(), str(tmp_path / "x.py"))
+    assert fenster.uebungsfenster is not None and fenster.uebungsfenster.isVisible()
+
+    pfad = tmp_path / "ansicht.jpg"
+    bild = QImage(16, 9, QImage.Format_RGB32)
+    bild.fill(QColor(10, 20, 30))
+    bild.save(str(pfad), "JPG")
+    fenster._ansicht(str(pfad))
+    assert not fenster.uebungsfenster.bild.isHidden()

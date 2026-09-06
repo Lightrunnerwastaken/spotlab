@@ -2,6 +2,8 @@
 
 Starten: über dem Editor „Wo läuft es?" auf „Übungsraum (virtuell)" stellen
 und auf ▶ Starten drücken — dann geht das Fenster mit der Draufsicht auf.
+„Übungsraum 3D (MuJoCo)" zeigt dazu das gerenderte Zimmer; dort sieht Spot
+mit Kameras, und ein Tag hinter dem Tisch bleibt unsichtbar.
 Derselbe Knopf steht in der Ansicht „Übungsraum" unten rechts.
 Raum und Startposition wählst du in derselben Ansicht; du kannst den Raum aber
 auch hier nennen: spotlab.connect(backend="sim", raum="durchgang").

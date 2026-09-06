@@ -37,7 +37,7 @@ NUR_TROCKEN_MELDUNG = (
 # ERLAUBNISLISTE, keine Sperrliste. Ein neues Backend ist gesperrt, bis jemand
 # es hier einträgt — und wer es einträgt, hat die Frage beantwortet, ob es den
 # Spot bewegen kann. Andersherum wäre jedes künftige Backend versehentlich frei.
-OHNE_ROBOTER = ("dryrun", "sim")
+OHNE_ROBOTER = ("dryrun", "sim", "mujoco")
 
 
 @contextlib.contextmanager
@@ -95,7 +95,12 @@ def connect(
 
         roher_roboter, unten = None, DryRunBackend(recorder)
         recorder.event("verbunden", backend="dryrun")
-    elif art == "sim":
+    elif art in ("sim", "mujoco"):
+        # `mujoco` ist der 2D-Sim mit einem 3D-Koerper (backends/mujoco.py):
+        # dieselben Kommandos, dieselbe Gangkennlinie, dieselbe Antwort — dazu
+        # Kameras, Tiefengitter und Kollision an der Mesh-Geometrie. Er braucht
+        # das Extra `spotlab[sim]` und `spotsim` aus matura-spot; fehlt eines,
+        # sagt der Fehler, was zu tun ist.
         from spotlab.backends.sim import SimBackend
         from spotlab.config import startpose_aus
         from spotlab.welt.raum import raum_laden
@@ -112,11 +117,20 @@ def connect(
         if gewaehlt is not None and start is None:
             start = gewaehlt.start
 
-        roher_roboter, unten = None, SimBackend(recorder, raum=gewaehlt, start=start)
+        if art == "mujoco":
+            from spotlab.backends.mujoco import MujocoBackend
+
+            unten = MujocoBackend(
+                recorder, raum=gewaehlt, start=start,
+                ansicht_ziel=recorder.dir / "ansicht.jpg",
+            )
+        else:
+            unten = SimBackend(recorder, raum=gewaehlt, start=start)
+        roher_roboter = None
         # Der Hinweis gehört in die Aufzeichnung, nicht nur in den Docstring:
         # wer den Lauf später ansieht, muss sehen, dass hier nichts erprobt ist.
         recorder.event(
-            "verbunden", backend="sim", raum=name or None,
+            "verbunden", backend=art, raum=name or None,
             hinweis=unten.hinweis_zur_gueltigkeit(),
         )
     else:

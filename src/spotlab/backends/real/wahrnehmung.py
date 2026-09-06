@@ -106,7 +106,11 @@ def gitter_aus(antwort):
     from bosdyn.api import local_grid_pb2 as lg
 
     g = antwort.local_grid
-    n = (g.extent.num_cells_x, g.extent.num_cells_y)
+    # (ny, nx): local_grid.proto legt Zelle (i, j) bei i * num_cells_x + j ab --
+    # x laeuft am schnellsten, das Array ist [zeile = y, spalte = x]. Genau so
+    # indiziert `ObstacleGrid._zelle`. Bei 128x128 faellt der Unterschied nicht
+    # auf; er faellt auf, sobald ein Gitter nicht quadratisch ist.
+    n = (g.extent.num_cells_y, g.extent.num_cells_x)
     roh = np.frombuffer(g.data, dtype=_dtypen()[g.cell_format])
     if g.encoding == lg.LocalGrid.ENCODING_RLE:
         roh = np.repeat(roh, np.asarray(g.rle_counts, dtype=np.int64))
@@ -114,10 +118,19 @@ def gitter_aus(antwort):
 
     bekannt = None
     if g.unknown_cells:
-        unbekannt = np.unpackbits(
-            np.frombuffer(g.unknown_cells, dtype=np.uint8),
-            count=n[0] * n[1], bitorder="little",
-        ).reshape(n).astype(bool)
+        # EIN BYTE je Zelle (0 = bekannt, 1 = unbekannt) -- GEMESSEN an der
+        # Aufzeichnung vom 12.08.2026 (tests/daten/gitter_real_20260812), 16384
+        # Bytes fuer 128x128. Bis zum 06.09.2026 wurde hier bitweise entpackt:
+        # die ersten 2048 Bytes als Bits, der Rest ignoriert -- am echten Spot
+        # eine falsche Maske, und `is_free()` hielt Unbekanntes fuer frei.
+        # Bitgepackt waren nur alte Sim-Aufzeichnungen aus matura-spot; die
+        # bleiben an der Laenge erkennbar und lesbar.
+        roh = np.frombuffer(g.unknown_cells, dtype=np.uint8)
+        anzahl = n[0] * n[1]
+        if roh.size == anzahl:
+            unbekannt = roh.reshape(n).astype(bool)
+        else:
+            unbekannt = np.unpackbits(roh, count=anzahl, bitorder="little").reshape(n).astype(bool)
         bekannt = ~unbekannt
 
     ursprung = _pose(g.transforms_snapshot, g.frame_name_local_grid_data,

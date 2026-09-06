@@ -29,6 +29,9 @@ class _Lauf:
         self.zustand = JsonlTail(self.dir / "zustand.jsonl")
         self.ereignisse = JsonlTail(self.dir / "ereignisse.jsonl")
         self.gesehene_bilder = set()
+        # (mtime_ns, Groesse) von ansicht.jpg beim letzten Takt -- das
+        # MuJoCo-Backend ERSETZT die Datei, es legt keine neuen an.
+        self.ansicht_stand = None
 
 
 class RunScanner:
@@ -67,10 +70,29 @@ class RunScanner:
         for satz in lauf.ereignisse.neue_saetze():
             ereignisse.append(("ereignis", satz))
         ereignisse.extend(self._neue_bilder(lauf))
+        ereignisse.extend(self._neue_ansicht(lauf))
         if not ist_aktiv(lauf.dir):
             del self._offen[name]
             ereignisse.append(("lauf_beendet", str(lauf.dir)))
         return ereignisse
+
+    @staticmethod
+    def _neue_ansicht(lauf):
+        """`ansicht.jpg`, wenn sie sich seit dem letzten Takt geaendert hat.
+
+        Eine Datei, die ersetzt wird, kein Strom: gemeldet wird nur eine
+        Aenderung, sonst zeichnete die GUI viermal je Sekunde dasselbe Bild.
+        """
+        pfad = lauf.dir / "ansicht.jpg"
+        try:
+            st = pfad.stat()
+        except OSError:
+            return []
+        stand = (st.st_mtime_ns, st.st_size)
+        if stand == lauf.ansicht_stand:
+            return []
+        lauf.ansicht_stand = stand
+        return [("ansicht", str(pfad))]
 
     @staticmethod
     def _neue_bilder(lauf):
@@ -91,6 +113,7 @@ class RunWatcher(QObject):
     zustand = Signal(dict)
     ereignis = Signal(dict)
     bild = Signal(str)
+    ansicht = Signal(str)
     lauf_beendet = Signal(str)
     fehler = Signal(str)
 
@@ -118,6 +141,7 @@ class RunWatcher(QObject):
             "zustand": self.zustand,
             "ereignis": self.ereignis,
             "bild": self.bild,
+            "ansicht": self.ansicht,
             "lauf_beendet": self.lauf_beendet,
         }
         for art, nutzlast in ereignisse:

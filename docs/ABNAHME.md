@@ -527,7 +527,11 @@ liefert alle Distanzen um den Faktor 146/gemessen zu kurz). Den Spot in
 1-m-Schritten entfernen, an jeder Stelle die Sonde auslösen.
 
 **Erwartung** Die Entfernung notieren, ab der der Tag nicht mehr gemeldet wird.
-Die Simulation rechnet mit rund 12 m; real werden 2–3 m erwartet.
+Die Physik-Sim in matura-spot rechnet mit rund 12 m, der Übungsraum (2D und 3D)
+mit `TAG_REICHWEITE_M = 3.0`; real werden 2–3 m erwartet. Dazu den Winkel: den
+Tag schräg anfahren und notieren, bis zu welchem Winkel zwischen Tag-Normale
+und Blickrichtung er noch gemeldet wird — der 3D-Übungsraum nimmt 60° an
+(`spotsim.puppe.TAG_MAX_SCHRAEG_GRAD`). Beide Zahlen nach der Messung eintragen.
 
 **Gegenprobe** Am Tablet nachsehen, ob Spot den Tag dort noch anzeigt. Zeigt das
 Tablet ihn und die Sonde nicht, liegt es an der Abfrage, nicht am Tag.

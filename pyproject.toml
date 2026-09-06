@@ -39,6 +39,10 @@ gui = [
 # >=2.0: dort heisst der Server MCPServer, in 1.x hiess er FastMCP und lag
 # unter mcp.server.fastmcp. Ein Kompatibilitaetspfad waere hier ungeprueft.
 mcp = ["mcp>=2.0,<3"]
+# Der 3D-Uebungsraum (backend="mujoco"): Laufzeit fuer die Puppe aus
+# matura-spot. `spotsim` selbst liegt nicht auf PyPI -- es wird editierbar aus
+# dem Nachbar-Repo installiert:  pip install -e ../matura-spot
+sim = ["mujoco>=3.9,<4", "scipy>=1.12,<2", "numpy>=2,<3"]
 
 [project.scripts]
 spotlab = "spotlab.cli:main"
