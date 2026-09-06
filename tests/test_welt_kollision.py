@@ -25,6 +25,21 @@ def test_mitte_ist_frei():
     assert frei(RAUM, 2.0, 2.0)
 
 
+def test_der_kreis_passt_durch_alles_was_das_gitter_frei_nennt():
+    """`ObstacleGrid.is_free` haelt eine Stelle mit dem Vorgabe-Rand Abstand
+    fuer frei. Waere der Sim-Koerper groesser, bliebe ein Programm, das der
+    freien Strecke folgt, an einer Tuerkante haengen -- so geschehen am
+    06.09.2026 mit 0.35 m. Und eine Gitterzelle Luft muss bleiben: das Gitter
+    kennt Abstaende nur je Zellmitte."""
+    import inspect
+
+    from spotlab.backends.base import ObstacleGrid
+    from spotlab.welt.wahrnehmung import GITTER_ZELLE_M
+
+    rand = inspect.signature(ObstacleGrid.is_free).parameters["margin"].default
+    assert ROBOTER_RADIUS_M <= rand - GITTER_ZELLE_M
+
+
 def test_zu_nah_an_der_wand_ist_nicht_frei():
     assert not frei(RAUM, ROBOTER_RADIUS_M - 0.01, 5.0)
     assert frei(RAUM, ROBOTER_RADIUS_M + 0.01, 5.0)

@@ -93,9 +93,15 @@ class Tag(WorldObject):
     filtered: bool           # geglaettete Pose (True) oder rohe Einzelmessung
 
 
-# Ab hier misst `ObstacleGrid.free_distance`: darunter liegt der Koerper, und
-# unter sich sieht Spot nichts (die Sim fuehrt dort eine Blindzone von 0.55 m).
-FREI_AB_M = 0.6
+# Bis hierhin reicht der KOERPERSCHATTEN: die Frontkameras sind 30 Grad nach
+# unten geneigt und stehen 0.53 m hoch, ihr Bild trifft den Boden erst rund
+# 0.9 m vor dem Koerpermittelpunkt. Davor ist das Gitter UNBEKANNT -- und
+# unbekannt gilt sonst als nicht frei. `free_distance` laesst Unbekanntes
+# innerhalb dieser Strecke deshalb durchgehen; ein BEKANNTES Hindernis zaehlt
+# dort sehr wohl (siehe Docstring). Mit einer Grenze von 0.6 m sprang die freie
+# Strecke von Zyklus zu Zyklus zwischen 1.8 und 0.0 (gemessen 06.09.2026 im
+# 3D-Uebungsraum), je nachdem, ob die erste Probe eine unbekannte Zelle traf.
+FREI_AB_M = 0.9
 # Bis hierhin misst sie hoechstens: unter der halben Gitterkante (1.92 m), damit
 # jede Richtung gleich weit reicht — siehe free_distance.
 FREI_BIS_M = 1.8
@@ -147,11 +153,15 @@ class ObstacleGrid:
         """Wie viele Meter sind ab (x, y) in Richtung `heading` frei?
 
         `heading` in GRAD, im Weltframe — `math.degrees(spot.state.pose[2])`
-        ist die Blickrichtung. Gemessen wird ab FREI_AB_M vor dem Punkt: die
-        Zellen unter dem Roboter kennt Spot nicht (Koerperschatten), sie
-        duerfen nicht als "zu" zaehlen. Steht schon die erste Probe zu, ist
-        nichts frei: 0.0. Ist bis `max_distance` alles frei, kommt genau das
-        zurueck.
+        ist die Blickrichtung. Abgetastet wird Zelle fuer Zelle ab dem Punkt.
+        Naeher als FREI_AB_M zaehlt nur ein BEKANNTES Hindernis: dort liegt der
+        Koerperschatten, in dem Spot nie etwas sieht, und ein Strahl, der
+        deswegen 0.0 meldete, waere wertlos. Weiter draussen gilt Unbekanntes
+        als nicht frei, wie in `is_free`. Nach einer Drehung auf der Stelle
+        steht die Wand, die eben noch seitlich war, 0.4 m vor der Nase -- und
+        die ist bekannt; sie zu ueberspringen hiesse hineinzulaufen (2D-
+        Uebungsraum, 06.09.2026). Steht schon die erste Probe zu, ist nichts
+        frei: 0.0. Ist bis `max_distance` alles frei, kommt genau das zurueck.
 
         Die Vorgabe FREI_BIS_M liegt UNTER der halben Gitterkante (1.92 m):
         das Gitter ist ein Quadrat, geradeaus endet es bei 1.9 m, diagonal
@@ -162,10 +172,15 @@ class ObstacleGrid:
         richtung = math.radians(heading)
         cos, sin = math.cos(richtung), math.sin(richtung)
         schritt = max(float(self.cell_size), 0.01)
-        abstand = FREI_AB_M
+        abstand = schritt
         letzter_freier = 0.0
         while abstand <= max_distance:
-            if not self.is_free(x + abstand * cos, y + abstand * sin, margin):
+            hindernis = self.distance_at(x + abstand * cos, y + abstand * sin)
+            if hindernis is None:
+                zu = abstand >= FREI_AB_M
+            else:
+                zu = hindernis < margin
+            if zu:
                 return letzter_freier
             letzter_freier = abstand
             abstand += schritt

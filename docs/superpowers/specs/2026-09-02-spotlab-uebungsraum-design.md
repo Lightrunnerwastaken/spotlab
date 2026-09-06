@@ -82,6 +82,10 @@ Zeilen. Ein gedrehter Tisch ist der erste Fall, für den das nicht reicht.
 **Der Roboter ist ein Kreis mit 0.35 m Radius.** Vereinfachung von Spots
 Grundfläche (~1.1 × 0.5 m), im Docstring als solche benannt: ein Kreis kann sich
 nicht seitlich durch eine schmale Lücke drehen, ein echter Spot schon.
+*Geändert 06.09.2026:* 0.27 m — eine Gitterzelle unter dem Vorgabe-Rand von
+`ObstacleGrid.is_free` (0.3 m). Mit 0.35 m blieb ein Programm, das der freien
+Strecke des Gitters folgte, an der Türkante hängen; was das Gitter frei nennt,
+muss im Sim begehbar sein (`welt/kollision.py`, `tests/test_welt_kollision.py`).
 
 **Anstossen hält an, es bricht nicht ab.** Der echte Spot wirft keine Ausnahme,
 wenn er vor einem Hindernis stehen bleibt. Ein Sim, der das täte, verspräche
@@ -173,7 +177,8 @@ Umbau.
 
 Die Türlücke ist mit 0.9 m bewusst grosszügig: bei einem Roboterradius von
 0.35 m bliebe sonst zu wenig Spiel, und die Kreisvereinfachung (§2) würde zur
-Auslegungsfrage statt zu einer Nebensächlichkeit.
+Auslegungsfrage statt zu einer Nebensächlichkeit. *(Seit 06.09.2026 ist der
+Radius 0.27 m, siehe §2; die 0.9 m bleiben.)*
 
 ```toml
 [raum]

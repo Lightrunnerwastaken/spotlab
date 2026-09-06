@@ -208,10 +208,11 @@ wie die mitgelieferten unter `welt/vorlagen/`.
 
 **Beispiele.** Im Arbeitsordner liegt immer das Projekt `Beispiele` — die GUI
 legt es beim Start an und ergänzt, was fehlt; deine Änderungen bleiben.
-`durchgang_finden.py` zeigt, wie Spot mit `spot.obstacles().free_distance(…)`
-die offenste Richtung findet, durch die Tür in den Nachbarraum geht, den Tag
-dort als Beweis nimmt und sich setzt — im 2D-Raum, in 3D und am echten Spot
-dasselbe Programm.
+`durchgang_finden.py` zeigt, wie Spot laufend — ohne anzuhalten, mit
+`spot.walk(…, stop=False)` — aus `spot.obstacles().free_distance(…)` die
+offenste Richtung wählt, durch die Tür in der Mitte in den Nachbarraum geht,
+den Tag dort als Beweis nimmt und sich setzt — im 2D-Raum, in 3D und am echten
+Spot dasselbe Programm.
 
 ### Übungsraum 3D
 
@@ -219,7 +220,7 @@ dasselbe Programm.
 `matura-spot`, kinematisch gesetzt (Weg A — Wiedergabe statt Regelung, Spec
 `docs/superpowers/specs/2026-09-06-uebungsraum-3d-design.md`). Was dazukommt:
 
-- **Kollision an der echten Geometrie** statt an einem Kreis von 0.35 m.
+- **Kollision an der echten Geometrie** statt an einem Kreis (`welt/kollision.py`).
 - **`spot.obstacles()` aus fünf gerenderten Tiefenbildern**, durch denselben
   Entpacker wie am Roboter — mit Verdeckung und unbekannten Zellen: was hinter
   dem Tisch liegt, ist *nicht frei*, weil ungesehen.

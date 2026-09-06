@@ -640,6 +640,22 @@ def test_anstossen_wird_genau_einmal_gemeldet():
     assert anstoesse[0][1]["hindernis"] == "Wand"
 
 
+def test_anstossen_landet_in_der_echten_aufzeichnung(tmp_path):
+    """Die Attrappe oben prueft die Ereignisart nicht -- der echte RunRecorder
+    schon. Bis 06.09.2026 fehlte 'angestossen' in `record/events.py::ARTEN`,
+    und jeder 2D-Lauf starb beim ersten Wandkontakt mit einem ValueError
+    mitten in `robot_state()`."""
+    from spotlab.record.run import RunRecorder
+
+    schreiber = RunRecorder(tmp_path, None, backend="sim")
+    backend = SimBackend(recorder=schreiber, raum=_uebungsraum(), start=(0.5, 5.0, 0.0))
+    backend._bewege_gegen_welt((0.5, 5.0, 0.0), (0.2, 5.0, 0.0))
+    schreiber.finish("ok")
+    zeilen = (schreiber.dir / "ereignisse.jsonl").read_text(encoding="utf-8").splitlines()
+    arten = [json.loads(z)["art"] for z in zeilen if z.strip()]
+    assert "angestossen" in arten
+
+
 def test_nach_freier_fahrt_wird_wieder_gemeldet():
     from spotlab.backends.sim import SimBackend
 
