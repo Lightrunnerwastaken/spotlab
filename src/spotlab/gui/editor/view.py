@@ -9,6 +9,7 @@ Hauptfenster an LiveView.stoppe() weiterreicht: dasselbe Objekt mit demselben
 Zustand, nicht eine zweite Kopie der Logik.
 """
 
+import importlib.util
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -44,7 +45,19 @@ BACKENDS = (
     ("Echter Spot", "real"),
     ("Trockenlauf (nur Text)", "dryrun"),
     ("Übungsraum (virtuell)", "sim"),
+    ("Übungsraum 3D (MuJoCo)", "mujoco"),
 )
+
+
+def verfuegbare_backends():
+    """Nur, was auf diesem Laptop laeuft.
+
+    `mujoco` braucht `spotsim` aus matura-spot; ein Eintrag, der beim Start
+    mit ModuleNotFoundError stirbt, ist keine Wahl. Geprueft per `find_spec`,
+    nicht per Import -- die GUI importiert kein MuJoCo (CLAUDE.md).
+    """
+    dreidimensional = importlib.util.find_spec("spotsim") is not None
+    return tuple(b for b in BACKENDS if b[1] != "mujoco" or dreidimensional)
 
 
 def lade_text(pfad):
@@ -188,7 +201,7 @@ class EditorView(QWidget):
         self.reiter.tabCloseRequested.connect(self._schliesse)
 
         self.backendwahl = QComboBox()
-        for beschriftung, name in BACKENDS:
+        for beschriftung, name in verfuegbare_backends():
             self.backendwahl.addItem(beschriftung, name)
         self.start_knopf = QPushButton("▶ Starten")
         self.start_knopf.clicked.connect(self._starten_oder_stoppen)

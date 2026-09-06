@@ -641,3 +641,28 @@ def test_raum_und_startpose_erreichen_wirklich_den_sim(qapp, tmp_path):
     erste = json.loads((lauf / "zustand.jsonl").read_text(encoding="utf-8")
                        .splitlines()[0])
     assert erste["daten"]["pose"][:2] == [2.0, 3.0]
+
+
+# ------------------------------------------------------- Uebungsraum 3D
+
+
+def test_mujoco_steht_nur_zur_wahl_wenn_spotsim_da_ist(monkeypatch):
+    """Ein Eintrag, der beim Start mit ModuleNotFoundError stirbt, ist keine
+    Wahl. Geprueft per find_spec -- die GUI importiert kein MuJoCo."""
+    from spotlab.gui.editor import view as modul
+
+    monkeypatch.setattr(modul.importlib.util, "find_spec", lambda name: None)
+    assert "mujoco" not in [n for _, n in modul.verfuegbare_backends()]
+    assert "sim" in [n for _, n in modul.verfuegbare_backends()]
+
+    monkeypatch.setattr(modul.importlib.util, "find_spec", lambda name: object())
+    assert "mujoco" in [n for _, n in modul.verfuegbare_backends()]
+
+
+def test_die_auswahl_zeigt_die_verfuegbaren_backends(qapp, tmp_path, monkeypatch):
+    from spotlab.gui.editor import view as modul
+
+    monkeypatch.setattr(modul.importlib.util, "find_spec", lambda name: object())
+    ansicht, _ordner, _projekt = _ansicht(tmp_path)
+    namen = [ansicht.backendwahl.itemData(i) for i in range(ansicht.backendwahl.count())]
+    assert namen == ["real", "dryrun", "sim", "mujoco"]

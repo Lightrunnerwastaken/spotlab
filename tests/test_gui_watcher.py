@@ -142,3 +142,23 @@ def test_gleiche_lauf_id_in_zwei_projekten_kollidiert_nicht(tmp_path):
 
     gefunden = [p for art, p in RunScanner(tmp_path).tick() if art == "lauf_begonnen"]
     assert len(gefunden) == 2
+
+
+def test_die_ansicht_wird_gemeldet_wenn_sie_sich_aendert(tmp_path):
+    """Das MuJoCo-Backend ersetzt <lauf>/ansicht.jpg atomar, hoechstens zehnmal
+    je Sekunde. Der Watcher meldet die Datei nur, wenn sie sich geaendert hat --
+    sonst zeichnete die GUI viermal je Sekunde dasselbe Bild neu."""
+    rec = RunRecorder(_runs(tmp_path), None, backend="mujoco")
+    rec.sample({"battery": 90.0})
+    scanner = RunScanner(tmp_path)
+    scanner.tick()
+
+    bild = rec.dir / "ansicht.jpg"
+    bild.write_bytes(b"\xff\xd8erstes")
+    gemeldet = [d for art, d in scanner.tick() if art == "ansicht"]
+    assert gemeldet == [str(bild)]
+
+    assert [d for art, d in scanner.tick() if art == "ansicht"] == [], "unveraendert, nicht melden"
+
+    bild.write_bytes(b"\xff\xd8zweites, laenger")
+    assert [d for art, d in scanner.tick() if art == "ansicht"] == [str(bild)]

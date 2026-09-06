@@ -14,7 +14,8 @@ freundliche Stopp haengt am Lauf-Verzeichnis, das nur die Live-Ansicht vom
 Watcher bekommt, und genau EIN Lauf ist der, auf den Stopp und NOT-AUS zeigen.
 """
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -44,6 +45,12 @@ class Uebungsfenster(QWidget):
         self.resize(760, 520)
 
         self.plot = RaumPlot(palette)
+        # Das gerenderte Zimmer des MuJoCo-Backends. Versteckt, bis ein Bild
+        # da ist -- der 2D-Sim liefert keines, und ein leerer Rahmen saehe
+        # aus wie ein Fehler.
+        self.bild = QLabel()
+        self.bild.setAlignment(Qt.AlignCenter)
+        self.bild.hide()
         self.kopf = QLabel("Kein Lauf.")
         self.zeile = QLabel("")
         self.zeile.setObjectName("Gedaempft")
@@ -58,6 +65,7 @@ class Uebungsfenster(QWidget):
 
         anordnung = QVBoxLayout(self)
         anordnung.addWidget(self.kopf)
+        anordnung.addWidget(self.bild)
         anordnung.addWidget(self.plot, 1)
         anordnung.addLayout(unten)
 
@@ -74,6 +82,7 @@ class Uebungsfenster(QWidget):
         self.kopf.setText(titel or "Läuft…")
         self.zeile.setText("")
         self.stopp.setEnabled(True)
+        self.bild.hide()                   # das Bild des letzten Laufs gehoert nicht zum neuen
 
     def setze_raum_name(self, name):
         """Den Raum aus dem `verbunden`-Ereignis nachziehen.
@@ -104,6 +113,15 @@ class Uebungsfenster(QWidget):
 
     def zeige_anstoss(self, x, y):
         self.plot.setze_anstoesse([*self.plot.anstoesse(), (x, y)])
+
+    def zeige_ansicht(self, pfad):
+        """Das gerenderte Zimmer -- aus dem Lauf-Verzeichnis, wie alle Live-Daten."""
+        pixmap = QPixmap(str(pfad))
+        if pixmap.isNull():
+            return                         # halb geschrieben? naechster Takt bringt es
+        breite = max(320, min(self.width() - 24, 640))
+        self.bild.setPixmap(pixmap.scaledToWidth(breite, Qt.SmoothTransformation))
+        self.bild.show()
 
     def zeige_ausgabe(self, zeile):
         """Nur die letzte Zeile. Die volle Ausgabe steht in der Ansicht „Code";

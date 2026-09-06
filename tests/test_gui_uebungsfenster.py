@@ -100,3 +100,35 @@ def test_der_raumwechsel_verwirft_eine_schon_gefahrene_spur_nicht(qapp):
     fenster.setze_raum_name("durchgang")
 
     assert fenster.plot.spur() == [(3.1, 4.0)]
+
+
+def test_die_3d_ansicht_erscheint_sobald_ein_bild_da_ist(qapp, tmp_path):
+    """Ohne Bild bleibt die Zeichnung allein (2D-Sim); mit backend='mujoco'
+    kommt das gerenderte Zimmer dazu."""
+    from PySide6.QtGui import QColor, QImage
+
+    fenster = Uebungsfenster(DUNKEL)
+    fenster.beginne(raum_laden("leer"), (1.0, 1.0, 0.0))
+    assert fenster.bild.isHidden()
+
+    pfad = tmp_path / "ansicht.jpg"
+    bild = QImage(64, 36, QImage.Format_RGB32)
+    bild.fill(QColor(30, 60, 90))
+    assert bild.save(str(pfad), "JPG")
+    fenster.zeige_ansicht(pfad)
+
+    assert not fenster.bild.isHidden()
+    assert fenster.bild.pixmap() is not None and not fenster.bild.pixmap().isNull()
+
+
+def test_ein_neuer_lauf_versteckt_das_alte_bild(qapp, tmp_path):
+    from PySide6.QtGui import QColor, QImage
+
+    fenster = Uebungsfenster(DUNKEL)
+    pfad = tmp_path / "ansicht.jpg"
+    bild = QImage(8, 8, QImage.Format_RGB32)
+    bild.fill(QColor(0, 0, 0))
+    bild.save(str(pfad), "JPG")
+    fenster.zeige_ansicht(pfad)
+    fenster.beginne(raum_laden("leer"), (1.0, 1.0, 0.0))
+    assert fenster.bild.isHidden(), "das Bild des letzten Laufs gehoert nicht zum neuen"

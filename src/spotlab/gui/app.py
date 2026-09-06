@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (
 from spotlab import ENV_RAUM, ENV_RAUM_START
 from spotlab.config import load_config, save_config
 from spotlab.errors import SpotlabError
-from spotlab.gui.editor.view import EditorView
+from spotlab.gui.editor.view import EditorView, verfuegbare_backends
 from spotlab.gui.header import Header
 from spotlab.gui.sidebar import Sidebar
 from spotlab.gui.theme import palette_fuer, stylesheet
@@ -200,6 +200,7 @@ class MainWindow(QWidget):
         self._watcher.zustand.connect(self._zustand)
         self._watcher.ereignis.connect(self._ereignis)
         self._watcher.bild.connect(self.ansichten["live"].zeige_bild)
+        self._watcher.ansicht.connect(self._ansicht)
         self._watcher.lauf_beendet.connect(self._lauf_beendet)
         self._watcher.fehler.connect(self._melde)
         self._watcher.start()
@@ -276,7 +277,7 @@ class MainWindow(QWidget):
     def _lauf_aus_code(self, prozess, skript):
         # Kein Ansichtswechsel: wer aus „Code" startet, will dort bleiben.
         self._start_aus = "code"
-        if self.ansichten["code"].gewaehltes_backend() == "sim":
+        if self.ansichten["code"].gewaehltes_backend() in ("sim", "mujoco"):
             self._oeffne_uebungsfenster(Path(skript).name)
         self._starte_leser(prozess)
 
@@ -291,7 +292,7 @@ class MainWindow(QWidget):
         (Lauf vom 04.09.2026 mit `"raum": null`). Und ein Laptop ohne
         eingerichteten Spot hat ueberhaupt keine Konfiguration.
         """
-        if self.ansichten["code"].gewaehltes_backend() != "sim":
+        if self.ansichten["code"].gewaehltes_backend() not in ("sim", "mujoco"):
             return {}
         ansicht = self.ansichten["uebungsraum"]
         umgebung = {ENV_RAUM: ansicht.raumname()}
@@ -311,7 +312,9 @@ class MainWindow(QWidget):
         # Nur beim START umstellen: laeuft schon etwas, heisst derselbe Knopf
         # „Stopp", und die Wahl im Editor darf dabei nicht umspringen.
         if not self.ansichten["code"].laeuft():
-            self.ansichten["code"].setze_backend("sim")
+            # 3D, wenn es auf diesem Laptop laeuft, sonst die Zeichnung.
+            namen = [name for _, name in verfuegbare_backends()]
+            self.ansichten["code"].setze_backend("mujoco" if "mujoco" in namen else "sim")
         self.ansichten["code"].starte_aktuelles()
 
     def _oeffne_uebungsfenster(self, titel=""):
@@ -334,6 +337,11 @@ class MainWindow(QWidget):
         )
         self.uebungsfenster.show()
         self.uebungsfenster.raise_()
+
+    def _ansicht(self, pfad):
+        """Das gerenderte Zimmer des MuJoCo-Backends -- ans offene Uebungsfenster."""
+        if self.uebungsfenster is not None and self.uebungsfenster.isVisible():
+            self.uebungsfenster.zeige_ansicht(pfad)
 
     def _zeile_ins_uebungsfenster(self, zeile):
         if self.uebungsfenster is not None and self.uebungsfenster.isVisible():
