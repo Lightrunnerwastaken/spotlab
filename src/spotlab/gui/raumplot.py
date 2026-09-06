@@ -7,16 +7,20 @@ Importiert `welt.raum` und `welt.kollision` (reine Standardbibliothek), aber
 weder bosdyn noch `spotlab.backends`: die Regel aus CLAUDE.md gilt auch hier.
 """
 
-import math
 
-from PySide6.QtCore import QPointF, Qt, Signal
-from PySide6.QtGui import QBrush, QColor, QPainter, QPen
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import QWidget
 
-from spotlab.welt.kollision import ROBOTER_RADIUS_M
+from spotlab.gui.raumzeichnung import (
+    zeichne_anstoesse,
+    zeichne_raum,
+    zeichne_spot,
+    zeichne_spur,
+)
+from spotlab.welt.raum import huelle
 
 RAND = 16
-SPOT_R_M = ROBOTER_RADIUS_M            # derselbe Kreis, gegen den der Sim prueft
 
 
 class RaumPlot(QWidget):
@@ -91,13 +95,14 @@ class RaumPlot(QWidget):
         """Pixel je Meter, Seitenverhaeltnis erhalten."""
         if self._raum is None:
             return 1.0, RAND, self.height() - RAND
-        breite, hoehe = self._raum.groesse
+        x0, y0, x1, y1 = huelle(self._raum)          # groesse oder die Huelle
+        breite, hoehe = max(x1 - x0, 1e-6), max(y1 - y0, 1e-6)
         nutzbar_x = max(self.width() - 2 * RAND, 1)
         nutzbar_y = max(self.height() - 2 * RAND, 1)
-        skala = min(nutzbar_x / max(breite, 1e-6), nutzbar_y / max(hoehe, 1e-6))
+        skala = min(nutzbar_x / breite, nutzbar_y / hoehe)
         # Zentriert, und y wird gespiegelt: im Raum waechst y nach oben.
-        links = (self.width() - breite * skala) / 2
-        unten = (self.height() + hoehe * skala) / 2
+        links = (self.width() - breite * skala) / 2 - x0 * skala
+        unten = (self.height() + hoehe * skala) / 2 + y0 * skala
         return skala, links, unten
 
     def meter_zu_schirm(self, x, y):
@@ -127,39 +132,9 @@ class RaumPlot(QWidget):
             return
 
         skala, _links, _unten = self._massstab()
-
-        maler.setPen(Qt.NoPen)
-        maler.setBrush(QBrush(QColor(self._p.flaeche)))
-        for hindernis in self._raum.hindernisse:
-            hx, hy, breite, hoehe = hindernis.rechteck
-            ecke = self.meter_zu_schirm(hx, hy + hoehe)
-            maler.drawRect(int(ecke[0]), int(ecke[1]),
-                           int(breite * skala), int(hoehe * skala))
-
-        maler.setPen(QPen(QColor(self._p.text), 2))
-        for x1, y1, x2, y2 in self._raum.waende:
-            a = self.meter_zu_schirm(x1, y1)
-            b = self.meter_zu_schirm(x2, y2)
-            maler.drawLine(QPointF(*a), QPointF(*b))
-
-        if len(self._spur) > 1:
-            maler.setPen(QPen(QColor(self._p.akzent), 2, Qt.DotLine))
-            for erster, zweiter in zip(self._spur, self._spur[1:]):
-                maler.drawLine(QPointF(*self.meter_zu_schirm(*erster)),
-                               QPointF(*self.meter_zu_schirm(*zweiter)))
-
-        maler.setPen(QPen(QColor(self._p.zahl), 2))
-        maler.setBrush(Qt.NoBrush)
-        for tag in self._raum.tags:
-            px, py = self.meter_zu_schirm(tag.x, tag.y)
-            maler.drawRect(int(px) - 6, int(py) - 6, 12, 12)
-            maler.drawText(int(px) + 9, int(py) + 4, str(tag.id))
-
-        maler.setPen(QPen(QColor(self._p.gefahr), 2))
-        for x, y in self._anstoesse:
-            px, py = self.meter_zu_schirm(x, y)
-            maler.drawLine(int(px) - 5, int(py) - 5, int(px) + 5, int(py) + 5)
-            maler.drawLine(int(px) - 5, int(py) + 5, int(px) + 5, int(py) - 5)
+        zeichne_raum(maler, self._raum, self.meter_zu_schirm, skala, self._p)
+        zeichne_spur(maler, self._spur, self.meter_zu_schirm, self._p)
+        zeichne_anstoesse(maler, self._anstoesse, self.meter_zu_schirm, self._p)
 
         pose = self._spur[-1] if self._spur else None
         blick = self._blick
@@ -167,11 +142,4 @@ class RaumPlot(QWidget):
             pose = (self._start[0], self._start[1])
         if pose is not None:
             px, py = self.meter_zu_schirm(pose[0], pose[1])
-            r = max(4.0, SPOT_R_M * skala)
-            maler.setPen(QPen(QColor(self._p.funktion), 2))
-            maler.setBrush(Qt.NoBrush)
-            maler.drawEllipse(QPointF(px, py), r, r)
-            maler.drawLine(QPointF(px, py), QPointF(
-                px + r * math.cos(math.radians(blick)),
-                py - r * math.sin(math.radians(blick)),
-            ))
+            zeichne_spot(maler, px, py, blick, skala, self._p)

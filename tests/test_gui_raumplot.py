@@ -119,3 +119,14 @@ def test_ein_neuer_start_setzt_spur_und_blick_zurueck(qapp):
     plot.setze_start((1.0, 2.0, 0.0))
     assert plot.spur() == []
     assert plot.blick() == 0.0
+
+
+def test_ohne_groesse_zeichnet_die_huelle(qapp):
+    from spotlab.gui.raumplot import RaumPlot
+    from spotlab.welt.raum import Raum
+
+    plot = RaumPlot(DUNKEL)
+    plot.resize(400, 300)
+    plot.setze_raum(Raum(name="T", beschreibung="", start=(0, 0, 0), waende=((0, 0, 4, 0),)))
+    x, y = plot.schirm_zu_meter(*plot.meter_zu_schirm(2.0, 0.0))
+    assert (x, y) == (pytest.approx(2.0), pytest.approx(0.0, abs=1e-6))
