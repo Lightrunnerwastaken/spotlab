@@ -690,3 +690,80 @@ def test_ein_ausdrueckliches_argument_schlaegt_die_umgebung(tmp_path, monkeypatc
     monkeypatch.setenv("SPOTLAB_RAUM", "leer")
     with spotlab.connect(runs_dir=tmp_path, raum="durchgang") as spot:
         assert spot.backend._pose[:2] == (1.0, 2.0)
+
+
+# ----------------------------------------------------------- Koerperantwort
+
+
+def _tempo_verlauf(backend, uhr, vor=0.0, drehen=0.0, params=None, geduld=10.0, schritt=0.05):
+    """[(t seit Kommando, |v|, |wz|)] waehrend eines move(), gelesen wie der Abtaster."""
+    from bosdyn.client.robot_command import RobotCommandBuilder
+
+    kennung = backend.send_command(
+        RobotCommandBuilder.synchro_trajectory_command_in_body_frame(
+            vor, 0.0, drehen, backend.frame_tree_snapshot(), params=params
+        ),
+        end_time_secs=uhr.t + geduld,
+    )
+    t0, verlauf = uhr.t, []
+    while uhr.t < t0 + geduld:
+        v = backend.robot_state().kinematic_state.velocity_of_body_in_odom
+        verlauf.append((uhr.t - t0, math.hypot(v.linear.x, v.linear.y), abs(v.angular.z)))
+        if backend.command_feedback(kennung).done:
+            return verlauf
+        uhr.weiter(schritt)
+    raise AssertionError("nicht angekommen")
+
+
+def test_move_faehrt_an_statt_zu_springen(uhr):
+    """Gemessen am 02.09.2026: der Spot braucht ~0.8 s bis zum Reisetempo und
+    waehlt sich fuer 1 m rund 0.73 m/s. Vorher sprang der Sim auf ein Tempo
+    aus der Mitte der Kennlinie -- ein eingestandener Platzhalter."""
+    verlauf = _tempo_verlauf(_sim(uhr), uhr, vor=1.0)
+    frueh = [v for t, v, _ in verlauf if t <= 0.1]
+    assert frueh and max(frueh) < 0.3, "kein Anfahren -- das Tempo springt"
+    spitze = max(v for _, v, _ in verlauf)
+    assert 0.6 < spitze < 0.8, f"Reisetempo {spitze:.2f} statt ~0.73 gemessen"
+
+
+def test_move_bremst_vor_dem_ziel(uhr):
+    verlauf = _tempo_verlauf(_sim(uhr), uhr, vor=1.0)
+    spitze = max(v for _, v, _ in verlauf)
+    assert verlauf[-1][1] < 0.6 * spitze, "kein Bremsen -- Vollgas bis ins Ziel"
+
+
+def test_move_dauert_so_lange_wie_am_roboter(uhr):
+    """Gemessen: 2.18 und 2.46 s fuer 1 m, 2.60 s fuer 90 Grad."""
+    backend = _sim(uhr)
+    t0 = uhr.t
+    assert _move(backend, uhr, vor=1.0)
+    assert 1.8 < uhr.t - t0 < 3.0
+    t0 = uhr.t
+    assert _move(backend, uhr, drehen=math.pi / 2)
+    assert 2.0 < uhr.t - t0 < 3.5
+
+
+def test_der_deckel_im_kommando_gilt_auch_fuer_das_ziel(uhr):
+    """`move()` schickt vel_limit mit, weil Klemmen bei einer Zieltrajektorie
+    ins Leere liefe. Der Sim liest denselben Deckel aus demselben Feld."""
+    from spotlab.backends import mobility
+    from spotlab.config import Limits
+
+    grenze = mobility.mit_grenze(Limits(max_speed=0.3, max_turn_rate=0.5))
+    verlauf = _tempo_verlauf(_sim(uhr), uhr, vor=1.0, params=grenze)
+    assert max(v for _, v, _ in verlauf) <= 0.3 + 1e-9
+    verlauf = _tempo_verlauf(_sim(uhr), uhr, drehen=math.pi / 2, params=grenze)
+    assert max(w for _, _, w in verlauf) <= 0.5 + 1e-9
+
+
+def test_der_bericht_zaehlt_ziele_ausserhalb_der_gemessenen_antwort(uhr):
+    """Gemessen ist 1 m und 90 Grad. Alles andere faehrt der Sim mit demselben
+    Profil -- und sagt, dass das eine Annahme ist."""
+    backend = _sim(uhr)
+    assert _move(backend, uhr, vor=1.0)
+    assert _move(backend, uhr, vor=2.0)
+    assert _move(backend, uhr, drehen=math.pi / 2)
+    antwort = backend.bericht()["antwort"]
+    assert antwort["ziele_ausserhalb_der_messung"] == 1
+    assert antwort["fahrt"]["gemessen_bei_m"] == [1.0]
+    assert antwort["drehung"]["gemessen_bei_grad"] == [90.0]

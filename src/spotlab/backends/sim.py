@@ -66,7 +66,8 @@ class SimBackend:
     """Bewegt sich nach der Gangkennlinie. Kein Roboter, keine Physik."""
 
     def __init__(self, recorder=None, jetzt=time.time, modell=None,
-                 raum=None, start=None):
+                 raum=None, start=None, antwort=None):
+        from spotlab.kalibrierung.antwort import lade_modell as lade_antwort
         from spotlab.kalibrierung.modell import lade_modell
 
         # Stufe 10: ein Zimmer um den Sim herum. OHNE Raum verhaelt sich alles
@@ -78,6 +79,19 @@ class SimBackend:
         self._recorder = recorder
         self._jetzt = jetzt
         self._modell = modell or lade_modell()
+        # Die Koerperantwort auf Ziele -- Anfahren, Reisetempo, Bremsen -- aus
+        # den kommandierten Laeufen vom 02.09.2026. Vorher fuhr ein Ziel mit
+        # einem Tempo aus der Mitte der Kennlinie: ein Platzhalter, der es
+        # immerhin zugab.
+        self._antwort = antwort or lade_antwort()
+        self._deckel = (None, None)        # (m/s, rad/s) aus vel_limit im Kommando
+        self._ziele_ausserhalb = 0
+        # Totzeiten der gemessenen Antwort: vor dem Losfahren und -- nach dem
+        # Stillstand -- bis zur Rueckmeldung. Der echte Spot meldet eine
+        # Drehung erst 0.55 s nach dem Stillstand als angekommen.
+        self._ziel_ab = 0.0                # frueher faehrt er nicht los
+        self._ziel_erreicht = None         # wann er still stand
+        self._ziel_nachlauf = 0.0          # so lange danach noch "unterwegs"
         self._powered = False
         self._zaehler = itertools.count(1)
         self._offen = {}
@@ -247,9 +261,13 @@ class SimBackend:
             "takte_in_bewegung": self._takte_bewegt,
             "takte_ausserhalb_der_messung": self._ausserhalb_takte,
             "anteil_ausserhalb": anteil,
-            # Für eine Zieltrajektorie gibt es GAR KEINE Messung — der echte
-            # Spot wählt sein Tempo selbst, und das wurde nie aufgezeichnet.
+            # Zieltrajektorien fahren die gemessene Antwort (1 m, 90°); was
+            # darüber hinausgeht, steht unter "antwort".
             "zieltrajektorien": self._ziele,
+            "antwort": {
+                **self._antwort.beschreibung(),
+                "ziele_ausserhalb_der_messung": self._ziele_ausserhalb,
+            },
             "kennlinie": {
                 "stuetzstellen_fahrt": len(self._modell.fahren),
                 "stuetzstellen_drehung": len(self._modell.drehen),
@@ -329,19 +347,24 @@ class SimBackend:
             self._soll = (0.0, 0.0, 0.0)
             self._sitzt = True
         elif art == "se2_trajectory_request":
-            # Eine Zieltrajektorie: der echte Spot wählt sein TEMPO selbst, und
-            # welches, wurde nie vermessen — im Beobachter-Modus hat niemand
-            # kommandiert. Angefahren wird das Ziel trotzdem, mit einem Tempo
-            # aus der Mitte des vermessenen Bereichs. Das ist eine WAHL, keine
-            # Messung, und sie wird als ausserhalb der Messung gezählt.
-            #
-            # Die Alternative wäre gewesen, `move()` im Sim gar nichts tun zu
-            # lassen. Ein stilles Nichtstun ist für einen Schüler die
-            # schlechteste Antwort: sein Programm läuft durch und er lernt
-            # nichts daraus.
+            # Eine Zieltrajektorie: der echte Spot wählt sein Tempo selbst. WIE,
+            # ist seit dem 02.09.2026 gemessen (kalibrierung/antwort.py):
+            # Anfahren, Reisetempo, Bremsen — bei 1 m und 90°. Andere Ziele
+            # fahren dasselbe Profil und werden als ausserhalb der Messung
+            # gezählt. Den Deckel liest der Sim aus demselben Feld wie der
+            # Roboter: `vel_limit` in den MobilityParams des Kommandos.
             self._ziele += 1
             self._sitzt = False
             self._ziel = self._ziel_aus(mobil.se2_trajectory_request)
+            self._deckel = self._deckel_aus(mobil)
+            self._ziel_erreicht = None
+            if self._ziel is not None:
+                strecke, winkel = self._ziel_relativ()
+                if not self._antwort.gemessen(strecke, winkel):
+                    self._ziele_ausserhalb += 1
+                vorher, nachher = self._antwort.verzug(strecke, winkel)
+                self._ziel_ab = jetzt + vorher
+                self._ziel_nachlauf = nachher
             self._soll = (0.0, 0.0, 0.0)
             self._gueltig_bis = (
                 float(end_time_secs) if end_time_secs is not None else jetzt + NACHLAUF_S
@@ -364,8 +387,43 @@ class SimBackend:
         pose = anfrage.trajectory.points[-1].pose
         return (pose.position.x, pose.position.y, pose.angle)
 
-    def _zum_ziel(self):
+    def _ziel_relativ(self):
+        """(Strecke m, Winkel grad) vom jetzigen Stand zum Ziel."""
+        x, y, yaw = self._pose
+        zx, zy, zyaw = self._ziel
+        dyaw = (zyaw - yaw + math.pi) % (2 * math.pi) - math.pi
+        return math.hypot(zx - x, zy - y), math.degrees(dyaw)
+
+    @staticmethod
+    def _deckel_aus(mobil):
+        """(m/s, rad/s) aus `vel_limit` der MobilityParams — oder None je Achse.
+
+        Dasselbe Feld, das `backends/mobility.py::se2_grenze` fuer den echten
+        Roboter setzt. Fehlt es, gilt nur das gemessene Reisetempo.
+        """
+        try:
+            from bosdyn.api.spot import robot_command_pb2 as spot_pb2
+
+            if not mobil.HasField("params"):
+                return None, None
+            params = spot_pb2.MobilityParams()
+            mobil.params.Unpack(params)
+            if not params.HasField("vel_limit") or not params.vel_limit.HasField("max_vel"):
+                return None, None
+            v = float(params.vel_limit.max_vel.linear.x)
+            w = float(params.vel_limit.max_vel.angular)
+            return (v if v > 0 else None), (w if w > 0 else None)
+        except Exception:
+            return None, None
+
+    def _zum_ziel(self, dt):
         """Sollgeschwindigkeit im Körperframe, um dem Ziel näherzukommen.
+
+        Das Tempo kommt aus dem Antwortmodell: anfahren mit der gemessenen
+        Beschleunigung, höchstens das gemessene Reisetempo (und nie über den
+        Deckel), bremsen, dass es mit der gemessenen Verzögerung zum Stillstand
+        reicht. Der bisherige Wert -- `self._soll` -- ist der Zustand des
+        Profils; eine Zeitbuchführung braucht es nicht.
 
         Verschieben und Drehen laufen GLEICHZEITIG, jedes hört für sich auf,
         wenn seine Toleranz erreicht ist. Ein Nacheinander („erst drehen, dann
@@ -379,19 +437,33 @@ class SimBackend:
 
         fertig_weg = abstand <= ZIEL_TOLERANZ_M
         fertig_dreh = abs(dyaw) <= ZIEL_TOLERANZ_RAD
+        jetzt = self._jetzt()
         if fertig_weg and fertig_dreh:
+            # Angekommen -- aber gemeldet wird es erst nach der gemessenen
+            # Totzeit; solange steht der Roboter still und ist "unterwegs".
+            if self._ziel_erreicht is None:
+                self._ziel_erreicht = jetzt
+            if jetzt < self._ziel_erreicht + self._ziel_nachlauf:
+                return 0.0, 0.0, 0.0
             return None
+        if jetzt < self._ziel_ab:
+            return 0.0, 0.0, 0.0           # der Roboter faehrt nicht sofort los
 
         vx = vy = 0.0
         if not fertig_weg:
-            tempo = self._modell.tempo_vorschlag
+            tempo = self._antwort.tempo(
+                math.hypot(self._soll[0], self._soll[1]), abstand, dt, self._deckel[0]
+            )
             # Richtung in den Körperframe drehen: die Geschwindigkeit im
             # Kommando ist körperfest, der Abstand steht in odom.
             richtung = math.atan2(dy, dx) - yaw
             vx, vy = tempo * math.cos(richtung), tempo * math.sin(richtung)
         wz = 0.0
         if not fertig_dreh:
-            wz = math.copysign(self._modell.drehrate_vorschlag, dyaw)
+            wz = math.copysign(
+                self._antwort.drehrate(abs(self._soll[2]), abs(dyaw), dt, self._deckel[1]),
+                dyaw,
+            )
         return vx, vy, wz
 
     @staticmethod
@@ -447,7 +519,7 @@ class SimBackend:
             # zu haben. `api/motion.move()` setzt sie genau auf seine Geduld.
             self._ziel = None
         if self._ziel is not None:
-            gefunden = self._zum_ziel()
+            gefunden = self._zum_ziel(dt)
             if gefunden is None:
                 self._ziel = None
                 self._soll = (0.0, 0.0, 0.0)

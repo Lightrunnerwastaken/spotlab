@@ -19,6 +19,10 @@ Was gemessen wird, je Kommando:
 - Beschleunigung: Steigung der ansteigenden Flanke zwischen 10 % und 80 %
   der Spitze; Verzögerung: dasselbe an der fallenden Flanke
 - Dauer: Kommando bis Rückmeldung „angekommen"
+- Verzug am Start: Kommando bis zur ersten Bewegung (10 % der Spitze); Verzug
+  am Ende: Stillstand bis Rückmeldung. Gemessen ~0.2 s bzw. 0.05 s (Fahrt) und
+  0.55 s (Drehung) — der Roboter meldet eine Drehung erst, wenn der Kurs
+  eingeschwungen ist. Ohne die beiden dauerte die Sim-Drehung 1.9 statt 2.6 s.
 - Erreicht: integrierte Strecke bzw. Winkel — die Gegenprobe zum Sollwert
 
 Das Modell daraus ist ein Trapezprofil: mit `a` anfahren, höchstens mit dem
@@ -67,6 +71,8 @@ class Antwortpunkt:
     verzoegerung: float
     erreicht: float            # integriert: m bzw. grad
     proben: int
+    verzug_start_s: float = 0.0    # Kommando -> erste Bewegung
+    verzug_ende_s: float = 0.0     # Stillstand -> Rückmeldung
     herkunft: dict = field(default_factory=dict)
 
 
@@ -174,6 +180,9 @@ def punkte_aus_lauf(lauf_dir):
             verworfen.append((nummer, "Flanke nicht auflösbar"))
             continue
         erreicht = _integral(ts, roh)
+        schwelle = FLANKE_VON * spitze
+        erste = next(t for t, v in zip(ts, vs) if v >= schwelle)
+        letzte = next(t for t, v in zip(reversed(ts), reversed(vs)) if v >= schwelle)
         punkte.append(Antwortpunkt(
             art=art,
             soll=round(math.hypot(vor, links) if faehrt else abs(dreh), 3),
@@ -183,6 +192,8 @@ def punkte_aus_lauf(lauf_dir):
             verzoegerung=round(b, 4),
             erreicht=round(erreicht if faehrt else math.degrees(erreicht), 3),
             proben=len(proben),
+            verzug_start_s=round(max(0.0, erste - t0), 3),
+            verzug_ende_s=round(max(0.0, t1 - letzte), 3),
             herkunft={
                 "lauf": meta.get("id", lauf_dir.name),
                 "gestartet": meta.get("gestartet"),
@@ -284,6 +295,16 @@ class Antwortmodell:
         self.a_dreh = _median([p["beschleunigung"] for p in self.drehungen])
         self.b_dreh = _median([p["verzoegerung"] for p in self.drehungen])
         self.w_dreh = _median([p["spitze"] for p in self.drehungen])
+        # Totzeiten: vor der ersten Bewegung und nach dem Stillstand bis zur
+        # Rückmeldung. Ältere Kennlinien ohne die Felder gelten als verzugsfrei.
+        self.verzug_fahrt = (
+            _median([p.get("verzug_start_s", 0.0) for p in self.fahrten]),
+            _median([p.get("verzug_ende_s", 0.0) for p in self.fahrten]),
+        )
+        self.verzug_dreh = (
+            _median([p.get("verzug_start_s", 0.0) for p in self.drehungen]),
+            _median([p.get("verzug_ende_s", 0.0) for p in self.drehungen]),
+        )
 
     @property
     def gemessene_strecken_m(self):
@@ -305,6 +326,20 @@ class Antwortmodell:
     def drehrate(self, jetzt, rest_rad, dt, deckel=None):
         return self._naechstes(jetzt, rest_rad, dt, self.a_dreh, self.b_dreh, self.w_dreh, deckel)
 
+    def verzug(self, strecke_m, winkel_grad):
+        """(vor dem Losfahren, nach dem Stillstand) in Sekunden für dieses Ziel.
+
+        Bei einer kombinierten Bewegung gilt je der grössere Wert — gemessen
+        wurde sie nie, und die längere Totzeit ist die vorsichtigere Annahme.
+        """
+        faehrt, dreht = strecke_m > 1e-6, abs(winkel_grad) > 1e-6
+        if faehrt and dreht:
+            return (max(self.verzug_fahrt[0], self.verzug_dreh[0]),
+                    max(self.verzug_fahrt[1], self.verzug_dreh[1]))
+        if dreht:
+            return self.verzug_dreh
+        return self.verzug_fahrt
+
     def gemessen(self, strecke_m, winkel_grad):
         """Liegt das Ziel bei einem gemessenen Sollwert (±10 %)?"""
         def nahe(wert, gemessene):
@@ -323,9 +358,11 @@ class Antwortmodell:
         return {
             "fahrt": {"a_m_s2": round(self.a_fahrt, 3), "b_m_s2": round(self.b_fahrt, 3),
                       "reisetempo_m_s": round(self.v_fahrt, 3),
+                      "verzug_s": [round(v, 3) for v in self.verzug_fahrt],
                       "gemessen_bei_m": self.gemessene_strecken_m},
             "drehung": {"a_rad_s2": round(self.a_dreh, 3), "b_rad_s2": round(self.b_dreh, 3),
                         "reisetempo_rad_s": round(self.w_dreh, 3),
+                        "verzug_s": [round(v, 3) for v in self.verzug_dreh],
                         "gemessen_bei_grad": self.gemessene_winkel_grad},
         }
 
@@ -358,10 +395,11 @@ def main(argv=None):
 
     print(f"\n{len(punkte)} Antwortpunkte:")
     print(f"  {'Art':<8}{'Soll':>7}{'Dauer':>7}{'Spitze':>8}{'Anfahrt':>9}{'Bremse':>8}"
-          f"{'Erreicht':>10}  Herkunft")
+          f"{'Verzug':>12}{'Erreicht':>10}  Herkunft")
     for p in sorted(punkte, key=lambda p: (p.art, p.soll)):
+        verzug = f"{p.verzug_start_s:.2f}/{p.verzug_ende_s:.2f}"
         print(f"  {p.art:<8}{p.soll:7.2f}{p.dauer_s:7.2f}{p.spitze:8.3f}"
-              f"{p.beschleunigung:9.3f}{p.verzoegerung:8.3f}{p.erreicht:10.3f}  "
+              f"{p.beschleunigung:9.3f}{p.verzoegerung:8.3f}{verzug:>12}{p.erreicht:10.3f}  "
               f"{p.herkunft['lauf']} #{p.herkunft['kommando']}")
     if args.probe:
         print("\n--probe: nichts geschrieben.")

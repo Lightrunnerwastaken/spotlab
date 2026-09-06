@@ -1,7 +1,7 @@
 {
  "fassung": 1,
- "erzeugt": "2026-09-06T11:39:47.657976+00:00",
- "bemerkung": "Kommandierte Laeufe vom 02.09.2026, spotlab-GUI am Schul-Spot, hallo_spot.py: drei move(forward=1.0), ein move(turn=90).",
+ "erzeugt": "2026-09-06T11:44:56.629555+00:00",
+ "bemerkung": "Kommandierte Laeufe vom 02.09.2026, spotlab-GUI am Schul-Spot, hallo_spot.py: zwei move(forward=1.0), ein move(turn=90).",
  "hinweis": "Antwort des echten Spot auf move()-Kommandos: Anfahren, Reisetempo, Bremsen. Gemessen nur bei den genannten Sollwerten; für andere Strecken und Winkel ist das Trapezprofil eine Annahme.",
  "punkte": [
   {
@@ -13,6 +13,8 @@
    "verzoegerung": 1.7812,
    "erreicht": 89.729,
    "proben": 26,
+   "verzug_start_s": 0.135,
+   "verzug_ende_s": 0.663,
    "herkunft": {
     "lauf": "20260902T152457Z_03c9143b",
     "gestartet": "2026-09-02T15:24:57.726483+00:00",
@@ -30,6 +32,8 @@
    "verzoegerung": 0.869,
    "erreicht": 0.993,
    "proben": 24,
+   "verzug_start_s": 0.164,
+   "verzug_ende_s": 0.011,
    "herkunft": {
     "lauf": "20260902T152110Z_29458f61",
     "gestartet": "2026-09-02T15:21:10.421500+00:00",
@@ -47,6 +51,8 @@
    "verzoegerung": 1.0839,
    "erreicht": 1.022,
    "proben": 24,
+   "verzug_start_s": 0.539,
+   "verzug_ende_s": 0.0,
    "herkunft": {
     "lauf": "20260902T152227Z_29458f61",
     "gestartet": "2026-09-02T15:22:27.585000+00:00",
