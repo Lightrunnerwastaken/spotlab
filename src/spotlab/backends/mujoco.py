@@ -40,11 +40,12 @@ from pathlib import Path
 from spotlab.backends.base import Capability, Tag, richtung
 from spotlab.backends.sim import SimBackend
 from spotlab.errors import SpotlabError
+from spotlab.welt.hoehe import boden_bei, boden_z, kaesten_fuer, nick_grad
 from spotlab.welt.kollision import MAX_SCHRITT_M
-from spotlab.welt.raum import BLOCK_HOEHE_M, TAG_HOEHE_M
+from spotlab.welt.raum import BLOCK_HOEHE_M, MAX_STUFE_M, TAG_HOEHE_M
 from spotlab.welt.wahrnehmung import TAG_REICHWEITE_M
 
-PUPPE_FASSUNG = 3      # 3: Quader mit yaw; 2: weltfestes Gitter
+PUPPE_FASSUNG = 4      # 4: Nick, Bodenhoehe, Sprungregel; 3: Quader mit yaw; 2: weltfestes Gitter
 
 # Die Höhen und Dicken stehen im Raum (`welt/raum.py`: `wand_dicke`,
 # `wand_hoehe`, `Block.hoehe`, `RaumTag.hoehe`) — die Vorgaben dort sind die
@@ -86,35 +87,48 @@ def _puppe_laden():
 
 
 def welt_aus_raum(raum, puppe):
-    """Ein `Raum` (Waende, Bloecke, Tags) als `puppe.Welt` (gedrehte Quader, Tags).
+    """Ein `Raum` (Waende, Bloecke, Boeden, Tags) als `puppe.Welt`.
 
     Eine Wand wird ein Kasten mit ihrer Laenge, der Dicke und Hoehe des Raums
     und ihrer Richtung; ein Block ein Kasten mit seiner Drehung; ein Tag eine
     Marke auf seiner Haengehoehe (Grad -> Bogenmass, wie ueberall an der Naht
     zu `welt/`). Dasselbe Prinzip wie in `welt/kollision.py`: die Drehung
     steckt im Koerper, der Kasten selbst bleibt achsparallel.
+
+    Boeden kommen aus `welt/hoehe.py::kaesten_fuer` -- derselben Zerlegung,
+    die die 3D-Sicht des Editors zeichnet: je Stufe ein Kasten, eine Rampe
+    als geneigter Kasten mit Fuellung, ein Podest als Kasten bis zum tiefsten
+    Boden des Raums. Dort liegt auch die Bodenebene (`Welt.boden_z`); ein Raum
+    mit negativen Hoehen (Katakomben) steckt sonst in ihr.
     """
     if raum is None:
         return puppe.Welt()
+    tiefster = boden_z(raum)
     quader = []
     for i, wand in enumerate(raum.waende):
         if wand.laenge <= 0:
             continue
         mx, my = wand.mitte
         quader.append(puppe.Quader(
-            f"wand_{i}", mx, my, raum.wand_hoehe / 2,
+            f"wand_{i}", mx, my, wand.z + raum.wand_hoehe / 2,
             wand.laenge / 2, raum.wand_dicke / 2, raum.wand_hoehe / 2,
             yaw=math.radians(wand.winkel),
         ))
     for b in raum.bloecke:
         quader.append(puppe.Quader(
-            b.name, b.x, b.y, b.hoehe / 2, b.breite / 2, b.tiefe / 2, b.hoehe / 2,
+            b.name, b.x, b.y, b.z + b.hoehe / 2, b.breite / 2, b.tiefe / 2, b.hoehe / 2,
             yaw=math.radians(b.drehung),
         ))
+    for boden in raum.boeden:
+        for name, x, y, z, hx, hy, hz, yaw_grad, pitch_grad in kaesten_fuer(boden, tiefster):
+            quader.append(puppe.Quader(
+                name, x, y, z, hx, hy, hz,
+                yaw=math.radians(yaw_grad), pitch=math.radians(pitch_grad),
+            ))
     tags = tuple(
-        puppe.TagMarke(t.id, t.x, t.y, t.hoehe, math.radians(t.grad)) for t in raum.tags
+        puppe.TagMarke(t.id, t.x, t.y, t.z + t.hoehe, math.radians(t.grad)) for t in raum.tags
     )
-    return puppe.Welt(quader=tuple(quader), tags=tags)
+    return puppe.Welt(quader=tuple(quader), tags=tags, boden_z=tiefster)
 
 
 class _Ansichtsschreiber(threading.Thread):
@@ -163,9 +177,9 @@ class MujocoBackend(SimBackend):
     """Bewegt sich nach Gangkennlinie und Antwortmodell — in einem 3D-Zimmer."""
 
     def __init__(self, recorder=None, jetzt=time.time, modell=None, raum=None,
-                 start=None, antwort=None, ansicht_ziel=None):
+                 start=None, antwort=None, ansicht_ziel=None, treppen="auto"):
         super().__init__(recorder=recorder, jetzt=jetzt, modell=modell,
-                         raum=raum, start=start, antwort=antwort)
+                         raum=raum, start=start, antwort=antwort, treppen=treppen)
         puppe = _puppe_laden()
         self.puppe = puppe.SpotPuppe(welt_aus_raum(raum, puppe))
         self._fassung = puppe.FASSUNG
@@ -214,6 +228,9 @@ class MujocoBackend(SimBackend):
                 "block_hoehe_vorgabe_m": BLOCK_HOEHE_M, "tag_hoehe_vorgabe_m": TAG_HOEHE_M,
                 "tag_reichweite_m": TAG_REICHWEITE_M,
             },
+            # Auf Stufen spielt die Puppe den ebenen Gang: Fuesse tauchen ein.
+            # Der gemessene Treppengang kommt aus B6 (Messfahrt-Ablauf).
+            "treppengang": self.treppengang() or "eben",
         }
         return bericht
 
@@ -223,10 +240,16 @@ class MujocoBackend(SimBackend):
         vx, vy, wz = self._soll
         return self._modell.gelenke(math.hypot(vx, vy), wz, self._phase)
 
+    def _setze_puppe(self, pose, winkel, z):
+        """Die Puppe auf Pose, Boden und Neigung setzen -- Hoehe aus Boden plus Kinematik."""
+        x, y, yaw = pose
+        nick = nick_grad(self._raum, x, y, yaw, z_nahe=z) if self._raum is not None else 0.0
+        self.puppe.setze(x, y, yaw, winkel, hoehe=z + self.puppe.standhoehe(winkel),
+                         pitch=math.radians(nick))
+
     def _synchronisiere(self):
-        """Die Puppe auf den Stand des 2D-Sim bringen: Pose und Winkel."""
-        x, y, yaw = self._pose
-        self.puppe.setze(x, y, yaw, self._winkel())
+        """Die Puppe auf den Stand des 2D-Sim bringen: Pose, Winkel, Hoehe, Nick."""
+        self._setze_puppe(self._pose, self._winkel(), self._z)
 
     def _fortschreiben(self):
         super()._fortschreiben()
@@ -239,21 +262,36 @@ class MujocoBackend(SimBackend):
         damit die Zusicherung nicht an der Abfragehäufigkeit hängt. Die DREHUNG
         wird immer übernommen (dieselbe Regel wie in 2D). Gemeldet wird die
         Flanke, nicht jeder Takt.
+
+        Hoehe wie in 2D: je Teilschritt fragt `boden_bei`; springt der Boden um
+        mehr als eine Stufe, ist das die Klippe ("Kante") -- die Geometrie
+        allein hielte einen kinematisch gesetzten Koerper nicht auf. Die
+        Treppenregel und der Treppenmodus "aus" gelten wie im 2D-Sim.
         """
+        if self._raum is not None and self._treppen != "aus" and self._treppe_verweigert(von, nach):
+            return (von[0], von[1], nach[2])
         winkel = self._winkel()
         strecke = math.hypot(nach[0] - von[0], nach[1] - von[1])
         schritte = max(1, math.ceil(strecke / MAX_SCHRITT_M))
-        frei, getroffen = (von[0], von[1], nach[2]), None
+        frei, z_gut, getroffen = (von[0], von[1], nach[2]), self._z, None
         for i in range(1, schritte + 1):
             anteil = i / schritte
             probe = (von[0] + (nach[0] - von[0]) * anteil,
                      von[1] + (nach[1] - von[1]) * anteil, nach[2])
-            self.puppe.setze(probe[0], probe[1], probe[2], winkel)
+            z_neu = z_gut
+            if self._raum is not None:
+                z_neu, boden = boden_bei(self._raum, probe[0], probe[1], z_nahe=z_gut)
+                gesperrt = self._treppen == "aus" and boden is not None and boden.anstieg != 0.0
+                if abs(z_neu - z_gut) > MAX_STUFE_M or gesperrt:
+                    getroffen = "Kante"
+                    break
+            self._setze_puppe(probe, winkel, z_neu)
             beruehrt = self.puppe.kollisionen()
             if beruehrt:
                 getroffen = beruehrt[0]
                 break
-            frei = probe
+            frei, z_gut = probe, z_neu
+        self._z = z_gut
         if getroffen is None:
             self._angestossen = False
             return frei
@@ -294,7 +332,7 @@ class MujocoBackend(SimBackend):
         from spotlab.backends.real.wahrnehmung import gitter_aus
 
         self._fortschreiben()
-        return gitter_aus(self.puppe.local_grid("obstacle_distance"))
+        return gitter_aus(self.puppe.local_grid("obstacle_distance", boden_z=self._z))
 
     def image_sources(self):
         from spotsim.sensors import CAMERAS
@@ -408,7 +446,13 @@ def _raum_des_laufs(lauf_dir):
 
 
 def _bilder_aus_lauf(lauf_dir, fps=FILM_FPS):
-    """(t, (x, y, yaw), gelenke) je Bild — auf `fps` interpoliert."""
+    """(t, (x, y, yaw), gelenke, hoehe, nick) je Bild — auf `fps` interpoliert.
+
+    `hoehe` ist die Koerperhoehe `z` aus der Aufzeichnung (None, wenn der
+    Lauf keine traegt: dann die Standhoehe der Kinematik), `nick` der Nick
+    im Bogenmass. Beide Felder gibt es seit Stufe 7 in jeder Zeile; erst seit
+    Stufe 13 tragen sie im Sim etwas anderes als Standhoehe und 0.
+    """
     from spotlab.kalibrierung.modell import lade_modell
 
     proben = []
@@ -420,8 +464,11 @@ def _bilder_aus_lauf(lauf_dir, fps=FILM_FPS):
         gelenke = daten.get("joints") or {}
         winkel = {name: float(g.get("position", 0.0)) for name, g in gelenke.items()
                   if isinstance(g, dict)}
+        hoehe = daten.get("z")
         proben.append((float(satz["t"]), (float(pose[0]), float(pose[1]), float(pose[2])),
-                       winkel if len(winkel) == 12 else None))
+                       winkel if len(winkel) == 12 else None,
+                       float(hoehe) if hoehe is not None else None,
+                       float(daten.get("pitch") or 0.0)))
     if len(proben) < 2:
         raise SpotlabError(
             f"{Path(lauf_dir).name}: zustand.jsonl hat {len(proben)} brauchbare Proben -- "
@@ -431,10 +478,10 @@ def _bilder_aus_lauf(lauf_dir, fps=FILM_FPS):
     ruhe = lade_modell().gelenke(0.0, 0.0, 0.0)
     letzte = ruhe
     gefuellt = []
-    for t, pose, winkel in proben:
+    for t, pose, winkel, hoehe, nick in proben:
         if winkel is not None:
             letzte = winkel
-        gefuellt.append((t, pose, letzte))
+        gefuellt.append((t, pose, letzte, hoehe, nick))
 
     t0, t_ende = gefuellt[0][0], gefuellt[-1][0]
     k, i = 0, 0
@@ -444,12 +491,14 @@ def _bilder_aus_lauf(lauf_dir, fps=FILM_FPS):
             break
         while i + 1 < len(gefuellt) - 1 and gefuellt[i + 1][0] <= t:
             i += 1
-        ta, pa, ga = gefuellt[i]
-        tb, pb, gb = gefuellt[i + 1]
+        ta, pa, ga, ha, na = gefuellt[i]
+        tb, pb, gb, hb, nb = gefuellt[i + 1]
         anteil = 0.0 if tb <= ta else min(1.0, max(0.0, (t - ta) / (tb - ta)))
         pose = _interpoliere_pose(pa, pb, anteil)
         gelenke = {name: ga[name] + (gb[name] - ga[name]) * anteil for name in ga}
-        yield t, pose, gelenke
+        hoehe = None if ha is None or hb is None else ha + (hb - ha) * anteil
+        nick = na + (nb - na) * anteil
+        yield t, pose, gelenke, hoehe, nick
         k += 1
 
 
@@ -479,8 +528,8 @@ def film_aus_lauf(lauf_dir, ziel=None, fps=FILM_FPS, breite=ANSICHT_BREITE,
     # einer Warnung, die niemand liest. 640x360 ist gerade, das genügt libx264.
     with imageio.get_writer(str(temporaer), fps=fps, codec="libx264", quality=8,
                             macro_block_size=1, pixelformat="yuv420p") as schreiber:
-        for nummer, (_t, (x, y, yaw), gelenke) in enumerate(bilder):
-            figur.setze(x, y, yaw, gelenke)
+        for nummer, (_t, (x, y, yaw), gelenke, koerper_z, nick) in enumerate(bilder):
+            figur.setze(x, y, yaw, gelenke, hoehe=koerper_z, pitch=nick)
             schreiber.append_data(figur.ansicht(breite, hoehe))
             if fortschritt is not None and nummer % 30 == 0:
                 fortschritt(nummer, len(bilder))

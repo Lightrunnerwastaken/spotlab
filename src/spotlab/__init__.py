@@ -121,7 +121,7 @@ def connect(
             from spotlab.backends.mujoco import MujocoBackend
 
             unten = MujocoBackend(
-                recorder, raum=gewaehlt, start=start,
+                recorder, raum=gewaehlt, start=start, treppen=grenzen.treppen,
                 ansicht_ziel=recorder.dir / "ansicht.jpg",
             )
         else:

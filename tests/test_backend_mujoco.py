@@ -290,3 +290,115 @@ def test_welt_aus_raum_dreht_waende_und_bloecke():
     assert regal.name == "Regal" and regal.yaw == pytest.approx(math.radians(30))
     assert (regal.hx, regal.hy, regal.hz) == (0.5, 0.2, 0.9)
     assert welt.tags[0].z == 0.5
+
+
+# ----------------------------------------------------------------- Hoehe (Fassung 4)
+
+
+def _raum_mit_rampe_und_treppe():
+    from spotlab.welt.raum import Boden, Raum, Wand
+
+    return Raum(name="H", beschreibung="", start=(1, 0, 0), wand_hoehe=1.0,
+                waende=(Wand(0, 3, 14, 3, z=1.0),),
+                boeden=(Boden("T", 3, 0, 2, 2, anstieg=1.0, stufen=5),        # x 2..4
+                        Boden("P", 5, 0, 2, 2, z=1.0),                         # x 4..6
+                        Boden("R", 8, 0, 2, 2, anstieg=0.5),                   # x 7..9: 0 -> 0.5
+                        Boden("G", 12, 0, 2, 2, z=0.5)))                       # x 11..13
+
+
+def test_welt_aus_raum_baut_boeden_stufen_und_rampen_wie_kaesten_fuer():
+    import math
+
+    import spotsim.puppe as puppe
+
+    from spotlab.backends.mujoco import welt_aus_raum
+    from spotlab.welt.hoehe import kaesten_fuer
+
+    raum = _raum_mit_rampe_und_treppe()
+    welt = welt_aus_raum(raum, puppe)
+    assert welt.boden_z == 0.0                                                  # der Grundboden ist die Ebene
+    namen = [q.name for q in welt.quader]
+    assert namen[0] == "wand_0" and welt.quader[0].z == pytest.approx(1.5)     # 1.0 .. 2.0
+    assert [n for n in namen if n.startswith("stufe_T_")] == [f"stufe_T_{i}" for i in range(5)]
+    assert "boden_P" in namen and "rampe_R" in namen and "boden_G" in namen
+    rampe = next(q for q in welt.quader if q.name == "rampe_R")
+    assert rampe.pitch == pytest.approx(-math.atan2(0.5, 2.0))
+    erwartet = {k[0]: k for b in raum.boeden for k in kaesten_fuer(b, 0.0)}
+    getroffen = 0
+    for q in welt.quader:
+        if q.name in erwartet:
+            k = erwartet[q.name]
+            assert (q.x, q.y, q.z, q.hx, q.hy, q.hz) == pytest.approx((k[1], k[2], k[3], k[4], k[5], k[6]))
+            assert q.yaw == pytest.approx(math.radians(k[7])) and q.pitch == pytest.approx(math.radians(k[8]))
+            getroffen += 1
+    assert getroffen == len(erwartet) == 8                                     # 5 Stufen, 2 Podeste, Rampe (fusst auf 0)
+
+
+def test_fassung_und_stufenhoehe_sind_die_der_puppe():
+    import spotsim.puppe as puppe
+    from spotsim.local_grid import MAX_STUFE_M as PUPPE_STUFE
+
+    from spotlab.backends.mujoco import PUPPE_FASSUNG
+    from spotlab.welt.raum import MAX_STUFE_M
+
+    assert PUPPE_FASSUNG == puppe.FASSUNG == 4
+    assert PUPPE_STUFE == MAX_STUFE_M
+
+
+@needs_asset
+def test_der_koerper_steigt_die_treppe_und_haelt_an_der_kante(uhr):
+    from spotlab.backends.mujoco import MujocoBackend
+
+    schreiber = Schreiber()
+    b = MujocoBackend(recorder=schreiber, jetzt=uhr, raum=_raum_mit_rampe_und_treppe(), start=(1.0, 0.0, 0.0))
+    b.power_on()
+    try:
+        _fahre(b, uhr, vx=0.3, sekunden=12)
+        assert 4.2 < b._pose[0] < 6.0 and b._z == pytest.approx(1.0), (b._pose, b._z)
+        assert b.puppe.qpos()[2] == pytest.approx(1.0 + b.puppe.standhoehe(b._winkel()), abs=0.02)
+        _fahre(b, uhr, vx=0.3, sekunden=8)                                     # bis zur Podestkante bei x = 6
+        assert b._pose[0] < 6.0 and b._z == pytest.approx(1.0)
+        arten = [art for art, _ in schreiber.ereignisse]
+        assert "treppe_verweigert" not in arten
+        assert any(d.get("hindernis") == "Kante" for art, d in schreiber.ereignisse if art == "angestossen")
+    finally:
+        b.close()
+
+
+@needs_asset
+def test_vorwaerts_abwaerts_wird_auch_in_3d_verweigert(uhr):
+    from spotlab.backends.mujoco import MujocoBackend
+
+    schreiber = Schreiber()
+    b = MujocoBackend(recorder=schreiber, jetzt=uhr, raum=_raum_mit_rampe_und_treppe(), start=(5.5, 0.0, 180.0))
+    b.power_on()
+    try:
+        _fahre(b, uhr, vx=0.3, sekunden=6)
+        assert b._pose[0] > 3.9 and b._z == pytest.approx(1.0)
+        assert [d["verlangt"] for art, d in schreiber.ereignisse if art == "treppe_verweigert"] == ["rückwärts runter"]
+        assert b.bericht()["puppe"]["treppengang"] == "nicht gemessen"
+    finally:
+        b.close()
+
+
+@needs_asset
+def test_das_tiefengitter_misst_vom_boden_unter_dem_koerper(uhr):
+    """Auf dem Podest ist das Podest frei; von unten ist seine Kante belegt."""
+    import math
+
+    from spotlab.backends.mujoco import MujocoBackend
+
+    oben = MujocoBackend(jetzt=uhr, raum=_raum_mit_rampe_und_treppe(), start=(5.0, 0.0, 0.0))
+    try:
+        assert oben._z == pytest.approx(1.0)
+        gitter = oben.local_grid()
+        assert gitter.free_distance(5.0, 0.0, 90.0) > 0.5                      # quer ueber das Podest frei (Grad)
+    finally:
+        oben.close()
+    unten = MujocoBackend(jetzt=uhr, raum=_raum_mit_rampe_und_treppe(), start=(6.8, 0.0, math.degrees(math.pi)))
+    try:
+        assert unten._z == pytest.approx(0.0)
+        gitter = unten.local_grid()
+        assert gitter.free_distance(6.8, 0.0, 180.0) < 0.9                     # die Podestkante bei x = 6 (Grad)
+    finally:
+        unten.close()

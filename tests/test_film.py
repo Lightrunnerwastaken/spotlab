@@ -75,7 +75,7 @@ def test_zwischen_den_proben_wird_interpoliert(tmp_path):
     lauf = _lauf(tmp_path, dauer_s=1.0)
     bilder = list(_bilder_aus_lauf(lauf, fps=30))
     assert 30 <= len(bilder) <= 31
-    t, (x, _y, yaw), _gelenke = bilder[15]                 # t = 0.5 s, mitten drin
+    t, (x, _y, yaw), _gelenke, _hoehe, _nick = bilder[15]  # t = 0.5 s, mitten drin
     assert t == pytest.approx(0.5)
     assert x == pytest.approx(1.5, abs=0.02)
     assert yaw == pytest.approx(math.pi / 4, abs=0.03)
