@@ -561,6 +561,22 @@ Danach dasselbe mit `Übungsraum (virtuell)`: gleiche Stelle, gleicher Name.
 
 ---
 
+## A24 — Rekonstruierter Gang in 3D fahren
+
+**Vorgehen** Im Raumeditor „Rekonstruieren…", die Katakomben-Karte wählen,
+Vorschau, Übernehmen; grobe Fehlstücke mit `Entf` entfernen, die Türen prüfen,
+unter `katakomben` speichern. `Übungsraum 3D (MuJoCo)` wählen und ein Programm
+starten, das den Gang entlangfährt und `spot.tags()` ausgibt.
+
+**Erwartung** Die Tag-Nummern und -Blickrichtungen stimmen mit den echten Tags
+im Gang überein (z-Achse des Fiducial-Rahmens = Blick; an der Karte gemessen,
+am Gerät zu bestätigen). Spot stösst an den rekonstruierten Wänden dort an, wo
+im echten Gang Wände stehen.
+
+**Ergebnis** _(offen)_
+
+---
+
 ## Nach der Abnahme
 
 Ergebnisse hier eintragen, Abweichungen als Befund in die Spec zurückspielen, und erst

@@ -303,6 +303,14 @@ versionsgepinntes Extra `spotlab[sim]`.
   die Anwendung zuerst. Uniforms gehen über PyOpenGL, nicht über
   `QOpenGLShaderProgram.setUniformValue`: PySide6 wählt für `(location, 0.0)` die
   int-Überladung, und `glUniform1i` auf ein float-Uniform ist GL_INVALID_OPERATION.
+- **Protobufs (`bosdyn.api`) nur unter `maps/` und `backends/`.** Die Rekonstruktion
+  (`maps/rekonstruktion.py`) liefert der GUI `Raum`, Punkte und Bericht; das Pauspapier ist
+  eine Standardbibliotheks-Datei (`welt/pauspapier.py`), damit die GUI sie ohne numpy liest.
+  Gemessen an der Katakomben-Karte (06.09.2026): die **z-Achse** des Fiducial-Rahmens zeigt
+  aus der Tag-Fläche zu den Beobachtern — sie ist die Blickrichtung; der Boden gilt **je
+  Schnappschuss** (Niveauunterschiede), nicht für die ganze Karte; nach jeder RANSAC-Linie
+  fallen die Nachbarreihen (3 × Inlier-Abstand) weg, sonst wird jede Zellreihe einer dicken
+  Wand eine eigene „Wand" (733 statt 261 Stücke).
 - **Die Körperantwort auf `move()` ist gemessen, aber nur bei 1 m und 90°**
   (`kalibrierung/antwort.py`, kommandierte Läufe vom 02.09.2026). Andere Ziele fahren
   dasselbe Trapez und zählen in `bericht()` als ausserhalb der Messung. Kombinierte
@@ -440,8 +448,10 @@ Tags mit Hängehöhe; Griffe und Blender-Tasten, Liste, Zahlenfelder, Hinweise, 
 unter `raeume/`. Raumformat v2 (`welt/raum.py`, alte Schreibweise wird gelesen), Drehung in
 Kollision, Gitter und Puppe (`PUPPE_FASSUNG = 3`). Etappe 2: die 3D-Sicht (OpenGL 3.3 über
 `QOpenGLWidget` + PyOpenGL, Orbit-Kamera, Farb-ID-Auswahl, Rückfall auf 2D; Geometrie und
-Kamera GL-frei in `geometrie3d.py`). Offen: die Rekonstruktion aus GraphNav-Karten — Spec
-`docs/superpowers/specs/2026-09-06-raumeditor-design.md`.
+Kamera GL-frei in `geometrie3d.py`). Etappe 3: Rekonstruktion aus GraphNav-Karten
+(`maps/rekonstruktion.py`, Dialog mit Arbeiter-Thread, Pauspapier in beiden Sichten;
+Katakomben-Karte: 31 Tags, 261 Wandstücke, 2.6 s) — Spec
+`docs/superpowers/specs/2026-09-06-raumeditor-design.md`. Alle drei Etappen gebaut.
 
 **Stufe 11 (06.09.2026): Übungsraum 3D** — `backend="mujoco"`, der 2D-Sim mit dem
 Menagerie-Körper aus matura-spot (Weg A, Wiedergabe statt Regelung; Spec

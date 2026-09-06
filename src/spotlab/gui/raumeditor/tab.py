@@ -38,6 +38,7 @@ from spotlab.gui.raumeditor.sicht2d import Sicht2D
 from spotlab.gui.raumeditor.sicht3d import Sicht3D, gl_verfuegbar
 from spotlab.gui.raumeditor.steuerung import Steuerung
 from spotlab.welt import bearbeitung as b
+from spotlab.welt import pauspapier
 from spotlab.welt.raum import (
     Raum,
     eigene_raeume,
@@ -100,6 +101,7 @@ class RaumeditorView(QWidget):
         self._eigen = False          # liegt der Raum unter <arbeitsordner>/raeume?
         self._laeuft = False
         self._liste_sperre = False
+        self._pauspapier = []        # Punktwolke einer Rekonstruktion, neben dem Raum gespeichert
         self.steuerung = Steuerung()
 
         # -- links: Werkzeuge und Dateien
@@ -116,7 +118,8 @@ class RaumeditorView(QWidget):
         links.addSpacing(12)
         for text, ziel in (("Neu", self.neu), ("Vorlage laden…", self._vorlage_laden),
                            ("Öffnen…", self._oeffnen), ("Speichern", self.speichern),
-                           ("Speichern unter…", self.speichern_unter)):
+                           ("Speichern unter…", self.speichern_unter),
+                           ("Rekonstruieren…", self._rekonstruieren)):
             knopf = QPushButton(text)
             knopf.clicked.connect(ziel)
             links.addWidget(knopf)
@@ -200,12 +203,14 @@ class RaumeditorView(QWidget):
 
     # ------------------------------------------------------------- Raum
 
-    def _setze(self, raum, name, eigen, geaendert):
+    def _setze(self, raum, name, eigen, geaendert, punkte=()):
         self._raumname, self._eigen = name, eigen
+        self._pauspapier = list(punkte)
         self.steuerung.setze_raum(raum, geaendert=geaendert)
         for sicht in (self.sicht, self.sicht3d):
             sicht.setze_spur([])
             sicht.setze_anstoesse([])
+            sicht.setze_pauspapier(self._pauspapier)
             sicht.zeige(raum)
             sicht.alles_zeigen()
         self._zeige()
@@ -218,7 +223,30 @@ class RaumeditorView(QWidget):
         except Exception as fehler:
             self.meldung.emit(str(fehler))
             return
-        self._setze(raum, name, name in eigene_raeume(self._arbeitsordner), False)
+        eigen = name in eigene_raeume(self._arbeitsordner)
+        punkte = []
+        if eigen:
+            try:
+                punkte = pauspapier.lies(pauspapier.pfad_zu(raum_pfad(self._arbeitsordner, name)))
+            except Exception as fehler:
+                self.meldung.emit(str(fehler))
+        self._setze(raum, name, eigen, False, punkte)
+
+    def _rekonstruieren(self):
+        from spotlab.gui.raumeditor.rekonstruktion_dialog import RekonstruktionsDialog
+
+        dialog = RekonstruktionsDialog(self, self._arbeitsordner)
+        if dialog.exec() and dialog.ergebnis is not None:
+            self.uebernimm_rekonstruktion(dialog.ergebnis)
+
+    def uebernimm_rekonstruktion(self, ergebnis):
+        """Das Ergebnis als neuen, ungespeicherten Raum oeffnen -- mit Pauspapier."""
+        self._setze(ergebnis.raum, "", False, True, ergebnis.pauspapier)
+        hinweise = ergebnis.bericht.get("hinweise") or []
+        self.meldung.emit(
+            f"Rekonstruiert: {ergebnis.bericht['waende']} Wände, {ergebnis.bericht['tags']} Tags"
+            + (" — " + " ".join(hinweise) if hinweise else "")
+        )
 
     def neu(self):
         self._setze(NEUER_RAUM, "", False, True)
@@ -281,6 +309,8 @@ class RaumeditorView(QWidget):
         pfad = raum_pfad(self._arbeitsordner, name)
         try:
             raum_speichern(raum, pfad)
+            if self._pauspapier:
+                pauspapier.schreibe(pauspapier.pfad_zu(pfad), self._pauspapier)
         except OSError as fehler:
             self.meldung.emit(f"Speichern nach {pfad} scheiterte: {fehler}")
             return False

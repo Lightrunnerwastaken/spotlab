@@ -9,9 +9,12 @@ Die Transformationskette der Punktwolken stammt aus dem Kartenbetrachter des
 Autors (`Spot Projects/src/map_viewer/transformer.py`):
     seed_tform_waypoint · waypoint_tform_ko · odom_tform_cloud
 Gemessen an `map_catacombs_01` (06.09.2026): Wolke als XYZ float32 (encoding 1),
-Quellrahmen `sensor_origin_generated`; der Boden (5. Perzentil der z-Werte)
-liegt 0.54 m unter dem Wegpunkt; die z-Achse des Fiducial-Rahmens zeigt aus der
-Tag-Flaeche zu den Beobachtern -- sie ist die Blickrichtung des Tags.
+Quellrahmen `sensor_origin_generated`; der Boden (5. Perzentil der z-Werte
+EINES Schnappschusses) liegt 0.54 m unter dem Wegpunkt; die z-Achse des
+Fiducial-Rahmens zeigt aus der Tag-Flaeche zu den Beobachtern -- sie ist die
+Blickrichtung des Tags. Der Boden wird je Schnappschuss bestimmt, nicht ueber die
+ganze Karte: die Katakomben haben Niveauunterschiede, und ein globaler Boden
+schnitt das Hoehenband oben falsch ab und hob die Tags auf 2.9 m.
 
 RANSAC mit festem Seed: dieselbe Karte gibt denselben Raum.
 """
@@ -176,30 +179,48 @@ def linien_ransac(punkte, inlier, min_inlier=10, versuche=200, rng=None):
         _werte, vektoren = np.linalg.eigh(kovarianz)
         richtung = vektoren[:, 1]
         normale = np.array([-richtung[1], richtung[0]])
-        drin = np.abs((rest - mittel) @ normale) <= inlier
+        abstand = np.abs((rest - mittel) @ normale)
+        drin = abstand <= inlier
         if int(drin.sum()) < min_inlier:
             drin = beste
+            abstand = np.where(beste, 0.0, np.inf)
         linien.append((mittel, richtung, rest[drin]))
-        rest = rest[~drin]
+        # Eine Wand ist in der Wolke 5-15 cm dick: mehrere Zellreihen nebeneinander.
+        # Ohne diese Sperre wurde jede Reihe eine eigene "Wand" (Katakomben:
+        # 733 Stuecke statt Waende, 06.09.2026). Die Nachbarreihen fallen weg,
+        # gezaehlt wird die Wand nur einmal.
+        rest = rest[abstand > 3.0 * inlier]
     return linien
 
 
-def teile_an_luecken(mittel, richtung, punkte, luecke, min_laenge):
-    """Eine Linie in Wandstuecke: getrennt an Luecken (Tueren), kurze Stuecke fallen weg."""
+def teile_an_luecken(mittel, richtung, punkte, luecke, min_laenge, zelle=0.05, dichte=0.5):
+    """Eine Linie in Wandstuecke: getrennt an Luecken (Tueren); kurze und DUENNE
+    Stuecke fallen weg.
+
+    Duenn heisst: weniger als `dichte` der Zellen entlang des Stuecks sind belegt.
+    Eine echte Wand ist fast lueckenlos; eine Kette zufaellig kollinearer
+    Kruemel (Stuehle, Kabel, Rauschen) quer durch die Karte ist es nicht --
+    ohne diese Schwelle bestand die Katakomben-Karte zu drei Vierteln aus
+    solchen Ketten (06.09.2026).
+    """
     t = np.sort((np.asarray(punkte) - mittel) @ richtung)
     if len(t) == 0:
         return []
     stuecke = []
     anfang = vorher = t[0]
+    anzahl = 1
     for wert in t[1:]:
         if wert - vorher > luecke:
-            stuecke.append((anfang, vorher))
-            anfang = wert
+            stuecke.append((anfang, vorher, anzahl))
+            anfang, anzahl = wert, 0
         vorher = wert
-    stuecke.append((anfang, vorher))
+        anzahl += 1
+    stuecke.append((anfang, vorher, anzahl))
     waende = []
-    for a, b in stuecke:
+    for a, b, n in stuecke:
         if b - a < min_laenge:
+            continue
+        if n < dichte * ((b - a) / zelle + 1):
             continue
         p1 = mittel + a * richtung
         p2 = mittel + b * richtung
@@ -289,25 +310,37 @@ def ausrichten(waende, tags, start, pauspapier):
 # --------------------------------------------------------- Tags und Start
 
 
-def _tag_aus_pose(nummer, pose, boden):
+def _boden_finder(posen_, boeden):
+    """(x, y) -> Bodenhoehe des naechsten Wegpunkts, der einen Boden kennt."""
+    bekannt = [(p.x, p.y, boeden[wp_id]) for wp_id, p in posen_.items() if wp_id in boeden]
+
+    def boden_bei(x, y):
+        if not bekannt:
+            return 0.0
+        return min(bekannt, key=lambda b: (b[0] - x) ** 2 + (b[1] - y) ** 2)[2]
+
+    return boden_bei
+
+
+def _tag_aus_pose(nummer, pose, boden_bei):
     achse_z = pose.rot.to_matrix()[:, 2]
     grad = math.degrees(math.atan2(achse_z[1], achse_z[0])) % 360.0
     return RaumTag(nummer, round(pose.x, 3), round(pose.y, 3), round(grad, 1),
-                   round(max(pose.z - boden, 0.05), 3))
+                   round(max(pose.z - boden_bei(pose.x, pose.y), 0.05), 3))
 
 
-def tags_aus_anker(graph, boden):
+def tags_aus_anker(graph, boden_bei):
     tags = []
     for objekt in graph.anchoring.objects:
         try:
             nummer = int(objekt.id)
         except ValueError:
             continue
-        tags.append(_tag_aus_pose(nummer, SE3Pose.from_proto(objekt.seed_tform_object), boden))
+        tags.append(_tag_aus_pose(nummer, SE3Pose.from_proto(objekt.seed_tform_object), boden_bei))
     return tags
 
 
-def tags_aus_schnappschuessen(graph, schnappschuesse, posen_, boden, schon_da):
+def tags_aus_schnappschuessen(graph, schnappschuesse, posen_, boden_bei, schon_da):
     """Tags, die nur in Schnappschuessen vorkommen: ueber die Wegpunktpose."""
     tags = []
     gesehen = set(schon_da)
@@ -327,7 +360,7 @@ def tags_aus_schnappschuessen(graph, schnappschuesse, posen_, boden, schon_da):
             if odom_tform_tag is None:
                 continue
             pose = seed_tform_wp * SE3Pose.from_proto(wp.waypoint_tform_ko) * odom_tform_tag
-            tags.append(_tag_aus_pose(nummer, pose, boden))
+            tags.append(_tag_aus_pose(nummer, pose, boden_bei))
             gesehen.add(nummer)
     return tags
 
@@ -376,7 +409,8 @@ def rekonstruiere(ordner, einstellungen=None, fortschritt=None):
     posen_, quelle_posen = posen(graph)
     hinweise = [] if quelle_posen == "anker" else [HINWEIS_KETTE]
 
-    wolken = []
+    baender, gesamt = [], 0
+    boeden = {}                      # wegpunkt_id -> Bodenhoehe dort
     for i, wp in enumerate(graph.waypoints):
         if fortschritt is not None:
             fortschritt(f"Schnappschuss {i + 1}/{len(graph.waypoints)}")
@@ -384,8 +418,16 @@ def rekonstruiere(ordner, einstellungen=None, fortschritt=None):
         if snap is None or seed_tform_wp is None:
             continue
         wolke = wolke_im_seed(wp, snap, seed_tform_wp)
-        if len(wolke):
-            wolken.append(wolke)
+        if not len(wolke):
+            continue
+        gesamt += len(wolke)
+        # Der Boden je Schnappschuss: Karten mit Niveauunterschieden haben keinen
+        # einen Boden. Zeigt die Wolke keinen (zu wenige Punkte), gilt der
+        # Wegpunkt minus Koerperhoehe.
+        boden_hier = boden_hoehe(wolke[:, 2]) if len(wolke) >= 200 else seed_tform_wp.z - KOERPER_UEBER_BODEN_M
+        boeden[wp.id] = boden_hier
+        z = wolke[:, 2]
+        baender.append(wolke[(z >= boden_hier + e.band[0]) & (z <= boden_hier + e.band[1])])
 
     bericht = {
         "wegpunkte": len(graph.waypoints), "schnappschuesse": len(schnappschuesse),
@@ -393,27 +435,24 @@ def rekonstruiere(ordner, einstellungen=None, fortschritt=None):
         "zellen": 0, "linien": 0, "waende": 0, "verworfen": 0, "tags": 0,
         "ausricht_grad": 0.0, "quelle": "wolke", "hinweise": hinweise,
     }
-    if wolken:
-        alle = np.vstack(wolken)
-        boden = boden_hoehe(alle[:, 2])
-        z = alle[:, 2]
-        band = alle[(z >= boden + e.band[0]) & (z <= boden + e.band[1])]
+    if baender:
+        band = np.vstack(baender)
         zellen = belegte_zellen(band[:, :2], e.zelle, e.mindestens_punkte)
         if fortschritt is not None:
             fortschritt(f"Linien in {len(zellen)} Zellen suchen")
         linien = linien_ransac(zellen, e.inlier, rng=np.random.default_rng(0))
         waende, verworfen = [], 0
         for mittel, richtung, pts in linien:
-            stuecke = teile_an_luecken(mittel, richtung, pts, e.luecke, e.min_laenge)
+            stuecke = teile_an_luecken(mittel, richtung, pts, e.luecke, e.min_laenge, e.zelle)
             verworfen += 0 if stuecke else 1
             waende += stuecke
         vorher = len(waende)
         waende = verschmelze(waende)
         pauspapier = _duenne(band[:, :2], e.pauspapier_max)
-        bericht.update(punkte=int(len(alle)), im_band=int(len(band)), zellen=int(len(zellen)),
+        bericht.update(punkte=gesamt, im_band=int(len(band)), zellen=int(len(zellen)),
                        linien=len(linien), verworfen=verworfen + (vorher - len(waende)))
     else:
-        boden = min(p.z for p in posen_.values()) - KOERPER_UEBER_BODEN_M
+        boeden = {wp_id: p.z - KOERPER_UEBER_BODEN_M for wp_id, p in posen_.items()}
         waende = schlauch(graph, posen_, e.schlauch_breite)
         pauspapier = np.zeros((0, 2))
         bericht["quelle"] = "schlauch"
@@ -421,8 +460,9 @@ def rekonstruiere(ordner, einstellungen=None, fortschritt=None):
             f"Keine Punktwolken in der Karte — der Pfad wurde als Schlauch von "
             f"{e.schlauch_breite:.1f} m Breite angelegt. Waende im Raumeditor nachziehen."
         )
-    tags = tags_aus_anker(graph, boden)
-    tags += tags_aus_schnappschuessen(graph, schnappschuesse, posen_, boden, [t.id for t in tags])
+    boden_bei = _boden_finder(posen_, boeden)
+    tags = tags_aus_anker(graph, boden_bei)
+    tags += tags_aus_schnappschuessen(graph, schnappschuesse, posen_, boden_bei, [t.id for t in tags])
     start = start_aus(graph, posen_)
     dreh = 0.0
     if e.ausrichten and waende:
