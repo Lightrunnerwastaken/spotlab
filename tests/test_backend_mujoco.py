@@ -264,3 +264,29 @@ def test_connect_mit_mujoco_ende_zu_ende(tmp_path):
     assert verbunden["daten"]["raum"] == "leer"
     assert "Menagerie" in verbunden["daten"]["hinweis"]
     assert (lauf / "ansicht.jpg").is_file()
+
+
+# ------------------------------------------------------- gedrehte Raeume
+
+
+def test_welt_aus_raum_dreht_waende_und_bloecke():
+    import math
+
+    import spotsim.puppe as puppe
+
+    from spotlab.backends.mujoco import welt_aus_raum
+    from spotlab.welt.raum import Block, Raum, RaumTag
+
+    raum = Raum(name="G", beschreibung="", start=(0, 0, 0),
+                waende=((1.0, 1.0, 1.0, 4.0),), wand_dicke=0.1, wand_hoehe=2.0,
+                bloecke=(Block("Regal", 3.0, 2.0, 1.0, 0.4, 1.8, drehung=30.0),),
+                tags=(RaumTag(5, 2.0, 2.0, 0.0, hoehe=0.5),))
+    welt = welt_aus_raum(raum, puppe)
+    wand = welt.quader[0]
+    assert (wand.x, wand.y, wand.z) == (1.0, 2.5, 1.0)
+    assert (wand.hx, wand.hy, wand.hz) == (pytest.approx(1.5), 0.05, 1.0)
+    assert wand.yaw == pytest.approx(math.pi / 2)
+    regal = welt.quader[1]
+    assert regal.name == "Regal" and regal.yaw == pytest.approx(math.radians(30))
+    assert (regal.hx, regal.hy, regal.hz) == (0.5, 0.2, 0.9)
+    assert welt.tags[0].z == 0.5

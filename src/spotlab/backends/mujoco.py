@@ -41,17 +41,14 @@ from spotlab.backends.base import Capability, Tag, richtung
 from spotlab.backends.sim import SimBackend
 from spotlab.errors import SpotlabError
 from spotlab.welt.kollision import MAX_SCHRITT_M
+from spotlab.welt.raum import BLOCK_HOEHE_M, TAG_HOEHE_M
 from spotlab.welt.wahrnehmung import TAG_REICHWEITE_M
 
-PUPPE_FASSUNG = 2      # 2: weltfestes Gitter
+PUPPE_FASSUNG = 3      # 3: Quader mit yaw; 2: weltfestes Gitter
 
-# Geometrie der Räume in 3D. Die TOML-Vorlagen kennen keine Höhen — das sind
-# ANNAHMEN: Wände zimmerhoch, Hindernisse tischhoch, Tags auf Kniehöhe (so
-# steht es auch in `backends/base.py::richtung`).
-WAND_HOEHE_M = 1.0
-WAND_DICKE_M = 0.06
-HINDERNIS_HOEHE_M = 0.75
-TAG_HOEHE_M = 0.30
+# Die Höhen und Dicken stehen im Raum (`welt/raum.py`: `wand_dicke`,
+# `wand_hoehe`, `Block.hoehe`, `RaumTag.hoehe`) — die Vorgaben dort sind die
+# alten Annahmen: Übungswand 1 m, Blöcke tischhoch, Tags auf Kniehöhe.
 
 # Höchstens so oft wird die Ansicht gerendert; ein Bild kostet einige
 # Millisekunden, und die GUI liest ohnehin nur viermal je Sekunde.
@@ -89,35 +86,33 @@ def _puppe_laden():
 
 
 def welt_aus_raum(raum, puppe):
-    """Ein `Raum` (Segmente, Rechtecke, Tags) als `puppe.Welt` (Quader, Tags).
+    """Ein `Raum` (Waende, Bloecke, Tags) als `puppe.Welt` (gedrehte Quader, Tags).
 
-    Wandsegmente werden zu dünnen Quadern, die Rechtecke der Hindernisse zu
-    tischhohen Kästen, Tags zu Marken auf Kniehöhe mit der Blickrichtung aus
-    der Vorlage (Grad → Bogenmass, wie überall an der Naht zu `welt/`).
+    Eine Wand wird ein Kasten mit ihrer Laenge, der Dicke und Hoehe des Raums
+    und ihrer Richtung; ein Block ein Kasten mit seiner Drehung; ein Tag eine
+    Marke auf seiner Haengehoehe (Grad -> Bogenmass, wie ueberall an der Naht
+    zu `welt/`). Dasselbe Prinzip wie in `welt/kollision.py`: die Drehung
+    steckt im Koerper, der Kasten selbst bleibt achsparallel.
     """
     if raum is None:
         return puppe.Welt()
     quader = []
-    for i, (x1, y1, x2, y2) in enumerate(raum.waende):
-        laenge = math.hypot(x2 - x1, y2 - y1)
-        if laenge <= 0:
+    for i, wand in enumerate(raum.waende):
+        if wand.laenge <= 0:
             continue
-        # Achsparallel wie alle Vorlagen; eine schräge Wand bekäme hier eine
-        # Drehung — die Quader der Puppe sind achsparallel, deshalb wird sie
-        # als Kasten über ihrer Bounding-Box gebaut (bewusst grob).
-        hx = max(abs(x2 - x1) / 2, WAND_DICKE_M / 2)
-        hy = max(abs(y2 - y1) / 2, WAND_DICKE_M / 2)
+        mx, my = wand.mitte
         quader.append(puppe.Quader(
-            f"wand_{i}", (x1 + x2) / 2, (y1 + y2) / 2, WAND_HOEHE_M / 2, hx, hy, WAND_HOEHE_M / 2,
+            f"wand_{i}", mx, my, raum.wand_hoehe / 2,
+            wand.laenge / 2, raum.wand_dicke / 2, raum.wand_hoehe / 2,
+            yaw=math.radians(wand.winkel),
         ))
-    for h in raum.hindernisse:
-        x, y, breite, hoehe = h.rechteck
+    for b in raum.bloecke:
         quader.append(puppe.Quader(
-            h.name, x + breite / 2, y + hoehe / 2, HINDERNIS_HOEHE_M / 2,
-            breite / 2, hoehe / 2, HINDERNIS_HOEHE_M / 2,
+            b.name, b.x, b.y, b.hoehe / 2, b.breite / 2, b.tiefe / 2, b.hoehe / 2,
+            yaw=math.radians(b.drehung),
         ))
     tags = tuple(
-        puppe.TagMarke(t.id, t.x, t.y, TAG_HOEHE_M, math.radians(t.grad)) for t in raum.tags
+        puppe.TagMarke(t.id, t.x, t.y, t.hoehe, math.radians(t.grad)) for t in raum.tags
     )
     return puppe.Welt(quader=tuple(quader), tags=tags)
 
@@ -211,9 +206,13 @@ class MujocoBackend(SimBackend):
             # sagt, wie gut das Modell zum Schul-Spot passt (06.09.2026: 2-8 mm).
             "standhoehe_kinematik_m": round(self.puppe.standhoehe(winkel), 4),
             "standhoehe_gemessen_m": round(self._modell.hoehe_m, 4),
+            # Hoehen und Dicke kommen aus dem Raum; die Vorgaben fuer neue
+            # Bloecke und Tags sind die alten Annahmen aus welt/raum.py.
             "annahmen": {
-                "wand_hoehe_m": WAND_HOEHE_M, "hindernis_hoehe_m": HINDERNIS_HOEHE_M,
-                "tag_hoehe_m": TAG_HOEHE_M, "tag_reichweite_m": TAG_REICHWEITE_M,
+                "wand_hoehe_m": self._raum.wand_hoehe if self._raum else None,
+                "wand_dicke_m": self._raum.wand_dicke if self._raum else None,
+                "block_hoehe_vorgabe_m": BLOCK_HOEHE_M, "tag_hoehe_vorgabe_m": TAG_HOEHE_M,
+                "tag_reichweite_m": TAG_REICHWEITE_M,
             },
         }
         return bericht
