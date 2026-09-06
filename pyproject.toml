@@ -42,7 +42,7 @@ mcp = ["mcp>=2.0,<3"]
 # Der 3D-Uebungsraum (backend="mujoco"): Laufzeit fuer die Puppe aus
 # matura-spot. `spotsim` selbst liegt nicht auf PyPI -- es wird editierbar aus
 # dem Nachbar-Repo installiert:  pip install -e ../matura-spot
-sim = ["mujoco>=3.9,<4", "scipy>=1.12,<2", "numpy>=2,<3"]
+sim = ["mujoco>=3.9,<4", "scipy>=1.12,<2", "numpy>=2,<3", "imageio[ffmpeg]>=2.34,<3"]
 
 [project.scripts]
 spotlab = "spotlab.cli:main"

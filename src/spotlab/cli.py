@@ -59,6 +59,11 @@ def build_parser():
 
     unter.add_parser("gui", help="Fenster öffnen")
     unter.add_parser("mcp", help="MCP-Server über stdin/stdout starten (für Agenten)")
+
+    film = unter.add_parser("film", help="einen Lauf als 3D-Video rendern (braucht [sim])")
+    film.add_argument("lauf", help="Lauf-Verzeichnis oder Lauf-ID")
+    film.add_argument("--fps", type=int, default=30)
+    film.add_argument("--out", default=None, help="Zieldatei (Vorgabe: <lauf>/film.mp4)")
     return parser
 
 
@@ -128,6 +133,8 @@ def _fuehre_aus(args):
         return 0
     if args.kommando == "run":
         return run_script(args.datei, dryrun=args.dryrun)
+    if args.kommando == "film":
+        return _film(args)
     if args.kommando == "runs":
         return _runs(args.show)
     if args.kommando == "lease":
@@ -355,6 +362,41 @@ def _lease(uebernehmen):
             return 1
     client.take()
     print(f"Übernommen als {client_name()}.")
+    return 0
+
+
+def _lauf_verzeichnis(angabe):
+    """Ein Pfad -- oder eine Lauf-ID, die im Arbeitsordner gesucht wird."""
+    pfad = Path(angabe)
+    if pfad.is_dir():
+        return pfad
+    from spotlab.config import load_config
+    from spotlab.laufsuche import lauf_verzeichnisse
+
+    try:
+        arbeitsordner = load_config().workspace
+    except SpotlabError:
+        arbeitsordner = None
+    if arbeitsordner:
+        for kandidat in lauf_verzeichnisse(Path(arbeitsordner)):
+            if kandidat.name == angabe or kandidat.name.startswith(angabe):
+                return kandidat
+    raise SpotlabError(f"Kein Lauf '{angabe}' -- Verzeichnis oder Lauf-ID angeben (spotlab runs).")
+
+
+def _film(args):
+    # Import erst hier: der Renderer braucht spotsim und MuJoCo, alles andere
+    # in dieser Datei nicht. Die Fehlermeldung sagt, was zu installieren ist.
+    from spotlab.backends.mujoco import film_aus_lauf
+
+    lauf = _lauf_verzeichnis(args.lauf)
+
+    def fortschritt(bild, gesamt):
+        print(f"Bild {bild}/{gesamt}", flush=True)
+
+    ergebnis = film_aus_lauf(lauf, ziel=args.out, fps=args.fps, fortschritt=fortschritt)
+    print(f"Bilder: {ergebnis['bilder']}  ({ergebnis['dauer_s']} s bei {args.fps} fps)")
+    print(f"Video: {ergebnis['pfad']}", flush=True)
     return 0
 
 

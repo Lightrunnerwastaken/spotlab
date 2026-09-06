@@ -10,7 +10,7 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QProcess, Qt
 from PySide6.QtWidgets import (
     QApplication,
     QHBoxLayout,
@@ -78,6 +78,7 @@ class MainWindow(QWidget):
         # Lauf gebaut: ein Fenster, das bei jedem Start aufspringt, wird
         # weggeklickt und danach ignoriert.
         self.uebungsfenster = None
+        self._film = None                  # laufender `spotlab film`-Unterprozess
 
         self.kopf = Header()
         self.leiste = Sidebar()
@@ -155,6 +156,7 @@ class MainWindow(QWidget):
         self.ansichten["karten"].meldung.connect(self._melde)
         self.ansichten["karten"].aktive_karte_gewaehlt.connect(self._merke_aktive_karte)
         self.ansichten["code"].zusatz_umgebung = self._umgebung_fuer_lauf
+        self.ansichten["laeufe"].video_gewuenscht.connect(self._starte_film)
         self.ansichten["code"].lauf_gestartet.connect(self._lauf_aus_code)
         self.ansichten["code"].meldung.connect(self._melde)
         self.ansichten["projekte"].projekt_oeffnen.connect(self._oeffne_in_code)
@@ -328,6 +330,7 @@ class MainWindow(QWidget):
             self.uebungsfenster.stopp_gewuenscht.connect(
                 lambda: self.ansichten["live"].stoppe()
             )
+            self.uebungsfenster.video_gewuenscht.connect(self._starte_film)
         raum = self.ansichten["uebungsraum"].raum()
         # Vorbelegt aus der Ansicht, damit die Zeichnung nicht leer beginnt --
         # das `verbunden`-Ereignis zieht Sekundenbruchteile spaeter nach, und
@@ -342,6 +345,41 @@ class MainWindow(QWidget):
         """Das gerenderte Zimmer des MuJoCo-Backends -- ans offene Uebungsfenster."""
         if self.uebungsfenster is not None and self.uebungsfenster.isVisible():
             self.uebungsfenster.zeige_ansicht(pfad)
+
+    # ---------------------------------------------------------------- Video
+
+    def _starte_film(self, lauf):
+        """`spotlab film <lauf>` als Unterprozess -- die GUI rendert nichts selbst."""
+        if self._film is not None and self._film.state() != QProcess.NotRunning:
+            self._melde("Es wird schon ein Video gerendert -- bitte warten.")
+            return
+        self._film = QProcess(self)
+        self._film.setProcessChannelMode(QProcess.MergedChannels)
+        self._film.finished.connect(
+            lambda code, _status, lauf=lauf: self._film_fertig(
+                lauf, code, bytes(self._film.readAllStandardOutput()).decode("utf-8", "replace")
+            )
+        )
+        self._film.start(sys.executable, ["-m", "spotlab.cli", "film", str(lauf)])
+        text = "Video wird gerendert…"
+        self._melde(text)
+        if self.uebungsfenster is not None:
+            self.uebungsfenster.zeige_video_stand(text)
+
+    def _film_fertig(self, lauf, code, ausgabe):
+        pfad = None
+        for zeile in ausgabe.splitlines():
+            if zeile.startswith("Video: "):
+                pfad = zeile[len("Video: "):].strip()
+        if code == 0 and pfad:
+            text = f"Video: {pfad}"
+        else:
+            grund = ausgabe.strip().splitlines()[-1] if ausgabe.strip() else f"Code {code}"
+            text = f"Video nicht gerendert: {grund}"
+            pfad = None
+        self._melde(text)
+        if self.uebungsfenster is not None:
+            self.uebungsfenster.zeige_video_stand(text, pfad)
 
     def _zeile_ins_uebungsfenster(self, zeile):
         if self.uebungsfenster is not None and self.uebungsfenster.isVisible():
@@ -433,7 +471,7 @@ class MainWindow(QWidget):
         # und wurde nirgends gerufen, der Raum blieb nach jedem Lauf leer.
         self.ansichten["uebungsraum"].lade(verzeichnis)
         if self.uebungsfenster is not None:
-            self.uebungsfenster.beendet()
+            self.uebungsfenster.beendet(lauf=verzeichnis)
         self.ansichten["anbindungen"].lauf_laeuft(False)
         self.ansichten["anbindungen"].aktualisiere()
         self.ansichten["laeufe"].aktualisiere()
