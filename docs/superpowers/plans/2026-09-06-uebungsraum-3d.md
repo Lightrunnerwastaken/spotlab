@@ -71,7 +71,7 @@ steht als 0.0/null und wird im Bericht genannt.
 ### T9 GUI
 - [x] Tests: `BACKENDS` enthält „mujoco" nur mit `find_spec("spotsim")`; `RunScanner` meldet `ansicht` bei neuer mtime; `Uebungsfenster.zeige_ansicht` zeigt ein Bild; Übungsraum-Knopf nimmt „mujoco" wenn vorhanden
 - [x] `editor/view.py`, `watcher.py`, `uebungsfenster.py`, `app.py`
-- [ ] Commit; Screenshot mit echtem Lauf
+- [x] Commit; Screenshot mit echtem Lauf
 
 ### T10 Abschluss
 - [x] README (Übungsraum 3D, Installation `pip install -e .[sim]` + `pip install -e ../matura-spot`), `docs/ABNAHME.md` (A22 wirkt auch auf 3D), Vorlage `uebungsraum.py`
