@@ -10,7 +10,7 @@ Abhängigkeit auf zwanzig Schullaptops.
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QListWidget,
+    QPushButton,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -135,6 +136,8 @@ class SpeedPlot(QWidget):
 
 
 class RunsView(QWidget):
+    video_gewuenscht = Signal(str)          # Lauf-Verzeichnis
+
     def __init__(self, palette=DUNKEL, parent=None):
         super().__init__(parent)
         # Palette durchreichen wie bei EditorView und AnbindungenView: das
@@ -160,8 +163,19 @@ class RunsView(QWidget):
         detail.addWidget(self.ereignisliste, 1)
         detail.addWidget(self.kurve, 1)
 
+        # Das 3D-Video eines Laufs -- nachtraeglich aus der Aufzeichnung, auch
+        # fuer alte, fuer 2D- und fuer echte Laeufe. Gerendert wird im
+        # Unterprozess `spotlab film`; diese Ansicht importiert kein MuJoCo.
+        self.video = QPushButton("🎬 Video (3D) speichern")
+        self.video.setEnabled(False)
+        self.video.clicked.connect(self._video_anfordern)
+        kopf = QHBoxLayout()
+        kopf.addWidget(QLabel("Läufe"))
+        kopf.addStretch(1)
+        kopf.addWidget(self.video)
+
         anordnung = QVBoxLayout(self)
-        anordnung.addWidget(QLabel("Läufe"))
+        anordnung.addLayout(kopf)
         anordnung.addWidget(self.tabelle, 2)
         anordnung.addWidget(QLabel("Kommandiertes (grau) gegen gemessenes (farbig) Tempo"))
         anordnung.addLayout(detail, 3)
@@ -188,11 +202,22 @@ class RunsView(QWidget):
             for spalte, wert in enumerate(werte):
                 self.tabelle.setItem(zeile, spalte, QTableWidgetItem(str(wert)))
 
-    def _zeige_detail(self):
+    def gewaehlter_lauf(self):
         zeilen = {i.row() for i in self.tabelle.selectedIndexes()}
         if not zeilen:
+            return None
+        return self._laeufe[min(zeilen)]
+
+    def _video_anfordern(self):
+        lauf = self.gewaehlter_lauf()
+        if lauf is not None:
+            self.video_gewuenscht.emit(str(lauf.dir))
+
+    def _zeige_detail(self):
+        lauf = self.gewaehlter_lauf()
+        self.video.setEnabled(lauf is not None)
+        if lauf is None:
             return
-        lauf = self._laeufe[min(zeilen)]
         self.ereignisliste.clear()
         for satz in read_jsonl(lauf.dir / "ereignisse.jsonl"):
             self.ereignisliste.addItem(

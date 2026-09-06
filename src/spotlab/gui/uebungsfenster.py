@@ -14,8 +14,10 @@ freundliche Stopp haengt am Lauf-Verzeichnis, das nur die Live-Ansicht vom
 Watcher bekommt, und genau EIN Lauf ist der, auf den Stopp und NOT-AUS zeigen.
 """
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QPixmap
+from pathlib import Path
+
+from PySide6.QtCore import Qt, QUrl, Signal
+from PySide6.QtGui import QDesktopServices, QPixmap
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -32,6 +34,7 @@ TITEL = "Übungsraum — spotlab"
 
 class Uebungsfenster(QWidget):
     stopp_gewuenscht = Signal()
+    video_gewuenscht = Signal(str)          # Lauf-Verzeichnis
 
     def __init__(self, palette, parent=None):
         # Ohne Elternteil: ein eigenes Fenster im Fensterwechsler, das der
@@ -58,9 +61,21 @@ class Uebungsfenster(QWidget):
         self.stopp = QPushButton("■ Stopp")
         self.stopp.setEnabled(False)
         self.stopp.clicked.connect(self.stopp_gewuenscht.emit)
+        # Erst nach dem Lauf: das Video entsteht aus der Aufzeichnung, nicht
+        # aus dem, was gerade auf dem Bildschirm ist.
+        self._lauf = None
+        self._videopfad = None
+        self.video = QPushButton("🎬 Video speichern")
+        self.video.hide()
+        self.video.clicked.connect(self._video_anfordern)
+        self.video_oeffnen = QPushButton("Video öffnen")
+        self.video_oeffnen.hide()
+        self.video_oeffnen.clicked.connect(self._video_oeffnen)
 
         unten = QHBoxLayout()
         unten.addWidget(self.zeile, 1)
+        unten.addWidget(self.video_oeffnen)
+        unten.addWidget(self.video)
         unten.addWidget(self.stopp)
 
         anordnung = QVBoxLayout(self)
@@ -83,6 +98,10 @@ class Uebungsfenster(QWidget):
         self.zeile.setText("")
         self.stopp.setEnabled(True)
         self.bild.hide()                   # das Bild des letzten Laufs gehoert nicht zum neuen
+        self._lauf = None
+        self._videopfad = None
+        self.video.hide()
+        self.video_oeffnen.hide()
 
     def setze_raum_name(self, name):
         """Den Raum aus dem `verbunden`-Ereignis nachziehen.
@@ -128,8 +147,27 @@ class Uebungsfenster(QWidget):
         hier geht es darum, dass ein Traceback nicht unsichtbar bleibt."""
         self.zeile.setText(zeile)
 
-    def beendet(self, text=""):
+    def beendet(self, text="", lauf=None):
         self.stopp.setEnabled(False)
         self.kopf.setText("Fertig.")
         if text:
             self.zeile.setText(text)
+        if lauf is not None:
+            self._lauf = str(lauf)
+            self.video.show()
+
+    # --------------------------------------------------------------- Video
+
+    def _video_anfordern(self):
+        if self._lauf:
+            self.video_gewuenscht.emit(self._lauf)
+
+    def zeige_video_stand(self, text, pfad=None):
+        """Fortschritt oder Ergebnis des Renderns -- vom Hauptfenster gemeldet."""
+        self.zeile.setText(text)
+        self._videopfad = Path(pfad) if pfad else None
+        self.video_oeffnen.setVisible(self._videopfad is not None)
+
+    def _video_oeffnen(self):
+        if self._videopfad is not None:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._videopfad)))

@@ -226,6 +226,12 @@ Anfahren, Reisetempo, Bremsen, Totzeiten); die Standhöhe folgt aus den
 gemessenen Winkeln über die Kinematik des Modells und liegt 2–8 mm neben der
 gemessenen. Annahmen stehen in `bericht()` und in `lauf.json`.
 
+**Video.** Nach einem Lauf steht im Übungsfenster **„🎬 Video speichern"**, in
+der Ansicht „Läufe" derselbe Knopf für jeden alten Lauf — auch für 2D- und für
+**echte** Läufe: das Video entsteht nachträglich aus `zustand.jsonl` (Pose und
+zwölf Gelenke, 10 Hz, auf 30 fps interpoliert), nicht aus dem Bildschirm. Auf
+der Kommandozeile: `spotlab film <lauf>` → `<lauf>/film.mp4`.
+
 Installation (einmalig; `matura-spot` liegt neben spotlab):
 
     pip install -e .[sim]

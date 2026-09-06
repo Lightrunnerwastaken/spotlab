@@ -320,3 +320,149 @@ class MujocoBackend(SimBackend):
 
             protokoll.notiere(f"Ansicht nicht geschrieben: {fehler}")
             self._ansicht_ziel = None
+
+
+# ======================================================================
+# Das Video eines Laufs -- nachträglich aus der Aufzeichnung gerendert.
+#
+# Nicht während des Laufs: `zustand.jsonl` trägt Pose und zwölf Gelenke mit
+# 10 Hz. Daraus wird auf `fps` interpoliert und auf der Puppe abgespielt. Das
+# kostet den Lauf nichts, ist flüssig — und es funktioniert für alte Läufe,
+# für 2D-Läufe (die bekommen nachträglich ihr 3D-Bild) und für ECHTE Läufe:
+# die aufgezeichneten Gelenkwinkel des Schul-Spot im Menagerie-Modell.
+# ======================================================================
+
+FILM_DATEI = "film.mp4"
+FILM_FPS = 30
+
+
+def _zeilen_jsonl(pfad):
+    import json
+
+    saetze = []
+    if not pfad.is_file():
+        return saetze
+    for zeile in pfad.read_text(encoding="utf-8").splitlines():
+        if not zeile.strip():
+            continue
+        try:
+            saetze.append(json.loads(zeile))
+        except json.JSONDecodeError:
+            continue                          # halbe letzte Zeile
+    return saetze
+
+
+def _interpoliere_pose(a, b, anteil):
+    """(x, y, yaw) zwischen zwei Posen; das Gieren auf dem kürzeren Bogen."""
+    dyaw = (b[2] - a[2] + math.pi) % (2 * math.pi) - math.pi
+    yaw = a[2] + dyaw * anteil
+    yaw = (yaw + math.pi) % (2 * math.pi) - math.pi
+    return (a[0] + (b[0] - a[0]) * anteil, a[1] + (b[1] - a[1]) * anteil, yaw)
+
+
+def _raum_des_laufs(lauf_dir):
+    """(Name, Raum) aus dem `verbunden`-Ereignis -- oder (None, None).
+
+    Eigene Räume liegen unter <arbeitsordner>/raeume; der Lauf liegt unter
+    <arbeitsordner>/<projekt>/runs/<id>. Ist er woanders, bleiben die
+    mitgelieferten Vorlagen.
+    """
+    from spotlab.welt.raum import raum_laden
+
+    name = None
+    for satz in _zeilen_jsonl(Path(lauf_dir) / "ereignisse.jsonl"):
+        if satz.get("art") == "verbunden":
+            name = (satz.get("daten") or {}).get("raum")
+            break
+    if not name:
+        return None, None
+    arbeitsordner = Path(lauf_dir).resolve().parents[2] if len(Path(lauf_dir).resolve().parents) > 2 else None
+    try:
+        return name, raum_laden(name, workspace=arbeitsordner)
+    except SpotlabError:
+        try:
+            return name, raum_laden(name)
+        except SpotlabError:
+            return name, None
+
+
+def _bilder_aus_lauf(lauf_dir, fps=FILM_FPS):
+    """(t, (x, y, yaw), gelenke) je Bild — auf `fps` interpoliert."""
+    from spotlab.kalibrierung.modell import lade_modell
+
+    proben = []
+    for satz in _zeilen_jsonl(Path(lauf_dir) / "zustand.jsonl"):
+        daten = satz.get("daten") or {}
+        pose = daten.get("pose")
+        if not pose or len(pose) < 3:
+            continue
+        gelenke = daten.get("joints") or {}
+        winkel = {name: float(g.get("position", 0.0)) for name, g in gelenke.items()
+                  if isinstance(g, dict)}
+        proben.append((float(satz["t"]), (float(pose[0]), float(pose[1]), float(pose[2])),
+                       winkel if len(winkel) == 12 else None))
+    if len(proben) < 2:
+        raise SpotlabError(
+            f"{Path(lauf_dir).name}: zustand.jsonl hat {len(proben)} brauchbare Proben -- "
+            "für ein Video braucht es mindestens zwei. Ist der Lauf durchgelaufen?"
+        )
+    # Ohne Gelenke (alter Lauf, Trockenlauf): die Standhaltung der Kennlinie.
+    ruhe = lade_modell().gelenke(0.0, 0.0, 0.0)
+    letzte = ruhe
+    gefuellt = []
+    for t, pose, winkel in proben:
+        if winkel is not None:
+            letzte = winkel
+        gefuellt.append((t, pose, letzte))
+
+    t0, t_ende = gefuellt[0][0], gefuellt[-1][0]
+    k, i = 0, 0
+    while True:
+        t = t0 + k / fps
+        if t > t_ende + 1e-9:
+            break
+        while i + 1 < len(gefuellt) - 1 and gefuellt[i + 1][0] <= t:
+            i += 1
+        ta, pa, ga = gefuellt[i]
+        tb, pb, gb = gefuellt[i + 1]
+        anteil = 0.0 if tb <= ta else min(1.0, max(0.0, (t - ta) / (tb - ta)))
+        pose = _interpoliere_pose(pa, pb, anteil)
+        gelenke = {name: ga[name] + (gb[name] - ga[name]) * anteil for name in ga}
+        yield t, pose, gelenke
+        k += 1
+
+
+def film_aus_lauf(lauf_dir, ziel=None, fps=FILM_FPS, breite=ANSICHT_BREITE,
+                  hoehe=ANSICHT_HOEHE, fortschritt=None):
+    """Den Lauf als MP4 rendern. Rückgabe {pfad, bilder, dauer_s, raum}.
+
+    `fortschritt(bild, gesamt)` wird alle 30 Bilder gerufen -- für die
+    Kommandozeile und die GUI, die den Unterprozess mitliest.
+    """
+    try:
+        import imageio.v2 as imageio
+    except ImportError as fehler:
+        raise SpotlabError(
+            "Für das Video fehlt imageio mit ffmpeg: pip install -e .[sim]"
+        ) from fehler
+
+    lauf_dir = Path(lauf_dir)
+    ziel = Path(ziel) if ziel else lauf_dir / FILM_DATEI
+    bilder = list(_bilder_aus_lauf(lauf_dir, fps))
+    name, raum = _raum_des_laufs(lauf_dir)
+    puppe = _puppe_laden()
+    figur = puppe.SpotPuppe(welt_aus_raum(raum, puppe))
+
+    temporaer = ziel.with_suffix(".tmp.mp4")
+    # macro_block_size=1: sonst skaliert ffmpeg 360 Zeilen auf 368 hoch, mit
+    # einer Warnung, die niemand liest. 640x360 ist gerade, das genügt libx264.
+    with imageio.get_writer(str(temporaer), fps=fps, codec="libx264", quality=8,
+                            macro_block_size=1, pixelformat="yuv420p") as schreiber:
+        for nummer, (_t, (x, y, yaw), gelenke) in enumerate(bilder):
+            figur.setze(x, y, yaw, gelenke)
+            schreiber.append_data(figur.ansicht(breite, hoehe))
+            if fortschritt is not None and nummer % 30 == 0:
+                fortschritt(nummer, len(bilder))
+    os.replace(temporaer, ziel)
+    return {"pfad": ziel, "bilder": len(bilder), "dauer_s": round(len(bilder) / fps, 2),
+            "raum": name}
