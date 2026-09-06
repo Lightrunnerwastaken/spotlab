@@ -223,3 +223,173 @@ def test_begradigen_rastet_winkel_und_vereint_parallele_doppel():
     assert (min(vereint.x1, vereint.x2), max(vereint.x1, vereint.x2)) == (5.0, 10.0)
     assert 1.0 <= vereint.y1 <= 1.15 and vereint.y1 == vereint.y2
     assert any(abs(w.winkel - 45.0) < 1e-6 for w in neu)
+
+
+# ------------------------------------------------------------- Hoehe (Stufe 13)
+
+TREPPE_X = (6.0, 8.0)          # steigt von 0 auf 1.0 in sechs Stufen
+RAMPE_X = (12.0, 17.0)         # steigt ab 1.0 mit 4 Grad
+RAMPE_GRAD = 4.0
+
+
+def _boden_hoehe_bei(x):
+    """Der Boden der Karte mit Hoehe: Gang A (0), Treppe, Gang B (1.0), Rampe."""
+    if x < TREPPE_X[0]:
+        return 0.0
+    if x < TREPPE_X[1]:
+        stufe = int((x - TREPPE_X[0]) / ((TREPPE_X[1] - TREPPE_X[0]) / 6))
+        return (min(stufe, 5) + 1) / 6.0                      # Trittflaechen
+    if x < RAMPE_X[0]:
+        return 1.0
+    return 1.0 + (min(x, RAMPE_X[1]) - RAMPE_X[0]) * math.tan(math.radians(RAMPE_GRAD))
+
+
+def _wegpunkt_hoehe(x):
+    """Glatte Hoehe fuer den Koerper (auf der Treppe die Rampenlinie)."""
+    if TREPPE_X[0] <= x < TREPPE_X[1]:
+        return (x - TREPPE_X[0]) / (TREPPE_X[1] - TREPPE_X[0])
+    return _boden_hoehe_bei(x)
+
+
+def synthetische_karte_mit_hoehe(ordner, versatz_z=0.0):
+    """Gang 17 x 2 m mit Treppe (x 6..8, +1 m, sechs Stufen), oberem Gang und
+    4-Grad-Rampe (x 12..17). Tag 7 an der oberen Wand bei x = 10 (Ebene 1.0).
+    `versatz_z` verschiebt die ganze Karte in der Hoehe -- die Rekonstruktion
+    macht den tiefsten Boden zur 0."""
+    ordner = Path(ordner)
+    (ordner / "waypoint_snapshots").mkdir(parents=True)
+    (ordner / "edge_snapshots").mkdir()
+    xs = np.arange(0.0, 17.0 + 1e-9, 0.05)
+    boden = np.array([_boden_hoehe_bei(x) for x in xs]) + versatz_z
+    teile = []
+    for x, h in zip(xs, boden):
+        zs = np.arange(h + 0.3, h + 1.5 + 1e-9, 0.05)
+        for y in (0.0, 2.0):
+            teile.append(np.column_stack([np.full(zs.size, x), np.full(zs.size, y), zs]))
+        ys = np.arange(0.0, 2.0 + 1e-9, 0.1)
+        teile.append(np.column_stack([np.full(ys.size, x), ys, np.full(ys.size, h)]))          # Boden
+        teile.append(np.column_stack([np.full(ys.size, x), ys, np.full(ys.size, h + 2.4)]))    # Decke
+    welt = np.vstack(teile)
+
+    wegpunkte_x = [0.5 + i for i in range(17)]
+    treppen_kanten = {(5, 6), (6, 7), (7, 8)}
+    graph = map_pb2.Graph()
+    vorher_id, vorher_pose = None, None
+    for i, wx in enumerate(wegpunkte_x):
+        wp = graph.waypoints.add()
+        wp.id = f"wp{i}"
+        wp.snapshot_id = f"s{i}"
+        wp.annotations.name = f"waypoint_{i}"
+        wp.annotations.creation_time.seconds = 1000 + i
+        pose = _se3(wx, 1.0, _wegpunkt_hoehe(wx) + versatz_z + rk.KOERPER_UEBER_BODEN_M)
+        wp.waypoint_tform_ko.CopyFrom(SE3Pose.from_identity().to_proto())
+        anker = graph.anchoring.anchors.add()
+        anker.id = wp.id
+        anker.seed_tform_waypoint.CopyFrom(pose.to_proto())
+        if vorher_id is not None:
+            kante = graph.edges.add()
+            kante.id.from_waypoint = vorher_id
+            kante.id.to_waypoint = wp.id
+            kante.from_tform_to.CopyFrom((vorher_pose.inverse() * pose).to_proto())
+            if (i - 1, i) in treppen_kanten:
+                kante.annotations.stairs.state = map_pb2.ANNOTATION_STATE_SET
+        vorher_id, vorher_pose = wp.id, pose
+        snap = map_pb2.WaypointSnapshot()
+        snap.id = wp.snapshot_id
+        nah = welt[np.abs(welt[:, 0] - wx) <= 1.2]
+        m = np.linalg.inv(pose.to_matrix())
+        lokal = (np.hstack([nah, np.ones((len(nah), 1))]) @ m.T)[:, :3].astype(np.float32)
+        snap.point_cloud.num_points = len(lokal)
+        snap.point_cloud.encoding = 1
+        snap.point_cloud.data = lokal.tobytes()
+        snap.point_cloud.source.frame_name_sensor = "sensor"
+        baum = snap.point_cloud.source.transforms_snapshot
+        baum.child_to_parent_edge_map["odom"].parent_frame_name = ""
+        edge = baum.child_to_parent_edge_map["sensor"]
+        edge.parent_frame_name = "odom"
+        edge.parent_tform_child.CopyFrom(SE3Pose.from_identity().to_proto())
+        (ordner / "waypoint_snapshots" / snap.id).write_bytes(snap.SerializeToString())
+    obj = graph.anchoring.objects.add()
+    obj.id = "7"
+    obj.seed_tform_object.CopyFrom(SE3Pose(10.0, 2.0, 1.0 + 0.9 + versatz_z, Quat.from_roll(math.pi / 2)).to_proto())
+    (ordner / "graph").write_bytes(graph.SerializeToString())
+    return ordner
+
+
+@pytest.fixture
+def karte_mit_hoehe(tmp_path):
+    return synthetische_karte_mit_hoehe(tmp_path / "hoehe")
+
+
+def test_das_profil_folgt_den_wegpunkten(karte_mit_hoehe):
+    graph, _schnapp, _fehlend = rk.lade_karte(karte_mit_hoehe)
+    posen, _quelle = rk.posen(graph)
+    weg = rk.weg(graph)
+    assert weg[:3] == ["wp0", "wp1", "wp2"] and len(weg) == 17
+    profil = rk.profil(graph, posen)
+    assert profil["wp0"] == pytest.approx(0.0, abs=0.02)
+    assert profil["wp8"] == pytest.approx(1.0, abs=0.02)
+    assert profil["wp16"] == pytest.approx(1.0 + 4.5 * math.tan(math.radians(4.0)), abs=0.03)
+
+
+def test_douglas_peucker_findet_die_knicke():
+    punkte = [(0.0, 0.0), (1.0, 0.0), (2.0, 0.0), (3.0, 0.5), (4.0, 1.0), (5.0, 1.0)]
+    assert rk.douglas_peucker(punkte, 0.1) == [0, 2, 4, 5]
+    assert rk.douglas_peucker(punkte, 2.0) == [0, 5]
+
+
+def test_die_karte_mit_hoehe_liefert_treppe_rampe_und_podest(karte_mit_hoehe):
+    from spotlab.welt.hoehe import ebenen
+
+    ergebnis = rk.rekonstruiere(karte_mit_hoehe)
+    raum, bericht = ergebnis.raum, ergebnis.bericht
+    treppen = [b for b in raum.boeden if b.art == "treppe"]
+    rampen = [b for b in raum.boeden if b.art == "rampe"]
+    podeste = [b for b in raum.boeden if b.art == "podest"]
+    assert len(treppen) == 1, [b.name for b in raum.boeden]
+    treppe = treppen[0]
+    assert treppe.anstieg == pytest.approx(1.0, abs=0.15) and treppe.stufen == 6
+    assert 2.0 <= treppe.breite <= 3.6 and 1.6 <= treppe.tiefe <= 2.4
+    assert treppe.z == pytest.approx(0.0, abs=0.1)
+    assert rampen, "keine Rampe gefunden"
+    assert all(abs(abs(r.neigung_grad) - RAMPE_GRAD) < 1.5 for r in rampen), [r.neigung_grad for r in rampen]
+    assert 3.5 <= sum(r.breite for r in rampen) <= 6.0
+    assert podeste and all(abs(p.z - 1.0) < 0.15 for p in podeste), [p.z for p in podeste]
+    assert ebenen(raum)[:2] == [0.0, 1.0]
+    assert bericht["treppen"] == 1 and bericht["rampen"] >= 1 and bericht["boeden"] >= 3
+    assert abs(bericht["gefaelle_grad"] - RAMPE_GRAD) < 1.5
+    assert bericht["stufe_m"] == pytest.approx(0.17)
+    tag = raum.tags[0]
+    assert tag.id == 7 and tag.z == pytest.approx(1.0, abs=0.15) and tag.hoehe == pytest.approx(0.9, abs=0.15)
+    # Der Start liegt im unteren Gang, die Waende haben ihr z: die obere Wand des Gangs B bei 1.0.
+    assert any(abs(w.z - 1.0) < 0.15 for w in raum.waende), sorted({round(w.z, 1) for w in raum.waende})
+
+
+def test_der_tiefste_boden_wird_zur_null(tmp_path):
+    tief = synthetische_karte_mit_hoehe(tmp_path / "tief", versatz_z=-1.8)
+    ergebnis = rk.rekonstruiere(tief)
+    boeden = ergebnis.raum.boeden
+    assert min(min(b.z, b.z_oben) for b in boeden) >= -0.05
+    assert any(b.art == "treppe" and abs(b.z) < 0.1 for b in boeden)
+    assert any(b.art == "podest" and abs(b.z - 1.0) < 0.15 for b in boeden)
+    assert ergebnis.raum.tags[0].z == pytest.approx(1.0, abs=0.15)
+
+
+def test_ein_ebener_gang_bekommt_keine_boeden(karte):
+    ergebnis = rk.rekonstruiere(karte)
+    assert ergebnis.raum.boeden == () and ergebnis.bericht["boeden"] == 0
+    assert ergebnis.bericht["ebenen"] == [0.0]
+
+
+def test_die_katakomben_haben_eine_treppe_und_ein_gefaelle():
+    if not (KATAKOMBEN / "graph").is_file():
+        pytest.skip("Katakomben-Karte fehlt auf diesem Rechner")
+    t0 = time.monotonic()
+    ergebnis = rk.rekonstruiere(KATAKOMBEN)
+    dauer = time.monotonic() - t0
+    treppen = [b for b in ergebnis.raum.boeden if b.art == "treppe"]
+    assert treppen, ergebnis.bericht
+    assert any(1.0 <= b.anstieg <= 2.2 for b in treppen), [b.anstieg for b in treppen]
+    assert 1.0 <= ergebnis.bericht["gefaelle_grad"] <= 8.0, ergebnis.bericht["gefaelle_grad"]
+    assert min(min(b.z, b.z_oben) for b in ergebnis.raum.boeden) >= -0.05
+    assert dauer < 30.0, dauer

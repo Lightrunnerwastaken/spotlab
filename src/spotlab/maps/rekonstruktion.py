@@ -21,7 +21,7 @@ RANSAC mit festem Seed: dieselbe Karte gibt denselben Raum.
 
 import math
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import numpy as np
@@ -31,7 +31,8 @@ from bosdyn.client.math_helpers import SE3Pose
 
 from spotlab.errors import SpotlabError
 from spotlab.maps.geometry import HINWEIS_KETTE
-from spotlab.welt.raum import RAND_M, Raum, RaumTag, Wand
+from spotlab.welt.hoehe import ebenen
+from spotlab.welt.raum import MAX_STUFE_M, RAND_M, STUFE_VORGABE_M, Boden, Raum, RaumTag, Wand
 
 ENCODING_XYZ_32F = 1
 KOERPER_UEBER_BODEN_M = 0.54     # Wegpunkt ueber dem Boden, wenn keine Wolke den Boden zeigt
@@ -51,6 +52,15 @@ class Einstellungen:
     begradigen: bool = True         # Winkel bis 7 Grad auf 0/90 rasten, Doppelwaende vereinen
     schlauch_breite: float = 2.0    # Notnagel ohne Wolken
     pauspapier_max: int = 200_000
+    # Hoehe (Stufe 13): Treppen aus den Treppenkanten des SDK, Rampen und
+    # Podeste aus dem Hoehenprofil des gelaufenen Wegs.
+    stufe: float = STUFE_VORGABE_M  # Steigung je Stufe -- Annahme, steht im Bericht
+    treppen_breite: float = 1.2     # wenn die Wolke keine Breite hergibt
+    gang_breite: float = 2.0        # dito fuer Rampen und Podeste
+    rampe_min_laenge: float = 2.0   # kuerzere Gefaellestuecke bleiben eben
+    rampe_min_grad: float = 2.0     # flachere auch
+    profil_toleranz: float = 0.10   # Douglas-Peucker auf dem Hoehenprofil
+    knick_grad: float = 20.0        # ein Rechteck folgt dem Weg nur bis zu diesem Knick
 
 
 @dataclass(frozen=True)
@@ -367,27 +377,47 @@ def _drehe(x, y, grad):
     return x * c - y * s, x * s + y * c
 
 
-def ausrichten(waende, tags, start, pauspapier):
+class Ausrichtung:
+    """Drehung und Verschiebung des Ausrichtens -- damit auch der Weg mitkommt."""
+
+    def __init__(self, dreh=0.0, versatz_x=0.0, versatz_y=0.0):
+        self.dreh, self.versatz_x, self.versatz_y = dreh, versatz_x, versatz_y
+
+    def punkt(self, x, y):
+        rx, ry = _drehe(x, y, self.dreh)
+        return rx + self.versatz_x, ry + self.versatz_y
+
+
+def ausrichten(waende, tags, start, pauspapier, boeden=()):
     """Die haeufigste Wandrichtung (laengengewichtet, modulo 90 Grad) auf die
     x-Achse drehen und alles so verschieben, dass die Huelle bei (0, 0) beginnt.
-    Gibt (waende, tags, start, pauspapier, drehung_grad) zurueck."""
+    Gibt (waende, tags, start, pauspapier, boeden, Ausrichtung) zurueck; die
+    Hoehen (z) bleiben, wie sie sind."""
     klassen = np.zeros(90)
     for w in waende:
         klassen[int(round(w.winkel)) % 90] += w.laenge
     haupt = int(np.argmax(klassen)) if waende else 0
     dreh = float(-haupt if haupt <= 45 else 90 - haupt)
-    waende = [Wand(*_drehe(w.x1, w.y1, dreh), *_drehe(w.x2, w.y2, dreh)) for w in waende]
-    tags = [RaumTag(t.id, *_drehe(t.x, t.y, dreh), (t.grad + dreh) % 360.0, t.hoehe) for t in tags]
+    waende = [replace(w, x1=_drehe(w.x1, w.y1, dreh)[0], y1=_drehe(w.x1, w.y1, dreh)[1],
+                      x2=_drehe(w.x2, w.y2, dreh)[0], y2=_drehe(w.x2, w.y2, dreh)[1]) for w in waende]
+    tags = [replace(t, x=_drehe(t.x, t.y, dreh)[0], y=_drehe(t.x, t.y, dreh)[1],
+                    grad=(t.grad + dreh) % 360.0) for t in tags]
+    boeden = [replace(b, x=_drehe(b.x, b.y, dreh)[0], y=_drehe(b.x, b.y, dreh)[1],
+                      drehung=(b.drehung + dreh) % 360.0) for b in boeden]
     sx, sy = _drehe(start[0], start[1], dreh)
     start = (sx, sy, (start[2] + dreh) % 360.0)
     punkte = [(w.x1, w.y1) for w in waende] + [(w.x2, w.y2) for w in waende]
     punkte += [(t.x, t.y) for t in tags] + [(sx, sy)]
+    for b in boeden:
+        punkte += list(b.ecken())
     versatz_x = RAND_M - min(p[0] for p in punkte)
     versatz_y = RAND_M - min(p[1] for p in punkte)
-    waende = [Wand(round(w.x1 + versatz_x, 2), round(w.y1 + versatz_y, 2),
-                   round(w.x2 + versatz_x, 2), round(w.y2 + versatz_y, 2)) for w in waende]
-    tags = [RaumTag(t.id, round(t.x + versatz_x, 3), round(t.y + versatz_y, 3),
-                    round(t.grad, 1), t.hoehe) for t in tags]
+    waende = [replace(w, x1=round(w.x1 + versatz_x, 2), y1=round(w.y1 + versatz_y, 2),
+                      x2=round(w.x2 + versatz_x, 2), y2=round(w.y2 + versatz_y, 2)) for w in waende]
+    tags = [replace(t, x=round(t.x + versatz_x, 3), y=round(t.y + versatz_y, 3),
+                    grad=round(t.grad, 1)) for t in tags]
+    boeden = [replace(b, x=round(b.x + versatz_x, 3), y=round(b.y + versatz_y, 3),
+                      drehung=round(b.drehung, 1)) for b in boeden]
     start = (round(start[0] + versatz_x, 3), round(start[1] + versatz_y, 3), round(start[2], 1))
     if len(pauspapier):
         p = np.asarray(pauspapier, dtype=float)
@@ -395,10 +425,210 @@ def ausrichten(waende, tags, start, pauspapier):
         p = np.column_stack([p[:, 0] * c - p[:, 1] * s + versatz_x,
                              p[:, 0] * s + p[:, 1] * c + versatz_y])
         pauspapier = p
-    return waende, tags, start, pauspapier, dreh
+    return waende, tags, start, pauspapier, boeden, Ausrichtung(dreh, versatz_x, versatz_y)
+
+
+# ------------------------------------------------- Hoehe: Weg, Profil, Boeden
+
+
+def weg(graph):
+    """Die Wegpunkte in Aufnahmereihenfolge (creation_time; gleich alt: wie in der Datei)."""
+    return [wp.id for wp in sorted(
+        graph.waypoints,
+        key=lambda w: (w.annotations.creation_time.seconds, w.annotations.creation_time.nanos),
+    )]
+
+
+def profil(graph, posen_):
+    """{wegpunkt_id: Bodenhoehe}: der Koerper laeuft KOERPER_UEBER_BODEN_M ueber dem Boden.
+
+    Das Profil kommt aus den Wegpunkten, nicht aus dem 5. Perzentil der Wolke:
+    auf einer Treppe zeigt die Wolke immer auch den Fuss der Treppe, und das
+    Perzentil bliebe unten. Die Wegpunkte sind der Koerper -- glatt, und auf
+    Rampen und Treppen genau die Linie, die der Roboter gelaufen ist.
+    """
+    return {wp.id: posen_[wp.id].z - KOERPER_UEBER_BODEN_M
+            for wp in graph.waypoints if wp.id in posen_}
+
+
+def _treppenkanten(graph):
+    paare = set()
+    for kante in graph.edges:
+        if kante.annotations.stairs.state == map_pb2.ANNOTATION_STATE_SET:
+            paare.add((kante.id.from_waypoint, kante.id.to_waypoint))
+            paare.add((kante.id.to_waypoint, kante.id.from_waypoint))
+    return paare
+
+
+def douglas_peucker(punkte, toleranz):
+    """Indizes der Stuetzpunkte einer Polylinie [(x, y), ...] -- Douglas-Peucker."""
+    if len(punkte) < 2:
+        return list(range(len(punkte)))
+
+    def teile(a, b):
+        if b <= a + 1:
+            return []
+        ax, ay = punkte[a]
+        bx, by = punkte[b]
+        dx, dy = bx - ax, by - ay
+        laenge = math.hypot(dx, dy)
+        bester, abstand = -1, 0.0
+        for i in range(a + 1, b):
+            px, py = punkte[i]
+            d = (abs(dx * (ay - py) - (ax - px) * dy) / laenge if laenge > 1e-12
+                 else math.hypot(px - ax, py - ay))
+            if d > abstand:
+                bester, abstand = i, d
+        if abstand > toleranz:
+            return teile(a, bester) + [bester] + teile(bester, b)
+        return []
+
+    return [0] + teile(0, len(punkte) - 1) + [len(punkte) - 1]
+
+
+def _breite_quer(band_xy, a, b, vorgabe, hoechstens=3.0):
+    """(Breite, seitlicher Versatz der Mitte) aus den Bandpunkten quer zur Achse a-b.
+
+    Je Seite die NAECHSTE Wand (20. Perzentil der Abstaende); ohne genug Punkte
+    die Vorgabe. Der Versatz rueckt das Rechteck zwischen die Waende, auch wenn
+    der Roboter nicht in der Gangmitte gelaufen ist.
+    """
+    ax, ay = a
+    bx, by = b
+    dx, dy = bx - ax, by - ay
+    laenge = math.hypot(dx, dy)
+    if laenge < 1e-6 or band_xy is None or not len(band_xy):
+        return vorgabe, 0.0
+    ux, uy = dx / laenge, dy / laenge
+    rel = band_xy - np.array([ax, ay])
+    entlang = rel @ np.array([ux, uy])
+    quer = rel @ np.array([-uy, ux])
+    im = (entlang >= 0.0) & (entlang <= laenge) & (np.abs(quer) <= hoechstens)
+    links = quer[im & (quer > 0.05)]
+    rechts = -quer[im & (quer < -0.05)]
+    if len(links) < 20 or len(rechts) < 20:
+        return vorgabe, 0.0
+    li, re = float(np.percentile(links, 20)), float(np.percentile(rechts, 20))
+    breite = max(0.8, min(hoechstens, li + re))
+    return breite, (li - re) / 2
+
+
+def _boden_entlang(name, a, b, z_a, z_b, breite, versatz, stufen=0):
+    """Ein Boden von a nach b: Anstiegsrichtung ist die Achse, Breite quer dazu."""
+    ax, ay = a
+    bx, by = b
+    laenge = math.hypot(bx - ax, by - ay)
+    winkel = math.degrees(math.atan2(by - ay, bx - ax))
+    nx, ny = -math.sin(math.radians(winkel)), math.cos(math.radians(winkel))
+    return Boden(name, round((ax + bx) / 2 + nx * versatz, 3), round((ay + by) / 2 + ny * versatz, 3),
+                 round(laenge, 3), round(breite, 3), z=round(z_a, 3), anstieg=round(z_b - z_a, 3),
+                 stufen=int(stufen), drehung=round(winkel % 360.0, 1))
+
+
+def treppen_aus(graph, weg_, posen_, profil_, band_xy, e):
+    """([Boden], {Kantenindizes im Weg}): Ketten aufeinanderfolgender Treppenkanten.
+
+    Fuss und Kopf einer Kette sind die Wegpunkte an ihren Enden (die stehen auf
+    dem ebenen Boden davor und danach); die Stufenzahl ist Anstieg durch
+    `e.stufe`, die Breite kommt aus den Bandpunkten quer zur Achse.
+    """
+    paare = _treppenkanten(graph)
+    treppen, kanten = [], set()
+    i = 0
+    while i < len(weg_) - 1:
+        if (weg_[i], weg_[i + 1]) not in paare:
+            i += 1
+            continue
+        j = i
+        while j < len(weg_) - 1 and (weg_[j], weg_[j + 1]) in paare:
+            j += 1
+        a, b = posen_.get(weg_[i]), posen_.get(weg_[j])
+        za, zb = profil_.get(weg_[i]), profil_.get(weg_[j])
+        if a is not None and b is not None and za is not None and zb is not None:
+            if zb < za:
+                a, b, za, zb = b, a, zb, za
+            if zb - za >= e.stufe:
+                breite, versatz = _breite_quer(band_xy, (a.x, a.y), (b.x, b.y), e.treppen_breite)
+                stufen = max(1, round((zb - za) / e.stufe))
+                treppen.append(_boden_entlang(f"Treppe {len(treppen) + 1}", (a.x, a.y), (b.x, b.y),
+                                              za, zb, breite, versatz, stufen))
+                kanten |= set(range(i, j))
+        i = j
+    return treppen, kanten
+
+
+def _gerade_stuecke(punkte, a, b, knick_grad):
+    """[(i0, i1)]: die Teilstrecke a..b an Knicken ueber `knick_grad` zerlegt."""
+    stuecke, i0, richtung = [], a, None
+    for k in range(a, b):
+        p, q = punkte[k], punkte[k + 1]
+        h = math.degrees(math.atan2(q[1] - p[1], q[0] - p[0]))
+        if richtung is None:
+            richtung = h
+        elif abs((h - richtung + 180.0) % 360.0 - 180.0) > knick_grad:
+            stuecke.append((i0, k))
+            i0, richtung = k, h
+    stuecke.append((i0, b))
+    return [(i0, i1) for i0, i1 in stuecke if i1 > i0]
+
+
+def rampen_und_podeste_aus(weg_, posen_, profil_, treppen_kanten, band_xy, e, z_min):
+    """([Rampen], [Podeste], groesstes Gefaelle in Grad) aus dem Hoehenprofil des Wegs.
+
+    Der Weg zerfaellt an den Treppenkanten in Laeufe; jeder Lauf bekommt sein
+    Profil (Weglaenge, Hoehe), vereinfacht nach Douglas-Peucker. Ein Stueck ab
+    `rampe_min_laenge` mit mehr als `rampe_min_grad` Gefaelle wird eine Rampe,
+    ein ebenes Stueck ueber dem tiefsten Boden ein Podest -- je gerader
+    Teilstrecke ein Rechteck, so breit wie der Gang dort.
+    """
+    laeufe, aktuell = [], [0]
+    for k in range(len(weg_) - 1):
+        if k in treppen_kanten:
+            laeufe.append(aktuell)
+            aktuell = [k + 1]
+        else:
+            aktuell.append(k + 1)
+    laeufe.append(aktuell)
+    rampen, podeste, gefaelle = [], [], 0.0
+    for lauf in laeufe:
+        ids = [weg_[k] for k in lauf if weg_[k] in posen_ and weg_[k] in profil_]
+        if len(ids) < 2:
+            continue
+        pts = [(posen_[i].x, posen_[i].y) for i in ids]
+        zs = [profil_[i] for i in ids]
+        s = [0.0]
+        for p, q in zip(pts, pts[1:]):
+            s.append(s[-1] + math.hypot(q[0] - p[0], q[1] - p[1]))
+        stuetzen = douglas_peucker(list(zip(s, zs)), e.profil_toleranz)
+        for a, b in zip(stuetzen, stuetzen[1:]):
+            laenge, dz = s[b] - s[a], zs[b] - zs[a]
+            if laenge < 1e-6:
+                continue
+            grad = math.degrees(math.atan2(abs(dz), laenge))
+            ist_rampe = laenge >= e.rampe_min_laenge and grad > e.rampe_min_grad
+            eben = sum(zs[a:b + 1]) / (b - a + 1)
+            for i0, i1 in _gerade_stuecke(pts, a, b, e.knick_grad):
+                breite, versatz = _breite_quer(band_xy, pts[i0], pts[i1], e.gang_breite)
+                if ist_rampe:
+                    z0 = zs[a] + dz * (s[i0] - s[a]) / laenge
+                    z1 = zs[a] + dz * (s[i1] - s[a]) / laenge
+                    rampen.append(_boden_entlang(f"Rampe {len(rampen) + 1}", pts[i0], pts[i1],
+                                                 z0, z1, breite, versatz))
+                    gefaelle = max(gefaelle, grad)
+                elif eben - z_min > MAX_STUFE_M:
+                    podeste.append(_boden_entlang(f"Podest {len(podeste) + 1}", pts[i0], pts[i1],
+                                                  eben, eben, breite, versatz))
+    return rampen, podeste, gefaelle
 
 
 # --------------------------------------------------------- Tags und Start
+
+
+class _XY:
+    """Nur x und y -- fuer `_boden_finder` nach dem Ausrichten."""
+
+    def __init__(self, x, y):
+        self.x, self.y = x, y
 
 
 def _boden_finder(posen_, boeden):
@@ -414,10 +644,14 @@ def _boden_finder(posen_, boeden):
 
 
 def _tag_aus_pose(nummer, pose, boden_bei):
+    """`boden_bei(x, y)` ist die Bodenhoehe des Wegs dort (Profil); der Tag
+    haengt `hoehe` darueber und traegt die Ebene als `z` (noch unverschoben --
+    `rekonstruiere` zieht den tiefsten Boden auf 0)."""
     achse_z = pose.rot.to_matrix()[:, 2]
     grad = math.degrees(math.atan2(achse_z[1], achse_z[0])) % 360.0
+    ebene = boden_bei(pose.x, pose.y)
     return RaumTag(nummer, round(pose.x, 3), round(pose.y, 3), round(grad, 1),
-                   round(max(pose.z - boden_bei(pose.x, pose.y), 0.05), 3))
+                   round(max(pose.z - ebene, 0.05), 3), z=round(ebene, 3))
 
 
 def tags_aus_anker(graph, boden_bei):
@@ -536,6 +770,8 @@ def rekonstruiere(ordner, einstellungen=None, fortschritt=None):
         "fehlend": fehlend, "posen": quelle_posen, "punkte": 0, "im_band": 0,
         "zellen": 0, "linien": 0, "waende": 0, "verworfen": 0, "tags": 0,
         "ausricht_grad": 0.0, "quelle": "wolke", "hinweise": hinweise,
+        "boeden": 0, "treppen": 0, "rampen": 0, "ebenen": [0.0], "gefaelle_grad": 0.0,
+        "stufe_m": e.stufe,
     }
     if baender:
         band = np.vstack(baender)
@@ -570,20 +806,44 @@ def rekonstruiere(ordner, einstellungen=None, fortschritt=None):
             f"Keine Punktwolken in der Karte — der Pfad wurde als Schlauch von "
             f"{e.schlauch_breite:.1f} m Breite angelegt. Waende im Raumeditor nachziehen."
         )
-    boden_bei = _boden_finder(posen_, boeden)
+    # Hoehe: das Profil des Wegs (Wegpunkte), Treppen aus den Treppenkanten,
+    # Rampen und Podeste aus dem Profil. Der tiefste Boden wird die 0.
+    weg_ = weg(graph)
+    profil_ = profil(graph, posen_)
+    z_min = min(profil_.values()) if profil_ else 0.0
+    band_xy = band[:, :2] if baender else None
+    treppen, treppen_kanten = treppen_aus(graph, weg_, posen_, profil_, band_xy, e)
+    rampen, podeste, gefaelle = rampen_und_podeste_aus(
+        weg_, posen_, profil_, treppen_kanten, band_xy, e, z_min)
+    boeden_ = treppen + rampen + podeste
+    if fortschritt is not None and boeden_:
+        fortschritt(f"{len(treppen)} Treppen, {len(rampen)} Rampen, {len(podeste)} Podeste")
+
+    boden_bei = _boden_finder(posen_, profil_)
     tags = tags_aus_anker(graph, boden_bei)
     tags += tags_aus_schnappschuessen(graph, schnappschuesse, posen_, boden_bei, [t.id for t in tags])
     start = start_aus(graph, posen_)
-    dreh = 0.0
+    lage = Ausrichtung()
     if e.ausrichten and waende:
-        waende, tags, start, pauspapier, dreh = ausrichten(waende, tags, start, pauspapier)
+        waende, tags, start, pauspapier, boeden_, lage = ausrichten(
+            waende, tags, start, pauspapier, boeden_)
         if e.begradigen:
             waende = begradige(waende)
+    # Waende bekommen die Ebene des Wegs bei ihrer Mitte; alles um z_min nach unten.
+    ebene_bei = _boden_finder(
+        {i: _XY(*lage.punkt(p.x, p.y)) for i, p in posen_.items()}, profil_)
+    waende = [replace(w, z=round(ebene_bei(*w.mitte) - z_min, 2)) for w in waende]
+    tags = [replace(t, z=round(t.z - z_min, 3)) for t in tags]
+    boeden_ = [replace(b, z=round(b.z - z_min, 3)) for b in boeden_]
     raum = Raum(
         name=ordner.name,
         beschreibung=f"Rekonstruiert aus der Karte „{ordner.name}“ ({bericht['quelle']}).",
-        start=start, waende=tuple(waende), bloecke=(), tags=tuple(tags),
+        start=start, waende=tuple(waende), bloecke=(), tags=tuple(tags), boeden=tuple(boeden_),
     )
-    bericht.update(waende=len(waende), tags=len(tags), ausricht_grad=dreh,
+    if treppen and band_xy is None:
+        hinweise.append("Treppenbreite ohne Punktwolke geschaetzt -- im Editor nachziehen.")
+    bericht.update(waende=len(waende), tags=len(tags), ausricht_grad=lage.dreh,
+                   boeden=len(boeden_), treppen=len(treppen), rampen=len(rampen),
+                   ebenen=ebenen(raum), gefaelle_grad=round(gefaelle, 1), stufe_m=e.stufe,
                    dauer_s=round(time.monotonic() - t0, 2))
     return Ergebnis(raum, [(float(x), float(y)) for x, y in np.asarray(pauspapier)], bericht)
