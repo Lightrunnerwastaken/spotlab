@@ -148,6 +148,11 @@ class MujocoBackend(SimBackend):
     def hinweis_zur_gueltigkeit():
         return HINWEIS
 
+    def close(self):
+        super().close()
+        # Renderer freigeben: ein GL-Kontext ueberlebt den Garbage-Collector.
+        self.puppe.close()
+
     def bericht(self):
         bericht = super().bericht()
         bericht["hinweis"] = HINWEIS
@@ -463,6 +468,7 @@ def film_aus_lauf(lauf_dir, ziel=None, fps=FILM_FPS, breite=ANSICHT_BREITE,
             schreiber.append_data(figur.ansicht(breite, hoehe))
             if fortschritt is not None and nummer % 30 == 0:
                 fortschritt(nummer, len(bilder))
+    figur.close()
     os.replace(temporaer, ziel)
     return {"pfad": ziel, "bilder": len(bilder), "dauer_s": round(len(bilder) / fps, 2),
             "raum": name}

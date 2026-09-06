@@ -93,6 +93,14 @@ class Tag(WorldObject):
     filtered: bool           # geglaettete Pose (True) oder rohe Einzelmessung
 
 
+# Ab hier misst `ObstacleGrid.free_distance`: darunter liegt der Koerper, und
+# unter sich sieht Spot nichts (die Sim fuehrt dort eine Blindzone von 0.55 m).
+FREI_AB_M = 0.6
+# Bis hierhin misst sie hoechstens: unter der halben Gitterkante (1.92 m), damit
+# jede Richtung gleich weit reicht — siehe free_distance.
+FREI_BIS_M = 1.8
+
+
 @dataclass(frozen=True)
 class ObstacleGrid:
     """Spots Hindernisgitter: je Zelle der Abstand zum naechsten Hindernis.
@@ -134,6 +142,34 @@ class ObstacleGrid:
         """Ist dort Platz? Unbekannt gilt als NICHT frei — Vorsicht vor Optimismus."""
         abstand = self.distance_at(x, y)
         return abstand is not None and abstand >= margin
+
+    def free_distance(self, x, y, heading, max_distance=FREI_BIS_M, margin=0.3):
+        """Wie viele Meter sind ab (x, y) in Richtung `heading` frei?
+
+        `heading` in GRAD, im Weltframe — `math.degrees(spot.state.pose[2])`
+        ist die Blickrichtung. Gemessen wird ab FREI_AB_M vor dem Punkt: die
+        Zellen unter dem Roboter kennt Spot nicht (Koerperschatten), sie
+        duerfen nicht als "zu" zaehlen. Steht schon die erste Probe zu, ist
+        nichts frei: 0.0. Ist bis `max_distance` alles frei, kommt genau das
+        zurueck.
+
+        Die Vorgabe FREI_BIS_M liegt UNTER der halben Gitterkante (1.92 m):
+        das Gitter ist ein Quadrat, geradeaus endet es bei 1.9 m, diagonal
+        erst bei 2.7 m. Mit einem hoeheren Deckel gewaenne eine Diagonale
+        allein wegen der Gittergeometrie — gemessen am 06.09.2026: Spot drehte
+        um 30 Grad von einer offenen Tuer weg.
+        """
+        richtung = math.radians(heading)
+        cos, sin = math.cos(richtung), math.sin(richtung)
+        schritt = max(float(self.cell_size), 0.01)
+        abstand = FREI_AB_M
+        letzter_freier = 0.0
+        while abstand <= max_distance:
+            if not self.is_free(x + abstand * cos, y + abstand * sin, margin):
+                return letzter_freier
+            letzter_freier = abstand
+            abstand += schritt
+        return float(max_distance)
 
 
 @dataclass(frozen=True)

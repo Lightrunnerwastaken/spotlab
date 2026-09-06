@@ -235,7 +235,10 @@ def test_projekt_in_spotlab_oeffnen_wechselt_zur_code_ansicht(qapp, tmp_path):
     (projekt / "runs").mkdir(parents=True)
     fenster = MainWindow()
     fenster._setze_arbeitsordner(str(tmp_path))
-    fenster.ansichten["projekte"].projektliste.setCurrentRow(0)
+    liste = fenster.ansichten["projekte"].projektliste
+    # Nicht Zeile 0: dort steht seit dem 06.09.2026 immer "Beispiele".
+    zeile = next(i for i in range(liste.count()) if liste.item(i).text() == "demo")
+    liste.setCurrentRow(zeile)
     fenster.ansichten["projekte"].spotlab_knopf.click()
     assert fenster.stapel.currentWidget() is fenster.ansichten["code"]
     assert fenster.ansichten["code"].projektwahl.currentText() == "demo"
@@ -604,3 +607,12 @@ def test_die_ansicht_des_laufs_erreicht_das_uebungsfenster(qapp, tmp_path, monke
     bild.save(str(pfad), "JPG")
     fenster._ansicht(str(pfad))
     assert not fenster.uebungsfenster.bild.isHidden()
+
+
+def test_der_arbeitsordner_bekommt_die_beispiele(qapp, tmp_path):
+    """„Immer zu finden": die GUI legt den Ordner an und zeigt ihn als Projekt."""
+    fenster = MainWindow()
+    fenster._setze_arbeitsordner(str(tmp_path))
+    assert (tmp_path / "Beispiele" / "durchgang_finden.py").is_file()
+    wahl = fenster.ansichten["code"].projektwahl
+    assert "Beispiele" in [wahl.itemText(i) for i in range(wahl.count())]

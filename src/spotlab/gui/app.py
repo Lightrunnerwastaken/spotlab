@@ -183,6 +183,15 @@ class MainWindow(QWidget):
         )
 
     def _setze_arbeitsordner(self, pfad):
+        if pfad:
+            # Die Beispiele liegen als Projekt „Beispiele" im Arbeitsordner --
+            # immer da, immer in der Liste. Kopiert wird nur, was fehlt.
+            try:
+                from spotlab.workshop.beispiele import bereitstellen
+
+                bereitstellen(pfad)
+            except OSError as fehler:
+                self._melde(f"Beispiele konnten nicht angelegt werden: {fehler}")
         self.ansichten["projekte"].setze_arbeitsordner(pfad or None)
         self.ansichten["code"].setze_arbeitsordner(pfad or None)
         self.ansichten["anbindungen"].setze_arbeitsordner(pfad or None)
