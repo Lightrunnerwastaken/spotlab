@@ -543,6 +543,24 @@ nur in dieses Dokument.
 
 ---
 
+## A23 — Raum bauen und in 3D fahren
+
+**Vorgehen** Im Raumeditor die Vorlage `leer` laden, mit dem Werkzeug *Block*
+einen Kasten von 1 × 0.4 m aufziehen, ihn über das Zahlenfeld um 30° drehen und
+2 m vor den Start stellen, unter eigenem Namen speichern. Im Editor
+`Übungsraum 3D (MuJoCo)` wählen und ein Programm starten, das `move(forward=3.0)`
+fährt.
+
+**Erwartung** Das Ereignis `angestossen` nennt den Blocknamen; die Stelle im
+Übungsfenster liegt an der GEDREHTEN Kante, nicht an der Hülle des ungedrehten
+Rechtecks. `spot.obstacles().free_distance(...)` in zwei Richtungen (entlang und
+quer zum Block) gibt zwei verschieden lange Strecken, die zur Drehung passen.
+Danach dasselbe mit `Übungsraum (virtuell)`: gleiche Stelle, gleicher Name.
+
+**Ergebnis** _(offen)_
+
+---
+
 ## Nach der Abnahme
 
 Ergebnisse hier eintragen, Abweichungen als Befund in die Spec zurückspielen, und erst

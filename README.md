@@ -157,20 +157,44 @@ Karten liegen im **Format des SDK** unter `<arbeitsordner>/karten/<name>/`. Eine
 aufgezeichnete Karte lässt sich deshalb unverändert an `graph_nav_command_line.py` und
 `view_map.py` aus dem Spot-SDK verfüttern — und umgekehrt.
 
-## Übungsraum — ohne Roboter fahren
+## Raumeditor — Räume bauen und ohne Roboter fahren
 
 Der Sim fährt nach den am 12.08.2026 **gemessenen Gangarten**. Ein Meter dauert
 dort so lange wie am echten Spot — ein Programm, das im Übungsraum ankommt,
 kommt auch am Gerät an.
 
-In der Ansicht **Übungsraum** wählst du ein Zimmer und klickst die
-Startposition hinein:
+In der Ansicht **Raumeditor** wählst du ein Zimmer — eine Vorlage oder einen
+eigenen Raum —, setzt den Start und baust um, was du brauchst:
 
 | Vorlage | Inhalt |
 |---|---|
 | `leer` | vier Wände, ein Tag — für die ersten Schritte |
 | `moebliert` | Tisch, zwei Stuhlstapel, zwei Tags — Ausweichen üben |
 | `durchgang` | zwei Zimmer, eine Tür, der Tag liegt drüben |
+
+**Bauen.** Links die Werkzeuge: *Auswählen* (klicken, ziehen, Rahmen aufziehen,
+`Shift` ergänzt), *Wand* (Klick-Klick zeichnet eine Wandkette, `Esc` beendet;
+Wandenden fangen sich), *Block* (Rechteck aufziehen), *Tag* (Klick), *Start*
+(Klick setzt, Ziehen dreht den Blick). Am gewählten Element erscheinen Griffe:
+Wandenden, Blockecken, ein Drehring. Rechts stehen die Elementliste, die
+Zahlenfelder (Mitte, Grösse, Drehung, Höhe …) und Hinweise. Blöcke lassen sich
+drehen und haben eine Höhe; in der Datei heissen sie `[[block]]`, die alte
+Schreibweise `hindernisse` wird weiter gelesen. Eigene Räume liegen unter
+`<arbeitsordner>/raeume/<name>.toml`; die Vorlagen bleiben unverändert, ein
+geänderter Raum fragt beim Speichern nach einem Namen.
+
+Tasten wie in Blender:
+
+| Taste | Wirkung |
+|---|---|
+| `G` / `R` / `S` | Bewegen / Drehen / Skalieren der Auswahl |
+| `X` / `Y` / `Z` | Achse sperren (`Z`: die Höhe beim Skalieren) |
+| Ziffern, `.`, `-` | Zahl eingeben; `Enter` bestätigt, `Esc` bricht ab |
+| `Shift+D` / `Entf` | duplizieren / löschen |
+| `Ctrl+Z` / `Ctrl+Y` | zurück / vor |
+| `A` / `Alt+A` | alles / nichts auswählen |
+| `Home` | alles zeigen — das Rad zoomt, die mittlere Taste schwenkt |
+| `Ctrl+S` | speichern |
 
 ```python
 with spotlab.connect(backend="sim") as spot:      # oder raum="durchgang"
@@ -198,13 +222,14 @@ Gerät. Die Stelle wird in der Zeichnung markiert und im Protokoll vermerkt.
 Bei `Übungsraum (virtuell)` geht **ein eigenes Fenster** auf und zeichnet die
 Fahrt mit, während sie läuft — Weg, Blickrichtung, Anstösse, die letzte
 Ausgabezeile. Leg es neben den Editor, dann siehst du Code und Fahrt zugleich.
-Der Knopf **„▶ Offene Datei starten"** in der Ansicht „Übungsraum" stellt diese
-Wahl selbst ein; er kann den echten Spot nicht erreichen.
+Der Knopf **„▶ Offene Datei starten"** im Raumeditor stellt diese Wahl selbst
+ein, speichert vorher, wenn nötig, und kann den echten Spot nicht erreichen.
 `spot.tags()` und `spot.obstacles()` arbeiten dabei aus der Raumgeometrie, du
 kannst also die ganze Bibliothek ohne Roboter üben.
 
-Eigene Räume: eine TOML-Datei unter `<arbeitsordner>/raeume/<name>.toml`, gebaut
-wie die mitgelieferten unter `welt/vorlagen/`.
+Eigene Räume: eine TOML-Datei unter `<arbeitsordner>/raeume/<name>.toml` — der
+Raumeditor schreibt sie; von Hand geht es auch, gebaut wie die mitgelieferten
+unter `welt/vorlagen/`.
 
 **Beispiele.** Im Arbeitsordner liegt immer das Projekt `Beispiele` — die GUI
 legt es beim Start an und ergänzt, was fehlt; deine Änderungen bleiben.

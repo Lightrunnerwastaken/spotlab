@@ -26,6 +26,7 @@ from spotlab.config import load_config, save_config
 from spotlab.errors import SpotlabError
 from spotlab.gui.editor.view import EditorView, verfuegbare_backends
 from spotlab.gui.header import Header
+from spotlab.gui.raumeditor import RaumeditorView
 from spotlab.gui.sidebar import Sidebar
 from spotlab.gui.theme import palette_fuer, stylesheet
 from spotlab.gui.uebungsfenster import Uebungsfenster
@@ -35,7 +36,6 @@ from spotlab.gui.views.live import LiveView
 from spotlab.gui.views.maps import MapsView
 from spotlab.gui.views.projects import ProjectsView
 from spotlab.gui.views.runs import RunsView
-from spotlab.gui.raumeditor import RaumeditorView
 from spotlab.gui.views.umwelt import UmweltView
 from spotlab.gui.watcher import RunWatcher
 from spotlab.gui.workers import DoctorWorker, OutputReader

@@ -2,8 +2,16 @@ import pytest
 
 from spotlab.errors import SpotlabError
 from spotlab.welt.raum import (
-    Block, Raum, RaumTag, Wand, eigene_raeume, huelle, raum_laden, raum_pfad,
-    raum_speichern, vorlagen,
+    Block,
+    Raum,
+    RaumTag,
+    Wand,
+    eigene_raeume,
+    huelle,
+    raum_laden,
+    raum_pfad,
+    raum_speichern,
+    vorlagen,
 )
 
 BEISPIEL = '''

@@ -8,7 +8,12 @@ pytest.importorskip("PySide6.QtWidgets")
 
 from PySide6.QtGui import QImage, QPainter  # noqa: E402
 
-from spotlab.gui.raumzeichnung import wand_polygon, zeichne_raum, zeichne_spot, zeichne_spur  # noqa: E402
+from spotlab.gui.raumzeichnung import (  # noqa: E402
+    wand_polygon,
+    zeichne_raum,
+    zeichne_spot,
+    zeichne_spur,
+)
 from spotlab.gui.theme import DUNKEL  # noqa: E402
 from spotlab.welt.raum import Block, Raum, RaumTag, Wand  # noqa: E402
 
