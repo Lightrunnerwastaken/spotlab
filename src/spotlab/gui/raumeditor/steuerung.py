@@ -10,7 +10,7 @@ import math
 
 from spotlab.welt import bearbeitung as b
 
-WERKZEUGE = ("auswahl", "wand", "block", "tag", "start")
+WERKZEUGE = ("auswahl", "wand", "block", "boden", "tag", "start")
 TOLERANZ_M = 0.12        # Treffer um den Zeiger; die Sicht rechnet 8 px um
 
 
@@ -22,6 +22,9 @@ class Steuerung:
     def setze_raum(self, raum, geaendert=False):
         self.raum = raum
         self.auswahl = frozenset()
+        # Die gewaehlte Ebene der 2D-Sicht (None = alle). Neue Elemente landen
+        # auf ihr; was auf einer anderen liegt, zeichnet die Sicht blass.
+        self.ebene = None
         self.verlauf = b.Verlauf()
         if raum is not None:
             self.verlauf.merke(raum)
@@ -51,6 +54,15 @@ class Steuerung:
         return grad if frei else b.raste(grad, b.RASTER_GRAD) % 360.0
 
     # --------------------------------------------------------- Werkzeug
+
+    def setze_ebene(self, wert):
+        """Die Ebene der 2D-Sicht: eine Bodenhoehe aus `hoehe.ebenen` oder None (alle)."""
+        self.ebene = None if wert is None else float(wert)
+
+    @property
+    def _z_neu(self):
+        """Die Hoehe, auf der neue Elemente entstehen."""
+        return self.ebene or 0.0
 
     def setze_werkzeug(self, name):
         if name not in WERKZEUGE:
@@ -85,12 +97,13 @@ class Steuerung:
             self._druecke_auswahl(x, y, shift, toleranz, treffer)
         elif self.werkzeug == "wand":
             self._druecke_wand(x, y, ctrl)
-        elif self.werkzeug == "block":
+        elif self.werkzeug in ("block", "boden"):
             von = (self._rast(x, ctrl), self._rast(y, ctrl))
-            self._zug = {"art": "block", "von": von}
+            self._zug = {"art": self.werkzeug, "von": von}
             self.rahmen = (von[0], von[1], von[0], von[1])
         elif self.werkzeug == "tag":
-            raum, s = b.neuer_tag(self.raum, self._rast(x, ctrl), self._rast(y, ctrl))
+            raum, s = b.neuer_tag(self.raum, self._rast(x, ctrl), self._rast(y, ctrl),
+                                  z=self._z_neu)
             self._uebernimm(raum)
             self.auswahl = frozenset({s})
         elif self.werkzeug == "start":
@@ -125,7 +138,7 @@ class Steuerung:
             return
         if math.hypot(px - self.kette[0], py - self.kette[1]) < b.MINDESTKANTE_M:
             return
-        raum, s = b.neue_wand(self.raum, self.kette[0], self.kette[1], px, py)
+        raum, s = b.neue_wand(self.raum, self.kette[0], self.kette[1], px, py, z=self._z_neu)
         self._uebernimm(raum)
         self.auswahl = frozenset({s})
         self.kette = (px, py)
@@ -142,7 +155,7 @@ class Steuerung:
         art = z["art"]
         if art == "rahmen":
             self.rahmen = (z["von"][0], z["von"][1], x, y)
-        elif art == "block":
+        elif art in ("block", "boden"):
             self.rahmen = (z["von"][0], z["von"][1], self._rast(x, ctrl), self._rast(y, ctrl))
         elif art == "verschieben":
             dx, dy = x - z["von"][0], y - z["von"][1]
@@ -181,13 +194,14 @@ class Steuerung:
                 neue = b.im_rahmen(self.raum, x1, y1, x2, y2)
                 self.auswahl = (self.auswahl | neue) if shift else neue
             return
-        if art == "block":
+        if art in ("block", "boden"):
             x1, y1, x2, y2 = self.rahmen
             self.rahmen = None
             breite, tiefe = abs(x2 - x1), abs(y2 - y1)
             if breite < b.MINDESTKANTE_M or tiefe < b.MINDESTKANTE_M:
                 return
-            raum, s = b.neuer_block(self.raum, (x1 + x2) / 2, (y1 + y2) / 2, breite, tiefe)
+            bauen = b.neuer_block if art == "block" else b.neuer_boden
+            raum, s = bauen(self.raum, (x1 + x2) / 2, (y1 + y2) / 2, breite, tiefe, z=self._z_neu)
             self._uebernimm(raum)
             self.auswahl = frozenset({s})
             return
@@ -259,6 +273,7 @@ class Steuerung:
         return frozenset(
             [("wand", i) for i in range(len(r.waende))]
             + [("block", i) for i in range(len(r.bloecke))]
+            + [("boden", i) for i in range(len(r.boeden))]
             + [("tag", i) for i in range(len(r.tags))]
             + [b.START]
         )

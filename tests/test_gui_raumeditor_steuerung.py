@@ -177,3 +177,53 @@ def test_ein_uebergebener_treffer_geht_vor_dem_bodenpunkt():
     st.druecke(3.9, 2.9, treffer=("block", 0))
     st.lasse_los(3.9, 2.9)
     assert st.auswahl == {("block", 0)}
+
+
+# ---------------------------------------------------------------- Hoehe (Stufe 13)
+
+
+def test_werkzeug_boden_zieht_ein_rechteck_auf_der_ebene():
+    st = Steuerung(RAUM)
+    st.setze_ebene(1.2)
+    st.setze_werkzeug("boden")
+    st.druecke(1.0, 1.0)
+    st.bewege(3.0, 2.0)
+    st.lasse_los(3.0, 2.0)
+    boden = st.raum.boeden[0]
+    assert (boden.x, boden.y, boden.breite, boden.tiefe, boden.z) == (2.0, 1.5, 2.0, 1.0, 1.2)
+    assert st.auswahl == {("boden", 0)} and st.geaendert
+    st.setze_werkzeug("block")
+    st.druecke(1.0, 2.5)
+    st.bewege(2.0, 3.0)
+    st.lasse_los(2.0, 3.0)
+    assert st.raum.bloecke[-1].z == 1.2
+    st.setze_werkzeug("tag")
+    klick(st, 3.5, 2.5)
+    assert st.raum.tags[-1].z == 1.2
+    st.setze_ebene(None)
+    st.setze_werkzeug("block")
+    st.druecke(0.5, 2.5)
+    st.bewege(0.9, 2.9)
+    st.lasse_los(0.9, 2.9)
+    assert st.raum.bloecke[-1].z == 0.0
+
+
+def test_g_dann_z_hebt_die_auswahl():
+    st = Steuerung(RAUM)
+    st.auswahl = frozenset({("block", 0)})
+    st.zeiger = (2.0, 2.0)
+    assert st.taste("g") and st.taste("z")
+    st.bewege(2.0, 2.5)                                    # nach oben auf dem Schirm = hoeher
+    assert st.modus.vorschau().bloecke[0].z == 0.5
+    assert st.modus.vorschau().bloecke[0].x == 2.0         # in der Ebene rührt sich nichts
+    st.taste("return")
+    assert st.raum.bloecke[0].z == 0.5 and st.geaendert
+
+
+def test_hinweise_nennen_die_kante_und_alle_kennt_boeden():
+    from spotlab.welt.raum import Boden, Raum
+
+    raum = Raum(name="H", beschreibung="", start=(2.9, 0.0, 0.0), boeden=(Boden("P", 2, 0, 2, 2, z=1.0),))
+    st = Steuerung(raum)
+    assert any("Kante" in h for h in st.hinweise())
+    assert ("boden", 0) in st.alle()

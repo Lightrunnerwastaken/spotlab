@@ -597,6 +597,12 @@ class Modus:
             return self._raum
         wert = self._wert()
         if self.art == self.BEWEGEN:
+            if self.achse == "z":
+                # Blender "G, dann Z": die Hoehe folgt der Mausbewegung nach oben.
+                dz = wert if wert is not None else self._zeiger[1] - self._start[1]
+                if wert is None and not self._frei:
+                    dz = raste(dz)
+                return hebe(self._raum, self._auswahl, dz)
             if wert is not None:
                 dx, dy = (0.0, wert) if self.achse == "y" else (wert, 0.0)
             else:
