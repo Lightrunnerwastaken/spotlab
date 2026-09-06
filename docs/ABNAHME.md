@@ -577,6 +577,48 @@ im echten Gang Wände stehen.
 
 ---
 
+## A25 — Treppenmodus und die Regel „Nase bergauf"
+
+**Vorgehen** `treppen = "auto"` in `config.toml [limits]`. Spot 1.5 m vor einer echten
+Treppe (Fuss), Nase zur Treppe. `walk(vx=0.2, duration=8)` hinauf; oben `walk(vx=-0.2,
+duration=8)` rückwärts hinunter, ohne Drehung. Danach absichtlich falsch herum: oben
+umdrehen und `walk(vx=0.2, duration=4)` vorwärts auf die Kante zu — mit der Hand am
+Not-Aus des Tablets.
+
+**Erwartung** Hinauf und rückwärts hinunter gehen ohne Zutun (die Firmware nimmt die
+Stufen). Was der Roboter beim vorwärts-abwärts tut — verweigern, anhalten, trotzdem
+gehen —, wird hier notiert und in `welt/hoehe.py::treppe_erlaubt` übernommen: der Sim
+verweigert bis dahin.
+
+**Ergebnis** _(offen)_
+
+---
+
+## A26 — `spot.stairs()` vor einer echten Treppe
+
+**Vorgehen** Am Fuss derselben Treppe `for t in spot.stairs(): print(t)`, dann am Kopf.
+
+**Erwartung** Je einmal `direction == "auf"` bzw. `"ab"`, `steps` und `rise_m` wie
+gezählt und gemessen (Stufen × Steigung), `axis_bearing` zeigt bergauf (Peilung
+gegen Augenschein, ±15°), `distance` zur nächsten Kante (±0.3 m).
+
+**Ergebnis** _(offen)_
+
+---
+
+## A27 — Das Hindernisgitter auf der Treppe
+
+**Vorgehen** Am Fuss `spot.obstacles().free_distance(x, y, blick)` in Richtung der
+Treppe; dann oben am Kopf in Richtung der Kante.
+
+**Erwartung** Annahme im Sim: Stufen sind im Gitter frei, eine Absturzkante ist belegt
+(Höhensprung über 0.25 m). Abweichungen hier eintragen und in `welt/wahrnehmung.py`
+und `spotsim/local_grid.py` (Sprungregel) zurückspielen.
+
+**Ergebnis** _(offen)_
+
+---
+
 ## Nach der Abnahme
 
 Ergebnisse hier eintragen, Abweichungen als Befund in die Spec zurückspielen, und erst

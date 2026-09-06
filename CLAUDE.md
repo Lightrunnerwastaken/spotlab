@@ -480,7 +480,7 @@ versionsgepinntes Extra `spotlab[sim]`.
 
 ## Umsetzungsstand
 
-**Stufe 13 (06.09.2026): Höhe, Rampen und Treppen — Etappen 1 „Kern", 2 „Editor", 3 „Rekonstruktion"** — Raumformat
+**Stufe 13 (06.09.2026): Höhe, Rampen und Treppen — alle vier Etappen gebaut** — Raumformat
 v3 (`Boden` als Podest, Rampe oder Treppe; `z` an Wand, Block, Tag), `welt/hoehe.py`
 (Boden unter einem Punkt, Neigung, Ebenen, Klippen, Treppenlage und -regel, Kästen),
 Körperband und Klippen in Kollision und Gitter, der 2D-Sim mit `z` und Nick (vorhandene
@@ -499,7 +499,10 @@ runter ist EINE), Rampen und Podeste aus dem Profil (Douglas-Peucker 10 cm, je g
 Teilstrecke ein Rechteck so breit wie der Gang, kurze Stücke gehen im Nachbarn auf — eine
 Lücke im Schlauch wäre eine Klippe); der tiefste Boden ist die 0, Wände und Tags tragen ihre
 Ebene. Katakomben: 1 Treppe (1.78 m, 10 Stufen), 10 Rampen, grösstes Gefälle 5.3°, 6 s.
-Offen: Etappe 4 (`spot.stairs()`, Beispiel, Abnahme).
+Etappe 4: `spot.stairs()` (`Staircase` mit `direction`, `steps`, `rise_m`, `axis_bearing`,
+`Capability.STAIRS`; im Sim aus dem Raum, am Roboter aus `staircase_properties`), Vorlage
+`treppe`, Beispiel `treppe_steigen.py` (in 2D und 3D geprüft, falsch herum wird verweigert),
+Abnahme A25–A27, B6 im Messfahrt-Ablauf.
 
 **Stufe 12 (06.09.2026): Raumeditor, Etappe 1 von 3** — der Tab „Übungsraum" ist der
 Tab „Raumeditor": Wände (Linien mit Dicke und Höhe je Raum), drehbare Blöcke mit Höhe,

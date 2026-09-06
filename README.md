@@ -171,6 +171,7 @@ eigenen Raum —, setzt den Start und baust um, was du brauchst:
 | `leer` | vier Wände, ein Tag — für die ersten Schritte |
 | `moebliert` | Tisch, zwei Stuhlstapel, zwei Tags — Ausweichen üben |
 | `durchgang` | zwei Zimmer, eine Tür, der Tag liegt drüben |
+| `treppe` | ein Podest, eine Treppe mit sieben Stufen hinauf, der Tag hängt oben |
 
 **Bauen.** Links die Werkzeuge: *Auswählen* (klicken, ziehen, Rahmen aufziehen,
 `Shift` ergänzt), *Wand* (Klick-Klick zeichnet eine Wandkette, `Esc` beendet;
@@ -363,7 +364,7 @@ ein Programm gestartet hat.
 | Haltung | `stand(height=0.0)`, `sit()` |
 | Bewegung | `move(forward, left, turn)`, `walk(vx, vy, wz, duration)`, `stop()` |
 | Kameras | `cameras()`, `camera(name)`, `state` |
-| Umwelt | `tags(id=None)`, `world_objects(kinds=None)`, `obstacles()` |
+| Umwelt | `tags(id=None)`, `world_objects(kinds=None)`, `obstacles()`, `stairs()` |
 | Karten | `load_map(name)`, `localize()`, `navigate_to(ziel)`, `waypoints()` |
 | Messen | `messfenster(name, hz=50)` |
 | Roh | `robot`, `send(command)`, `close()` |
@@ -375,6 +376,13 @@ ablaufen.
 
 `spot.cameras()` meldet, was das aktive Backend **wirklich** hat. Fehlt eine Fähigkeit,
 gibt es einen klaren Fehler statt einer Attrappe.
+
+`spot.stairs()` nennt die Treppen in Sicht, nächste zuerst: `direction` („auf" — Spot
+steht am Fuss, „ab" — am Kopf), `steps`, `rise_m`, `distance`, `bearing` zur nächsten
+Kante und `axis_bearing`, die Richtung bergauf. `spot.move(turn=treppe.axis_bearing)`
+stellt die Nase bergauf, und so nimmt Spot jede Treppe: **vorwärts hoch, rückwärts
+runter** — ohne sich oben umzudrehen. Am Roboter kommen die Treppen aus der Firmware,
+im Übungsraum aus dem Raum; das Beispiel `treppe_steigen.py` zeigt den ganzen Weg.
 
 **Die Umwelt-Verben sprechen Grad und Meter**, dieselbe Einheit wie `move()`:
 
