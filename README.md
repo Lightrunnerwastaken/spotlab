@@ -192,12 +192,13 @@ dieselben wie in 2D. Ohne OpenGL 3.3 bleibt der Knopf grau und sagt, warum
 **Aus einer Karte.** „Rekonstruieren…" macht aus einer GraphNav-Karte
 (aus „Karten" oder ein beliebiger Ordner mit `graph` und `waypoint_snapshots/`)
 einen Raum: Wände aus der Punktwolke (Höhenband über dem Boden, 5-cm-Gitter,
-Linien, Türen als Lücken), AprilTags aus den Ankern mit Blickrichtung und Höhe,
-Start am ersten Wegpunkt. Die Punktwolke bleibt als graues **Pauspapier** unter
+Sichtprüfung gegen Tiefen-Artefakte, Linien, Türen als Lücken, begradigt auf
+rechte Winkel), AprilTags aus den Ankern mit Blickrichtung und Höhe, Start am
+ersten Wegpunkt. Die Punktwolke bleibt als graues **Pauspapier** unter
 der Zeichnung — dort ziehst du nach, was die Automatik falsch hat, und speicherst
 den Raum wie jeden anderen (das Pauspapier liegt daneben als `.pauspapier`).
 Ohne Punktwolken wird der Pfad ein Schlauch. Der Katakomben-Gang der Schule
-(107 Wegpunkte, 31 Tags) braucht dafür rund drei Sekunden.
+(107 Wegpunkte, 31 Tags) braucht dafür rund sechs Sekunden.
 
 Tasten wie in Blender, in beiden Sichten:
 

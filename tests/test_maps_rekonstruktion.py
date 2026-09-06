@@ -43,12 +43,18 @@ def _se3(x, y, z=0.0, yaw=0.0):
     return SE3Pose(x, y, z, Quat.from_yaw(yaw))
 
 
-def synthetische_karte(ordner, mit_wolken=True, drehung_grad=0.0):
-    """Gang 6 x 2 m (Waende y = 0 und y = 2), Tuer in der oberen Wand, Tag 7 rechts."""
+def synthetische_karte(ordner, mit_wolken=True, drehung_grad=0.0, rauschen=True):
+    """Gang 6 x 2 m (Waende y = 0 und y = 2), Tuer in der oberen Wand, Tag 7 rechts.
+
+    `rauschen`: Tiefen-Artefakte entlang der Blickrichtung ("flying pixels") --
+    Punkte auf dem Strahl vom Wegpunkt zur Wand, im Ganginneren. Echte Karten
+    sind voll davon (Katakomben, 06.09.2026); die Sichtpruefung muss sie loeschen.
+    """
     ordner = Path(ordner)
     (ordner / "waypoint_snapshots").mkdir(parents=True)
     (ordner / "edge_snapshots").mkdir()
     dreh = SE3Pose(0, 0, 0, Quat.from_yaw(math.radians(drehung_grad)))   # Seed-Rahmen schief
+    rng = np.random.default_rng(7)
 
     welt = np.vstack([
         _wandpunkte(0.0, 6.0, 0.0),
@@ -79,6 +85,14 @@ def synthetische_karte(ordner, mit_wolken=True, drehung_grad=0.0):
         snap.id = wp.snapshot_id
         if mit_wolken:
             nah = welt[np.abs(welt[:, 0] - (0.5 + i)) <= 1.2]
+            if rauschen:
+                # 400 Punkte auf Strahlen vom Wegpunkt (0.5 + i, 1.0) zu Wandpunkten,
+                # bei 30-90 % der Strecke -- mitten im Gang, in Wandhoehe.
+                wand = nah[(nah[:, 2] > 0.2) & (nah[:, 2] < 1.6)]
+                ziel = wand[rng.integers(0, len(wand), 400)]
+                anteil = rng.uniform(0.3, 0.9, (400, 1))
+                start = np.array([0.5 + i, 1.0, 0.0])
+                nah = np.vstack([nah, start + anteil * (ziel - start) * np.array([1, 1, 0]) + np.array([0, 0, 1]) * ziel[:, 2:3]])
             # Der Seed-Rahmen liegt schief: die Welt selbst ist gedreht, nicht nur die Pose.
             nah = (np.hstack([nah, np.ones((len(nah), 1))]) @ dreh.to_matrix().T)[:, :3]
             m = np.linalg.inv(pose.to_matrix())
@@ -146,9 +160,11 @@ def test_das_band_verwirft_boden_und_decke(karte):
 
 def test_ohne_wolken_gibt_es_den_schlauch(tmp_path):
     ordner = synthetische_karte(tmp_path / "leer", mit_wolken=False)
-    ergebnis = rk.rekonstruiere(ordner)
+    ergebnis = rk.rekonstruiere(ordner, rk.Einstellungen(begradigen=False))
     assert ergebnis.bericht["quelle"] == "schlauch"
     assert len(ergebnis.raum.waende) == 2 * 5                  # zwei je Kante
+    begradigt = rk.rekonstruiere(ordner)
+    assert len(begradigt.raum.waende) == 2                     # begradigt: je Seite eine Wand
     assert ergebnis.pauspapier == []
     assert any("Schlauch" in h for h in ergebnis.bericht["hinweise"])
 
@@ -174,3 +190,36 @@ def test_die_katakomben_karte_liefert_31_tags_und_waende():
     assert len(ergebnis.raum.waende) >= 20
     assert dauer < 60.0, dauer
     assert ergebnis.bericht["posen"] == "anker"
+
+
+def test_die_sichtpruefung_loescht_strahlenrauschen_im_gang(karte):
+    """Ohne Sichtpruefung werden die Artefakte zu Waenden mitten im Gang."""
+    mit = rk.rekonstruiere(karte)
+    ohne = rk.rekonstruiere(karte, rk.Einstellungen(sichtpruefung=False))
+
+    def innen(raum):
+        ys = sorted({round(w.y1, 1) for w in raum.waende})
+        unten, oben = ys[0], ys[-1]
+        return [w for w in raum.waende
+                if min(w.y1, w.y2) > unten + 0.3 and max(w.y1, w.y2) < oben - 0.3]
+
+    assert innen(ohne.raum), "die Fixture traegt kein Rauschen mehr"
+    assert innen(mit.raum) == [], [list(w) for w in innen(mit.raum)]
+    assert mit.bericht["zellen"] < ohne.bericht["zellen"]
+
+
+def test_begradigen_rastet_winkel_und_vereint_parallele_doppel():
+    from spotlab.welt.raum import Wand
+
+    schief = Wand(0.0, 0.0, 4.0, 0.25)                       # ~3.6 Grad
+    doppel_a = Wand(5.0, 1.0, 9.0, 1.0)
+    doppel_b = Wand(6.0, 1.15, 10.0, 1.15)                   # parallel, 15 cm daneben, ueberlappt
+    diagonal = Wand(0.0, 5.0, 2.0, 7.0)                      # 45 Grad bleibt
+    neu = rk.begradige([schief, doppel_a, doppel_b, diagonal])
+    assert len(neu) == 3
+    gerade = next(w for w in neu if abs(w.laenge - 4.0) < 0.1)
+    assert gerade.y1 == gerade.y2
+    vereint = next(w for w in neu if w.laenge > 4.5)
+    assert (min(vereint.x1, vereint.x2), max(vereint.x1, vereint.x2)) == (5.0, 10.0)
+    assert 1.0 <= vereint.y1 <= 1.15 and vereint.y1 == vereint.y2
+    assert any(abs(w.winkel - 45.0) < 1e-6 for w in neu)

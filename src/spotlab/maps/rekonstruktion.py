@@ -47,6 +47,8 @@ class Einstellungen:
     min_laenge: float = 0.5         # Segmente darunter fallen weg
     luecke: float = 0.4             # Segment wird an groesseren Luecken geteilt -- Tueren
     ausrichten: bool = True         # haeufigste Wandrichtung -> x-Achse
+    sichtpruefung: bool = True      # Zellen, durch die Strahlen hindurchgehen, sind frei
+    begradigen: bool = True         # Winkel bis 7 Grad auf 0/90 rasten, Doppelwaende vereinen
     schlauch_breite: float = 2.0    # Notnagel ohne Wolken
     pauspapier_max: int = 200_000
 
@@ -147,6 +149,51 @@ def belegte_zellen(xy, zelle, mindestens):
     ij = np.floor(np.asarray(xy) / zelle).astype(np.int64)
     eindeutig, anzahl = np.unique(ij, axis=0, return_counts=True)
     return (eindeutig[anzahl >= mindestens] + 0.5) * zelle
+
+
+# ------------------------------------------------------------ Sichtpruefung
+#
+# Eine Wand wird nie durchquert. Tiefen-Artefakte ("flying pixels") liegen auf
+# dem Strahl zwischen Kamera und Wand -- die Strahlen zu den Punkten dahinter
+# gehen durch sie hindurch. Je Schnappschuss: die getroffenen Zellen und die
+# Zellen, die ein Strahl bis 2 Zellen vor seinem Treffer durchlaeuft. Eine
+# Zelle bleibt, wenn sie von MEHR Schnappschuessen getroffen als durchquert
+# wurde -- ein Gleichstand (einmal getroffen, einmal durchquert) ist ein
+# Artefakt, das ein einziger fremder Strahl entlarvt hat. Gemessen an den
+# Katakomben (06.09.2026): 41 663 -> 12 922 Zellen, 261 -> ~100 Wandstuecke,
+# die Gaenge sauber umrandet.
+
+_VERSATZ = 1 << 20
+_BREITE = 1 << 21
+
+
+def _schluessel(ij):
+    """Zellenindizes (M, 2) -> eindeutige int64-Schluessel."""
+    return (ij[:, 0] + _VERSATZ) * _BREITE + (ij[:, 1] + _VERSATZ)
+
+
+def _strahlen_frei(ursprung, mitten, zelle):
+    """Schluessel der Zellen, die Strahlen vom Ursprung zu den Zellmitten durchlaufen."""
+    d = mitten - ursprung
+    laenge = np.hypot(d[:, 0], d[:, 1])
+    ok = laenge > 4 * zelle
+    d, laenge = d[ok], laenge[ok]
+    if not len(d):
+        return np.zeros(0, dtype=np.int64)
+    schritte = np.arange(0.0, float(laenge.max()), zelle)
+    proben = ursprung + (schritte[None, :, None] / laenge[:, None, None]) * d[:, None, :]
+    gueltig = schritte[None, :] < (laenge - 2 * zelle)[:, None]
+    proben = proben[gueltig]
+    return np.unique(_schluessel(np.floor(proben / zelle).astype(np.int64)))
+
+
+def _je_schluessel(schluessel, schnappschuss):
+    """{schluessel: Zahl der Schnappschuesse}, aus je einem Paar je (Zelle, Schnappschuss)."""
+    if not len(schluessel):
+        return {}
+    paare = np.unique(np.column_stack([schluessel, schnappschuss]), axis=0)
+    werte, zahl = np.unique(paare[:, 0], return_counts=True)
+    return dict(zip(werte.tolist(), zahl.tolist()))
 
 
 # ------------------------------------------------------------------ Linien
@@ -266,6 +313,50 @@ def verschmelze(waende, winkel_grad=5.0, abstand=0.2):
             if geaendert:
                 break
     return waende
+
+
+def begradige(waende, toleranz_grad=7.0, versatz=0.25):
+    """Im rechtwinkligen Rahmen: Winkel bis `toleranz_grad` auf 0/90 rasten,
+    parallele Doppelwaende (Versatz <= `versatz`, ueberlappend) vereinen --
+    Anker-Drift legt dieselbe Wand von verschiedenen Wegpunkten aus ein paar
+    Zentimeter versetzt ab."""
+    gerade, schraeg = [], []
+    for w in waende:
+        wink = w.winkel % 180.0
+        mx, my = w.mitte
+        halb = w.laenge / 2
+        if min(wink, 180.0 - wink) <= toleranz_grad:
+            gerade.append(("x", my, mx - halb, mx + halb))
+        elif abs(wink - 90.0) <= toleranz_grad:
+            gerade.append(("y", mx, my - halb, my + halb))
+        else:
+            schraeg.append(w)
+    geaendert = True
+    while geaendert:
+        geaendert = False
+        for i in range(len(gerade)):
+            for j in range(i + 1, len(gerade)):
+                a, b = gerade[i], gerade[j]
+                if a[0] != b[0] or abs(a[1] - b[1]) > versatz:
+                    continue
+                if min(a[3], b[3]) - max(a[2], b[2]) < -0.05:
+                    continue
+                la, lb = a[3] - a[2], b[3] - b[2]
+                lage = (a[1] * la + b[1] * lb) / max(la + lb, 1e-9)
+                gerade[i] = (a[0], lage, min(a[2], b[2]), max(a[3], b[3]))
+                del gerade[j]
+                geaendert = True
+                break
+            if geaendert:
+                break
+    ergebnis = list(schraeg)
+    for achse, lage, von, bis in gerade:
+        lage, von, bis = round(lage, 2), round(von, 2), round(bis, 2)
+        if achse == "x":
+            ergebnis.append(Wand(von, lage, bis, lage))
+        else:
+            ergebnis.append(Wand(lage, von, lage, bis))
+    return ergebnis
 
 
 # --------------------------------------------------------------- Ausrichten
@@ -411,6 +502,7 @@ def rekonstruiere(ordner, einstellungen=None, fortschritt=None):
 
     baender, gesamt = [], 0
     boeden = {}                      # wegpunkt_id -> Bodenhoehe dort
+    treffer_s, treffer_i, frei_s, frei_i = [], [], [], []
     for i, wp in enumerate(graph.waypoints):
         if fortschritt is not None:
             fortschritt(f"Schnappschuss {i + 1}/{len(graph.waypoints)}")
@@ -427,7 +519,17 @@ def rekonstruiere(ordner, einstellungen=None, fortschritt=None):
         boden_hier = boden_hoehe(wolke[:, 2]) if len(wolke) >= 200 else seed_tform_wp.z - KOERPER_UEBER_BODEN_M
         boeden[wp.id] = boden_hier
         z = wolke[:, 2]
-        baender.append(wolke[(z >= boden_hier + e.band[0]) & (z <= boden_hier + e.band[1])])
+        band_hier = wolke[(z >= boden_hier + e.band[0]) & (z <= boden_hier + e.band[1])]
+        baender.append(band_hier)
+        if e.sichtpruefung and len(band_hier):
+            zellen_hier = np.unique(np.floor(band_hier[:, :2] / e.zelle).astype(np.int64), axis=0)
+            schluessel = _schluessel(zellen_hier)
+            treffer_s.append(schluessel)
+            treffer_i.append(np.full(len(schluessel), i))
+            frei = _strahlen_frei(np.array([seed_tform_wp.x, seed_tform_wp.y]),
+                                  (zellen_hier + 0.5) * e.zelle, e.zelle)
+            frei_s.append(frei)
+            frei_i.append(np.full(len(frei), i))
 
     bericht = {
         "wegpunkte": len(graph.waypoints), "schnappschuesse": len(schnappschuesse),
@@ -438,6 +540,14 @@ def rekonstruiere(ordner, einstellungen=None, fortschritt=None):
     if baender:
         band = np.vstack(baender)
         zellen = belegte_zellen(band[:, :2], e.zelle, e.mindestens_punkte)
+        if e.sichtpruefung and treffer_s:
+            getroffen = _je_schluessel(np.concatenate(treffer_s), np.concatenate(treffer_i))
+            durchquert = _je_schluessel(np.concatenate(frei_s), np.concatenate(frei_i))
+            schluessel = _schluessel(np.floor(zellen / e.zelle).astype(np.int64))
+            solide = np.array([durchquert.get(k, 0) < getroffen.get(k, 0)
+                               for k in schluessel.tolist()], dtype=bool)
+            bericht["durchquert"] = int((~solide).sum())
+            zellen = zellen[solide]
         if fortschritt is not None:
             fortschritt(f"Linien in {len(zellen)} Zellen suchen")
         linien = linien_ransac(zellen, e.inlier, rng=np.random.default_rng(0))
@@ -467,6 +577,8 @@ def rekonstruiere(ordner, einstellungen=None, fortschritt=None):
     dreh = 0.0
     if e.ausrichten and waende:
         waende, tags, start, pauspapier, dreh = ausrichten(waende, tags, start, pauspapier)
+        if e.begradigen:
+            waende = begradige(waende)
     raum = Raum(
         name=ordner.name,
         beschreibung=f"Rekonstruiert aus der Karte „{ordner.name}“ ({bericht['quelle']}).",

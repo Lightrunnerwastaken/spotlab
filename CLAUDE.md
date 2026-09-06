@@ -310,7 +310,12 @@ versionsgepinntes Extra `spotlab[sim]`.
   aus der Tag-Fläche zu den Beobachtern — sie ist die Blickrichtung; der Boden gilt **je
   Schnappschuss** (Niveauunterschiede), nicht für die ganze Karte; nach jeder RANSAC-Linie
   fallen die Nachbarreihen (3 × Inlier-Abstand) weg, sonst wird jede Zellreihe einer dicken
-  Wand eine eigene „Wand" (733 statt 261 Stücke).
+  Wand eine eigene „Wand". **Die Sichtprüfung ist der eigentliche Filter:** eine Zelle, die
+  von mehr Schnappschüssen durchquert als getroffen wurde, ist frei — Tiefen-Artefakte liegen
+  auf dem Strahl vor der Wand, und die Strahlen zu den Punkten dahinter entlarven sie. Ohne
+  sie bestanden die Katakomben aus 261 Stücken voller Strahlen im Ganginneren, mit ihr aus 61,
+  die Gänge sauber umrandet (Bilder vom 06.09.2026). Ein Schichten-Filter („eine Wand füllt
+  das Höhenband") war der falsche Weg: er zerhackt Wände, die eine Kamera nur teilweise sieht.
 - **Die Körperantwort auf `move()` ist gemessen, aber nur bei 1 m und 90°**
   (`kalibrierung/antwort.py`, kommandierte Läufe vom 02.09.2026). Andere Ziele fahren
   dasselbe Trapez und zählen in `bericht()` als ausserhalb der Messung. Kombinierte

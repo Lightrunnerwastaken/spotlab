@@ -58,7 +58,8 @@ def _berichtstext(bericht):
         f"Wegpunkte: {bericht['wegpunkte']}  ·  Schnappschüsse: {bericht['schnappschuesse']}"
         f" (fehlend: {bericht['fehlend']})  ·  Posen: {bericht['posen']}",
         f"Punkte: {bericht['punkte']}  ·  im Band: {bericht['im_band']}  ·  Zellen: {bericht['zellen']}",
-        f"Linien: {bericht['linien']}  ·  Wände: {bericht['waende']}  ·  verworfen: {bericht['verworfen']}",
+        f"Linien: {bericht['linien']}  ·  Wände: {bericht['waende']}  ·  verworfen: {bericht['verworfen']}"
+        f"  ·  durchquert (frei): {bericht.get('durchquert', 0)}",
         f"Tags: {bericht['tags']}  ·  Ausrichtung: {bericht['ausricht_grad']:+.0f}°"
         f"  ·  Quelle: {bericht['quelle']}  ·  {bericht.get('dauer_s', 0):.1f} s",
     ]
@@ -97,6 +98,10 @@ class RekonstruktionsDialog(QDialog):
         self.schlauch = self._zahl(2.0, 0.5, 6.0)
         self.ausrichten = QCheckBox("Häufigste Wandrichtung auf die x-Achse drehen")
         self.ausrichten.setChecked(True)
+        self.sichtpruefung = QCheckBox("Sichtprüfung: Zellen, durch die Strahlen gehen, sind frei")
+        self.sichtpruefung.setChecked(True)
+        self.begradigen = QCheckBox("Begradigen: Winkel bis 7° rasten, Doppelwände vereinen")
+        self.begradigen.setChecked(True)
         form = QFormLayout()
         form.addRow("Karte aus dem Arbeitsordner", self.karten)
         form.addRow("oder Ordner", zeile)
@@ -109,7 +114,9 @@ class RekonstruktionsDialog(QDialog):
         form.addRow("Lücke = Tür ab (m)", self.luecke)
         form.addRow("Mindestlänge einer Wand (m)", self.min_laenge)
         form.addRow("Schlauchbreite ohne Wolken (m)", self.schlauch)
+        form.addRow("", self.sichtpruefung)
         form.addRow("", self.ausrichten)
+        form.addRow("", self.begradigen)
 
         self.vorschau_knopf = QPushButton("Vorschau rechnen")
         self.vorschau_knopf.clicked.connect(self.vorschau)
@@ -157,6 +164,7 @@ class RekonstruktionsDialog(QDialog):
             band=(self.band_von.value(), self.band_bis.value()), zelle=self.zelle.value(),
             luecke=self.luecke.value(), min_laenge=self.min_laenge.value(),
             ausrichten=self.ausrichten.isChecked(), schlauch_breite=self.schlauch.value(),
+            sichtpruefung=self.sichtpruefung.isChecked(), begradigen=self.begradigen.isChecked(),
         )
 
     def vorschau(self):
