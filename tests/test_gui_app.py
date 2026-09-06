@@ -510,7 +510,8 @@ def test_der_startknopf_im_uebungsraum_erzwingt_das_sim_backend(qapp):
     fenster = MainWindow()
     fenster.ansichten["code"].setze_backend("real")
     fenster.ansichten["uebungsraum"].starten.click()
-    assert fenster.ansichten["code"].gewaehltes_backend() == "sim"
+    # 2D oder 3D, je nachdem, was auf diesem Laptop laeuft -- nie der Roboter.
+    assert fenster.ansichten["code"].gewaehltes_backend() in ("sim", "mujoco")
 
 
 def test_der_knopf_im_uebungsraum_wandert_mit_dem_lauf(qapp):
