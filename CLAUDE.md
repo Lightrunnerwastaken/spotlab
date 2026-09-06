@@ -325,6 +325,30 @@ versionsgepinntes Extra `spotlab[sim]`.
   sie bestanden die Katakomben aus 261 Stücken voller Strahlen im Ganginneren, mit ihr aus 61,
   die Gänge sauber umrandet (Bilder vom 06.09.2026). Ein Schichten-Filter („eine Wand füllt
   das Höhenband") war der falsche Weg: er zerhackt Wände, die eine Kamera nur teilweise sieht.
+- **Ein Hindernis ist ein Höhensprung über `MAX_STUFE_M` (0.25 m).** Dieselbe Zahl in
+  `welt/raum.py` und `spotsim/local_grid.py`, geprüft in `tests/test_backend_mujoco.py`;
+  Kollision (Körperband `KOERPER_BAND_M`, Klippen), das 2D-Gitter und das Tiefengitter der
+  Puppe formulieren nur sie. Im Tiefengitter ist belegt, was vom Boden unter dem Roboter
+  nicht über Sprünge bis `MAX_STUFE_M` erreichbar ist (Flutfüllung über gesehene Zellen);
+  nur Strahlen in Bodennähe räumen frei, der Boden hinter einer Klippe bleibt UNBEKANNT.
+- **Höhe nach einem Prinzip:** `welt/hoehe.py::boden_bei(raum, x, y, z_nahe)` ist die
+  einzige Antwort auf „wie hoch ist der Boden hier" — ohne `z_nahe` der höchste Boden, mit
+  `z_nahe` der höchste erreichbare, sonst der nächste. Der Grundboden liegt überall bei 0,
+  Böden liegen darauf (der tiefste Boden eines rekonstruierten Raums IST die 0).
+  `kaesten_fuer` ist die einzige Zerlegung eines Bodens in Kästen — MuJoCo-Welt und
+  3D-Sicht bekommen dieselben. **Eine Nick-Konvention:** Drehung um y nach der
+  Rechte-Hand-Regel, Nase hoch ist NEGATIV — so liest `rpy_aus` den echten Spot, so
+  rechnet MuJoCo, so liefern `nick_grad` und `kaesten_fuer`.
+- **Die Puppe spielt auf der Treppe den ebenen Gang** und sagt es (`treppengang:
+  "nicht gemessen"` im `verbunden`-Ereignis und im Bericht). Ein Treppengang kommt aus
+  B6 der Messfahrt, nie aus einer erfundenen Kurve. Berührungen mit `boden_`, `stufe_`,
+  `rampe_` sind kein Anstoss — die Füsse stecken beim ebenen Gang in den Stufen.
+- **Auf einer Treppe zeigt die Nase bergauf: vorwärts hoch, rückwärts runter.** Der Sim
+  verweigert den Rest (`treppe_verweigert`, einmal je Flanke, Rückmeldung sagt wie herum),
+  bis Abnahmepunkt A25 etwas anderes ergibt. Klippen halten wie Wände („Kante").
+- **`treppen` in `[limits]` gilt an einer Stelle:** `mobility.mit_grenze` setzt daraus
+  `stairs_mode` für alle drei Wege, der Sim liest denselben Wert (bei „aus" sind Rampen und
+  Treppen Klippen).
 - **Die Körperantwort auf `move()` ist gemessen, aber nur bei 1 m und 90°**
   (`kalibrierung/antwort.py`, kommandierte Läufe vom 02.09.2026). Andere Ziele fahren
   dasselbe Trapez und zählen in `bericht()` als ausserhalb der Messung. Kombinierte
@@ -455,6 +479,17 @@ versionsgepinntes Extra `spotlab[sim]`.
   steht an genau EINER Stelle: `src/spotlab/__init__.py`.
 
 ## Umsetzungsstand
+
+**Stufe 13 (06.09.2026): Höhe, Rampen und Treppen — Etappe 1 von 4 „Kern"** — Raumformat
+v3 (`Boden` als Podest, Rampe oder Treppe; `z` an Wand, Block, Tag), `welt/hoehe.py`
+(Boden unter einem Punkt, Neigung, Ebenen, Klippen, Treppenlage und -regel, Kästen),
+Körperband und Klippen in Kollision und Gitter, der 2D-Sim mit `z` und Nick (vorhandene
+Felder, jetzt mit echten Werten), Treppenmodus `treppen` in Konfiguration und
+Mobility-Parametern, Puppe Fassung 4 (Nick, Bodenhöhe, Sprungregel im Tiefengitter),
+MuJoCo-Welt mit Stufen, Rampen und Podesten aus `kaesten_fuer`, Video mit Höhe und Nick.
+Spec `docs/superpowers/specs/2026-09-06-hoehe-treppen-design.md`, Pläne
+`docs/superpowers/plans/2026-09-06-hoehe-*.md`. Offen: Etappe 2 (Editor mit Ebenen),
+3 (Rekonstruktion von Treppen, Rampen, Ebenen), 4 (`spot.stairs()`, Beispiel, Abnahme).
 
 **Stufe 12 (06.09.2026): Raumeditor, Etappe 1 von 3** — der Tab „Übungsraum" ist der
 Tab „Raumeditor": Wände (Linien mit Dicke und Höhe je Raum), drehbare Blöcke mit Höhe,

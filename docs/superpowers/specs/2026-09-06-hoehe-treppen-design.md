@@ -292,9 +292,10 @@ Treppen hat.
 
 ### Treppenmodus (`config.py`, `backends/mobility.py`)
 
-`Config.treppen: str = "auto"` (`"auto" | "aus"`), in `config.toml` unter
-`[sicherheit] treppen = "auto"`. Ein anderer Wert ist `ConfigBroken`.
-`mobility.mit_grenze(limits, treppen="auto")` setzt zusätzlich
+`Limits.treppen: str = "auto"` (`"auto" | "aus"`), in `config.toml` unter
+`[limits] treppen = "auto"` — ein Sicherheitswert wie die Deckel, deshalb dort
+(beim Bau so entschieden; die Spec sagte `[sicherheit]`). Ein anderer Wert
+ist `ConfigBroken`. `mobility.mit_grenze(limits)` liest `limits.treppen` und setzt
 `stairs_mode = STAIRS_MODE_AUTO` bzw. `STAIRS_MODE_OFF`. Alle drei Wege
 (`walk`, `move`, autonome Fahrt) nehmen `mit_grenze`, also gilt der Schalter
 überall. Kein `stair_hint`: das ist eine Angabe für einen konkreten Schritt,
@@ -419,9 +420,13 @@ und verschiebt, z bleibt):
 4. **Ebenen.** Bandpunkte unter `boden + 0.15` je Schnappschuss sind
    Bodenpunkte; je 0.25-m-Zelle die mittlere Bodenhöhe. Zellen werden nach
    Höhe in Plateaus gebündelt (Nachbarn mit |Δz| ≤ MAX_STUFE gehören
-   zusammen; Zellen unter Rampen und Treppen fallen weg). Das grösste Plateau
+   zusammen; Zellen unter Rampen und Treppen fallen weg). Das TIEFSTE Plateau
    ist die Höhe 0; alle anderen Höhen verschieben sich um dieselbe Zahl,
-   auch Treppen, Rampen, Tags und der Start. Jedes andere Plateau wird gierig
+   auch Treppen, Rampen, Tags und der Start. (Beim Bau von Etappe 1 geändert:
+   der Grundboden liegt überall bei 0 und Böden liegen darauf — ein Boden
+   unter dem Grundboden wäre in der Rechnung unerreichbar und in MuJoCo
+   verschüttet. `boden_bei` wählt ohne `z_nahe` den höchsten Boden, mit
+   `z_nahe` den höchsten erreichbaren, sonst den nächsten.) Jedes andere Plateau wird gierig
    in achsparallele Rechtecke ≥ 0.5 m zerlegt (grösstes Rechteck aus den
    freien Zellen, abziehen, wiederholen; höchstens `MAX_BOEDEN = 60` je
    Plateau); jedes Rechteck ein Podest mit der Plateauhöhe. Das geschieht im
@@ -572,3 +577,32 @@ Programm, das vorwärts hinunterfährt, und erwartet `treppe_verweigert` mit
   (`treppe_verweigert`), bis A25 etwas anderes ergibt.
 - **`treppen` in der Konfiguration gilt an einer Stelle:** `mobility.mit_grenze`
   setzt `stairs_mode`, der Sim liest denselben Wert.
+
+## 13 Nachträge beim Bau von Etappe 1 (06.09.2026)
+
+- **Die Treppenregel ist „Nase bergauf".** `treppe_erlaubt(richtung, vx, winkel)`
+  erlaubt jede Fahrt, solange die Nase innerhalb 45° zur Bergauf-Achse zeigt —
+  vorwärts hoch und rückwärts runter sind beide „Nase bergauf", die anderen
+  beiden Kombinationen sind verboten; `richtung` bestimmt nur, was die Meldung
+  verlangt. Die Prüfung heisst `SimBackend._treppe_verweigert(von, nach)` und
+  greift, sobald der Schritt auf die Treppe führt oder ihre Kante näher als den
+  Roboterradius bringt.
+- **Eine Nick-Konvention:** Drehung um y nach der Rechte-Hand-Regel, Nase hoch
+  ist NEGATIV — `nick_grad`, `kaesten_fuer` (`pitch_grad`), `Quader.pitch`,
+  `Puppe.setze(pitch=…)` und `State.pitch` sprechen dieselbe Sprache; § 4 sagte
+  noch „positiv = Nase hoch".
+- **`bewege()` bleibt; neu ist `bewege_mit_hoehe(raum, von, nach, z, klippen_)`**
+  mit Rückgabe `((x, y, yaw), z, hindernis)`. `hindernis_bei` bekommt `z=` und
+  `klippen_=` als optionale Parameter; ohne sie verhält sich alles wie in Stufe 12.
+- **`boden_bei(raum, x, y, z_nahe=None)`:** ohne `z_nahe` der höchste Boden,
+  mit `z_nahe` der höchste erreichbare (innerhalb `MAX_STUFE_M`), sonst der
+  nächste. Der Grundboden liegt überall bei 0 und Böden liegen darauf; ein
+  Boden unter 0 ist eine Prüfmeldung im Editor, und die Rekonstruktion macht
+  das TIEFSTE Plateau zur Höhe 0 (§ 6 sagte „das grösste").
+- **Treppenmodus:** `Limits.treppen` unter `[limits]`, nicht `[sicherheit]`.
+- **Tiefengitter der Puppe:** belegt ist eine gesehene Zelle, die vom Boden
+  unter dem Roboter nicht über Sprünge bis `MAX_STUFE_M` erreichbar ist
+  (Flutfüllung), und nur Strahlen in Bodennähe räumen frei — der Boden hinter
+  einer hohen Kante ist von oben nicht sichtbar und bleibt unbekannt (§ 4
+  formulierte die Regel als Nachbarsprung; die Flutfüllung ist dieselbe Regel
+  mit Anschluss an den eigenen Boden).
