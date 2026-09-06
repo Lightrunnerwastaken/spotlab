@@ -63,7 +63,10 @@ class Steuerung:
 
     # -------------------------------------------------------------- Maus
 
-    def druecke(self, x, y, taste="links", shift=False, ctrl=False, toleranz=TOLERANZ_M):
+    def druecke(self, x, y, taste="links", shift=False, ctrl=False, toleranz=TOLERANZ_M,
+                treffer=None):
+        """`treffer`: ein Schluessel, den die Sicht schon kennt (3D: Farb-ID-Puffer) --
+        er geht dem Treffertest am Bodenpunkt vor, die Griffe bleiben zuerst."""
         self.zeiger = (x, y)
         if self.raum is None:
             return
@@ -79,7 +82,7 @@ class Steuerung:
         if taste != "links":
             return
         if self.werkzeug == "auswahl":
-            self._druecke_auswahl(x, y, shift, toleranz)
+            self._druecke_auswahl(x, y, shift, toleranz, treffer)
         elif self.werkzeug == "wand":
             self._druecke_wand(x, y, ctrl)
         elif self.werkzeug == "block":
@@ -96,12 +99,12 @@ class Steuerung:
             self.raum = b.setze_start(self.raum, sx, sy, self.raum.start[2])
             self.auswahl = frozenset({b.START})
 
-    def _druecke_auswahl(self, x, y, shift, toleranz):
+    def _druecke_auswahl(self, x, y, shift, toleranz, treffer=None):
         for s, art, gx, gy in b.griffe(self.raum, self.auswahl):
             if math.hypot(gx - x, gy - y) <= toleranz:
                 self._zug = {"art": art, "schluessel": s, "raum": self.raum, "von": (x, y)}
                 return
-        s = b.treffer(self.raum, x, y, toleranz)
+        s = treffer if treffer is not None else b.treffer(self.raum, x, y, toleranz)
         if s is None:
             if not shift:
                 self.auswahl = frozenset()

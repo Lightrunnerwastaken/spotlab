@@ -169,3 +169,11 @@ def test_setze_raum_setzt_alles_zurueck():
     assert st.raum is RAUM and st.auswahl == frozenset() and not st.geaendert
     assert not st.verlauf.kann_zurueck
     assert TOLERANZ_M == 0.12
+
+
+def test_ein_uebergebener_treffer_geht_vor_dem_bodenpunkt():
+    """Aus 3D: der Farb-ID-Treffer nennt den Block, obwohl der Bodenpunkt dahinter liegt."""
+    st = Steuerung(RAUM)
+    st.druecke(3.9, 2.9, treffer=("block", 0))
+    st.lasse_los(3.9, 2.9)
+    assert st.auswahl == {("block", 0)}

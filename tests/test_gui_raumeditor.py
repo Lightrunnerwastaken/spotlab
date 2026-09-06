@@ -28,7 +28,10 @@ def test_der_editor_importiert_nichts_verbotenes():
                 namen.update(t.name for t in knoten.names)
             elif isinstance(knoten, ast.ImportFrom) and knoten.module:
                 namen.add(knoten.module)
-        schlimm = [n for n in namen if any(n.startswith(v) for v in verboten)]
+        # OpenGL nur in sicht3d.py -- und dort erst beim Zeigen (test_gui_raumeditor_sicht3d).
+        erlaubt = ("OpenGL",) if datei.name == "sicht3d.py" else ()
+        schlimm = [n for n in namen
+                   if any(n.startswith(v) for v in verboten) and not n.startswith(erlaubt)]
         assert not schlimm, f"{datei.name} importiert {schlimm}"
 
 
@@ -156,3 +159,25 @@ def test_das_nachspielen_ueberschreibt_keine_offenen_aenderungen(qapp, tmp_path)
     ansicht.steuerung.setze_feld(("raum",), "beschreibung", "in Arbeit")
     ansicht.lade(lauf)
     assert ansicht.raum().beschreibung == "in Arbeit"
+
+
+def test_der_umschalter_folgt_der_3d_verfuegbarkeit(qapp):
+    ansicht = RaumeditorView(DUNKEL)
+    ansicht.waehle_raum("leer")
+    ansicht.show()
+    qapp.processEvents()
+    if ansicht.sicht3d.verfuegbar:
+        assert ansicht.umschalter.isEnabled()
+        ansicht.umschalter.click()
+        assert ansicht.stapel.currentWidget() is ansicht.sicht3d
+        ansicht._taste("tab", False, False, False)
+        assert ansicht.stapel.currentWidget() is ansicht.sicht
+    else:
+        assert not ansicht.umschalter.isEnabled()
+        ansicht._taste("tab", False, False, False)
+        assert ansicht.stapel.currentWidget() is ansicht.sicht
+        # Erzwungen gezeigt: statt eines schwarzen Fensters steht die Tafel.
+        ansicht.stapel.setCurrentWidget(ansicht.sicht3d)
+        ansicht.sicht3d.repaint()
+        qapp.processEvents()
+        assert ansicht.sicht3d.verfuegbar is False and "3D" in ansicht.sicht3d.tafel

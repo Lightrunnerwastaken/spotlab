@@ -32,9 +32,11 @@ dev = ["pytest>=8,<9", "pytest-timeout>=2.3,<3", "ruff>=0.6,<1"]
 # send2trash: der Dateibaum loescht in den Papierkorb, nicht endgueltig.
 # Schuelerdateien liegen nicht in git -- ein Fehlklick waere sonst
 # unwiederbringlich. Fehlt das Paket, entfaellt der Menueeintrag.
+# PyOpenGL: die 3D-Sicht des Raumeditors -- nur in gui/raumeditor/sicht3d.py,
+# verzoegert importiert. Ohne das Paket laeuft der Editor in 2D.
 gui = [
     "PySide6>=6.6,<7", "pygments>=2.17,<3", "jedi>=0.19,<1",
-    "send2trash>=1.8,<2",
+    "send2trash>=1.8,<2", "PyOpenGL>=3.1,<4",
 ]
 # >=2.0: dort heisst der Server MCPServer, in 1.x hiess er FastMCP und lag
 # unter mcp.server.fastmcp. Ein Kompatibilitaetspfad waere hier ungeprueft.

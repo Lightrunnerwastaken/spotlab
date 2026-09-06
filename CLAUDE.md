@@ -295,6 +295,14 @@ versionsgepinntes Extra `spotlab[sim]`.
 - **Der Startknopf im Raumeditor speichert vorher, wenn nötig, und lehnt einen Start im
   Hindernis ab.** `SPOTLAB_RAUM` ist ein Name; ein Lauf in einem Raum, der so nicht auf der
   Platte liegt, wäre nicht nachspielbar.
+- **PyOpenGL nur in `gui/raumeditor/sicht3d.py`, erst in `initializeGL` importiert.** Ohne
+  das Paket oder ohne OpenGL-3.3-Kontext zeigt die Sicht eine Tafel und der Umschalter bleibt
+  grau; ein Import auf Modulebene liesse die ganze GUI ohne PyOpenGL sterben
+  (`tests/test_gui_raumeditor_sicht3d.py`). Und `QOpenGLContext.create()` ohne
+  `QGuiApplication` ist kein Fehler, sondern eine Zugriffsverletzung — `gl_verfuegbar()` prüft
+  die Anwendung zuerst. Uniforms gehen über PyOpenGL, nicht über
+  `QOpenGLShaderProgram.setUniformValue`: PySide6 wählt für `(location, 0.0)` die
+  int-Überladung, und `glUniform1i` auf ein float-Uniform ist GL_INVALID_OPERATION.
 - **Die Körperantwort auf `move()` ist gemessen, aber nur bei 1 m und 90°**
   (`kalibrierung/antwort.py`, kommandierte Läufe vom 02.09.2026). Andere Ziele fahren
   dasselbe Trapez und zählen in `bericht()` als ausserhalb der Messung. Kombinierte
@@ -430,8 +438,9 @@ versionsgepinntes Extra `spotlab[sim]`.
 Tab „Raumeditor": Wände (Linien mit Dicke und Höhe je Raum), drehbare Blöcke mit Höhe,
 Tags mit Hängehöhe; Griffe und Blender-Tasten, Liste, Zahlenfelder, Hinweise, eigene Räume
 unter `raeume/`. Raumformat v2 (`welt/raum.py`, alte Schreibweise wird gelesen), Drehung in
-Kollision, Gitter und Puppe (`PUPPE_FASSUNG = 3`). Offen: die 3D-Sicht (OpenGL mit Rückfall)
-und die Rekonstruktion aus GraphNav-Karten — Spec
+Kollision, Gitter und Puppe (`PUPPE_FASSUNG = 3`). Etappe 2: die 3D-Sicht (OpenGL 3.3 über
+`QOpenGLWidget` + PyOpenGL, Orbit-Kamera, Farb-ID-Auswahl, Rückfall auf 2D; Geometrie und
+Kamera GL-frei in `geometrie3d.py`). Offen: die Rekonstruktion aus GraphNav-Karten — Spec
 `docs/superpowers/specs/2026-09-06-raumeditor-design.md`.
 
 **Stufe 11 (06.09.2026): Übungsraum 3D** — `backend="mujoco"`, der 2D-Sim mit dem

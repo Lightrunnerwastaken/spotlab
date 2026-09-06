@@ -183,7 +183,13 @@ Schreibweise `hindernisse` wird weiter gelesen. Eigene Räume liegen unter
 `<arbeitsordner>/raeume/<name>.toml`; die Vorlagen bleiben unverändert, ein
 geänderter Raum fragt beim Speichern nach einem Namen.
 
-Tasten wie in Blender:
+**2D | 3D.** Der Knopf rechts über der Zeichnung (oder `Tab`) schaltet auf eine
+3D-Sicht: linke Maustaste wählt, rechte dreht die Kamera, mittlere (oder
+`Shift`+rechts) schwenkt, das Rad zoomt, `Home` rahmt den Raum; die Tasten sind
+dieselben wie in 2D. Ohne OpenGL 3.3 bleibt der Knopf grau und sagt, warum
+(`QT_OPENGL=software` hilft oft); der Editor arbeitet dann in 2D weiter.
+
+Tasten wie in Blender, in beiden Sichten:
 
 | Taste | Wirkung |
 |---|---|

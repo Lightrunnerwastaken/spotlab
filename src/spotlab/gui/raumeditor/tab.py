@@ -29,11 +29,13 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QPushButton,
     QSpinBox,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
 
 from spotlab.gui.raumeditor.sicht2d import Sicht2D
+from spotlab.gui.raumeditor.sicht3d import Sicht3D, gl_verfuegbar
 from spotlab.gui.raumeditor.steuerung import Steuerung
 from spotlab.welt import bearbeitung as b
 from spotlab.welt.raum import (
@@ -124,8 +126,12 @@ class RaumeditorView(QWidget):
         self.titel = QLabel("")
         self.umschalter = QPushButton("3D")
         self.umschalter.setCheckable(True)
-        self.umschalter.setEnabled(False)
-        self.umschalter.setToolTip("Die 3D-Sicht kommt in der nächsten Etappe.")
+        # Vor dem ersten Zeigen nur die Kontextprobe; scheitert initializeGL
+        # spaeter doch, schaltet `_3d_bereit` zurueck und erklaert es.
+        self.umschalter.setEnabled(gl_verfuegbar())
+        self.umschalter.setToolTip("3D-Sicht (Tab): rechte Maustaste dreht, mittlere schwenkt, "
+                                   "Rad zoomt, Home rahmt")
+        self.umschalter.toggled.connect(self._umschalten)
         kopf = QHBoxLayout()
         kopf.addWidget(self.titel, 1)
         kopf.addWidget(self.umschalter)
@@ -134,9 +140,18 @@ class RaumeditorView(QWidget):
         self.sicht.bewegt.connect(self._bewegt)
         self.sicht.losgelassen.connect(self._losgelassen)
         self.sicht.taste_gedrueckt.connect(self._taste)
+        self.sicht3d = Sicht3D(palette)
+        self.sicht3d.gedrueckt.connect(self._gedrueckt_3d)
+        self.sicht3d.bewegt.connect(self._bewegt)
+        self.sicht3d.losgelassen.connect(self._losgelassen)
+        self.sicht3d.taste_gedrueckt.connect(self._taste)
+        self.sicht3d.bereit.connect(self._3d_bereit)
+        self.stapel = QStackedWidget()
+        self.stapel.addWidget(self.sicht)
+        self.stapel.addWidget(self.sicht3d)
         mitte = QVBoxLayout()
         mitte.addLayout(kopf)
-        mitte.addWidget(self.sicht, 1)
+        mitte.addWidget(self.stapel, 1)
 
         # -- rechts: Liste, Eigenschaften, Hinweise
         self.liste = QListWidget()
@@ -188,10 +203,11 @@ class RaumeditorView(QWidget):
     def _setze(self, raum, name, eigen, geaendert):
         self._raumname, self._eigen = name, eigen
         self.steuerung.setze_raum(raum, geaendert=geaendert)
-        self.sicht.setze_spur([])
-        self.sicht.setze_anstoesse([])
-        self.sicht.zeige(raum)
-        self.sicht.alles_zeigen()
+        for sicht in (self.sicht, self.sicht3d):
+            sicht.setze_spur([])
+            sicht.setze_anstoesse([])
+            sicht.zeige(raum)
+            sicht.alles_zeigen()
         self._zeige()
 
     def waehle_raum(self, name):
@@ -318,10 +334,30 @@ class RaumeditorView(QWidget):
             pose = (satz.get("daten") or {}).get("pose")
             if pose and len(pose) >= 2:
                 spur.append((pose[0], pose[1]))
-        self.sicht.setze_spur(spur)
-        self.sicht.setze_anstoesse(anstoesse)
+        for sicht in (self.sicht, self.sicht3d):
+            sicht.setze_spur(spur)
+            sicht.setze_anstoesse(anstoesse)
 
     # ------------------------------------------------------- Ereignisse
+
+    def _umschalten(self, an):
+        self.stapel.setCurrentWidget(self.sicht3d if an else self.sicht)
+        if an:
+            self.sicht3d.alles_zeigen()
+        self.stapel.currentWidget().setFocus()
+
+    def _3d_bereit(self, ok):
+        """Nach initializeGL: ohne Kontext zurueck auf 2D, und sagen warum."""
+        self.umschalter.setEnabled(ok)
+        if not ok:
+            self.umschalter.setChecked(False)
+            self.umschalter.setToolTip(self.sicht3d.tafel)
+            self.meldung.emit(f"3D-Sicht nicht verfügbar: {self.sicht3d.grund}")
+
+    def _gedrueckt_3d(self, x, y, taste, shift, ctrl):
+        self.steuerung.druecke(x, y, taste, shift, ctrl, toleranz=self.sicht3d.toleranz_m(),
+                               treffer=self.sicht3d.klick_schluessel)
+        self._zeige()
 
     def _werkzeug(self, name):
         self.steuerung.setze_werkzeug(name)
@@ -344,7 +380,9 @@ class RaumeditorView(QWidget):
             self.speichern()
             return
         if name == "tab":
-            return                                 # 3D-Sicht: naechste Etappe
+            if self.umschalter.isEnabled():
+                self.umschalter.toggle()
+            return
         self.steuerung.taste(name, shift, ctrl, alt)
         self._zeige()
 
@@ -369,6 +407,7 @@ class RaumeditorView(QWidget):
     def _zeige(self, nur_sicht=False):
         st = self.steuerung
         self.sicht.zeige(st.raum, st.auswahl, st.griffe(), st.rahmen, st.kette)
+        self.sicht3d.zeige(st.raum, st.auswahl)
         if nur_sicht or st.raum is None:
             return
         self._fuelle_liste()
