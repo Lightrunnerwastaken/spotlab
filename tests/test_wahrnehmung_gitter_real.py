@@ -68,3 +68,22 @@ def test_is_free_haelt_unbekanntes_nicht_fuer_frei():
     y = gitter.origin[1] + (j + 0.5) * gitter.cell_size
     assert gitter.distance_at(x, y) is None
     assert not gitter.is_free(x, y)
+
+
+def test_der_ursprung_ist_die_mitte_der_ersten_zelle():
+    """Der Rahmen des Dienstes zeigt auf die Ecke; `ObstacleGrid._zelle` rundet
+    zur naechsten Zellmitte. Ohne die halbe Zelle kippt jede Anfrage im zweiten
+    Drittel einer Zelle in die Nachbarzelle."""
+    from bosdyn.client import frame_helpers as fh
+
+    from spotlab.backends.real.wahrnehmung import gitter_aus
+
+    antwort = _echt()
+    g = antwort.local_grid
+    ecke = fh.get_a_tform_b(g.transforms_snapshot, fh.VISION_FRAME_NAME,
+                            g.frame_name_local_grid_data)
+    gitter = gitter_aus(antwort)
+    assert gitter.origin == pytest.approx((ecke.x + 0.015, ecke.y + 0.015), abs=1e-6)
+    # Der Roboter steht in der Mitte des Gitters: Zelle [64, 64] herum.
+    zelle = gitter._zelle(ecke.x + 64.5 * 0.03, ecke.y + 64.5 * 0.03)
+    assert zelle == (64, 64)

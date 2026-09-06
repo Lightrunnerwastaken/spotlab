@@ -41,7 +41,7 @@ from spotlab.errors import SpotlabError
 from spotlab.welt.kollision import MAX_SCHRITT_M
 from spotlab.welt.wahrnehmung import TAG_REICHWEITE_M
 
-PUPPE_FASSUNG = 1
+PUPPE_FASSUNG = 2      # 2: weltfestes Gitter
 
 # Geometrie der Räume in 3D. Die TOML-Vorlagen kennen keine Höhen — das sind
 # ANNAHMEN: Wände zimmerhoch, Hindernisse tischhoch, Tags auf Kniehöhe (so
@@ -237,47 +237,14 @@ class MujocoBackend(SimBackend):
     def local_grid(self):
         """Aus den fünf Tiefenbildern — durch denselben Entpacker wie am Roboter.
 
-        Dann WELTFEST umgetastet: der echte Dienst richtet sein Gitter an den
-        Weltachsen aus (Fixture vom 12.08.2026: Rahmen an `vision`, Gieren 0°
-        bei 33.9° Körper-Gieren), und `ObstacleGrid` rechnet in Weltkoordinaten.
-        Die Sim in matura-spot rechnet körperfest — eine offene RESEARCH
-        DECISION dort, weil der Explorer darauf kartiert. Bis sie fällt,
-        dreht dieser Adapter das Gitter um: nächste Zelle, kein Interpolieren
-        — Abstände sind Skalare, und die Zelle ist 3 cm.
+        Das Gitter kommt weltfest (spotsim ab Puppe-Fassung 2, RESEARCH DECISION
+        06.09.2026 in matura-spot), so wie der echte Dienst es liefert und wie
+        `ObstacleGrid` rechnet. Nichts wird umgetastet.
         """
-        import numpy as np
-
         from spotlab.backends.real.wahrnehmung import gitter_aus
 
         self._fortschreiben()
-        koerperfest = gitter_aus(self.puppe.local_grid("obstacle_distance"))
-        x, y, yaw = self._pose
-        zellen = koerperfest.cells                     # [zeile=y, spalte=x], Körper-Gierrahmen
-        n = zellen.shape[0]
-        c = koerperfest.cell_size
-        halb = n / 2.0
-        # Zielgitter: weltfest, um den Körper zentriert. Zellmitten in Welt.
-        achse = (np.arange(n) - halb + 0.5) * c
-        wx, wy = np.meshgrid(x + achse, y + achse)          # [zeile=y, spalte=x]
-        # Weltpunkt → Körper-Gierrahmen → Quellzelle
-        cy, sy = math.cos(-yaw), math.sin(-yaw)
-        dx, dy = wx - x, wy - y
-        bx, by = dx * cy - dy * sy, dx * sy + dy * cy
-        qs = np.floor(bx / c + halb).astype(int)              # Quell-Spalte (x)
-        qz = np.floor(by / c + halb).astype(int)              # Quell-Zeile (y)
-        drin = (qs >= 0) & (qs < n) & (qz >= 0) & (qz < n)
-        werte = np.full((n, n), float(np.max(zellen)), dtype=np.float64)
-        bekannt = np.zeros((n, n), dtype=bool)
-        werte[drin] = zellen[qz[drin], qs[drin]]
-        if koerperfest.known is not None:
-            bekannt[drin] = koerperfest.known[qz[drin], qs[drin]]
-        else:
-            bekannt[drin] = True
-        return type(koerperfest)(
-            cells=werte, cell_size=c,
-            origin=(x - halb * c + c / 2, y - halb * c + c / 2),   # Mitte der Zelle [0, 0]
-            time=koerperfest.time, known=bekannt,
-        )
+        return gitter_aus(self.puppe.local_grid("obstacle_distance"))
 
     def image_sources(self):
         from spotsim.sensors import CAMERAS
