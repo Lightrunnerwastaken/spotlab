@@ -107,3 +107,30 @@ def test_gitter_ist_schnell_genug_fuer_zwei_hertz():
     beginn = time.perf_counter()
     abstandsgitter(raum, (5.0, 5.0, 0.0))
     assert time.perf_counter() - beginn < 0.25
+
+
+# ------------------------------------------------------- gedrehte Bloecke
+
+
+def _wert_bei(raum, pose, x, y):
+    from spotlab.welt.wahrnehmung import GITTER_ZELLE_M, abstandsgitter
+
+    werte, _bekannt, ursprung = abstandsgitter(raum, pose)
+    spalte = int(round((x - ursprung[0]) / GITTER_ZELLE_M))
+    zeile = int(round((y - ursprung[1]) / GITTER_ZELLE_M))
+    return werte[zeile][spalte]
+
+
+def test_das_gitter_kennt_gedrehte_bloecke():
+    raum = Raum(name="G", beschreibung="", start=(5.0, 5.0, 0.0),
+                bloecke=(Block("Balken", 5.0, 5.0, 2.0, 0.5, drehung=45.0),))
+    pose = (5.0, 5.0, 0.0)
+    assert _wert_bei(raum, pose, 5.0 + 0.9 * 0.7071, 5.0 + 0.9 * 0.7071) == pytest.approx(0.0, abs=0.03)
+    assert _wert_bei(raum, pose, 5.6, 5.0) == pytest.approx(0.174, abs=0.03)
+
+
+def test_die_wanddicke_zaehlt_im_gitter():
+    raum = Raum(name="W", beschreibung="", start=(5.0, 5.0, 0.0),
+                waende=((0.0, 4.0, 10.0, 4.0),), wand_dicke=0.10)
+    # 0.30 m vor der Wandlinie bleiben 0.25 m bis zur Wandflaeche.
+    assert _wert_bei(raum, (5.0, 5.0, 0.0), 5.0, 4.30) == pytest.approx(0.25, abs=0.03)

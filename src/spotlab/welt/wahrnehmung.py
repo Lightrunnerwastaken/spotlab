@@ -57,21 +57,33 @@ def sichtbare_tags(raum, pose):
 
 
 def _abstaende(raum, xs, ys):
-    """Je Zelle der Abstand zum naechsten Hindernis, vektorisiert."""
+    """Je Zelle der Abstand zum naechsten Hindernis, vektorisiert.
+
+    Waende sind Linien mit Dicke: gemessen wird bis zur Wandflaeche, nie unter
+    null. Bloecke sind gedreht: die Zellmitten werden in den Blockrahmen gedreht,
+    danach ist es der Abstand zum achsparallelen Rechteck -- dieselbe Rechnung
+    wie `kollision.abstand_block`, nur fuer 16384 Punkte auf einmal.
+    """
     abstand = np.full(xs.shape, np.inf)
+    halbe_dicke = raum.wand_dicke / 2
     for x1, y1, x2, y2 in raum.waende:
         dx, dy = x2 - x1, y2 - y1
         laenge2 = dx * dx + dy * dy
         if laenge2 == 0.0:
-            abstand = np.minimum(abstand, np.hypot(xs - x1, ys - y1))
-            continue
-        t = np.clip(((xs - x1) * dx + (ys - y1) * dy) / laenge2, 0.0, 1.0)
-        abstand = np.minimum(abstand, np.hypot(xs - (x1 + t * dx), ys - (y1 + t * dy)))
-    for hindernis in raum.hindernisse:
-        hx, hy, breite, hoehe = hindernis.rechteck
-        dx = np.maximum(np.maximum(hx - xs, 0.0), xs - (hx + breite))
-        dy = np.maximum(np.maximum(hy - ys, 0.0), ys - (hy + hoehe))
-        abstand = np.minimum(abstand, np.hypot(dx, dy))
+            zur_linie = np.hypot(xs - x1, ys - y1)
+        else:
+            t = np.clip(((xs - x1) * dx + (ys - y1) * dy) / laenge2, 0.0, 1.0)
+            zur_linie = np.hypot(xs - (x1 + t * dx), ys - (y1 + t * dy))
+        abstand = np.minimum(abstand, np.maximum(zur_linie - halbe_dicke, 0.0))
+    for block in raum.bloecke:
+        c = math.cos(math.radians(-block.drehung))
+        s = math.sin(math.radians(-block.drehung))
+        dx, dy = xs - block.x, ys - block.y
+        lx = dx * c - dy * s
+        ly = dx * s + dy * c
+        ddx = np.maximum(np.abs(lx) - block.breite / 2, 0.0)
+        ddy = np.maximum(np.abs(ly) - block.tiefe / 2, 0.0)
+        abstand = np.minimum(abstand, np.hypot(ddx, ddy))
     return abstand
 
 
