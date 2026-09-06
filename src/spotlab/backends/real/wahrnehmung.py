@@ -114,10 +114,19 @@ def gitter_aus(antwort):
 
     bekannt = None
     if g.unknown_cells:
-        unbekannt = np.unpackbits(
-            np.frombuffer(g.unknown_cells, dtype=np.uint8),
-            count=n[0] * n[1], bitorder="little",
-        ).reshape(n).astype(bool)
+        # EIN BYTE je Zelle (0 = bekannt, 1 = unbekannt) -- GEMESSEN an der
+        # Aufzeichnung vom 12.08.2026 (tests/daten/gitter_real_20260812), 16384
+        # Bytes fuer 128x128. Bis zum 06.09.2026 wurde hier bitweise entpackt:
+        # die ersten 2048 Bytes als Bits, der Rest ignoriert -- am echten Spot
+        # eine falsche Maske, und `is_free()` hielt Unbekanntes fuer frei.
+        # Bitgepackt waren nur alte Sim-Aufzeichnungen aus matura-spot; die
+        # bleiben an der Laenge erkennbar und lesbar.
+        roh = np.frombuffer(g.unknown_cells, dtype=np.uint8)
+        anzahl = n[0] * n[1]
+        if roh.size == anzahl:
+            unbekannt = roh.reshape(n).astype(bool)
+        else:
+            unbekannt = np.unpackbits(roh, count=anzahl, bitorder="little").reshape(n).astype(bool)
         bekannt = ~unbekannt
 
     ursprung = _pose(g.transforms_snapshot, g.frame_name_local_grid_data,
