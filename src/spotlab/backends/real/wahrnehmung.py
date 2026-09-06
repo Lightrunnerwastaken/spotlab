@@ -106,7 +106,11 @@ def gitter_aus(antwort):
     from bosdyn.api import local_grid_pb2 as lg
 
     g = antwort.local_grid
-    n = (g.extent.num_cells_x, g.extent.num_cells_y)
+    # (ny, nx): local_grid.proto legt Zelle (i, j) bei i * num_cells_x + j ab --
+    # x laeuft am schnellsten, das Array ist [zeile = y, spalte = x]. Genau so
+    # indiziert `ObstacleGrid._zelle`. Bei 128x128 faellt der Unterschied nicht
+    # auf; er faellt auf, sobald ein Gitter nicht quadratisch ist.
+    n = (g.extent.num_cells_y, g.extent.num_cells_x)
     roh = np.frombuffer(g.data, dtype=_dtypen()[g.cell_format])
     if g.encoding == lg.LocalGrid.ENCODING_RLE:
         roh = np.repeat(roh, np.asarray(g.rle_counts, dtype=np.int64))
