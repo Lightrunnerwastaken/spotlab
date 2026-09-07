@@ -174,3 +174,14 @@ def test_ein_tag_auf_der_anderen_ebene_ist_unsichtbar():
     assert sichtbare_tags(raum, (2.0, 5.0, 0.0), z=0.0) == []
     assert len(sichtbare_tags(raum, (2.0, 5.0, 0.0), z=2.0)) == 1
     assert len(sichtbare_tags(raum, (2.0, 5.0, 0.0))) == 0                          # ohne z: z = 0
+
+
+def test_das_gitter_meldet_die_gelaendekante():
+    from spotlab.welt import gelaende as g
+    from spotlab.welt.kollision import klippen_von
+
+    raum = Raum("G", "", (0.5, 1.0, 0.0),
+                gelaende=g.gitter(0.0, 0.0, 0.2, 11, 31, lambda x, y: 0.0 if x < 3.0 else 0.6))
+    werte, bekannt, ursprung = abstandsgitter(raum, (2.0, 1.0, 0.0), z=0.0, klippen_=klippen_von(raum))
+    assert _gitterwert(werte, ursprung, 2.9, 1.0) < 0.15
+    assert _gitterwert(werte, ursprung, 2.0, 1.0) > 0.5

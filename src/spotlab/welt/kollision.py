@@ -56,11 +56,26 @@ def abstand_block(block, px, py):
     return math.hypot(dx, dy)
 
 
+_KLIPPEN_MEMO = {}
+
+
 def klippen_von(raum, alles=False):
-    """Die Klippen des Raums, einmal je Raum gerechnet (reine Geometrie ohne Pose)."""
+    """Die Klippen des Raums, einmal je Raum gerechnet (reine Geometrie ohne Pose).
+
+    Gemerkt wird das letzte Ergebnis je (Boeden, Gelaende, alles) -- ueber die
+    Identitaet der beiden unveraenderlichen Tupel bzw. Objekte. Der Editor fragt
+    bei jeder Mausbewegung; ein Gelaende hat zehntausende Knoten.
+    """
     from spotlab.welt.hoehe import klippen
 
-    return klippen(raum, alles=alles)
+    schluessel = (id(raum.boeden), id(raum.gelaende), alles)
+    treffer = _KLIPPEN_MEMO.get(schluessel)
+    if treffer is not None and treffer[0] is raum.boeden and treffer[1] is raum.gelaende:
+        return treffer[2]
+    ergebnis = klippen(raum, alles=alles)
+    _KLIPPEN_MEMO.clear()
+    _KLIPPEN_MEMO[schluessel] = (raum.boeden, raum.gelaende, ergebnis)
+    return ergebnis
 
 
 def hindernis_bei(raum, x, y, radius=ROBOTER_RADIUS_M, z=None, klippen_=None):

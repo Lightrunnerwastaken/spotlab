@@ -216,3 +216,35 @@ def test_ohne_boeden_ist_bewege_mit_hoehe_bewege():
     assert (pose, z, wer) == ((2.0, 1.0, 0.0), 0.0, None)
     pose, z, wer = bewege_mit_hoehe(RAUM, (4.0, 5.5, 0.0), (6.0, 5.5, 0.0), 0.0, [])
     assert wer == "Kiste" and z == 0.0
+
+
+# ------------------------------------------------------------- Gelaende
+
+
+def test_eine_gelaendekante_haelt_den_roboter():
+    from dataclasses import replace
+
+    from spotlab.welt import gelaende as g
+    from spotlab.welt.hoehe import boden_bei
+    from spotlab.welt.kollision import bewege_mit_hoehe, klippen_von
+
+    raum = Raum("G", "", (0.5, 1.0, 0.0),
+                gelaende=g.gitter(0.0, 0.0, 0.2, 11, 31, lambda x, y: 0.0 if x < 3.0 else 0.6))
+    kl = klippen_von(raum)
+    z, _ = boden_bei(raum, 2.0, 1.0)
+    pose, z_neu, getroffen = bewege_mit_hoehe(raum, (2.0, 1.0, 0.0), (4.0, 1.0, 0.0), z, kl)
+    assert getroffen == "Kante" and pose[0] < 3.0 and z_neu == 0.0
+    assert klippen_von(replace(raum, waende=((0, 0, 1, 0),))) is kl
+
+
+def test_klippen_von_merkt_sich_das_ergebnis_je_boeden_und_gelaende():
+    from dataclasses import replace
+
+    from spotlab.welt.kollision import klippen_von
+    from spotlab.welt.raum import Boden
+
+    raum = Raum("G", "", (0.5, 1.0, 0.0), boeden=(Boden("P", 2.0, 1.0, 1.0, 1.0, z=0.5),))
+    erstes = klippen_von(raum)
+    assert klippen_von(raum) is erstes
+    assert klippen_von(replace(raum, boeden=())) is not erstes
+    assert klippen_von(raum, alles=True) is not erstes

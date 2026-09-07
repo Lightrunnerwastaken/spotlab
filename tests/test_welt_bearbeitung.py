@@ -321,3 +321,14 @@ def test_pruefe_nennt_kante_stufenhoehe_und_boden_unter_dem_grund():
     assert any("unter dem Grundboden" in h for h in hinweise), hinweise
     frei = Raum(name="H", beschreibung="", start=(2.0, 0.0, 0.0), boeden=(Boden("P", 2, 0, 2, 2, z=1.0),))
     assert b.pruefe(frei) == []
+
+
+def test_pruefe_meldet_eine_schwebende_und_eine_steckende_wand():
+    from spotlab.welt import gelaende as g
+    from spotlab.welt.raum import Wand
+
+    raum = Raum("G", "", (0.5, 0.5, 0.0), waende=[Wand(0, 1, 2, 1, z=1.0), Wand(0, 1.5, 2, 1.5, z=-0.3)],
+                gelaende=g.gitter(0.0, 0.0, 0.5, 5, 5, lambda x, y: 0.2))
+    hinweise = b.pruefe(raum)
+    assert any("Wand 1 schwebt 0.8 m" in h for h in hinweise)
+    assert any("Wand 2 steckt 0.5 m" in h for h in hinweise)

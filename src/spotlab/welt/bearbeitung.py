@@ -467,6 +467,11 @@ def pruefe(raum):
     for i, wand in enumerate(raum.waende):
         if wand.laenge < MINDESTKANTE_M:
             hinweise.append(f"Wand {i + 1} hat keine Laenge.")
+        grund = raum.gelaende.hoehe_bei(*wand.mitte) if raum.gelaende is not None else None
+        if grund is not None and wand.z - grund > MAX_STUFE_M:
+            hinweise.append(f"Wand {i + 1} schwebt {wand.z - grund:.1f} m über dem Gelände.")
+        elif grund is not None and grund - wand.z > MAX_STUFE_M:
+            hinweise.append(f"Wand {i + 1} steckt {grund - wand.z:.1f} m im Gelände.")
     for block in raum.bloecke:
         if min(block.breite, block.tiefe, block.hoehe) < MINDESTKANTE_M:
             hinweise.append(f"„{block.name}“ hat eine Kante unter {MINDESTKANTE_M} m.")
