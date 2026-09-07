@@ -185,3 +185,33 @@ def test_das_gitter_meldet_die_gelaendekante():
     werte, bekannt, ursprung = abstandsgitter(raum, (2.0, 1.0, 0.0), z=0.0, klippen_=klippen_von(raum))
     assert _gitterwert(werte, ursprung, 2.9, 1.0) < 0.15
     assert _gitterwert(werte, ursprung, 2.0, 1.0) > 0.5
+
+
+def test_viele_klippen_rechnet_das_gitter_vektorisiert():
+    """Ein Gelaende hat Hunderte Klippenstrecken; je Strecke einmal ueber alle Zellen zu
+    rechnen kostete 0.57 s je Abruf (Katakomben, 07.09.2026)."""
+    import random
+    import time
+
+    import numpy as np
+
+    from spotlab.welt.wahrnehmung import _zur_strecke
+
+    # 30 x 30 m wie eine Karte, 2000 Klippenstuecke ueberall -- das Gitter sieht nur 3.84 m.
+    raum = Raum(name="K", beschreibung="", start=(15.0, 15.0, 0.0),
+                waende=((0, 0, 30, 0), (30, 0, 30, 30), (30, 30, 0, 30), (0, 30, 0, 0)))
+    zufall = random.Random(1)
+    klippen = []
+    for _ in range(2000):
+        x, y = zufall.uniform(0.5, 29.5), zufall.uniform(0.5, 29.5)
+        klippen.append((x, y, x + 0.2, y))
+    beginn = time.perf_counter()
+    werte, _bekannt, ursprung = abstandsgitter(raum, (15.0, 15.0, 0.0), z=0.0, klippen_=klippen)
+    assert time.perf_counter() - beginn < 0.25
+    # Nahe der Mitte ist der Wert der Abstand zur naechsten Klippe -- gegen alle gerechnet.
+    for x, y in ((15.0, 15.0), (14.6, 15.4), (15.5, 14.4)):
+        cx = ursprung[0] + round((x - ursprung[0]) / GITTER_ZELLE_M) * GITTER_ZELLE_M
+        cy = ursprung[1] + round((y - ursprung[1]) / GITTER_ZELLE_M) * GITTER_ZELLE_M
+        xs, ys = np.array([cx]), np.array([cy])
+        erwartet = min(float(_zur_strecke(xs, ys, *k)[0]) for k in klippen)
+        assert _gitterwert(werte, ursprung, cx, cy) == pytest.approx(erwartet, abs=1e-6)

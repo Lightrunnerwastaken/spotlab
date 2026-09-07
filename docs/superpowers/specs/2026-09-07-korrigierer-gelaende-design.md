@@ -548,3 +548,11 @@ Ctrl+Z macht die ganze Korrektur rückgängig.
   gehen auf, die Treppe bleibt; der aufgezeichnete Weg läuft mit
   `bewege_mit_hoehe` ohne Anstoss durch (`tests/test_katakomben_korrektur.py`,
   rund 25 s inklusive Rekonstruktion).
+- **Nach dem Merge (07.09.2026):** Streifen im MuJoCo-Bild — das hfield lag über
+  dem ganzen Raster auf der Höhe von `floor`, Z-Fighting; Knoten ohne Boden
+  liegen jetzt 2 cm darunter (`GELAENDE_SENKE_M`; MuJoCo normiert hfield-Daten
+  selbst auf [0, 1], die Daten werden deshalb gespannt übergeben). Und
+  `obstacles()` im 2D-Sim kostete 0.57 s, weil jede der 362 Klippenstrecken
+  gegen alle Zellen rechnete; das Gitter nimmt nur noch, was bis 1 m um es
+  liegt (`FENSTER_RAND_M`): 0.03 s.
+

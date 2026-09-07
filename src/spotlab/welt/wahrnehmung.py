@@ -11,6 +11,7 @@ Ein `Tag` oder ein `ObstacleGrid` daraus zu bauen ist Sache von sim.py, weil
 """
 
 import math
+from dataclasses import replace
 
 import numpy as np
 
@@ -107,23 +108,53 @@ def _abstaende(raum, xs, ys, z=None, klippen_=()):
     return abstand
 
 
+# Nur was bis so weit ausserhalb des Gitters liegt, rechnet mit. Ein Gelaende hat
+# Hunderte Klippenstrecken ueber die ganze Karte; jede gegen alle 16384 Zellen zu
+# rechnen kostete 0.57 s je Abruf (Katakomben, 07.09.2026). Fuer eine Zelle am Rand
+# zaehlt ein Hindernis weiter draussen nur als Abstand > FENSTER_RAND_M -- mehr als
+# jeder Rand, den `is_free` anlegt.
+FENSTER_RAND_M = 1.0
+
+
+def _im_fenster(x1, y1, x2, y2, fenster):
+    return (max(x1, x2) >= fenster[0] and min(x1, x2) <= fenster[2]
+            and max(y1, y2) >= fenster[1] and min(y1, y2) <= fenster[3])
+
+
+def _nahe(raum, klippen_, fenster):
+    """(Raum mit den Waenden und Bloecken im Fenster, Klippen im Fenster)."""
+    waende = tuple(w for w in raum.waende if _im_fenster(w.x1, w.y1, w.x2, w.y2, fenster))
+    bloecke = []
+    for block in raum.bloecke:
+        xs = [e[0] for e in block.ecken()]
+        ys = [e[1] for e in block.ecken()]
+        if _im_fenster(min(xs), min(ys), max(xs), max(ys), fenster):
+            bloecke.append(block)
+    klippen_nah = [k for k in klippen_ if _im_fenster(*k, fenster)]
+    return replace(raum, waende=waende, bloecke=tuple(bloecke)), klippen_nah
+
+
 def abstandsgitter(raum, pose, z=None, klippen_=None):
     """(werte, bekannt, ursprung) -- Listen, damit welt/ formfrei bleibt.
 
     `bekannt` ist False, wo die Sichtlinie durch eine Wand oder ein Hindernis
     laeuft. Unbekannt ist NICHT frei -- das ist der Fehler, der einen Roboter in
     eine Wand faehrt. `z` und `klippen_` wie in `kollision.hindernis_bei`.
+    Gerechnet wird nur mit dem, was bis FENSTER_RAND_M um das Gitter liegt.
     """
     x, y, _yaw = pose
     kante = GITTER_ZELLEN * GITTER_ZELLE_M
     ursprung = (x - kante / 2, y - kante / 2)
+    fenster = (ursprung[0] - FENSTER_RAND_M, ursprung[1] - FENSTER_RAND_M,
+               ursprung[0] + kante + FENSTER_RAND_M, ursprung[1] + kante + FENSTER_RAND_M)
+    raum, klippen_ = _nahe(raum, klippen_ or (), fenster)
 
     achse = np.arange(GITTER_ZELLEN) * GITTER_ZELLE_M
     xs = ursprung[0] + achse[np.newaxis, :]
     ys = ursprung[1] + achse[:, np.newaxis]
     xs, ys = np.broadcast_arrays(xs, ys)
 
-    werte = _abstaende(raum, xs, ys, z, klippen_ or ())
+    werte = _abstaende(raum, xs, ys, z, klippen_)
 
     bekannt = np.ones(werte.shape, dtype=bool)
     for zeile in range(0, GITTER_ZELLEN, SICHT_RASTER):

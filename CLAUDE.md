@@ -364,7 +364,13 @@ versionsgepinntes Extra `spotlab[sim]`.
   `theme.mische`.** Und im Geländebau sperren Pauspapier-Punkte nur den Rand: eingeschlossene
   Knoten werden Boden, gesperrte Cluster bekommen die Nachbarhöhe kopiert (nicht Membran —
   eine Wand leitete sonst Höhe an sich entlang), Wegknoten mitteln sich im Umkreis von 1 m
-  (zwei Fahrten mit 0.7 m Drift). Geländeklippen unter einem Boden zählen nicht.
+  (zwei Fahrten mit 0.7 m Drift). Geländeklippen unter einem Boden zählen nicht. **Das
+  2D-Gitter rechnet nur mit dem, was bis `FENSTER_RAND_M` (1 m) um es liegt** — ein Gelände
+  hat Hunderte Klippenstrecken über die ganze Karte, jede gegen 16384 Zellen kostete 0.57 s
+  je `obstacles()`, jetzt 0.03 s; für eine Randzelle zählt ein Hindernis weiter draussen nur
+  als Abstand über einem Meter, mehr als jeder Rand von `is_free`. In MuJoCo liegen Knoten
+  ohne Boden 2 cm UNTER der Bodenebene (Puppe `GELAENDE_SENKE_M`), sonst flimmern zwei
+  Flächen auf derselben Höhe.
 - **`errors/` darf nichts aus `backends/` importieren.** `backends/base.py` importiert
   `UnsupportedCapability` aus `errors`; die Gegenrichtung schliesst den Kreis, sobald
   `backends.base` zuerst geladen wird. Die Position der Importzeile hilft dagegen nicht.
