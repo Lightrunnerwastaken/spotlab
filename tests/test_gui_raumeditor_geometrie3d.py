@@ -110,3 +110,35 @@ def test_boeden_kommen_als_dieselben_kaesten_wie_in_mujoco():
 def test_bodenraster_liegt_auf_der_tiefsten_ebene():
     linien = g.bodenraster((0.0, 0.0, 2.0, 1.0), schritt=1.0, z=-1.0)
     assert set(linien[2::3]) == {-1.0}
+
+
+# ------------------------------------------------------------- Gelaende
+
+
+def test_zwei_dreiecke_je_voller_zelle_und_eins_bei_drei_knoten():
+    from spotlab.gui.raumeditor.geometrie3d import gelaende_dreiecke
+    from spotlab.welt import gelaende as g
+
+    voll = g.gitter(0.0, 0.0, 1.0, 2, 2, lambda x, y: 0.0)
+    assert sum(len(v) for _b, v in gelaende_dreiecke(voll)) == 2 * 3 * 6
+    drei = g.gitter(0.0, 0.0, 1.0, 2, 2, lambda x, y: None if (x, y) == (1.0, 1.0) else 0.0)
+    assert sum(len(v) for _b, v in gelaende_dreiecke(drei)) == 1 * 3 * 6
+
+
+def test_die_normale_zeigt_nach_oben_und_das_band_stimmt():
+    from spotlab.gui.raumeditor.geometrie3d import gelaende_dreiecke
+    from spotlab.welt import gelaende as g
+
+    ge = g.gitter(0.0, 0.0, 1.0, 2, 2, lambda x, y: 0.6)
+    ((band, v),) = gelaende_dreiecke(ge)
+    assert band == 2 and v[5] > 0.99 and v[2] == pytest.approx(0.6)
+
+
+def test_kaesten_aus_raum_beginnt_mit_dem_gelaende():
+    from spotlab.gui.raumeditor.geometrie3d import kaesten_aus_raum
+    from spotlab.welt import gelaende as g
+    from spotlab.welt.raum import Raum
+
+    raum = Raum("G", "", (0.5, 0.5, 0.0), gelaende=g.gitter(0.0, 0.0, 1.0, 2, 2, lambda x, y: 0.0))
+    kaesten = kaesten_aus_raum(raum, frozenset())
+    assert kaesten[0][0] == ("gelaende", 0) and kaesten[-1][0] == ("start",)

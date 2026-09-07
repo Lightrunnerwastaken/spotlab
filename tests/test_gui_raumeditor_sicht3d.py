@@ -63,3 +63,23 @@ def test_mit_kontext_rendert_die_sicht_den_raum(qapp):
     assert sicht.treffer(160, 120) in (("block", 0), ("wand", 0), ("start",), None)
     x, y = sicht.bodenpunkt(160, 120)
     assert abs(x - 2.0) < 1.0 and abs(y - 1.0) < 1.5
+
+
+def test_das_gelaende_hat_eine_bandfarbe_und_ist_nicht_anklickbar(qapp):
+    from spotlab.welt import gelaende as g
+
+    sicht = Sicht3D(DUNKEL)
+    farbe = sicht._elementfarbe(("gelaende", 3))
+    assert farbe.startswith("#") and farbe != DUNKEL.akzent
+    assert sicht._elementfarbe(("gelaende", 0)) != farbe
+    raum = Raum(name="G", beschreibung="", start=(1, 1, 0),
+                gelaende=g.gitter(0.0, 0.0, 0.5, 5, 9, lambda x, y: 0.2 * x))
+    sicht.zeige(raum)
+    if not gl_verfuegbar():
+        pytest.skip("kein OpenGL-3.3-Kontext (offscreen?)")
+    sicht.resize(320, 240)
+    sicht.show()
+    qapp.processEvents()
+    sicht.alles_zeigen()
+    sicht.bild()
+    assert sicht.treffer(160, 120) in (("start",), None)

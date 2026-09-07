@@ -54,15 +54,60 @@ def kasten(x, y, z, hx, hy, hz, yaw_grad=0.0, pitch_grad=0.0):
     return daten
 
 
+def _normale(a, b_, c):
+    ux, uy, uz = b_[0] - a[0], b_[1] - a[1], b_[2] - a[2]
+    vx, vy, vz = c[0] - a[0], c[1] - a[1], c[2] - a[2]
+    nx, ny, nz = uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx
+    laenge = math.sqrt(nx * nx + ny * ny + nz * nz) or 1.0
+    nx, ny, nz = nx / laenge, ny / laenge, nz / laenge
+    return (-nx, -ny, -nz) if nz < 0 else (nx, ny, nz)
+
+
+def gelaende_dreiecke(gelaende, band_m=0.25):
+    """[(band, vertices)]: das Gelaende als Dreiecksnetz, gruppiert nach Hoehenband.
+
+    Je Zelle mit vier gueltigen Knoten zwei Dreiecke, mit drei gueltigen eines,
+    keines darunter; je Dreieck die Normale aus dem Kreuzprodukt (nach oben).
+    Das Band ist floor(mittlere Hoehe / band_m); die Sicht toent es je Band.
+    """
+    baender = {}
+    z, x0, y0 = gelaende.zelle, gelaende.x0, gelaende.y0
+    for i in range(gelaende.zeilen - 1):
+        for j in range(gelaende.spalten - 1):
+            ecken = [(x0 + j * z, y0 + i * z, gelaende.knoten(i, j)),
+                     (x0 + (j + 1) * z, y0 + i * z, gelaende.knoten(i, j + 1)),
+                     (x0 + (j + 1) * z, y0 + (i + 1) * z, gelaende.knoten(i + 1, j + 1)),
+                     (x0 + j * z, y0 + (i + 1) * z, gelaende.knoten(i + 1, j))]
+            gueltig = [e for e in ecken if e[2] is not None]
+            if len(gueltig) == 4:
+                dreiecke = [(ecken[0], ecken[1], ecken[2]), (ecken[0], ecken[2], ecken[3])]
+            elif len(gueltig) == 3:
+                dreiecke = [tuple(gueltig)]        # bleibt gegen den Uhrzeigersinn
+            else:
+                continue
+            for dreieck in dreiecke:
+                n = _normale(*dreieck)
+                band = math.floor(sum(p[2] for p in dreieck) / 3 / band_m + 1e-9)
+                daten = baender.setdefault(band, [])
+                for punkt in dreieck:
+                    daten.extend(punkt)
+                    daten.extend(n)
+    return sorted(baender.items())
+
+
 def kaesten_aus_raum(raum, auswahl):
-    """[(schluessel, vertices)] fuer Boeden, Waende, Bloecke, Tags und den Spot am Start.
+    """[(schluessel, vertices)] fuer Gelaende, Boeden, Waende, Bloecke, Tags und den Spot am Start.
 
     Boeden kommen aus `hoehe.kaesten_fuer` -- derselben Zerlegung wie die
     MuJoCo-Welt; ein Boden hat mehrere Kaesten, alle mit seinem Schluessel.
+    Das Gelaende kommt zuerst, als Dreiecke je Hoehenband (`("gelaende", band)`).
     """
     from spotlab.welt.hoehe import boden_bei, boden_z, kaesten_fuer
 
     kaesten = []
+    if raum.gelaende is not None:
+        for band, vertices in gelaende_dreiecke(raum.gelaende):
+            kaesten.append((("gelaende", band), vertices))
     tiefster = boden_z(raum)
     for i, boden in enumerate(raum.boeden):
         for _name, x, y, z, hx, hy, hz, yaw, pitch in kaesten_fuer(boden, tiefster):

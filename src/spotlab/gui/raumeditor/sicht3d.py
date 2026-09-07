@@ -29,6 +29,7 @@ from PySide6.QtOpenGLWidgets import QOpenGLWidget
 
 from spotlab.gui.raumeditor import geometrie3d as geo
 from spotlab.gui.raumeditor.sicht2d import TASTEN
+from spotlab.gui.theme import mische
 from spotlab.welt.raum import huelle
 
 TOLERANZ_M = 0.12
@@ -260,6 +261,8 @@ class Sicht3D(QOpenGLWidget):
         if schluessel in self._auswahl:
             return self._p.akzent
         art = schluessel[0]
+        if art == "gelaende":
+            return mische(self._p.rand, self._p.text, min(0.35, 0.05 * schluessel[1]))
         if art == "tag":
             return self._p.zahl
         if art == "start":
@@ -373,7 +376,8 @@ class Sicht3D(QOpenGLWidget):
         roh = bytes(pixel)
         index = geo.index_aus(roh[0], roh[1], roh[2]) if len(roh) >= 3 else 0
         if 0 < index <= len(self._geometrie):
-            return self._geometrie[index - 1][0]
+            schluessel = self._geometrie[index - 1][0]
+            return None if schluessel[0] == "gelaende" else schluessel
         return None
 
     def bodenpunkt(self, px, py):
