@@ -32,6 +32,7 @@ from bosdyn.client.math_helpers import SE3Pose
 from spotlab.errors import SpotlabError
 from spotlab.maps.geometry import HINWEIS_KETTE
 from spotlab.welt.hoehe import ebenen
+from spotlab.welt.polylinie import douglas_peucker  # noqa: F401 -- Profilglaettung, auch fuer Tests
 from spotlab.welt.raum import MAX_STUFE_M, RAND_M, STUFE_VORGABE_M, Boden, Raum, RaumTag, Wand
 
 ENCODING_XYZ_32F = 1
@@ -459,32 +460,6 @@ def _treppenkanten(graph):
             paare.add((kante.id.from_waypoint, kante.id.to_waypoint))
             paare.add((kante.id.to_waypoint, kante.id.from_waypoint))
     return paare
-
-
-def douglas_peucker(punkte, toleranz):
-    """Indizes der Stuetzpunkte einer Polylinie [(x, y), ...] -- Douglas-Peucker."""
-    if len(punkte) < 2:
-        return list(range(len(punkte)))
-
-    def teile(a, b):
-        if b <= a + 1:
-            return []
-        ax, ay = punkte[a]
-        bx, by = punkte[b]
-        dx, dy = bx - ax, by - ay
-        laenge = math.hypot(dx, dy)
-        bester, abstand = -1, 0.0
-        for i in range(a + 1, b):
-            px, py = punkte[i]
-            d = (abs(dx * (ay - py) - (ax - px) * dy) / laenge if laenge > 1e-12
-                 else math.hypot(px - ax, py - ay))
-            if d > abstand:
-                bester, abstand = i, d
-        if abstand > toleranz:
-            return teile(a, bester) + [bester] + teile(bester, b)
-        return []
-
-    return [0] + teile(0, len(punkte) - 1) + [len(punkte) - 1]
 
 
 def _breite_quer(band_xy, a, b, vorgabe, hoechstens=3.0):
