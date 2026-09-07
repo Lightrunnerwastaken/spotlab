@@ -270,6 +270,23 @@ versionsgepinntes Extra `spotlab[sim]`.
   Unbekanntes für frei. Das Gitter des echten Dienstes ist an den WELTACHSEN ausgerichtet;
   `ObstacleGrid` rechnet in Weltkoordinaten — `is_free(0.5, 0.0)` ist ein Weltpunkt, nicht
   „einen halben Meter voraus".
+- **Das Hindernisgitter ist eine BODENkarte — Überhänge stehen nicht darin.**
+  `obstacle_distance` ist flach; eine Tischplatte in 75 cm Höhe kommt darin nicht vor,
+  und unter einer Tischreihe steht für jeden Planer freie Fläche mit unerkundetem Raum
+  dahinter. Genau dort ist der Explorer aus matura-spot am 07.09.2026 hineingefahren und
+  musste mit dem Not-Aus geholt werden. Die Tiefenkameras SEHEN die Unterseite der Platte;
+  `backends/real/tiefe.py` rechnet sie über Intrinsik und Extrinsik der Aufnahme in den
+  Körperrahmen, richtet Roll und Nick heraus (das Höhenband hängt an der Schwerkraft, nicht
+  am Rücken) und meldet, was zwischen 0.05 und 0.70 m über der Körpermitte im
+  Vorwärtskorridor hängt. **Geprüft an einer echten Aufnahme**, nicht an einer Attrappe
+  (`tests/daten/tiefe_real_20260812/`, Beobachtungsfahrt 12.08.2026): der Boden landet bei
+  −0.51 m, also auf der gemessenen Standhöhe — ein Vorzeichenfehler oder eine verdrehte
+  Achse fiele dort sofort auf; ein freier Gang lässt das Band leer; eine Tischreihe
+  erscheint 0.72 m voraus. Über die ganze Fahrt (1181 Takte): 341 Takte mit Überhang im
+  Korridor, davon 71 näher als ein Meter. **Der eigene Rumpf zählt nie mit** (dieselbe
+  Blindzone-Ellipse wie beim Tiefengitter) — die Kameras sehen den eigenen Rücken, und wer
+  den mitzählt, meldet dauernd Überhang. **Glas sieht auch das nicht:** die Tiefenkameras
+  schauen hindurch wie das Gitter, das bleibt eine physikalische Lücke.
 - **`ObstacleGrid.free_distance` übergeht Unbekanntes nur im Körperschatten (bis
   `FREI_AB_M`), Bekanntes nie.** Dicht am Körper sieht Spot nichts — die Frontkameras
   treffen den Boden erst 0.9 m vor der Mitte; ein Strahl, der deshalb 0.0 meldete, wäre

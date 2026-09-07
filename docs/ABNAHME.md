@@ -666,6 +666,42 @@ mit Alt-Tab in ein anderes Fenster wechseln; zurück und „■ Stopp".
 
 ---
 
+## A30 — Überhänge: der Kopfraum aus den Tiefenkameras
+
+**Vorgehen** Spot vor einen Tisch oder eine Werkbank stellen (Platte 70–80 cm), die
+Tiefenbilder abrufen und `backends/real/tiefe.py` darauf laufen lassen — leaselos, ohne
+Kommando, z. B. so:
+
+```python
+import spotlab
+from spotlab.backends.real import tiefe
+with spotlab.connect() as spot:
+    bilder = spot.images(["frontleft_depth", "frontright_depth"])
+    punkte = tiefe.ueberhang_aus_bildern(bilder)
+    print(len(punkte), tiefe.kopfraum(punkte))
+```
+
+Aus 2 m, 1.5 m und 1 m Abstand je eine Messung, dann seitlich daneben (Tisch nicht mehr
+im Korridor) und schliesslich im freien Raum.
+
+**Erwartung**
+- (1) Der gemeldete Abstand stimmt auf ±0.2 m mit dem gemessenen Abstand zur Tischkante.
+- (2) Die Höhen der Punkte liegen um `Plattenhöhe − 0.51 m` (Standhöhe), also etwa
+  +0.2 m — nicht bei 0 und nicht über +0.7.
+- (3) Seitlich daneben und im freien Raum kommt `None`: **kein Fehlalarm**.
+- (4) Auf einer Rampe (falls vorhanden) bleibt der Boden aus dem Band — die
+  Aufrichtung um Roll und Nick wirkt.
+
+**Warum am Gerät** Die Rechnung ist gegen eine Aufzeichnung vom 12.08.2026 geprüft
+(`tests/daten/tiefe_real_20260812/`). Was dort nicht drinsteht: ob ein LIVE abgerufenes
+Tiefenbild dieselbe Intrinsik, Skala und Rahmenkante trägt, und wie das Rauschen bei
+kurzem Abstand aussieht. Davon hängt das Kopfraum-Tor des Explorers ab
+(matura-spot, `sdk_real.py`) — und das soll den Spot vor der nächsten Tischreihe halten.
+
+**Ergebnis** _(offen)_
+
+---
+
 ## Nach der Abnahme
 
 Ergebnisse hier eintragen, Abweichungen als Befund in die Spec zurückspielen, und erst
