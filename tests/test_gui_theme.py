@@ -61,3 +61,11 @@ def test_theme_ist_qt_frei():
 
     quelle = pathlib.Path(modul.__file__).read_text(encoding="utf-8")
     assert "PySide6" not in quelle
+
+
+def test_mische_liegt_dazwischen():
+    from spotlab.gui.theme import mische
+
+    assert mische("#000000", "#ffffff", 0.5) == "#808080"
+    assert mische("#102030", "#102030", 0.7) == "#102030"
+    assert mische("#000000", "#ffffff", 0.0) == "#000000"

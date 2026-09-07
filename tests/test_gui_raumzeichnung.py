@@ -88,3 +88,50 @@ def test_boeden_treppen_und_klippen_werden_gezeichnet(qapp):
     bild, px = _bild_mit(raum, klippen_=klippen(raum))
     assert bild.pixelColor(*px(5.0, 1.0)) != QColor(0, 0, 0)              # das Podest ist gefuellt
     assert bild.pixelColor(*px(2.4, 1.0)) != QColor(0, 0, 0)              # die Treppe auch
+
+
+# ------------------------------------------------------------- Gelaende
+
+
+def _gelaende(f):
+    from spotlab.welt import gelaende as g
+    return g.gitter(0.0, 0.0, 0.2, 4, 6, f)
+
+
+def test_das_bild_hat_die_knotenmasse_und_zeile_0_oben():
+    from PySide6.QtGui import QColor
+
+    from spotlab.gui.raumzeichnung import gelaende_bild
+
+    bild = gelaende_bild(_gelaende(lambda x, y: y), DUNKEL)        # steigt nach +y
+    assert (bild.width(), bild.height()) == (6, 4)
+    oben, unten = QColor(bild.pixel(0, 0)), QColor(bild.pixel(0, 3))
+    assert oben.lightness() > unten.lightness()                    # hoch = heller, oben im Bild
+
+
+def test_ohne_boden_durchsichtig_und_hoehenlinie_gedaempft():
+    from PySide6.QtGui import QColor
+
+    from spotlab.gui.raumzeichnung import gelaende_bild
+
+    bild = gelaende_bild(_gelaende(lambda x, y: None if x < 0.3 else (0.0 if x < 0.7 else 0.3)), DUNKEL)
+    assert bild.pixelColor(0, 0).alpha() == 0
+    # Spalte 3 (x = 0.6, Hoehe 0.0) grenzt rechts an 0.3: floor(0/0.25) != floor(0.3/0.25)
+    assert QColor(bild.pixel(3, 0)).name() == DUNKEL.gedaempft
+    assert QColor(bild.pixel(2, 0)).name() != DUNKEL.gedaempft
+
+
+def test_ausserhalb_der_ebene_blass():
+    from PySide6.QtGui import QColor
+
+    from spotlab.gui.raumzeichnung import gelaende_bild
+
+    bild = gelaende_bild(_gelaende(lambda x, y: 0.0 if x < 0.5 else 1.0), DUNKEL, ebene=0.0)
+    assert QColor(bild.pixel(5, 0)).name() == DUNKEL.blass
+    assert QColor(bild.pixel(0, 0)).name() != DUNKEL.blass
+
+
+def test_das_rechteck_reicht_eine_halbe_zelle_ueber_die_knoten():
+    from spotlab.gui.raumzeichnung import gelaende_rechteck
+
+    assert gelaende_rechteck(_gelaende(lambda x, y: 0.0)) == pytest.approx((-0.1, -0.1, 1.1, 0.7))

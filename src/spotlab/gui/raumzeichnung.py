@@ -10,8 +10,9 @@ dass es auffiele -- deshalb gibt es genau einen.
 import math
 
 from PySide6.QtCore import QPointF, Qt
-from PySide6.QtGui import QBrush, QColor, QPen, QPolygonF
+from PySide6.QtGui import QBrush, QColor, QImage, QPen, QPolygonF
 
+from spotlab.gui.theme import mische
 from spotlab.welt.hoehe import auf_ebene
 from spotlab.welt.kollision import ROBOTER_RADIUS_M
 
@@ -168,3 +169,55 @@ def zeichne_spot(maler, px, py, blick_grad, skala, palette, gewaehlt=False):
         px + r * math.cos(math.radians(blick_grad)),
         py - r * math.sin(math.radians(blick_grad)),
     ))
+
+
+# ------------------------------------------------------------- Gelaende
+
+HOEHENLINIE_M = 0.25       # Hoehenlinie alle 0.25 m
+EBENE_TOLERANZ_M = 0.3     # so weit ab von einer Ebene ist ein Knoten blass
+GELAENDE_ALPHA = 200
+
+
+def gelaende_rechteck(gelaende):
+    """(x_min, y_min, x_max, y_max): das Knotengitter plus eine halbe Zelle rundum."""
+    halb = gelaende.zelle / 2
+    return (gelaende.x0 - halb, gelaende.y0 - halb,
+            gelaende.x0 + (gelaende.spalten - 1) * gelaende.zelle + halb,
+            gelaende.y0 + (gelaende.zeilen - 1) * gelaende.zelle + halb)
+
+
+def gelaende_bild(gelaende, palette, ebene=None):
+    """Ein Pixel je Knoten, Zeile 0 oben (die y-Achse der Sicht zeigt nach oben).
+
+    Hoehe heller nach oben (zwischen `flaeche` und `gedaempft`), Hoehenlinie
+    alle HOEHENLINIE_M in `gedaempft`, ohne Boden durchsichtig; mit `ebene`
+    werden Knoten ausserhalb EBENE_TOLERANZ_M blass. Einmal je Raum gerechnet,
+    die Sicht zeichnet das Bild skaliert.
+    """
+    bild = QImage(gelaende.spalten, gelaende.zeilen, QImage.Format_ARGB32)
+    bild.fill(QColor(0, 0, 0, 0))
+    werte = [h for h in gelaende.hoehen if h is not None]
+    if not werte:
+        return bild
+    h_min, spanne = min(werte), max(werte) - min(werte)
+    for i in range(gelaende.zeilen):
+        for j in range(gelaende.spalten):
+            h = gelaende.knoten(i, j)
+            if h is None:
+                continue
+            if ebene is not None and abs(h - ebene) > EBENE_TOLERANZ_M:
+                farbe = QColor(palette.blass)
+            else:
+                stufe = math.floor(h / HOEHENLINIE_M + 1e-9)
+                linie = any(
+                    n is not None and math.floor(n / HOEHENLINIE_M + 1e-9) != stufe
+                    for n in (gelaende.knoten(i, j + 1), gelaende.knoten(i + 1, j))
+                )
+                if linie:
+                    farbe = QColor(palette.gedaempft)
+                else:
+                    t = 0.0 if spanne <= 0 else (h - h_min) / spanne
+                    farbe = QColor(mische(palette.flaeche, palette.gedaempft, 0.15 + 0.45 * t))
+            farbe.setAlpha(GELAENDE_ALPHA)
+            bild.setPixelColor(j, gelaende.zeilen - 1 - i, farbe)
+    return bild

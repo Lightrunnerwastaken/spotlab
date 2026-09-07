@@ -73,6 +73,20 @@ def palette_fuer(dunkel):
     return DUNKEL if dunkel else HELL
 
 
+def mische(a, b, t):
+    """Die Farbe zwischen zwei Palettenfarben: t = 0 ist a, t = 1 ist b.
+
+    Die einzige Stelle, die Farben mischt -- das Gelaende faerbt seine Hoehen
+    damit, ohne eigene Farbwerte zu kennen.
+    """
+    t = min(1.0, max(0.0, float(t)))
+
+    def kanal(k):
+        return round(int(a[k:k + 2], 16) * (1 - t) + int(b[k:k + 2], 16) * t)
+
+    return f"#{kanal(1):02x}{kanal(3):02x}{kanal(5):02x}"
+
+
 def stylesheet(p):
     """Qt-Stylesheet aus der Palette. Einzige Stelle mit Farbwerten im Programm."""
     return f"""
