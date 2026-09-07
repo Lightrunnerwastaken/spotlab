@@ -10,6 +10,7 @@ from spotlab.welt.raum import (
     huelle,
     raum_laden,
     raum_pfad,
+    raum_laden_pfad,
     raum_speichern,
     vorlagen,
 )
@@ -306,3 +307,42 @@ def test_die_stufenkonstanten_passen_zusammen():
     from spotlab.welt.raum import MAX_STUFE_M, STUFE_VORGABE_M
 
     assert 0.0 < STUFE_VORGABE_M < MAX_STUFE_M
+
+
+# ------------------------------------------------------------- Fassung 4: Gelaende
+
+
+def test_raum_mit_gelaende_speichert_fassung_4_und_datei(tmp_path):
+    from spotlab.welt import gelaende as g
+    ge = g.gitter(0.0, 0.0, 0.5, 3, 3, lambda x, y: 0.3)
+    raum = Raum("G", "", (1.0, 1.0, 0.0), waende=[(0, 0, 3, 0)], gelaende=ge)
+    pfad = tmp_path / "g.toml"
+    raum_speichern(raum, pfad)
+    text = pfad.read_text(encoding="utf-8")
+    assert "fassung      = 4" in text and '[gelaende]\ndatei = "g.gelaende"' in text
+    assert (tmp_path / "g.gelaende").is_file()
+    zurueck = raum_laden_pfad(pfad)
+    assert zurueck.gelaende.knoten(1, 1) == pytest.approx(0.3)
+
+
+def test_ohne_gelaende_keine_spur_und_alte_datei_weg(tmp_path):
+    (tmp_path / "g.gelaende").write_bytes(b"x")
+    raum_speichern(Raum("G", "", (1.0, 1.0, 0.0), waende=[(0, 0, 3, 0)]), tmp_path / "g.toml")
+    assert "gelaende" not in (tmp_path / "g.toml").read_text(encoding="utf-8")
+    assert not (tmp_path / "g.gelaende").exists()
+
+
+def test_fehlende_gelaende_datei_ist_ein_klarer_fehler(tmp_path):
+    (tmp_path / "g.toml").write_text(
+        '[raum]\nname = "G"\nstart = [1.0, 1.0, 0.0]\nwaende = []\n\n[gelaende]\ndatei = "g.gelaende"\n',
+        encoding="utf-8")
+    with pytest.raises(SpotlabError, match="Gelände-Datei"):
+        raum_laden_pfad(tmp_path / "g.toml")
+
+
+def test_die_huelle_nimmt_das_gelaende_mit():
+    from spotlab.welt import gelaende as g
+    from spotlab.welt.raum import RAND_M
+    ge = g.gitter(5.0, 5.0, 1.0, 2, 2, lambda x, y: 0.0)
+    raum = Raum("G", "", (1.0, 1.0, 0.0), gelaende=ge)
+    assert huelle(raum)[2] >= 6.0 + RAND_M - 1e-9 and huelle(raum)[3] >= 6.0 + RAND_M - 1e-9

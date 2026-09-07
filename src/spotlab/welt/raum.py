@@ -17,6 +17,10 @@ Unterkante ueber dem Grundboden), und es gibt `Boden`: ein begehbares Rechteck
 als Podest, Rampe oder Treppe. Der Start bleibt (x, y, grad) -- seine Hoehe
 folgt aus dem Boden darunter (`welt/hoehe.py::boden_bei`). Ein Raum ohne Hoehe
 sieht gespeichert genau so aus wie in Fassung 2.
+
+Fassung 4 (07.09.2026): Gelaende. Ein Raum kann ein Hoehenraster als Grund
+tragen (`welt/gelaende.py`); die Raumdatei verweist unter `[gelaende]` auf die
+Binaerdatei daneben. Ohne Gelaende bleibt die Datei Fassung 3.
 """
 
 import math
@@ -199,6 +203,7 @@ class Raum:
     wand_dicke: float = WAND_DICKE_M
     wand_hoehe: float = WAND_HOEHE_M
     boeden: tuple = ()   # Boden, ...
+    gelaende: object = None   # welt/gelaende.py::Gelaende oder None
 
     def __post_init__(self):
         # Tupel aus Tests und alten Aufrufern werden Waende; Listen werden Tupel.
@@ -229,6 +234,12 @@ def huelle(raum):
     for boden in raum.boeden:
         punkte += list(boden.ecken())
     punkte += [(t.x, t.y) for t in raum.tags]
+    if raum.gelaende is not None:
+        from spotlab.welt import gelaende as _gelaende
+
+        u = _gelaende.umriss(raum.gelaende)
+        if u is not None:
+            punkte += [(u[0], u[1]), (u[2], u[3])]
     xs = [p[0] for p in punkte]
     ys = [p[1] for p in punkte]
     return (min(xs) - RAND_M, min(ys) - RAND_M, max(xs) + RAND_M, max(ys) + RAND_M)
@@ -330,7 +341,7 @@ def _boeden(roh, pfad):
 
 
 def raum_laden_pfad(pfad):
-    """Einen Raum aus einer Datei laden -- Fassung 1, 2 oder 3."""
+    """Einen Raum aus einer Datei laden -- Fassung 1 bis 4."""
     pfad = Path(pfad)
     try:
         roh = tomllib.loads(pfad.read_text(encoding="utf-8"))
@@ -348,6 +359,17 @@ def raum_laden_pfad(pfad):
         for t in roh.get("tag", [])
     )
     groesse = daten.get("groesse")
+    gelaende = None
+    verweis = roh.get("gelaende")
+    if isinstance(verweis, dict) and verweis.get("datei"):
+        from spotlab.welt import gelaende as _gelaende
+
+        gelaende = _gelaende.lies(pfad.parent / str(verweis["datei"]))
+        if gelaende is None:
+            raise SpotlabError(
+                f"Die Gelände-Datei {verweis['datei']} zu {pfad.name} fehlt — den Raum neu "
+                f"korrigieren oder den Abschnitt [gelaende] entfernen."
+            )
     return Raum(
         name=str(_feld(daten, "name", pfad)),
         beschreibung=str(daten.get("beschreibung", "")),
@@ -359,6 +381,7 @@ def raum_laden_pfad(pfad):
         wand_dicke=float(daten.get("wand_dicke", WAND_DICKE_M)),
         wand_hoehe=float(daten.get("wand_hoehe", WAND_HOEHE_M)),
         boeden=_boeden(roh, pfad),
+        gelaende=gelaende,
     )
 
 
@@ -393,16 +416,24 @@ def raum_speichern(raum, pfad):
 
     Hoehen stehen nur, wo sie nicht 0 sind, und `[[boden]]` nur, wenn es Boeden
     gibt: ein Raum ohne Hoehe bleibt Zeile fuer Zeile die Datei aus Fassung 2.
-    `fassung` sagt, welcher Leser die Datei verstehen muss.
+    `fassung` sagt, welcher Leser die Datei verstehen muss. Ein Gelaende steht
+    als Verweis `[gelaende]` in der Datei und als Binaerdatei daneben
+    (Fassung 4); ohne Gelaende wird eine liegengebliebene Binaerdatei geloescht.
     """
+    from spotlab.welt import gelaende as _gelaende
+
+    pfad = Path(pfad)
     mit_hoehe = bool(raum.boeden) or any(
         e.z != 0.0 for e in (*raum.waende, *raum.bloecke, *raum.tags)
     )
+    mit_gelaende = raum.gelaende is not None
     zeilen = [
         "[raum]",
         f"name         = {_text(raum.name)}",
     ]
-    if mit_hoehe:
+    if mit_gelaende:
+        zeilen.append("fassung      = 4")
+    elif mit_hoehe:
         zeilen.append("fassung      = 3")
     zeilen += [
         f"beschreibung = {_text(raum.beschreibung)}",
@@ -450,6 +481,12 @@ def raum_speichern(raum, pfad):
         ]
         if tag.z != 0.0:
             zeilen.append(f"z     = {_zahl(tag.z)}")
-    pfad = Path(pfad)
+    if mit_gelaende:
+        zeilen += ["", "[gelaende]", f"datei = {_text(_gelaende.pfad_zu(pfad).name)}"]
     pfad.parent.mkdir(parents=True, exist_ok=True)
     pfad.write_text("\n".join(zeilen) + "\n", encoding="utf-8", newline="\n")
+    daneben = _gelaende.pfad_zu(pfad)
+    if mit_gelaende:
+        _gelaende.schreibe(daneben, raum.gelaende)
+    elif daneben.exists():
+        daneben.unlink()
