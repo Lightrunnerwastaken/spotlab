@@ -258,3 +258,20 @@ def test_die_felder_eines_bodens(qapp):
     feld.editingFinished.emit()
     assert ansicht.raum().boeden[0].stufen == 6
     assert any("(Podest)" in ansicht.liste.item(i).text() for i in range(ansicht.liste.count()))
+
+
+def test_der_weg_wird_mit_dem_pauspapier_gespeichert_und_geladen(qapp, tmp_path):
+    from spotlab.maps.rekonstruktion import Ergebnis
+    from spotlab.welt.raum import raum_laden as _laden
+
+    ansicht = RaumeditorView(DUNKEL)
+    ansicht.setze_arbeitsordner(tmp_path)
+    bericht = {"waende": 0, "tags": 0, "treppen": 0, "rampen": 0, "boeden": 0, "hinweise": []}
+    ergebnis = Ergebnis(_laden("leer"), [(1.0, 1.0)], bericht, weg=[(0.0, 0.0, 0.0), (1.0, 0.0, 0.2)])
+    ansicht.uebernimm_rekonstruktion(ergebnis)
+    assert ansicht._weg == [(0.0, 0.0, 0.0), (1.0, 0.0, 0.2)]
+    assert ansicht._schreibe("wegtest")
+    ansicht.neu()
+    assert ansicht._weg == []
+    ansicht.waehle_raum("wegtest")
+    assert ansicht._weg == [(0.0, 0.0, 0.0), (1.0, 0.0, 0.2)] and ansicht._pauspapier == [(1.0, 1.0)]

@@ -409,3 +409,15 @@ def test_die_katakomben_haben_eine_treppe_und_ein_gefaelle():
     assert 1.0 <= ergebnis.bericht["gefaelle_grad"] <= 8.0, ergebnis.bericht["gefaelle_grad"]
     assert min(min(b.z, b.z_oben) for b in ergebnis.raum.boeden) >= -0.05
     assert dauer < 30.0, dauer
+
+
+def test_das_ergebnis_traegt_den_weg_mit_bodenhoehe(karte_mit_hoehe):
+    ergebnis = rk.rekonstruiere(karte_mit_hoehe)
+    assert len(ergebnis.weg) == 17
+    unten = [z for _x, _y, z in ergebnis.weg[:5]]
+    oben = [z for _x, _y, z in ergebnis.weg[9:12]]
+    assert max(abs(z) for z in unten) < 0.1 and all(abs(z - 1.0) < 0.15 for z in oben)
+    # Der Weg liegt im Raumrahmen: die Wegpunkte laufen durch den Gang zwischen den Waenden.
+    xs = [x for x, _y, _z in ergebnis.weg]
+    assert min(xs) >= 0.0 and max(xs) - min(xs) == pytest.approx(16.0, abs=0.5)
+    assert any("Korrigieren" in h for h in ergebnis.bericht["hinweise"])

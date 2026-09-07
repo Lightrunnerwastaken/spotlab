@@ -74,7 +74,9 @@ def _lies_roh(pfad):
         n = struct.unpack("<I", roh[ende:ende + 4])[0]
         wegwerte = array("f")
         wegwerte.frombytes(roh[ende + 4:ende + 4 + n * 12])
-        weg = [(wegwerte[i], wegwerte[i + 1], wegwerte[i + 2]) for i in range(0, len(wegwerte) - 2, 3)]
+        # float32 traegt sieben Stellen; auf Zehntelmillimeter gerundet bleibt 0.2 ein 0.2.
+        weg = [(round(wegwerte[i], 4), round(wegwerte[i + 1], 4), round(wegwerte[i + 2], 4))
+               for i in range(0, len(wegwerte) - 2, 3)]
     return punkte, weg
 
 

@@ -21,7 +21,7 @@ RANSAC mit festem Seed: dieselbe Karte gibt denselben Raum.
 
 import math
 import time
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import numpy as np
@@ -68,6 +68,7 @@ class Ergebnis:
     raum: Raum
     pauspapier: list        # [(x, y), ...]
     bericht: dict
+    weg: list = field(default_factory=list)   # [(x, y, z_boden), ...] im Raumrahmen, Laufreihenfolge
 
 
 # ------------------------------------------------------------------ Laden
@@ -871,6 +872,15 @@ def rekonstruiere(ordner, einstellungen=None, fortschritt=None):
             waende, tags, start, pauspapier, boeden_)
         if e.begradigen:
             waende = begradige(waende)
+    # Der gelaufene Weg im Raumrahmen mit seiner Bodenhoehe: Stuetze des Gelaendes
+    # und das Signal "der Roboter lief hindurch" im Korrigierer (PAUS2).
+    weg_xyz = []
+    for wp_id in weg_:
+        pose_, z = posen_.get(wp_id), profil_.get(wp_id)
+        if pose_ is None or z is None:
+            continue
+        x, y = lage.punkt(pose_.x, pose_.y)
+        weg_xyz.append((round(float(x), 3), round(float(y), 3), round(float(z - z_min), 3)))
     # Waende bekommen die Ebene des Wegs bei ihrer Mitte; alles um z_min nach unten.
     ebene_bei = _boden_finder(
         {i: _XY(*lage.punkt(p.x, p.y)) for i, p in posen_.items()}, profil_)
@@ -884,8 +894,9 @@ def rekonstruiere(ordner, einstellungen=None, fortschritt=None):
     )
     if treppen and band_xy is None:
         hinweise.append("Treppenbreite ohne Punktwolke geschaetzt -- im Editor nachziehen.")
+    hinweise.append("Weiter mit „Korrigieren…“: Lücken schliessen, Gelände bauen.")
     bericht.update(waende=len(waende), tags=len(tags), ausricht_grad=lage.dreh,
                    boeden=len(boeden_), treppen=len(treppen), rampen=len(rampen),
                    ebenen=ebenen(raum), gefaelle_grad=round(gefaelle, 1), stufe_m=e.stufe,
                    dauer_s=round(time.monotonic() - t0, 2))
-    return Ergebnis(raum, [(float(x), float(y)) for x, y in np.asarray(pauspapier)], bericht)
+    return Ergebnis(raum, [(float(x), float(y)) for x, y in np.asarray(pauspapier)], bericht, weg_xyz)

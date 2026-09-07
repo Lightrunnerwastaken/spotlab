@@ -107,6 +107,7 @@ class RaumeditorView(QWidget):
         self._laeuft = False
         self._liste_sperre = False
         self._pauspapier = []        # Punktwolke einer Rekonstruktion, neben dem Raum gespeichert
+        self._weg = []               # der gelaufene Weg (x, y, z_boden) derselben Rekonstruktion
         self.steuerung = Steuerung()
 
         # -- links: Werkzeuge und Dateien
@@ -217,9 +218,10 @@ class RaumeditorView(QWidget):
 
     # ------------------------------------------------------------- Raum
 
-    def _setze(self, raum, name, eigen, geaendert, punkte=()):
+    def _setze(self, raum, name, eigen, geaendert, punkte=(), weg=()):
         self._raumname, self._eigen = name, eigen
         self._pauspapier = list(punkte)
+        self._weg = list(weg)
         self.steuerung.setze_raum(raum, geaendert=geaendert)
         for sicht in (self.sicht, self.sicht3d):
             sicht.setze_spur([])
@@ -238,13 +240,14 @@ class RaumeditorView(QWidget):
             self.meldung.emit(str(fehler))
             return
         eigen = name in eigene_raeume(self._arbeitsordner)
-        punkte = []
+        punkte, weg = [], []
         if eigen:
             try:
-                punkte = pauspapier.lies(pauspapier.pfad_zu(raum_pfad(self._arbeitsordner, name)))
+                pfad = pauspapier.pfad_zu(raum_pfad(self._arbeitsordner, name))
+                punkte, weg = pauspapier.lies(pfad), pauspapier.lies_weg(pfad)
             except Exception as fehler:
                 self.meldung.emit(str(fehler))
-        self._setze(raum, name, eigen, False, punkte)
+        self._setze(raum, name, eigen, False, punkte, weg)
 
     def _rekonstruieren(self):
         from spotlab.gui.raumeditor.rekonstruktion_dialog import RekonstruktionsDialog
@@ -254,8 +257,8 @@ class RaumeditorView(QWidget):
             self.uebernimm_rekonstruktion(dialog.ergebnis)
 
     def uebernimm_rekonstruktion(self, ergebnis):
-        """Das Ergebnis als neuen, ungespeicherten Raum oeffnen -- mit Pauspapier."""
-        self._setze(ergebnis.raum, "", False, True, ergebnis.pauspapier)
+        """Das Ergebnis als neuen, ungespeicherten Raum oeffnen -- mit Pauspapier und Weg."""
+        self._setze(ergebnis.raum, "", False, True, ergebnis.pauspapier, getattr(ergebnis, "weg", ()))
         hinweise = ergebnis.bericht.get("hinweise") or []
         b = ergebnis.bericht
         self.meldung.emit(
@@ -325,8 +328,8 @@ class RaumeditorView(QWidget):
         pfad = raum_pfad(self._arbeitsordner, name)
         try:
             raum_speichern(raum, pfad)
-            if self._pauspapier:
-                pauspapier.schreibe(pauspapier.pfad_zu(pfad), self._pauspapier)
+            if self._pauspapier or self._weg:
+                pauspapier.schreibe(pauspapier.pfad_zu(pfad), self._pauspapier, weg=self._weg)
         except OSError as fehler:
             self.meldung.emit(f"Speichern nach {pfad} scheiterte: {fehler}")
             return False
