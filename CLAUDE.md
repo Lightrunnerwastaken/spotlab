@@ -370,7 +370,11 @@ versionsgepinntes Extra `spotlab[sim]`.
   je `obstacles()`, jetzt 0.03 s; für eine Randzelle zählt ein Hindernis weiter draussen nur
   als Abstand über einem Meter, mehr als jeder Rand von `is_free`. In MuJoCo liegen Knoten
   ohne Boden 2 cm UNTER der Bodenebene (Puppe `GELAENDE_SENKE_M`), sonst flimmern zwei
-  Flächen auf derselben Höhe.
+  Flächen auf derselben Höhe. **Was je gezeichnetem Punkt gefragt wird, muss O(1) sein:**
+  `gelaende.umriss` wird einmal beim Bau gerechnet (`huelle` fragt ihn, der Raumplot fragt
+  `huelle` je Punkt — 56 s je Bild, „Python reagiert nicht"), und das Pauspapier ist in
+  `Sicht2D` ein einmal gerastertes Bild (`raumzeichnung.pauspapier_bild`), keine 190 000
+  einzelnen `drawPoint`.
 - **`errors/` darf nichts aus `backends/` importieren.** `backends/base.py` importiert
   `UnsupportedCapability` aus `errors`; die Gegenrichtung schliesst den Kreis, sobald
   `backends.base` zuerst geladen wird. Die Position der Importzeile hilft dagegen nicht.

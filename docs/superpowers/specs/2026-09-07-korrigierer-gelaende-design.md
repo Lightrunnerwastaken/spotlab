@@ -555,4 +555,11 @@ Ctrl+Z macht die ganze Korrektur rückgängig.
   `obstacles()` im 2D-Sim kostete 0.57 s, weil jede der 362 Klippenstrecken
   gegen alle Zellen rechnete; das Gitter nimmt nur noch, was bis 1 m um es
   liegt (`FENSTER_RAND_M`): 0.03 s.
+- **„Python reagiert nicht" (07.09.2026):** `huelle(raum)` fragt `gelaende.umriss`,
+  das über alle 33 000 Knoten lief (46 ms), und der Raumplot des Übungsfensters
+  fragt `huelle` je gezeichnetem Punkt, 1212-mal je Bild: 56 s je Neuzeichnung.
+  Der Umriss wird jetzt einmal beim Bau des Elements gerechnet (93 ms je Bild).
+  Daneben zeichnete die Editor-Sicht das Pauspapier mit 190 000 einzelnen
+  Punkten (0.7 s je Bild, bei jeder Mausbewegung, seit Stufe 12); es ist jetzt
+  ein einmal gerastertes Bild (`pauspapier_bild`, 5 cm je Pixel), 15 ms je Bild.
 
