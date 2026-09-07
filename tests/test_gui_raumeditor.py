@@ -275,3 +275,13 @@ def test_der_weg_wird_mit_dem_pauspapier_gespeichert_und_geladen(qapp, tmp_path)
     assert ansicht._weg == []
     ansicht.waehle_raum("wegtest")
     assert ansicht._weg == [(0.0, 0.0, 0.0), (1.0, 0.0, 0.2)] and ansicht._pauspapier == [(1.0, 1.0)]
+
+
+def test_ein_neuer_raum_leert_markierung_und_offene_raender(qapp):
+    ansicht = RaumeditorView(DUNKEL)
+    ansicht.waehle_raum("leer")
+    ansicht.sicht.setze_markierung([(0, 0, 1, 1)])
+    ansicht.sicht.setze_kandidaten([(0, 0, 1, 1)])
+    ansicht.sicht.setze_offen([(0.5, 0.5)])
+    ansicht.neu()
+    assert ansicht.sicht._markierung == [] and ansicht.sicht._kandidaten == [] and ansicht.sicht._offen == []

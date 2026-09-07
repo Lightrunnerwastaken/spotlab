@@ -229,6 +229,9 @@ class RaumeditorView(QWidget):
             sicht.setze_pauspapier(self._pauspapier)
             sicht.zeige(raum)
             sicht.alles_zeigen()
+        self.sicht.setze_markierung([])
+        self.sicht.setze_kandidaten([])
+        self.sicht.setze_offen([])
         self._zeige()
 
     def waehle_raum(self, name):

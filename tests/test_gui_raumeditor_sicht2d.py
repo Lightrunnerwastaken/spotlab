@@ -76,3 +76,33 @@ def test_ebene_und_klippen_zeichnen_stuerzt_nicht(qapp):
     sicht = _sicht()
     sicht.zeige(RAUM, ebene=1.2, klippen_=[(0.0, 0.0, 1.0, 0.0)])
     sicht.grab()
+
+
+def test_das_gelaende_wird_gezeichnet_und_einmal_je_raum_gerendert(qapp):
+    from spotlab.welt import gelaende as g
+
+    ge = g.gitter(0.0, 0.0, 0.5, 5, 9, lambda x, y: 0.2 * x)
+    raum = Raum(name="G", beschreibung="", start=(1, 1, 0), gelaende=ge)
+    sicht = Sicht2D(DUNKEL)
+    sicht.resize(400, 300)
+    sicht.zeige(raum)
+    sicht.alles_zeigen()
+    bild = sicht.grab().toImage()
+    px, py = sicht.meter_zu_schirm(2.25, 1.25)
+    assert bild.pixelColor(int(px), int(py)).name() != DUNKEL.hintergrund
+    schluessel = sicht._gelaende_schluessel
+    sicht.grab()
+    assert sicht._gelaende_schluessel == schluessel          # nicht neu gerechnet
+    sicht.zeige(raum, ebene=0.0)
+    sicht.grab()
+    assert sicht._gelaende_schluessel != schluessel          # die Ebene aendert das Bild
+
+
+def test_markierung_kandidaten_und_offene_raender_zeichnen(qapp):
+    sicht = _sicht()
+    sicht.setze_kandidaten([(0, 0, 1, 1), (1, 0, 2, 0)])
+    sicht.setze_markierung([(0, 0, 1, 1)])
+    sicht.setze_offen([(0.5, 0.5)])
+    sicht.grab()
+    assert sicht._markierung == [(0, 0, 1, 1)] and sicht._offen == [(0.5, 0.5)]
+    assert len(sicht._kandidaten) == 2

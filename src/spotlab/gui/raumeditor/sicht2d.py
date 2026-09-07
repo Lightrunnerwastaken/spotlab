@@ -12,10 +12,14 @@ from PySide6.QtGui import QBrush, QColor, QPainter, QPen
 from PySide6.QtWidgets import QWidget
 
 from spotlab.gui.raumzeichnung import (
+    gelaende_bild,
+    gelaende_rechteck,
     zeichne_anstoesse,
+    zeichne_offen,
     zeichne_raum,
     zeichne_spot,
     zeichne_spur,
+    zeichne_strecken,
 )
 from spotlab.welt.raum import huelle
 
@@ -54,6 +58,12 @@ class Sicht2D(QWidget):
         self._pauspapier = []
         self._ebene = None
         self._klippen = []
+        self._markierung = []        # Strecken der gewaehlten Luecke des Korrigierers
+        self._kandidaten = []        # alle Kandidaten, duenn dahinter
+        self._offen = []             # offene Raender des Gelaendes
+        self._gelaende_bild = None   # einmal je (Gelaende, Ebene) gerendert
+        self._gelaende_ref = None    # haelt das Gelaende, damit id() stabil bleibt
+        self._gelaende_schluessel = None
         self.skala = 60.0             # Pixel je Meter
         self._ursprung = (RAND, 0.0)  # Pixel des Weltpunkts (0, 0); y wird gespiegelt
         self._schwenk = None
@@ -77,6 +87,18 @@ class Sicht2D(QWidget):
 
     def setze_pauspapier(self, punkte):
         self._pauspapier = list(punkte)
+        self.update()
+
+    def setze_markierung(self, strecken):
+        self._markierung = list(strecken)
+        self.update()
+
+    def setze_kandidaten(self, strecken):
+        self._kandidaten = list(strecken)
+        self.update()
+
+    def setze_offen(self, punkte):
+        self._offen = list(punkte)
         self.update()
 
     # -------------------------------------------------------- Umrechnung
@@ -200,6 +222,22 @@ class Sicht2D(QWidget):
                 maler.drawLine(QPointF(0, py), QPointF(self.width(), py))
                 k += 1
 
+    def _zeichne_gelaende(self, maler):
+        """Das Relief als skaliertes Bild -- gerendert nur, wenn Gelaende oder Ebene wechseln."""
+        gelaende = self._raum.gelaende
+        if gelaende is None:
+            return
+        schluessel = (id(gelaende), self._ebene)
+        if self._gelaende_bild is None or schluessel != self._gelaende_schluessel:
+            self._gelaende_bild = gelaende_bild(gelaende, self._p, self._ebene)
+            self._gelaende_ref, self._gelaende_schluessel = gelaende, schluessel
+        x1, y1, x2, y2 = gelaende_rechteck(gelaende)
+        px1, py1 = self.meter_zu_schirm(x1, y2)      # links oben
+        px2, py2 = self.meter_zu_schirm(x2, y1)      # rechts unten
+        maler.setRenderHint(QPainter.SmoothPixmapTransform, True)
+        maler.drawImage(QRectF(px1, py1, px2 - px1, py2 - py1), self._gelaende_bild)
+        maler.setRenderHint(QPainter.SmoothPixmapTransform, False)
+
     def paintEvent(self, _ereignis):
         maler = QPainter(self)
         maler.setRenderHint(QPainter.Antialiasing)
@@ -209,6 +247,7 @@ class Sicht2D(QWidget):
             maler.drawText(self.rect(), Qt.AlignCenter, "Kein Raum geöffnet.")
             return
         self._raster(maler)
+        self._zeichne_gelaende(maler)
 
         if self._pauspapier:
             farbe = QColor(self._p.gedaempft)
@@ -219,8 +258,11 @@ class Sicht2D(QWidget):
 
         zeichne_raum(maler, self._raum, self.meter_zu_schirm, self.skala, self._p, self._auswahl,
                      ebene=self._ebene, klippen_=self._klippen)
+        zeichne_strecken(maler, self._kandidaten, self.meter_zu_schirm, self._p.gedaempft, 1)
+        zeichne_strecken(maler, self._markierung, self.meter_zu_schirm, self._p.akzent, 2, enden=True)
         zeichne_spur(maler, self._spur, self.meter_zu_schirm, self._p)
         zeichne_anstoesse(maler, self._anstoesse, self.meter_zu_schirm, self._p)
+        zeichne_offen(maler, self._offen, self.meter_zu_schirm, self._p)
         sx, sy, sgrad = self._raum.start
         px, py = self.meter_zu_schirm(sx, sy)
         zeichne_spot(maler, px, py, sgrad, self.skala, self._p,

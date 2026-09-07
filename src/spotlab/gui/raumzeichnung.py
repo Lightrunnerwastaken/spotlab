@@ -151,6 +151,27 @@ def zeichne_spur(maler, spur, meter_zu_schirm, palette):
         maler.drawLine(QPointF(*meter_zu_schirm(*erster)), QPointF(*meter_zu_schirm(*zweiter)))
 
 
+def zeichne_strecken(maler, strecken, meter_zu_schirm, farbe, breite, enden=False):
+    """Gestrichelte Strecken (x1, y1, x2, y2) -- Kandidaten und Markierung des Korrigierers."""
+    stift = QPen(QColor(farbe), breite, Qt.DashLine)
+    maler.setPen(stift)
+    maler.setBrush(Qt.NoBrush)
+    for x1, y1, x2, y2 in strecken:
+        a, b_ = meter_zu_schirm(x1, y1), meter_zu_schirm(x2, y2)
+        maler.drawLine(QPointF(*a), QPointF(*b_))
+        if enden:
+            maler.drawEllipse(QPointF(*a), 5, 5)
+            maler.drawEllipse(QPointF(*b_), 5, 5)
+
+
+def zeichne_offen(maler, punkte, meter_zu_schirm, palette):
+    """Offene Raender des Gelaendes: Punkte in der Warnfarbe."""
+    maler.setPen(QPen(QColor(palette.warnung), 1))
+    maler.setBrush(QBrush(QColor(palette.warnung)))
+    for x, y in punkte:
+        maler.drawEllipse(QPointF(*meter_zu_schirm(x, y)), 3, 3)
+
+
 def zeichne_anstoesse(maler, punkte, meter_zu_schirm, palette):
     maler.setPen(QPen(QColor(palette.gefahr), 2))
     for x, y in punkte:
