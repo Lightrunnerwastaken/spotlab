@@ -354,6 +354,17 @@ versionsgepinntes Extra `spotlab[sim]`.
   dasselbe Trapez und zählen in `bericht()` als ausserhalb der Messung. Kombinierte
   Bewegung wurde nie gemessen. Der Deckel kommt aus `vel_limit` im Kommando — demselben
   Feld, das der echte Roboter liest.
+- **Der Grund ist das Gelände, wo es eines gibt, sonst 0 — und nur `boden_bei` entscheidet
+  das.** Kein Modul fragt `raum.gelaende` nach der Höhe an einem Punkt, ausser über
+  `welt/hoehe.py` (die Sichten holen sich das Raster nur für ihr Bild). Das Gelände wird
+  **nie von Hand gesetzt**: es kommt aus `maps/gelaende_bau.py`, aus Wänden, gelaufenem
+  Weg und Pauspapier; wer es anders will, zieht Wände nach und lässt den Korrigierer neu
+  laufen. **PAUS2 trägt den Weg** mit Bodenhöhe im Raumrahmen — Stütze des Geländes und
+  das Signal „der Roboter lief hindurch"; PAUS1 bleibt lesbar. **Farben mischt nur
+  `theme.mische`.** Und im Geländebau sperren Pauspapier-Punkte nur den Rand: eingeschlossene
+  Knoten werden Boden, gesperrte Cluster bekommen die Nachbarhöhe kopiert (nicht Membran —
+  eine Wand leitete sonst Höhe an sich entlang), Wegknoten mitteln sich im Umkreis von 1 m
+  (zwei Fahrten mit 0.7 m Drift). Geländeklippen unter einem Boden zählen nicht.
 - **`errors/` darf nichts aus `backends/` importieren.** `backends/base.py` importiert
   `UnsupportedCapability` aus `errors`; die Gegenrichtung schliesst den Kreis, sobald
   `backends.base` zuerst geladen wird. Die Position der Importzeile hilft dagegen nicht.
@@ -480,7 +491,7 @@ versionsgepinntes Extra `spotlab[sim]`.
 
 ## Umsetzungsstand
 
-**Stufe 14 (07.09.2026): Korrigierer und Gelände — Etappen 1 „Kern" und 2 „Sichten" gebaut**
+**Stufe 14 (07.09.2026): Korrigierer und Gelände — alle drei Etappen gebaut**
 — Raumformat v4: `Raum.gelaende` (`welt/gelaende.py`, Höhenraster mit `None` für „kein
 Boden", bilinear abgetastet, Klippen an Knotensprüngen über `MAX_STUFE_M`, Plateaus als
 Ebenen, Binärdatei `.gelaende` neben der Raumdatei mit Verweis `[gelaende]`); der Grund in
@@ -490,8 +501,15 @@ Rekonstruktion liefert ihn (`Ergebnis.weg`), der Tab speichert und lädt ihn. Si
 Relief-Bild mit Höhenlinien alle 0.25 m (einmal je Raum gerendert, `theme.mische`), Markierung,
 Kandidaten und offene Ränder in `Sicht2D`; 3D als Dreiecksnetz je Höhenband; MuJoCo als
 `hfield` (Puppe Fassung 5, Zeilenrichtung per Strahl geprüft); im Editor eine Listenzeile,
-nur lesend, verschieben/heben/löschen. Offen: Etappe 3 (Korrigierer: Lücken, Geländebau,
-Dialog, Katakomben) — Spec `docs/superpowers/specs/2026-09-07-korrigierer-gelaende-design.md`.
+nur lesend, verschieben/heben/löschen. Etappe 3: `welt/korrektur.py` (Kandidaten Lücke,
+Ecke, Anschluss, kreuzende Wand; Vorschlag aus Weg und Pauspapier; `wende_an`,
+`uebernimm_gelaende` mit Treppen auf dem Gelände), `maps/gelaende_bau.py` (Sperren, Fluten,
+offene Ränder, Löcher und Taschen, Membran mit gemittelten Wegstützen, Flächenglättung,
+Cluster-Kopien), Dialog „Korrigieren…" (nicht modal, Tabelle mit Vorschlag und Grund, Gelände
+im Arbeiter, ein Verlaufsschritt), Katakomben: 73 Kandidaten (70 Wand, 1 Durchgang, 2 unklar),
+Gelände ~6900 Knoten, Weg ohne Anstoss abgefahren (`tests/test_katakomben_korrektur.py`).
+Abnahme A28. Spec `docs/superpowers/specs/2026-09-07-korrigierer-gelaende-design.md`
+(§ 14 Nachträge), Pläne `docs/superpowers/plans/2026-09-07-gelaende-*.md`.
 
 **Stufe 13 (06.09.2026): Höhe, Rampen und Treppen — alle vier Etappen gebaut** — Raumformat
 v3 (`Boden` als Podest, Rampe oder Treppe; `z` an Wand, Block, Tag), `welt/hoehe.py`

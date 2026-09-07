@@ -506,3 +506,45 @@ Ctrl+Z macht die ganze Korrektur rückgängig.
 - **PAUS2 trägt den Weg** mit Bodenhöhe im Raumrahmen; er ist die Stütze des
   Geländes und das Signal „der Roboter lief hindurch". PAUS1 bleibt lesbar.
 - **Farben mischt nur `theme.mische`.**
+
+## 14 Nachträge beim Bau (07.09.2026)
+
+- **Pauspapier-Punkte sperren nur den Rand.** Dichte Flecken mitten im Gang
+  (Tiefen-Artefakte, die die Sichtprüfung für die Wände längst verworfen hatte,
+  im Pauspapier aber liegen) rissen 991 Klippen in das erste Gelände der
+  Katakomben. Jetzt wird alles Boden, was der Gitterrand über freie Knoten nicht
+  erreicht (§ 7 Schritt 5); gesperrte Zusammenhänge am Rand — die Wand selbst,
+  ein Punktband — bekommen nach der Membran die Nachbarhöhe **kopiert**, sie
+  rechnen nicht mit: als Membranknoten leitete eine Wand Höhe an sich entlang
+  und verzerrte den Gang daneben um Zentimeter. Freie Taschen hinter einem
+  Punktband bekommen danach ebenfalls eine Kopie.
+- **Zwei Fahrten durch denselben Gang mit bis zu 0.7 m Drift** (Auf- und
+  Abstieg an der Treppe, Schleifen) rissen Klippen zwischen den Fahrspuren.
+  Die Wegknoten mitteln sich vor der Membran im Umkreis von 1 m
+  (`glaettung`; 0.5 m liess zwei Spuren 0.5 m nebeneinander getrennt). Weiche
+  Stützen (gewichtetes Mittel aus Nachbarn und Profil) waren der erste Versuch;
+  sie verzerrten den Querschnitt und sind verworfen.
+- **Eine Flächenglättung** (ein Fünf-Punkte-Mittel, `glaettung_flaeche`) nach
+  der Membran: am Ende eines Wegstummels auf tieferem Niveau setzte die Membran
+  sonst eine 0.26-m-Stufe gegen das Nachbarniveau.
+- **Geländeklippen unter einem Boden zählen nicht** (`hoehe.klippen`,
+  stückweise je Zelle): die Treppe deckt das Gelände, das die Rekonstruktion
+  darunter zur Rampe faltet.
+- **Treppen stehen mit Fuss und Kopf auf dem Gelände**: `uebernimm_gelaende`
+  setzt `z` und `anstieg` aus der Geländehöhe an beiden Enden; sonst lag der
+  Kopf 0.3 m neben dem Boden dahinter.
+- **Der Boden fliesst durch eine offene Lücke hinaus**, bis `abstand` neben dem
+  Weg; der offene Rand liegt dann draussen. Gewollt: die Lücke ist eine
+  Entscheidung, die der Autor in der Liste trifft.
+- **Am Ende einer Stütze ist die Membran nicht exakt quer eben** (harmonische
+  Lösung um das Ende der Wegstütze, etwa 3 cm auf 1 m im 2-m-Gang) — kein
+  Hindernis, und die Tests sagen es so.
+- `douglas_peucker` zog nach `welt/polylinie.py` (Standardbibliothek), damit
+  `maps/gelaende_bau.py` ohne bosdyn auskommt.
+- Das Gelände ist in 3D heller als die Böden (`mische(rand, text, 0.25 + 0.05·k)`),
+  sonst setzte sich ein Podest darauf nicht ab.
+- **Katakomben (07.09.2026):** 73 Kandidaten — 70 Wand, 1 Durchgang, 2 unklar;
+  Gelände rund 6900 Knoten, 0 bis 2.3 m, 12 offene Ränder, 25 Rampen und Podeste
+  gehen auf, die Treppe bleibt; der aufgezeichnete Weg läuft mit
+  `bewege_mit_hoehe` ohne Anstoss durch (`tests/test_katakomben_korrektur.py`,
+  rund 25 s inklusive Rekonstruktion).

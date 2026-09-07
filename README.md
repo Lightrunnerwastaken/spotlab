@@ -217,6 +217,24 @@ den Raum wie jeden anderen (das Pauspapier liegt daneben als `.pauspapier`).
 Ohne Punktwolken wird der Pfad ein Schlauch. Der Katakomben-Gang der Schule
 (107 Wegpunkte, 31 Tags) braucht dafür rund sechs Sekunden.
 
+**Korrigieren.** Eine rekonstruierte Karte hat Wände mit Lücken und einen Boden
+nur dort, wo Spot gelaufen ist. „Korrigieren…" listet jede Lücke (Lücke, Ecke,
+Anschluss, und Wände quer über den Weg) mit einem Vorschlag und dem Grund: lief
+der Roboter hindurch, ist es ein **Durchgang**; liegen Pauspapier-Punkte in der
+Lücke, ist es **Wand**; sonst „unklar" — du entscheidest. Die gewählte Zeile
+leuchtet in der 2D-Sicht auf. „Anwenden" schliesst die Wände und baut das
+**Gelände**: ein Höhenraster, das jeden Gang bis an die Wände füllt, mit dem
+Gefälle des gelaufenen Wegs und weichen Übergängen an Abzweigungen (Rampen und
+Podeste der Rekonstruktion gehen darin auf, Treppen bleiben und stehen darauf).
+Wo weder Wand noch Punkte aufhalten, endet der Boden 2 m neben dem Weg, und die
+**offenen Ränder** leuchten orange, bis du die Wand nachziehst und den Korrigierer
+nochmals laufen lässt. Das Gelände steht als eine Zeile in der Elementliste, ist
+nur gerechnet (nicht von Hand zu ziehen), erscheint in 2D als Relief mit
+Höhenlinien, in 3D als Fläche und in MuJoCo als Boden; `spot.state.z` folgt
+ihm. Alles zusammen ist ein Schritt für Ctrl+Z. Gespeichert wird es als
+`.gelaende` neben der Raumdatei; das Pauspapier trägt seit Fassung PAUS2 auch
+den gelaufenen Weg, damit der Korrigierer jederzeit neu rechnen kann.
+
 Tasten wie in Blender, in beiden Sichten:
 
 | Taste | Wirkung |

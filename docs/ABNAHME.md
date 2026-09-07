@@ -619,6 +619,25 @@ und `spotsim/local_grid.py` (Sprungregel) zurückspielen.
 
 ---
 
+## A28 — Die Katakomben, korrigiert, in 2D und 3D abgefahren
+
+**Vorgehen** Im Raumeditor „Rekonstruieren…" (Katakomben-Karte), dann „Korrigieren…"
+mit den Vorschlägen (unklare Zeilen so lassen), „Anwenden", unter `katakomben`
+speichern. Im 2D-Sim ein Programm, das den aufgezeichneten Weg mit `spot.move`
+von Wegpunkt zu Wegpunkt nachfährt (die Wegpunkte stehen im Pauspapier:
+`welt.pauspapier.lies_weg`); dann dasselbe in `Übungsraum 3D (MuJoCo)`. Ein Bild
+der 3D-Sicht ins Protokoll.
+
+**Erwartung** Kein `angestossen`-Ereignis und keine „Kante" in beiden Sims;
+`spot.state.z` folgt dem Gefälle (über 2 m Spanne); die Treppe steht auf dem
+Gelände, hoch und rückwärts runter ohne `treppe_verweigert`. Im Test
+`tests/test_katakomben_korrektur.py` läuft der Weg mit `bewege_mit_hoehe` ohne
+Anstoss durch (07.09.2026).
+
+**Ergebnis** _(offen)_
+
+---
+
 ## Nach der Abnahme
 
 Ergebnisse hier eintragen, Abweichungen als Befund in die Spec zurückspielen, und erst
