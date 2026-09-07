@@ -103,13 +103,13 @@ def test_gui_importiert_kein_bosdyn():
     assert verstoesse == []
 
 
-def test_fenster_hat_jetzt_neun_ansichten(qapp):
+def test_fenster_hat_jetzt_zehn_ansichten(qapp):
     fenster = MainWindow()
     assert set(fenster.ansichten) == {
-        "projekte", "code", "live", "laeufe", "karten", "umwelt",
+        "projekte", "code", "live", "laeufe", "karten", "umwelt", "fahren",
         "raumeditor", "anbindungen", "spot",
     }
-    assert fenster.stapel.count() == 9
+    assert fenster.stapel.count() == 10
 
 
 # --------------------------------------------------------------- Ansicht „Code"
@@ -681,8 +681,83 @@ def test_fahren_startet_das_programm_aus_beispiele_und_das_fenster_kennt_es(qapp
     assert gestartet == [tmp_path / "Beispiele" / "fahren.py"] and gestartet[0].is_file()
     assert fenster.ansichten["code"].gewaehltes_backend() in ("sim", "mujoco")
     fenster._oeffne_uebungsfenster("fahren.py")
-    assert fenster.uebungsfenster._fahrt
+    assert fenster.uebungsfenster.tastenfahrt.aktiv
     fenster.uebungsfenster.close()
+
+
+def test_der_tab_fahren_startet_dasselbe_programm_am_echten_spot(qapp, tmp_path, monkeypatch):
+    """Derselbe Startweg wie der Fahrmodus im Raumeditor, nur mit dem Backend „real":
+    das Programm aus Beispiele, der Editor als der eine Startweg, die App merkt sich,
+    dass der Lauf in den Tab gehoert."""
+    from dataclasses import replace
+
+    from spotlab.config import Config, Limits
+
+    fenster = MainWindow()
+    fenster._config = replace(fenster._config or Config(ip="", username="", limits=Limits()),
+                              workspace=str(tmp_path))
+    gestartet = []
+    monkeypatch.setattr(fenster.ansichten["code"], "starte_skript", lambda pfad: gestartet.append(pfad))
+    fenster.ansichten["fahren"].fahrt_gewuenscht.emit()
+    assert gestartet == [tmp_path / "Beispiele" / "fahren.py"]
+    assert fenster.ansichten["code"].gewaehltes_backend() == "real"
+    assert fenster._fahrt_erwartet == "real"
+
+
+def test_der_tab_fahren_faehrt_wirklich_ueber_knopf_watcher_und_tasten(qapp, tmp_path, monkeypatch):
+    """Die ganze Kette wie beim Fahrmodus, mit dem Trockenlauf-Backend an Stelle des
+    Roboters: Knopf im Tab, echter Prozess, der Watcher meldet den Lauf, der Tab
+    bekommt das Verzeichnis und die Tastatur, W wird ein walk-Kommando in der
+    Aufzeichnung. Der Tab bleibt vorne -- dort kommen die Tasten an."""
+    import json
+    import time
+    from dataclasses import replace
+    from pathlib import Path
+
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+
+    from spotlab.config import Config, Limits
+    from spotlab.gui import app as app_modul
+    from spotlab.workshop.control import stoppe_freundlich
+    from tests_zeitgrenzen import TEST_TIMEOUT_S
+
+    monkeypatch.setattr(app_modul, "FAHREN_BACKEND", "dryrun")
+    fenster = MainWindow()
+    fenster._config = replace(fenster._config or Config(ip="", username="", limits=Limits()),
+                              workspace=str(tmp_path))
+    fenster._setze_arbeitsordner(str(tmp_path))
+    fenster._wechsle("fahren")
+    tab = fenster.ansichten["fahren"]
+    tab.fahrt_gewuenscht.emit()
+    assert fenster.ansichten["code"].laeuft(), fenster.statuszeile.text()
+    prozess = fenster.ansichten["code"]._prozess
+    lauf = None
+    try:
+        frist = time.monotonic() + TEST_TIMEOUT_S
+        while lauf is None and time.monotonic() < frist:
+            qapp.processEvents()
+            time.sleep(0.05)
+            lauf = tab.tastenfahrt.lauf_dir if tab.laeuft() else None
+        assert lauf is not None, "der Watcher hat dem Tab nie das Lauf-Verzeichnis gemeldet"
+        assert fenster.stapel.currentWidget() is tab
+        QTest.keyPress(tab, Qt.Key_W)
+        ende = time.monotonic() + 2.0
+        while time.monotonic() < ende:
+            qapp.processEvents()
+            time.sleep(0.02)
+        QTest.keyRelease(tab, Qt.Key_W)
+        stoppe_freundlich(lauf)
+        prozess.wait(timeout=TEST_TIMEOUT_S)
+    finally:
+        if prozess.poll() is None:
+            prozess.kill()
+    zeilen = (Path(lauf) / "ereignisse.jsonl").read_text(encoding="utf-8").splitlines()
+    kommandos = [json.loads(z)["daten"].get("name") for z in zeilen
+                 if z.strip() and json.loads(z)["art"] == "kommando"]
+    assert "walk" in kommandos, kommandos
+    meta = json.loads((Path(lauf) / "lauf.json").read_text(encoding="utf-8"))
+    assert meta["backend"] == "dryrun"
 
 
 def test_fahren_ohne_arbeitsordner_sagt_es(qapp, monkeypatch):
@@ -727,9 +802,9 @@ def test_fahren_faehrt_wirklich_ueber_knopf_watcher_und_tasten(qapp, tmp_path, m
             qapp.processEvents()
             time.sleep(0.05)
             if fenster.uebungsfenster is not None:
-                lauf = fenster.uebungsfenster._lauf_dir_fahrt
+                lauf = fenster.uebungsfenster.tastenfahrt.lauf_dir
         assert lauf is not None, "der Watcher hat dem Uebungsfenster nie das Lauf-Verzeichnis gemeldet"
-        assert fenster.uebungsfenster._fahrt and fenster.uebungsfenster.isVisible()
+        assert fenster.uebungsfenster.tastenfahrt.aktiv and fenster.uebungsfenster.isVisible()
         QTest.keyPress(fenster.uebungsfenster, Qt.Key_W)
         ende = time.monotonic() + 4.0                 # der 200-ms-Takt frischt den Befehl auf
         while time.monotonic() < ende:

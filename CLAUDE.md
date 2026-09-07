@@ -554,7 +554,18 @@ lagen unter `src/spotlab/workshop/runs/`, niemand fand sie, und das Übungsfenst
 Verzeichnis nie (07.09.2026). Im Fahrmodus **greift das Übungsfenster die Tastatur**
 (`grabKeyboard`, bis „Stopp" oder Schliessen): so kommen die Tasten an, egal welches Widget
 den Fokus hat, und die Leertaste drückt nicht den fokussierten Stopp-Knopf. Ein Test fährt
-die ganze Kette — Knopf, Prozess, Watcher, Fenster, Taste, Aufzeichnung.
+die ganze Kette — Knopf, Prozess, Watcher, Fenster, Taste, Aufzeichnung. **Der Tab
+„Fahren"** (`gui/views/fahren.py`) fährt damit den ECHTEN Spot: dasselbe Programm aus
+Beispiele, derselbe eine Startweg (`app.py::_starte_fahrt(FAHREN_BACKEND)`, Backend „real"
+erzwungen, nie die Wahl im Editor geerbt), die Tasten über `gui/tastenfahrt.py` — die eine
+Formulierung für Übungsfenster und Tab (Tastenmenge, 200-ms-Takt, Faktor „Langsam" 0.5).
+Der Tab hält die Tastatur nur, solange er sichtbar ist und der Lauf lebt; **Reiterwechsel
+und Fokusverlust der App lassen alle Tasten los und schreiben Stillstand** — Qt schickt bei
+Alt-Tab kein KeyRelease, der Takt frischte den letzten Befehl sonst blind auf. Stopp
+delegiert an `LiveView.stoppe()`, der NOT-AUS steht im Kopf. Stirbt der Prozess vor dem
+ersten Lauf-Verzeichnis (Roboter nicht erreichbar), setzt `laeuft_geaendert` die Erwartung
+zurück, sonst gälte ein späterer fremder Lauf als Fahrt. Die Kette läuft im Test mit dem
+Trockenlauf statt des Roboters (`FAHREN_BACKEND` getauscht); am Gerät: A29.
 
 **Stufe 13 (06.09.2026): Höhe, Rampen und Treppen — alle vier Etappen gebaut** — Raumformat
 v3 (`Boden` als Podest, Rampe oder Treppe; `z` an Wand, Block, Tag), `welt/hoehe.py`

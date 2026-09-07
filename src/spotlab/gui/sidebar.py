@@ -10,6 +10,7 @@ EINTRAEGE = (
     ("laeufe", "Läufe"),
     ("karten", "Karten"),
     ("umwelt", "Umwelt"),
+    ("fahren", "Fahren"),
     ("raumeditor", "Raumeditor"),
     ("anbindungen", "Anbindungen"),
     ("spot", "Spot"),

@@ -199,14 +199,14 @@ def test_im_fahrmodus_schreiben_die_tasten_den_fahrbefehl(qapp, tmp_path):
     assert not fenster.fahrt_zeile.isHidden() and fenster.verfolgen.isChecked()
     QTest.keyPress(fenster, Qt.Key_W)
     assert fahrt.lies(tmp_path) == (fahrt.TEMPO_M_S, 0.0, 0.0)
-    assert fenster._fahrt_takt.isActive()                     # solange eine Taste gedrueckt ist
+    assert fenster.tastenfahrt.takt.isActive()                # solange eine Taste gedrueckt ist
     QTest.keyPress(fenster, Qt.Key_Q)
     assert fahrt.lies(tmp_path) == (fahrt.TEMPO_M_S, 0.0, fahrt.DREH_RAD_S)
     QTest.keyRelease(fenster, Qt.Key_W)
     assert fahrt.lies(tmp_path) == (0.0, 0.0, fahrt.DREH_RAD_S)
     QTest.keyPress(fenster, Qt.Key_Space)
     assert fahrt.lies(tmp_path) == (0.0, 0.0, 0.0)
-    assert not fenster._fahrt_takt.isActive()
+    assert not fenster.tastenfahrt.takt.isActive()
 
 
 def test_im_fahrmodus_haelt_das_fenster_die_tastatur(qapp, tmp_path):

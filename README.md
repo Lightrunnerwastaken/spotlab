@@ -75,12 +75,13 @@ pip install -e .[gui]
 spotlab gui
 ```
 
-Neun Ansichten in einer Seitenleiste: **Projekte** (anlegen, in VS Code öffnen, starten —
+Zehn Ansichten in einer Seitenleiste: **Projekte** (anlegen, in VS Code öffnen, starten —
 mit Häkchen für Trockenlauf), **Code** (der eingebaute Editor), **Live-Lauf** (Ereignisse,
 Telemetrie, Kamerabild, Ausgabe), **Läufe** (vergangene Läufe mit der Kurve kommandiertes
 gegen gemessenes Tempo), **Karten** (GraphNav aufzeichnen und ansehen), **Umwelt** (was
-Spot gerade sieht), **Übungsraum** (ohne Roboter fahren), **Anbindungen** (fremde Projekte) und **Spot** (Zugangsdaten und
-Prüfung). Hell und dunkel folgen der Windows-Einstellung.
+Spot gerade sieht), **Fahren** (den echten Spot über die Tastatur fahren), **Raumeditor**
+(Räume bauen und ohne Roboter fahren), **Anbindungen** (fremde Projekte) und **Spot**
+(Zugangsdaten und Prüfung). Hell und dunkel folgen der Windows-Einstellung.
 
 ### Der eingebaute Editor
 
@@ -340,6 +341,24 @@ Installation (einmalig; `matura-spot` liegt neben spotlab):
     pip install -e .[sim]
     pip install -e ../matura-spot
     python ../matura-spot/scripts/fetch_menagerie.py
+
+## Fahren — den echten Spot über die Tastatur
+
+In der Ansicht **Fahren** startet **„🎮 Fahrt beginnen"** das Programm `fahren.py` aus dem
+Projekt `Beispiele` am echten Spot — über denselben Startweg wie „Starten" im Editor, also
+mit Lease, Not-Aus-Endpunkt, den Tempogrenzen aus der Konfiguration und der Aufzeichnung
+wie bei jedem Lauf. Sobald der Lauf steht, gehören die Tasten dem Tab: **W/S** vor und
+zurück, **A/D** seitwärts, **Q/E** drehen, **Leertaste** oder **Esc** hält. Losgelassen
+heisst Stopp — ein Fahrbefehl, der älter ist als eine halbe Sekunde, gilt nicht mehr, und
+jedes Kommando trägt eine Endzeit von rund einer Sekunde: stirbt die GUI oder der Lauf,
+steht der Roboter. Wechselst du den Reiter oder verliert das Fenster den Fokus (Alt-Tab mit
+gehaltenem W), lässt der Tab alle Tasten los und Spot steht.
+
+**„Langsam"** (vorausgewählt) halbiert alle drei Achsen auf 0.2 m/s; der Deckel aus
+`config.toml` gilt zusätzlich. „■ Stopp" ist derselbe freundliche Stopp wie in der
+Live-Ansicht, der **NOT-AUS** steht im Kopf, in jedem Reiter. Freifläche, Aufsicht, Tablet mit
+Not-Aus in Reichweite — und vor dem ersten Mal Abnahmepunkt **A1** (`docs/ABNAHME.md`), sonst
+ist nicht belegt, dass der Not-Aus am Tablet während des Laufs wirkt.
 
 ## Umwelt — was Spot gerade sieht
 

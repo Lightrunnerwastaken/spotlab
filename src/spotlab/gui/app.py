@@ -32,6 +32,7 @@ from spotlab.gui.theme import palette_fuer, stylesheet
 from spotlab.gui.uebungsfenster import Uebungsfenster
 from spotlab.gui.views.anbindungen import AnbindungenView
 from spotlab.gui.views.checkup import CheckupView
+from spotlab.gui.views.fahren import FahrenView
 from spotlab.gui.views.live import LiveView
 from spotlab.gui.views.maps import MapsView
 from spotlab.gui.views.projects import ProjectsView
@@ -52,6 +53,11 @@ def system_ist_dunkel(app=None):
         return app.styleHints().colorScheme() == Qt.ColorScheme.Dark
     except Exception:
         return True
+
+
+# Der Tab „Fahren" erzwingt den echten Spot -- er erbt NICHT die Wahl im Editor.
+# Der Kettentest tauscht die Konstante gegen den Trockenlauf.
+FAHREN_BACKEND = "real"
 
 
 class MainWindow(QWidget):
@@ -94,13 +100,14 @@ class MainWindow(QWidget):
             "laeufe": RunsView(self._palette),
             "karten": MapsView(self._palette),
             "umwelt": UmweltView(),
+            "fahren": FahrenView(),
             "raumeditor": RaumeditorView(self._palette),
             "anbindungen": AnbindungenView(self._palette),
             "spot": CheckupView(),
         }
         self.stapel = QStackedWidget()
         for schluessel in (
-            "projekte", "code", "live", "laeufe", "karten", "umwelt",
+            "projekte", "code", "live", "laeufe", "karten", "umwelt", "fahren",
             "raumeditor", "anbindungen", "spot",
         ):
             self.stapel.addWidget(self.ansichten[schluessel])
@@ -147,6 +154,15 @@ class MainWindow(QWidget):
         # solange dort nichts ausgewaehlt war.
         self.ansichten["raumeditor"].start_gewuenscht.connect(self._starte_virtuell)
         self.ansichten["raumeditor"].fahrt_gewuenscht.connect(self._starte_fahrt)
+        # Der Tab „Fahren": dasselbe Programm, derselbe Startweg, Backend „real".
+        self.ansichten["fahren"].fahrt_gewuenscht.connect(
+            lambda: self._starte_fahrt(FAHREN_BACKEND)
+        )
+        self.ansichten["fahren"].stopp_gewuenscht.connect(
+            lambda: self.ansichten["live"].stoppe()
+        )
+        self.ansichten["fahren"].meldung.connect(self._melde)
+        self.ansichten["code"].laeuft_geaendert.connect(self._code_laeuft_geaendert)
         self._fahrt_erwartet = False
         # Der Knopf im Raumeditor spiegelt den Laufzustand des Editors, statt
         # ihn ein zweites Mal zu fuehren. Die Methode gab es schon; sie war
@@ -341,9 +357,18 @@ class MainWindow(QWidget):
             self.ansichten["code"].setze_backend("mujoco" if "mujoco" in namen else "sim")
         self.ansichten["code"].starte_aktuelles()
 
-    def _starte_fahrt(self):
-        """Der Fahrmodus: das mitgelieferte `fahren.py` als virtueller Lauf, W A S D Q E
-        im Uebungsfenster. Derselbe Startweg und dieselben Regeln wie „Starten"."""
+    def _code_laeuft_geaendert(self, laeuft):
+        # Stirbt der Prozess, bevor ein Lauf-Verzeichnis da ist (Roboter nicht
+        # erreichbar), meldet der Watcher nie ein Ende: dann darf kein spaeterer,
+        # fremder Lauf als Fahrt gelten, und der Tab gibt die Tastatur frei.
+        if not laeuft:
+            self._fahrt_erwartet = False
+            self.ansichten["fahren"].lauf_beendet()
+
+    def _starte_fahrt(self, backend=None):
+        """Der Fahrmodus: das mitgelieferte `fahren.py`, W A S D Q E. Ohne `backend`
+        virtuell (Uebungsfenster, Raumeditor), mit `FAHREN_BACKEND` am echten Spot
+        (Tab „Fahren"). Derselbe Startweg und dieselben Regeln wie „Starten"."""
         from spotlab.workshop import fahren
         from spotlab.workshop.beispiele import bereitstellen
 
@@ -362,9 +387,13 @@ class MainWindow(QWidget):
         except OSError as fehler:
             self._melde(f"Beispiele konnten nicht angelegt werden: {fehler}")
             return
-        namen = [name for _, name in verfuegbare_backends()]
-        self.ansichten["code"].setze_backend("mujoco" if "mujoco" in namen else "sim")
-        self._fahrt_erwartet = True
+        if backend:
+            self.ansichten["code"].setze_backend(backend)
+            self._fahrt_erwartet = "real"           # der Lauf gehoert in den Tab „Fahren"
+        else:
+            namen = [name for _, name in verfuegbare_backends()]
+            self.ansichten["code"].setze_backend("mujoco" if "mujoco" in namen else "sim")
+            self._fahrt_erwartet = True
         self.ansichten["code"].starte_skript(fahren.skript_in(arbeitsordner))
 
     def _oeffne_uebungsfenster(self, titel=""):
@@ -384,12 +413,13 @@ class MainWindow(QWidget):
         # das `verbunden`-Ereignis zieht Sekundenbruchteile spaeter nach, und
         # DAS ist die Wahrheit ueber den Raum, in dem wirklich gefahren wird.
         self.uebungsfenster.beginne(
-            raum, self.ansichten["raumeditor"].startpose(), titel, fahrt=self._fahrt_erwartet
+            raum, self.ansichten["raumeditor"].startpose(), titel,
+            fahrt=self._fahrt_erwartet is True,
         )
         self._fahrt_erwartet = False
         self.uebungsfenster.show()
         self.uebungsfenster.raise_()
-        if self.uebungsfenster._fahrt:
+        if self.uebungsfenster.tastenfahrt.aktiv:
             self.uebungsfenster.activateWindow()             # die Tasten sollen dort ankommen
 
     def _ansicht(self, pfad):
@@ -493,6 +523,14 @@ class MainWindow(QWidget):
         skript = read_run(verzeichnis).skript
         name = Path(skript).name if skript else Path(verzeichnis).name
         self.ansichten["live"].setze_lauf(verzeichnis, name)
+        if self._fahrt_erwartet == "real":
+            # Der Tab „Fahren" bekommt das Verzeichnis und die Tastatur -- und bleibt
+            # vorne: dort kommen die Tasten an. Der NOT-AUS steht im Kopf, in jedem Reiter.
+            self._fahrt_erwartet = False
+            self.ansichten["fahren"].lauf_beginnt(verzeichnis, name)
+            self._wechsle("fahren")
+            self.leiste.waehle("fahren")
+            return
         # Auch bei einem von aussen gestarteten Lauf (F5 in VS Code) hinschalten —
         # sonst sieht der Schüler nicht, dass sein Programm läuft. Wer aber
         # gerade selbst aus „Code" gestartet hat, wird nicht aus seiner Ansicht
@@ -505,6 +543,8 @@ class MainWindow(QWidget):
     def _zustand(self, satz):
         self.kopf.zeige_zustand(satz)
         self.ansichten["live"].zeige_zustand(satz)
+        if self.ansichten["fahren"].laeuft():
+            self.ansichten["fahren"].zeige_zustand(satz)
         if self.uebungsfenster is None or not self.uebungsfenster.isVisible():
             return
         daten = satz.get("daten") or {}
@@ -531,6 +571,7 @@ class MainWindow(QWidget):
         self.ansichten["raumeditor"].lade(verzeichnis)
         if self.uebungsfenster is not None:
             self.uebungsfenster.beendet(lauf=verzeichnis)
+        self.ansichten["fahren"].lauf_beendet()
         self.ansichten["anbindungen"].lauf_laeuft(False)
         self.ansichten["anbindungen"].aktualisiere()
         self.ansichten["laeufe"].aktualisiere()

@@ -638,6 +638,32 @@ Anstoss durch (07.09.2026).
 
 ---
 
+## A29 — Den echten Spot über die Tastatur fahren
+
+**Voraussetzung** A1 bestanden — der Tab fährt den Roboter, und der Not-Aus am Tablet muss
+während des Laufs nachweislich wirken.
+
+**Vorgehen** Freifläche, Aufsicht, Tablet mit Not-Aus in der Hand einer zweiten Person. In
+der Ansicht „Fahren" „🎮 Fahrt beginnen" („Langsam" bleibt an). Warten, bis die Zeile
+„fahren.py läuft — Tasten sind scharf" steht. Dann nacheinander: W kurz halten und
+loslassen; Q, dann E; A, dann D; W halten und dabei mit der Maus auf den Reiter „Live-Lauf"
+klicken; zurück, W halten und mit Alt-Tab in ein anderes Fenster wechseln; zurück und
+„■ Stopp".
+
+**Erwartung**
+- (1) W bewegt den Spot vorwärts mit etwa 0.2 m/s, das Tempo in der Zustandszeile passt;
+  losgelassen steht er binnen einer halben Sekunde (Totmannschalter).
+- (2) Q und E drehen links und rechts, A und D gehen seitwärts, ohne Vorwärtsanteil.
+- (3) Beim Reiterwechsel mit gehaltenem W steht der Spot sofort; ebenso bei Alt-Tab.
+- (4) „■ Stopp" beendet den Lauf geordnet: Spot setzt sich, `lauf.json` trägt
+  `abgebrochen`, die Aufzeichnung enthält `walk`-Kommandos mit `vx` 0.2.
+- (5) Zur Probe einmal die GUI während einer Fahrt hart schliessen (Task-Manager): der Spot
+  steht nach spätestens einer Sekunde — die Endzeit der Kommandos, nicht die GUI, hält ihn.
+
+**Ergebnis** _(offen)_
+
+---
+
 ## Nach der Abnahme
 
 Ergebnisse hier eintragen, Abweichungen als Befund in die Spec zurückspielen, und erst

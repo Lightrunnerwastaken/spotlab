@@ -16,7 +16,7 @@ Watcher bekommt, und genau EIN Lauf ist der, auf den Stopp und NOT-AUS zeigen.
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer, QUrl, Signal
+from PySide6.QtCore import Qt, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QPixmap
 from PySide6.QtWidgets import (
     QHBoxLayout,
@@ -27,11 +27,11 @@ from PySide6.QtWidgets import (
 )
 
 from spotlab.gui.liveplot import LiveRaumPlot
-from spotlab.record import fahrt, kamera
+from spotlab.gui.tastenfahrt import Tastenfahrt
+from spotlab.record import kamera
 from spotlab.welt.raum import raum_laden
 
 ZOOM_STUFE = 1.25            # je Rad-Raste
-FAHRT_TAKT_MS = 200          # solange eine Taste gedrueckt ist: den Zeitstempel auffrischen
 FAHRT_HINWEIS = "Fahren: W/S vor und zurück · A/D seitwärts · Q/E drehen · Leertaste hält"
 
 
@@ -82,16 +82,11 @@ class Uebungsfenster(QWidget):
         self.verfolgen.hide()
         self.verfolgen.toggled.connect(self._verfolgen_umgeschaltet)
         # Fahrmodus (Knopf „Fahren" im Raumeditor): die Tasten hier werden
-        # fahrt.json im Lauf-Verzeichnis, fahren.py liest sie (record/fahrt.py).
-        self._fahrt = False
-        self._tasten = set()
-        self._lauf_dir_fahrt = None
+        # fahrt.json im Lauf-Verzeichnis, fahren.py liest sie (gui/tastenfahrt.py).
+        self.tastenfahrt = Tastenfahrt(self)
         self.fahrt_zeile = QLabel(FAHRT_HINWEIS)
         self.fahrt_zeile.setObjectName("Gedaempft")
         self.fahrt_zeile.hide()
-        self._fahrt_takt = QTimer(self)
-        self._fahrt_takt.setInterval(FAHRT_TAKT_MS)
-        self._fahrt_takt.timeout.connect(self._fahrt_schreiben)
         self.setFocusPolicy(Qt.StrongFocus)
         self.kopf = QLabel("Kein Lauf.")
         self.zeile = QLabel("")
@@ -152,15 +147,13 @@ class Uebungsfenster(QWidget):
         self.verfolgen.hide()
         self._lauf_dir = None
         self._lauf = None
-        self._fahrt = bool(fahrt)
-        self._tasten = set()
-        self._fahrt_takt.stop()
-        self.fahrt_zeile.setVisible(self._fahrt)
-        self._lauf_dir_fahrt = Path(lauf_dir) if lauf_dir else None
-        if self._fahrt:
+        self.fahrt_zeile.setVisible(bool(fahrt))
+        if fahrt:
+            self.tastenfahrt.beginne(lauf_dir)
             self.verfolgen.setChecked(True)
             self._tastatur_greifen()
         else:
+            self.tastenfahrt.beende()
             self._tastatur_loslassen()
         self._videopfad = None
         self.video.hide()
@@ -257,44 +250,17 @@ class Uebungsfenster(QWidget):
 
     # -------------------------------------------------------------- Fahren
 
-    _TASTEN = {Qt.Key_W: "w", Qt.Key_A: "a", Qt.Key_S: "s", Qt.Key_D: "d",
-               Qt.Key_Q: "q", Qt.Key_E: "e"}
-
     def keyPressEvent(self, ereignis):
-        if not self._fahrt or ereignis.isAutoRepeat():
-            return super().keyPressEvent(ereignis)
-        taste = ereignis.key()
-        if taste in (Qt.Key_Space, Qt.Key_Escape):
-            self._tasten.clear()
-        elif taste in self._TASTEN:
-            self._tasten.add(self._TASTEN[taste])
-        else:
-            return super().keyPressEvent(ereignis)
-        self._fahrt_schreiben()
-        ereignis.accept()
+        if self.tastenfahrt.tastenereignis(ereignis, gedrueckt=True):
+            ereignis.accept()
+            return
+        super().keyPressEvent(ereignis)
 
     def keyReleaseEvent(self, ereignis):
-        if not self._fahrt or ereignis.isAutoRepeat() or ereignis.key() not in self._TASTEN:
-            return super().keyReleaseEvent(ereignis)
-        self._tasten.discard(self._TASTEN[ereignis.key()])
-        self._fahrt_schreiben()
-        ereignis.accept()
-
-    def _fahrt_schreiben(self):
-        """fahrt.json mit den Tasten von jetzt; der Takt frischt den Zeitstempel auf,
-        solange etwas gedrueckt ist (Totmannschalter in record/fahrt.py)."""
-        if self._tasten:
-            if not self._fahrt_takt.isActive():
-                self._fahrt_takt.start()
-        else:
-            self._fahrt_takt.stop()
-        if self._lauf_dir_fahrt is None:
+        if self.tastenfahrt.tastenereignis(ereignis, gedrueckt=False):
+            ereignis.accept()
             return
-        vx, vy, wz = fahrt.befehl_aus_tasten(self._tasten)
-        try:
-            fahrt.schreibe(self._lauf_dir_fahrt, vx, vy, wz)
-        except OSError:
-            pass                           # ein Fahrwunsch darf nichts anhalten
+        super().keyReleaseEvent(ereignis)
 
     def zeige_ausgabe(self, zeile):
         """Nur die letzte Zeile. Die volle Ausgabe steht in der Ansicht „Code";
@@ -303,18 +269,17 @@ class Uebungsfenster(QWidget):
 
     def setze_lauf_dir(self, pfad):
         """Das Lauf-Verzeichnis, sobald der Watcher es kennt: Kamera- und Fahrwunsch dorthin."""
-        self._lauf_dir_fahrt = Path(pfad)
         if self._lauf_dir is None:
             self._lauf_dir = Path(pfad)
             self._kamera_schreiben()
-        if self._fahrt:
-            self._fahrt_schreiben()
+        if self.tastenfahrt.aktiv:
+            self.tastenfahrt.setze_lauf_dir(pfad)
 
     def _tastatur_greifen(self):
         """Im Fahrmodus bekommt dieses Fenster alle Tasten der App -- egal welches
         Widget den Fokus hat; sonst kam W bei niemandem an, und die Leertaste
         drueckte den fokussierten Stopp-Knopf. Nur ein sichtbares Fenster kann greifen."""
-        if self._fahrt and self.isVisible():
+        if self.tastenfahrt.aktiv and self.isVisible():
             self.grabKeyboard()
 
     def _tastatur_loslassen(self):
@@ -330,8 +295,7 @@ class Uebungsfenster(QWidget):
         super().hideEvent(ereignis)
 
     def beendet(self, text="", lauf=None):
-        self._fahrt_takt.stop()
-        self._fahrt = False
+        self.tastenfahrt.beende()
         self._tastatur_loslassen()
         self.stopp.setEnabled(False)
         self.kopf.setText("Fertig.")

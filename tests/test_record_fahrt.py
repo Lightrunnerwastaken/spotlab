@@ -1,5 +1,7 @@
 """fahrt.json: der Fahrbefehl des Uebungsfensters fuer das Programm `fahren.py`."""
 
+import pytest
+
 from spotlab.record import fahrt
 
 
@@ -30,6 +32,10 @@ def test_die_tastenbelegung():
     assert fahrt.befehl_aus_tasten({"a", "e"}) == (0.0, fahrt.QUER_M_S, -fahrt.DREH_RAD_S)
     assert fahrt.befehl_aus_tasten({"w", "s"}) == (0.0, 0.0, 0.0)          # hebt sich auf
     assert fahrt.befehl_aus_tasten({"q", "x"}) == (0.0, 0.0, fahrt.DREH_RAD_S)
+    # Der Faktor drosselt alle drei Achsen -- „Langsam" in der Ansicht „Fahren".
+    assert fahrt.befehl_aus_tasten({"w", "a", "q"}, faktor=0.5) == (
+        pytest.approx(fahrt.TEMPO_M_S / 2), pytest.approx(fahrt.QUER_M_S / 2),
+        pytest.approx(fahrt.DREH_RAD_S / 2))
 
 
 def test_schreiben_uebersteht_einen_kurzen_lesekonflikt(tmp_path, monkeypatch):

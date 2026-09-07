@@ -31,13 +31,16 @@ TASTEN = {
 }
 
 
-def befehl_aus_tasten(tasten):
-    """(vx, vy, wz) aus den gedrueckten Buchstaben; Gegenspieler heben sich auf."""
+def befehl_aus_tasten(tasten, faktor=1.0):
+    """(vx, vy, wz) aus den gedrueckten Buchstaben; Gegenspieler heben sich auf.
+
+    `faktor` drosselt alle drei Achsen gleich -- „Langsam" am echten Roboter.
+    """
     vx = vy = wz = 0.0
     for taste in tasten:
         dx, dy, dw = TASTEN.get(taste, (0.0, 0.0, 0.0))
         vx, vy, wz = vx + dx, vy + dy, wz + dw
-    return (vx, vy, wz)
+    return (vx * faktor, vy * faktor, wz * faktor)
 
 
 def schreibe(lauf_dir, vx, vy, wz, jetzt=time.time):
