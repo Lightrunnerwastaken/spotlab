@@ -9,6 +9,7 @@ dasselbe Muster wie `record/kamera.py`: die Platte ist der einzige Kanal.
 """
 
 import json
+import math
 import os
 import time
 from pathlib import Path
@@ -16,6 +17,26 @@ from pathlib import Path
 DATEI = "fahrt.json"
 TOTMANN_S = 0.5
 STILL = (0.0, 0.0, 0.0)
+
+# Die Tastenbelegung des Uebungsfensters -- hier, damit sie ohne Qt prueffbar ist.
+# Gemaechlich; die Grenzen aus config.toml deckeln wie bei jedem Programm.
+TEMPO_M_S = 0.4
+QUER_M_S = 0.3
+DREH_RAD_S = math.radians(45.0)
+TASTEN = {
+    "w": (TEMPO_M_S, 0.0, 0.0), "s": (-TEMPO_M_S, 0.0, 0.0),
+    "a": (0.0, QUER_M_S, 0.0), "d": (0.0, -QUER_M_S, 0.0),
+    "q": (0.0, 0.0, DREH_RAD_S), "e": (0.0, 0.0, -DREH_RAD_S),
+}
+
+
+def befehl_aus_tasten(tasten):
+    """(vx, vy, wz) aus den gedrueckten Buchstaben; Gegenspieler heben sich auf."""
+    vx = vy = wz = 0.0
+    for taste in tasten:
+        dx, dy, dw = TASTEN.get(taste, (0.0, 0.0, 0.0))
+        vx, vy, wz = vx + dx, vy + dy, wz + dw
+    return (vx, vy, wz)
 
 
 def schreibe(lauf_dir, vx, vy, wz, jetzt=time.time):

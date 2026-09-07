@@ -501,7 +501,16 @@ class EditorView(QWidget):
         """
         self._starten_oder_stoppen()
 
+    def starte_skript(self, pfad):
+        """Ein mitgeliefertes Programm starten (der Fahrmodus des Raumeditors) --
+        ueber denselben Startweg wie die offene Datei, mit dem gewaehlten Backend."""
+        if self._laeuft:
+            self.stopp_gewuenscht.emit()
+            return
+        self._starte(Path(pfad))
+
     def _starten_oder_stoppen(self):
+        # Am `clicked`-Signal: Qt reicht `checked` herein, deshalb KEIN Parameter hier.
         if self._laeuft:
             # Delegation ans Hauptfenster, das LiveView.stoppe() ruft: der
             # freundliche Stopp haengt am Lauf-Verzeichnis, das nur die
@@ -516,6 +525,9 @@ class EditorView(QWidget):
         # meint das Programm, wie es gerade dasteht — samt seiner Importe.
         if not self.speichere_alle_geaenderten():
             return
+        self._starte(eintrag.pfad)
+
+    def _starte(self, skript):
         wo = self.gewaehltes_backend()
         try:
             # nur_trocken NUR beim Uebungsraum: `connect(backend="real")` im
@@ -524,7 +536,7 @@ class EditorView(QWidget):
             # bewegen koennen. Beim Trockenlauf bleibt es wie bisher -- dessen
             # Bedeutung hier zu aendern, waere eine zweite, ungefragte Aenderung.
             prozess = start_script(
-                eintrag.pfad, backend=wo, nur_trocken=(wo == "sim"),
+                skript, backend=wo, nur_trocken=(wo == "sim"),
                 umgebung=self.zusatz_umgebung(),
             )
         except SpotlabError as fehler:
@@ -533,7 +545,7 @@ class EditorView(QWidget):
         self.ausgabe.leere()
         self._prozess = prozess
         self._setze_laeuft(True)
-        self.lauf_gestartet.emit(prozess, str(eintrag.pfad))
+        self.lauf_gestartet.emit(prozess, str(skript))
 
     def _setze_laeuft(self, laeuft):
         self._laeuft = laeuft

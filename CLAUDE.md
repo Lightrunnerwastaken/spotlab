@@ -526,6 +526,13 @@ Abnahme A28. Spec `docs/superpowers/specs/2026-09-07-korrigierer-gelaende-design
 Übungsfenster; der Wunsch geht als `kamera.json` ins Lauf-Verzeichnis (`record/kamera.py`,
 Standardbibliothek), der Ansichtsthread liest ihn je Bild über die Änderungszeit — die GUI
 hält weiter keinen Draht in den Lauf, die Platte ist der einzige Kanal, in beide Richtungen.
+Dazu der **Fahrmodus**: „🎮 Fahren" im Raumeditor startet `workshop/fahren.py` über denselben
+einen Startweg wie die offene Datei (`editor/view.py::starte_skript`, virtuelles Backend
+erzwungen, gleiche Raum- und Startregeln); das Übungsfenster schreibt die Tasten W A S D Q E
+als `fahrt.json` (`record/fahrt.py`, Tastenbelegung ohne Qt prüfbar), `fahren.py` liest mit
+20 Hz und fährt mit `walk(stop=False)`; **ein Befehl älter als 0.5 s heisst Stopp**
+(Totmannschalter). Das Fenster braucht dafür den Tastaturfokus (`StrongFocus`,
+`activateWindow` beim Start).
 
 **Stufe 13 (06.09.2026): Höhe, Rampen und Treppen — alle vier Etappen gebaut** — Raumformat
 v3 (`Boden` als Podest, Rampe oder Treppe; `z` an Wand, Block, Tag), `welt/hoehe.py`

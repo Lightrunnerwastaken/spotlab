@@ -338,3 +338,19 @@ def test_korrigieren_oeffnet_den_dialog_nicht_modal(qapp):
     dialog = ansicht._korrektur_dialog
     assert dialog is not None and dialog.isVisible() and not dialog.isModal()
     dialog.close()
+
+
+def test_der_fahren_knopf_meldet_den_wunsch_und_ruht_waehrend_eines_laufs(qapp):
+    from PySide6.QtWidgets import QPushButton
+
+    ansicht = RaumeditorView(DUNKEL)
+    ansicht.waehle_raum("leer")
+    knopf = ansicht.findChild(QPushButton, "knopf_fahren")
+    wuensche = []
+    ansicht.fahrt_gewuenscht.connect(lambda: wuensche.append(True))
+    knopf.click()
+    assert wuensche == [True]
+    ansicht.setze_laeuft(True)
+    assert not knopf.isEnabled()
+    ansicht.setze_laeuft(False)
+    assert knopf.isEnabled()

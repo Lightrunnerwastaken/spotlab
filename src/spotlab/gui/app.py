@@ -146,6 +146,8 @@ class MainWindow(QWidget):
         # starten. Ueber "Projekte" haette er stillschweigend nichts getan,
         # solange dort nichts ausgewaehlt war.
         self.ansichten["raumeditor"].start_gewuenscht.connect(self._starte_virtuell)
+        self.ansichten["raumeditor"].fahrt_gewuenscht.connect(self._starte_fahrt)
+        self._fahrt_erwartet = False
         # Der Knopf im Raumeditor spiegelt den Laufzustand des Editors, statt
         # ihn ein zweites Mal zu fuehren. Die Methode gab es schon; sie war
         # nirgends verbunden und der Knopf blieb deshalb auf „Starten" stehen.
@@ -339,6 +341,19 @@ class MainWindow(QWidget):
             self.ansichten["code"].setze_backend("mujoco" if "mujoco" in namen else "sim")
         self.ansichten["code"].starte_aktuelles()
 
+    def _starte_fahrt(self):
+        """Der Fahrmodus: das mitgelieferte `fahren.py` als virtueller Lauf, W A S D Q E
+        im Uebungsfenster. Derselbe Startweg und dieselben Regeln wie „Starten"."""
+        from spotlab.workshop import fahren
+
+        if self.ansichten["code"].laeuft():
+            self.ansichten["code"].starte_aktuelles()        # heisst dann Stopp
+            return
+        namen = [name for _, name in verfuegbare_backends()]
+        self.ansichten["code"].setze_backend("mujoco" if "mujoco" in namen else "sim")
+        self._fahrt_erwartet = True
+        self.ansichten["code"].starte_skript(fahren.SKRIPT)
+
     def _oeffne_uebungsfenster(self, titel=""):
         if self.uebungsfenster is None:
             self.uebungsfenster = Uebungsfenster(self._palette)
@@ -356,10 +371,13 @@ class MainWindow(QWidget):
         # das `verbunden`-Ereignis zieht Sekundenbruchteile spaeter nach, und
         # DAS ist die Wahrheit ueber den Raum, in dem wirklich gefahren wird.
         self.uebungsfenster.beginne(
-            raum, self.ansichten["raumeditor"].startpose(), titel
+            raum, self.ansichten["raumeditor"].startpose(), titel, fahrt=self._fahrt_erwartet
         )
+        self._fahrt_erwartet = False
         self.uebungsfenster.show()
         self.uebungsfenster.raise_()
+        if self.uebungsfenster._fahrt:
+            self.uebungsfenster.activateWindow()             # die Tasten sollen dort ankommen
 
     def _ansicht(self, pfad):
         """Das gerenderte Zimmer des MuJoCo-Backends -- ans offene Uebungsfenster."""
@@ -455,6 +473,8 @@ class MainWindow(QWidget):
 
     def _uebernimm_lauf(self, verzeichnis):
         self._aktiver_lauf = Path(verzeichnis)
+        if self.uebungsfenster is not None and self.uebungsfenster.isVisible():
+            self.uebungsfenster.setze_lauf_dir(verzeichnis)
         # Skriptnamen aus lauf.json holen: „hallo_spot.py" sagt mehr als eine
         # Zeitstempel-Kennung.
         skript = read_run(verzeichnis).skript

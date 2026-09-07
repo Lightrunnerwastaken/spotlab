@@ -689,3 +689,22 @@ def test_die_umgebung_darf_den_start_verweigern(qapp, tmp_path, monkeypatch):
 
     assert gesehen == {} and not ansicht.laeuft()
     assert meldungen[-1].startswith("Nicht gestartet")
+
+
+def test_starte_skript_startet_eine_fremde_datei_ohne_reiter(qapp, tmp_path):
+    """Der Fahrmodus des Raumeditors startet ein mitgeliefertes Programm -- ueber
+    denselben einen Startweg wie die offene Datei."""
+    ansicht, _ordner, _projekt = _ansicht(tmp_path)
+    skript = tmp_path / "fahren.py"
+    skript.write_text("print('fahre')\n", encoding="utf-8")
+    ansicht.setze_backend("dryrun")
+    gestartet = []
+    ansicht.lauf_gestartet.connect(lambda p, s: gestartet.append((p, s)))
+    ansicht.starte_skript(skript)
+    assert gestartet and gestartet[0][1] == str(skript) and ansicht.laeuft()
+    prozess = gestartet[0][0]
+    for _zeile in prozess.stdout:
+        pass
+    prozess.wait(timeout=TEST_TIMEOUT_S)
+    ansicht.pruefe_lauf_lebt()
+    assert not ansicht.laeuft()

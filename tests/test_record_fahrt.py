@@ -21,3 +21,12 @@ def test_ohne_oder_mit_kaputter_datei_stopp(tmp_path):
     assert fahrt.lies(tmp_path) == (0.0, 0.0, 0.0)
     (tmp_path / fahrt.DATEI).write_text('{"vx": "schnell", "t": 1e12}', encoding="utf-8")
     assert fahrt.lies(tmp_path) == (0.0, 0.0, 0.0)
+
+
+def test_die_tastenbelegung():
+    assert fahrt.befehl_aus_tasten(set()) == (0.0, 0.0, 0.0)
+    assert fahrt.befehl_aus_tasten({"w"}) == (fahrt.TEMPO_M_S, 0.0, 0.0)
+    assert fahrt.befehl_aus_tasten({"s", "d"}) == (-fahrt.TEMPO_M_S, -fahrt.QUER_M_S, 0.0)
+    assert fahrt.befehl_aus_tasten({"a", "e"}) == (0.0, fahrt.QUER_M_S, -fahrt.DREH_RAD_S)
+    assert fahrt.befehl_aus_tasten({"w", "s"}) == (0.0, 0.0, 0.0)          # hebt sich auf
+    assert fahrt.befehl_aus_tasten({"q", "x"}) == (0.0, 0.0, fahrt.DREH_RAD_S)

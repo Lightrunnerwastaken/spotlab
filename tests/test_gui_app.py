@@ -665,3 +665,17 @@ def test_hoehe_und_nick_des_laufs_erreichen_das_uebungsfenster(qapp, tmp_path):
     fenster._lauf_aus_code(_FakeProzess(), str(tmp_path / "x.py"))
     fenster._zustand({"t": 1.0, "daten": {"pose": [1.0, 2.0, 0.0], "z": 1.72, "pitch": -0.2094}})
     assert "1.72 m" in fenster.uebungsfenster.hoehe.text() and "-12°" in fenster.uebungsfenster.hoehe.text()
+
+
+def test_fahren_startet_das_mitgelieferte_programm_und_das_fenster_kennt_es(qapp, monkeypatch):
+    from spotlab.workshop import fahren
+
+    fenster = MainWindow()
+    gestartet = []
+    monkeypatch.setattr(fenster.ansichten["code"], "starte_skript", lambda pfad: gestartet.append(pfad))
+    fenster.ansichten["raumeditor"].fahrt_gewuenscht.emit()
+    assert gestartet == [fahren.SKRIPT]
+    assert fenster.ansichten["code"].gewaehltes_backend() in ("sim", "mujoco")
+    fenster._oeffne_uebungsfenster("fahren.py")
+    assert fenster.uebungsfenster._fahrt
+    fenster.uebungsfenster.close()

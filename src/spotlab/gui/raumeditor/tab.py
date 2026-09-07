@@ -99,6 +99,7 @@ class RaumeditorView(QWidget):
     meldung = Signal(str)
     config_gespeichert = Signal(object)
     start_gewuenscht = Signal()
+    fahrt_gewuenscht = Signal()          # Fahrmodus: fahren.py mit W A S D Q E im Uebungsfenster
 
     def __init__(self, palette, parent=None):
         super().__init__(parent)
@@ -198,6 +199,11 @@ class RaumeditorView(QWidget):
 
         self.starten = QPushButton(START_TEXT)
         self.starten.clicked.connect(self._start_klick)
+        self.fahren = QPushButton("🎮 Fahren")
+        self.fahren.setObjectName("knopf_fahren")
+        self.fahren.setToolTip("Selbst durch den Raum fahren: W/S vor und zurück, A/D seitwärts, "
+                               "Q/E drehen — im Übungsfenster, die Kamera folgt")
+        self.fahren.clicked.connect(self._fahren_klick)
 
         oben = QHBoxLayout()
         oben.addLayout(links)
@@ -205,7 +211,10 @@ class RaumeditorView(QWidget):
         oben.addLayout(rechts, 1)
         aussen = QVBoxLayout(self)
         aussen.addLayout(oben, 1)
-        aussen.addWidget(self.starten)
+        knoepfe = QHBoxLayout()
+        knoepfe.addWidget(self.starten, 1)
+        knoepfe.addWidget(self.fahren)
+        aussen.addLayout(knoepfe)
 
         if vorlagen():
             self.waehle_raum(vorlagen()[0])
@@ -216,6 +225,7 @@ class RaumeditorView(QWidget):
         """Waehrend eines Laufs haelt derselbe Knopf an."""
         self._laeuft = laeuft
         self.starten.setText(STOPP_TEXT if laeuft else START_TEXT)
+        self.fahren.setEnabled(not laeuft)   # Stopp heisst der Startknopf; ein Lauf zur Zeit
 
     def setze_arbeitsordner(self, pfad):
         self._arbeitsordner = Path(pfad) if pfad else None
@@ -432,6 +442,17 @@ class RaumeditorView(QWidget):
             return
         self._config_merken()
         self.start_gewuenscht.emit()
+
+    def _fahren_klick(self):
+        """Wie Starten -- gespeicherter Raum, Start nicht im Hindernis -- nur mit `fahren.py`."""
+        if self._laeuft or self.steuerung.raum is None:
+            return
+        grund = self.bereit_fuer_lauf()
+        if grund:
+            self.meldung.emit(grund)
+            return
+        self._config_merken()
+        self.fahrt_gewuenscht.emit()
 
     def lade(self, lauf_verzeichnis):
         ordner = Path(lauf_verzeichnis)

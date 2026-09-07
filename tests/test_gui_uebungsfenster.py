@@ -186,3 +186,37 @@ def test_verfolgen_und_mausrad_schreiben_den_kamerawunsch(qapp, tmp_path):
     bild_nach(zwei / "ansicht.jpg")
     fenster.zeige_ansicht(zwei / "ansicht.jpg")
     assert kamera.lies(zwei) == ("raum", 1.25)
+
+
+def test_im_fahrmodus_schreiben_die_tasten_den_fahrbefehl(qapp, tmp_path):
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+
+    from spotlab.record import fahrt
+
+    fenster = Uebungsfenster(DUNKEL)
+    fenster.beginne(raum_laden("leer"), (1.0, 1.0, 0.0), "fahren.py", lauf_dir=tmp_path, fahrt=True)
+    assert not fenster.fahrt_zeile.isHidden() and fenster.verfolgen.isChecked()
+    QTest.keyPress(fenster, Qt.Key_W)
+    assert fahrt.lies(tmp_path) == (fahrt.TEMPO_M_S, 0.0, 0.0)
+    assert fenster._fahrt_takt.isActive()                     # solange eine Taste gedrueckt ist
+    QTest.keyPress(fenster, Qt.Key_Q)
+    assert fahrt.lies(tmp_path) == (fahrt.TEMPO_M_S, 0.0, fahrt.DREH_RAD_S)
+    QTest.keyRelease(fenster, Qt.Key_W)
+    assert fahrt.lies(tmp_path) == (0.0, 0.0, fahrt.DREH_RAD_S)
+    QTest.keyPress(fenster, Qt.Key_Space)
+    assert fahrt.lies(tmp_path) == (0.0, 0.0, 0.0)
+    assert not fenster._fahrt_takt.isActive()
+
+
+def test_ohne_fahrmodus_schreiben_die_tasten_nichts(qapp, tmp_path):
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+
+    from spotlab.record import fahrt
+
+    fenster = Uebungsfenster(DUNKEL)
+    fenster.beginne(raum_laden("leer"), (1.0, 1.0, 0.0), "hallo.py", lauf_dir=tmp_path)
+    assert fenster.fahrt_zeile.isHidden()
+    QTest.keyPress(fenster, Qt.Key_W)
+    assert not (tmp_path / fahrt.DATEI).exists()
