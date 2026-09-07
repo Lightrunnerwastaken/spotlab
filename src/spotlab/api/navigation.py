@@ -80,6 +80,12 @@ def localize(backend, recorder):
     return kennung
 
 
+def map_pose(backend, recorder=None):
+    """(x, y, grad) im Rahmen der Karte -- oder None, solange nicht verortet."""
+    require(backend, Capability.GRAPH_NAV, "die eigene Lage auf der Karte lesen")
+    return backend.map_pose()
+
+
 def navigate_to(
     backend,
     recorder,

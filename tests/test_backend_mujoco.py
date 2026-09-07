@@ -45,7 +45,8 @@ class Schreiber:
 def _backend(uhr, start, raum="durchgang", schreiber=None, **kw):
     from spotlab.backends.mujoco import MujocoBackend
 
-    b = MujocoBackend(recorder=schreiber, jetzt=uhr, raum=raum_laden(raum), start=start, **kw)
+    gewaehlt = raum if hasattr(raum, "waende") else raum_laden(raum)
+    b = MujocoBackend(recorder=schreiber, jetzt=uhr, raum=gewaehlt, start=start, **kw)
     b.power_on()
     return b
 
@@ -478,3 +479,24 @@ def test_die_weltpruefung_haengt_an_der_strecke_nicht_am_takt(uhr):
     _fahre(backend, uhr, vx=0.4, sekunden=2.0, schritt=0.05)      # 0.8 m, 41 Abfragen
     assert zaehler["n"] <= 41 + 8 + 2, zaehler["n"]
     assert backend.puppe.pose()[0] == pytest.approx(1.8, abs=0.05)
+
+
+def test_eine_sperrzone_haelt_auch_in_3d(uhr):
+    """Dieselbe Regel wie im 2D-Sim: die Zone ist kein Koerper in der Welt --
+    MuJoCo weiss nichts von ihr --, sie haelt trotzdem. Sonst gaelte der Schutz
+    nur in der Zeichnung, und geprueft wird am Ende dort, wo gefahren wird."""
+    from dataclasses import replace
+
+    from spotlab.welt.raum import Sperrzone
+
+    raum = raum_laden("leer")
+    mit = replace(raum, sperrzonen=(Sperrzone(name="Glasfront", x=raum.start[0] + 2.0,
+                                              y=raum.start[1], breite=0.4, tiefe=4.0,
+                                              grund="Glas"),))
+    schreiber = Schreiber()
+    backend = _backend(uhr, (raum.start[0], raum.start[1], 0.0), raum=mit, schreiber=schreiber)
+    _fahre(backend, uhr, vx=0.5, sekunden=6.0)
+
+    assert backend.puppe.pose()[0] < raum.start[0] + 1.5, "in die Zone gefahren"
+    stoesse = [d for art, d in schreiber.ereignisse if art == "angestossen"]
+    assert stoesse and stoesse[0]["hindernis"] == "Sperrzone Glasfront"

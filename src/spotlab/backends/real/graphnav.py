@@ -131,6 +131,30 @@ def localize(robot):
     return kennung
 
 
+def localization_pose(robot):
+    """(x, y, grad) des Koerpers im SEED-Rahmen der Karte -- oder None.
+
+    Derselbe Rahmen, in dem `maps/rekonstruktion.py` den Raum baut. Damit
+    laesst sich fragen, wo im REKONSTRUIERTEN RAUM der Roboter gerade steht
+    (`welt/raum.py::aus_karte`) -- die Voraussetzung fuer Sperrzonen am
+    echten Roboter.
+
+    `None`, solange nicht verortet ist: `waypoint_id` ist dann leer, und die
+    Pose im Protobuf waere ein Ursprung, also eine erfundene Position. Wer
+    Zonen will, muss `localize()` gerufen haben.
+    """
+    import math
+
+    from bosdyn.client.math_helpers import SE3Pose
+
+    zustand = _versuche(_client(robot).get_localization_state)
+    ortung = zustand.localization
+    if not ortung.waypoint_id:
+        return None
+    pose = SE3Pose.from_proto(ortung.seed_tform_body)
+    return (float(pose.x), float(pose.y), math.degrees(pose.rot.to_yaw()) % 360.0)
+
+
 def travel_params(limits, max_distance=0.4, max_yaw=0.15):
     """TravelParams mit unserem Geschwindigkeitsdeckel.
 

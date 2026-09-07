@@ -150,6 +150,15 @@ class Spot:
         """Bestimmt über ein Fiducial, wo Spot auf der geladenen Karte steht."""
         return navigation.localize(self.backend, self.recorder)
 
+    def map_pose(self):
+        """Wo Spot auf der geladenen Karte steht: (x, y, grad) im Kartenrahmen.
+
+        `None`, solange `localize()` nicht gelaufen ist. Zusammen mit
+        `welt.raum.aus_karte` wird daraus die Lage im rekonstruierten Raum --
+        damit weiss ein Programm, ob es in einer Sperrzone steht.
+        """
+        return navigation.map_pose(self.backend, self.recorder)
+
     def navigate_to(self, ziel, timeout=120.0):
         """Fährt autonom zum genannten Wegpunkt der geladenen Karte."""
         if self._karte is None:

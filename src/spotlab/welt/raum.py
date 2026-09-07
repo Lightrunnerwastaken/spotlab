@@ -122,6 +122,55 @@ class Block:
 
 
 @dataclass(frozen=True)
+class Sperrzone:
+    """Ein verbotenes Rechteck auf dem Boden -- eine REGEL, keine Geometrie.
+
+    Gedreht wie ein Block, aber ohne Hoehe: die Gefahren, um die es geht, sind
+    Flaechen (Glasfront, Treppenabgang, teures Geraet). Hinter einer Glasfront
+    ist der Boden auf jeder Hoehe verboten.
+
+    Eine Zone steht in keinem Hindernisgitter, wirft keinen Schatten und
+    veraendert das Gelaende nicht. Das ist ihr ganzer Zweck: sie haelt dort, wo
+    der SENSOR frei sagt -- Glas loest keine Tiefenkamera und kein Gitter.
+    `grund` ist der Text, den ein Mensch spaeter im Protokoll liest.
+    """
+
+    name: str
+    x: float
+    y: float
+    breite: float        # entlang der eigenen x-Achse
+    tiefe: float
+    drehung: float = 0.0  # Grad, links positiv
+    grund: str = ""
+
+    def ecken(self):
+        return _ecken(self.x, self.y, self.breite, self.tiefe, self.drehung)
+
+    def lokal(self, px, py):
+        return _lokal(self.x, self.y, self.drehung, px, py)
+
+
+@dataclass(frozen=True)
+class Kartenbezug:
+    """Wie der Raum zur GraphNav-Karte steht, aus der er rekonstruiert wurde.
+
+    `rekonstruiere` dreht den Raum (haeufigste Wandrichtung auf die x-Achse),
+    schiebt die Huelle nach (0, 0) und zieht den tiefsten Boden auf z = 0. Ohne
+    diese drei Zahlen weiss ein Lauf am echten Roboter nicht, WO IM RAUM er
+    steht -- und eine Sperrzone waere dort wertlos.
+
+        raum_x, raum_y = drehe(seed_x, seed_y, dreh) + versatz
+        raum_z         = seed_z - z_min
+    """
+
+    name: str
+    dreh: float = 0.0
+    versatz_x: float = 0.0
+    versatz_y: float = 0.0
+    z_min: float = 0.0
+
+
+@dataclass(frozen=True)
 class Boden:
     """Ein begehbares Rechteck: Podest, Rampe oder Treppe.
 
@@ -204,6 +253,8 @@ class Raum:
     wand_hoehe: float = WAND_HOEHE_M
     boeden: tuple = ()   # Boden, ...
     gelaende: object = None   # welt/gelaende.py::Gelaende oder None
+    sperrzonen: tuple = ()    # Sperrzone, ... (Fassung 5)
+    karte: object = None      # Kartenbezug oder None (Fassung 5)
 
     def __post_init__(self):
         # Tupel aus Tests und alten Aufrufern werden Waende; Listen werden Tupel.
@@ -213,9 +264,39 @@ class Raum:
         object.__setattr__(self, "bloecke", tuple(self.bloecke))
         object.__setattr__(self, "tags", tuple(self.tags))
         object.__setattr__(self, "boeden", tuple(self.boeden))
+        object.__setattr__(self, "sperrzonen", tuple(self.sperrzonen))
         object.__setattr__(self, "start", tuple(float(v) for v in self.start))
         if self.groesse is not None:
             object.__setattr__(self, "groesse", tuple(float(v) for v in self.groesse))
+
+
+def aus_karte(raum, x, y, grad=None):
+    """Einen Punkt (und optional eine Blickrichtung) aus dem Seed-Rahmen der
+    GraphNav-Karte in den Raumrahmen holen.
+
+    Ohne `raum.karte` gibt es keine Beziehung, und Raten waere gefaehrlich: eine
+    Sperrzone an der falschen Stelle ist schlimmer als keine. Dann `None`.
+    """
+    k = raum.karte
+    if k is None:
+        return None
+    bogen = math.radians(k.dreh)
+    c, s = math.cos(bogen), math.sin(bogen)
+    rx, ry = x * c - y * s, x * s + y * c
+    punkt = (rx + k.versatz_x, ry + k.versatz_y)
+    return punkt if grad is None else (punkt[0], punkt[1], (grad + k.dreh) % 360.0)
+
+
+def nach_karte(raum, x, y, grad=None):
+    """Die Gegenrichtung: aus dem Raumrahmen zurueck in den Seed-Rahmen."""
+    k = raum.karte
+    if k is None:
+        return None
+    bogen = math.radians(-k.dreh)
+    c, s = math.cos(bogen), math.sin(bogen)
+    dx, dy = x - k.versatz_x, y - k.versatz_y
+    punkt = (dx * c - dy * s, dx * s + dy * c)
+    return punkt if grad is None else (punkt[0], punkt[1], (grad - k.dreh) % 360.0)
 
 
 def huelle(raum):
@@ -233,6 +314,8 @@ def huelle(raum):
         punkte += list(block.ecken())
     for boden in raum.boeden:
         punkte += list(boden.ecken())
+    for zone in raum.sperrzonen:
+        punkte += list(zone.ecken())
     punkte += [(t.x, t.y) for t in raum.tags]
     if raum.gelaende is not None:
         from spotlab.welt import gelaende as _gelaende
@@ -340,8 +423,34 @@ def _boeden(roh, pfad):
     return tuple(boeden)
 
 
+def _sperrzonen(roh, pfad):
+    zonen = []
+    for z in roh.get("sperrzone", []):
+        mitte = _feld(z, "mitte", pfad, "bei einer [[sperrzone]]")
+        groesse = _feld(z, "groesse", pfad, "bei einer [[sperrzone]]")
+        zonen.append(Sperrzone(
+            name=str(z.get("name", "Sperrzone")),
+            x=float(mitte[0]), y=float(mitte[1]),
+            breite=float(groesse[0]), tiefe=float(groesse[1]),
+            drehung=float(z.get("drehung", 0.0)), grund=str(z.get("grund", "")),
+        ))
+    return tuple(zonen)
+
+
+def _kartenbezug(roh):
+    k = roh.get("karte")
+    if not k:
+        return None
+    versatz = k.get("versatz", (0.0, 0.0))
+    return Kartenbezug(
+        name=str(k.get("name", "")), dreh=float(k.get("dreh", 0.0)),
+        versatz_x=float(versatz[0]), versatz_y=float(versatz[1]),
+        z_min=float(k.get("z_min", 0.0)),
+    )
+
+
 def raum_laden_pfad(pfad):
-    """Einen Raum aus einer Datei laden -- Fassung 1 bis 4."""
+    """Einen Raum aus einer Datei laden -- Fassung 1 bis 5."""
     pfad = Path(pfad)
     try:
         roh = tomllib.loads(pfad.read_text(encoding="utf-8"))
@@ -381,6 +490,8 @@ def raum_laden_pfad(pfad):
         wand_dicke=float(daten.get("wand_dicke", WAND_DICKE_M)),
         wand_hoehe=float(daten.get("wand_hoehe", WAND_HOEHE_M)),
         boeden=_boeden(roh, pfad),
+        sperrzonen=_sperrzonen(roh, pfad),
+        karte=_kartenbezug(roh),
         gelaende=gelaende,
     )
 
@@ -427,11 +538,14 @@ def raum_speichern(raum, pfad):
         e.z != 0.0 for e in (*raum.waende, *raum.bloecke, *raum.tags)
     )
     mit_gelaende = raum.gelaende is not None
+    mit_zonen = bool(raum.sperrzonen) or raum.karte is not None
     zeilen = [
         "[raum]",
         f"name         = {_text(raum.name)}",
     ]
-    if mit_gelaende:
+    if mit_zonen:
+        zeilen.append("fassung      = 5")
+    elif mit_gelaende:
         zeilen.append("fassung      = 4")
     elif mit_hoehe:
         zeilen.append("fassung      = 3")
@@ -459,6 +573,26 @@ def raum_speichern(raum, pfad):
         ]
         if block.z != 0.0:
             zeilen.append(f"z       = {_zahl(block.z)}")
+    for zone in raum.sperrzonen:
+        zeilen += [
+            "",
+            "[[sperrzone]]",
+            f"name    = {_text(zone.name)}",
+            f"mitte   = {_liste((zone.x, zone.y))}",
+            f"groesse = {_liste((zone.breite, zone.tiefe))}",
+            f"drehung = {_zahl(zone.drehung)}",
+            f"grund   = {_text(zone.grund)}",
+        ]
+    if raum.karte is not None:
+        k = raum.karte
+        zeilen += [
+            "",
+            "[karte]",
+            f"name    = {_text(k.name)}",
+            f"dreh    = {_zahl(k.dreh)}",
+            f"versatz = {_liste((k.versatz_x, k.versatz_y))}",
+            f"z_min   = {_zahl(k.z_min)}",
+        ]
     for boden in raum.boeden:
         zeilen += [
             "",

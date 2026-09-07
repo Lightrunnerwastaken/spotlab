@@ -109,6 +109,20 @@ def zeichne_raum(maler, raum, meter_zu_schirm, skala, palette, auswahl=frozenset
                       gewaehlt=("boden", i) in auswahl, blass=not _auf(boden, raum, ebene))
     zeichne_klippen(maler, klippen_, meter_zu_schirm, palette)
 
+    for i, zone in enumerate(raum.sperrzonen):
+        # Eine Zone ist KEIN Koerper: schraffiert und ohne Fuellung, damit sie
+        # sich im Bild von einer Wand oder Kiste unterscheidet. Sie steht auf
+        # jeder Ebene -- eine verbotene Flaeche gilt nicht nur unten.
+        gewaehlt = ("sperrzone", i) in auswahl
+        farbe = QColor(palette.akzent if gewaehlt else palette.gefahr)
+        maler.setPen(QPen(farbe, 2, Qt.DashLine))
+        maler.setBrush(QBrush(farbe, Qt.BDiagPattern))
+        maler.drawPolygon(_polygon(zone.ecken(), meter_zu_schirm))
+        maler.setBrush(Qt.NoBrush)
+        px, py = meter_zu_schirm(zone.x, zone.y)
+        maler.setPen(farbe)
+        maler.drawText(int(px) + 4, int(py) + 14, zone.name)
+
     for i, block in enumerate(raum.bloecke):
         gewaehlt = ("block", i) in auswahl
         blass = not _auf(block, raum, ebene)

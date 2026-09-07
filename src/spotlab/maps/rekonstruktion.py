@@ -33,7 +33,16 @@ from spotlab.errors import SpotlabError
 from spotlab.maps.geometry import HINWEIS_KETTE
 from spotlab.welt.hoehe import ebenen
 from spotlab.welt.polylinie import douglas_peucker  # noqa: F401 -- Profilglaettung, auch fuer Tests
-from spotlab.welt.raum import MAX_STUFE_M, RAND_M, STUFE_VORGABE_M, Boden, Raum, RaumTag, Wand
+from spotlab.welt.raum import (
+    MAX_STUFE_M,
+    RAND_M,
+    STUFE_VORGABE_M,
+    Boden,
+    Kartenbezug,
+    Raum,
+    RaumTag,
+    Wand,
+)
 
 ENCODING_XYZ_32F = 1
 KOERPER_UEBER_BODEN_M = 0.54     # Wegpunkt ueber dem Boden, wenn keine Wolke den Boden zeigt
@@ -866,6 +875,12 @@ def rekonstruiere(ordner, einstellungen=None, fortschritt=None):
         name=ordner.name,
         beschreibung=f"Rekonstruiert aus der Karte „{ordner.name}“ ({bericht['quelle']}).",
         start=start, waende=tuple(waende), bloecke=(), tags=tuple(tags), boeden=tuple(boeden_),
+        # Wie der Raum zur Karte steht -- sonst weiss ein Lauf am echten Roboter
+        # nicht, WO IM RAUM er ist, und eine Sperrzone waere dort wertlos.
+        # `ausrichten` dreht und verschiebt, `z_min` zieht den tiefsten Boden auf 0.
+        karte=Kartenbezug(name=ordner.name, dreh=lage.dreh,
+                          versatz_x=lage.versatz_x, versatz_y=lage.versatz_y,
+                          z_min=round(float(z_min), 3)),
     )
     if treppen and band_xy is None:
         hinweise.append("Treppenbreite ohne Punktwolke geschaetzt -- im Editor nachziehen.")

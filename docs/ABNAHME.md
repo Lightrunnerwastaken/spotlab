@@ -702,6 +702,48 @@ kurzem Abstand aussieht. Davon hängt das Kopfraum-Tor des Explorers ab
 
 ---
 
+## A31 — Sperrzonen am echten Roboter
+
+**Voraussetzung** A12/A13 (Fiducials, Karte aufgezeichnet) und ein Raum, der aus dieser
+Karte rekonstruiert wurde — er trägt dann `[karte]`.
+
+**Vorgehen**
+1. Im Raumeditor eine Sperrzone vor eine **harmlose Wand** legen (nicht vor die Glasfront:
+   erst prüfen, dann verlassen), Grund eintragen, speichern.
+2. Spot vor ein Fiducial der Karte stellen. Am Laptop:
+
+```python
+import spotlab
+from spotlab.welt.raum import aus_karte, raum_laden
+with spotlab.connect() as spot:
+    spot.load_map("<karte>"); spot.localize()
+    raum = raum_laden("<raum>")
+    print(spot.map_pose(), "->", aus_karte(raum, *spot.map_pose()))
+```
+
+3. Die ausgegebene Raumlage mit der Zeichnung im Raumeditor vergleichen.
+4. Dann `matura-spot`: `exploration_real.py --anzeigen --raum <raum> --tag <ID>` und am
+   Tablet auf die Zone zufahren.
+
+**Erwartung**
+- (1) Die Raumlage aus Schritt 3 stimmt auf besser als 0.3 m mit dem überein, wo der Spot
+  wirklich steht (im Editor nachmessen).
+- (2) Rund einen Meter vor der Zone erscheint „Sperrzone „<name>" voraus — Vorwärtsfahrt
+  gesperrt", und die Anweisung wechselt von FAHREN auf DREHEN.
+- (3) Rückwärts und Drehen bleiben frei; aus der Zone heraus geht es immer.
+- (4) Ohne `localize()` (Roboter neu gestartet) sperrt das Tor die Vorwärtsfahrt komplett
+  und sagt „nicht auf der Karte verortet" — **fail-closed**.
+- (5) `ergebnis.json` des Laufs zählt `zonen_stopps`.
+
+**Warum am Gerät** Die Umrechnung Raum ↔ Karte ist gegen die Katakomben-Karte geprüft
+(`tests/test_katakomben_korrektur.py`, 5 cm). Was dort nicht drinsteht: wie gut die
+LIVE-Verortung mit der Ankerlage zusammenpasst und wie stark sie über einen Lauf driftet.
+Davon hängt ab, ob `ZONE_RAND_M` (0.15 m) reicht.
+
+**Ergebnis** _(offen)_
+
+---
+
 ## Nach der Abnahme
 
 Ergebnisse hier eintragen, Abweichungen als Befund in die Spec zurückspielen, und erst

@@ -42,7 +42,7 @@ from spotlab.backends.base import Capability, Tag, richtung
 from spotlab.backends.sim import SimBackend, synchronisiert
 from spotlab.errors import SpotlabError
 from spotlab.welt.hoehe import boden_bei, boden_z, kaesten_fuer, nick_grad
-from spotlab.welt.kollision import MAX_SCHRITT_M
+from spotlab.welt.kollision import MAX_SCHRITT_M, zone_bei
 from spotlab.welt.raum import BLOCK_HOEHE_M, MAX_STUFE_M, TAG_HOEHE_M
 from spotlab.welt.wahrnehmung import TAG_REICHWEITE_M
 
@@ -378,6 +378,13 @@ class MujocoBackend(SimBackend):
                 gesperrt = self._treppen == "aus" and boden is not None and boden.anstieg != 0.0
                 if abs(z_neu - z_gut) > MAX_STUFE_M or gesperrt:
                     getroffen = "Kante"
+                    break
+                # Sperrzonen wie im 2D-Sim: MuJoCo kennt sie nicht, sie sind kein
+                # Koerper in der Welt -- sie sind eine Regel, und sie gilt hier
+                # genauso. Nur beim HINEINfahren; heraus geht immer.
+                zone = zone_bei(self._raum, probe[0], probe[1])
+                if zone is not None and zone_bei(self._raum, von[0], von[1]) != zone:
+                    getroffen = f"Sperrzone {zone}"
                     break
             self._setze_puppe(probe, winkel, z_neu)
             beruehrt = self.puppe.kollisionen()

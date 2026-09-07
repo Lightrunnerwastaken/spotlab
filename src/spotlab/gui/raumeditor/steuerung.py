@@ -10,7 +10,7 @@ import math
 
 from spotlab.welt import bearbeitung as b
 
-WERKZEUGE = ("auswahl", "wand", "block", "boden", "tag", "start")
+WERKZEUGE = ("auswahl", "wand", "block", "boden", "sperrzone", "tag", "start")
 TOLERANZ_M = 0.12        # Treffer um den Zeiger; die Sicht rechnet 8 px um
 
 
@@ -98,7 +98,7 @@ class Steuerung:
             self._druecke_auswahl(x, y, shift, toleranz, treffer)
         elif self.werkzeug == "wand":
             self._druecke_wand(x, y, ctrl)
-        elif self.werkzeug in ("block", "boden"):
+        elif self.werkzeug in ("block", "boden", "sperrzone"):
             von = (self._rast(x, ctrl), self._rast(y, ctrl))
             self._zug = {"art": self.werkzeug, "von": von}
             self.rahmen = (von[0], von[1], von[0], von[1])
@@ -156,7 +156,7 @@ class Steuerung:
         art = z["art"]
         if art == "rahmen":
             self.rahmen = (z["von"][0], z["von"][1], x, y)
-        elif art in ("block", "boden"):
+        elif art in ("block", "boden", "sperrzone"):
             self.rahmen = (z["von"][0], z["von"][1], self._rast(x, ctrl), self._rast(y, ctrl))
         elif art == "verschieben":
             dx, dy = x - z["von"][0], y - z["von"][1]
@@ -195,14 +195,19 @@ class Steuerung:
                 neue = b.im_rahmen(self.raum, x1, y1, x2, y2)
                 self.auswahl = (self.auswahl | neue) if shift else neue
             return
-        if art in ("block", "boden"):
+        if art in ("block", "boden", "sperrzone"):
             x1, y1, x2, y2 = self.rahmen
             self.rahmen = None
             breite, tiefe = abs(x2 - x1), abs(y2 - y1)
             if breite < b.MINDESTKANTE_M or tiefe < b.MINDESTKANTE_M:
                 return
-            bauen = b.neuer_block if art == "block" else b.neuer_boden
-            raum, s = bauen(self.raum, (x1 + x2) / 2, (y1 + y2) / 2, breite, tiefe, z=self._z_neu)
+            if art == "sperrzone":
+                # Ohne z: eine Zone ist eine Flaeche, keine Kiste.
+                raum, s = b.neue_sperrzone(self.raum, (x1 + x2) / 2, (y1 + y2) / 2, breite, tiefe)
+            else:
+                bauen = b.neuer_block if art == "block" else b.neuer_boden
+                raum, s = bauen(self.raum, (x1 + x2) / 2, (y1 + y2) / 2, breite, tiefe,
+                                z=self._z_neu)
             self.uebernimm(raum)
             self.auswahl = frozenset({s})
             return
@@ -274,6 +279,7 @@ class Steuerung:
         return frozenset(
             [("wand", i) for i in range(len(r.waende))]
             + [("block", i) for i in range(len(r.bloecke))]
+            + [("sperrzone", i) for i in range(len(r.sperrzonen))]
             + [("boden", i) for i in range(len(r.boeden))]
             + [("tag", i) for i in range(len(r.tags))]
             + ([b.GELAENDE] if r.gelaende is not None else [])

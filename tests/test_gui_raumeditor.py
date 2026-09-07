@@ -354,3 +354,24 @@ def test_der_fahren_knopf_meldet_den_wunsch_und_ruht_waehrend_eines_laufs(qapp):
     assert not knopf.isEnabled()
     ansicht.setze_laeuft(False)
     assert knopf.isEnabled()
+
+
+def test_das_sperrzonen_werkzeug_zeichnet_eine_zone(qapp, tmp_path):
+    """Von der Werkzeugleiste bis in die Raumdatei: der Mensch traegt ein, was
+    kein Sensor sieht (Glasfront, 07.09.2026)."""
+    tab = RaumeditorView(DUNKEL)
+    tab.setze_arbeitsordner(str(tmp_path))
+    tab.waehle_raum("leer")
+    tab._werkzeug("sperrzone")
+    steuerung = tab.steuerung
+    steuerung.druecke(2.0, 2.0)
+    steuerung.bewege(4.0, 3.0)
+    steuerung.lasse_los(4.0, 3.0)
+
+    zonen = steuerung.raum.sperrzonen
+    assert len(zonen) == 1
+    assert zonen[0].breite == pytest.approx(2.0) and zonen[0].tiefe == pytest.approx(1.0)
+    assert steuerung.auswahl == frozenset({("sperrzone", 0)})
+    tab._fuelle_liste()
+    texte = [tab.liste.item(i).text() for i in range(tab.liste.count())]
+    assert any("Sperrzone" in t for t in texte)

@@ -263,6 +263,11 @@ class RealSpot:
         self._lease.raise_if_lost()
         return graphnav.localize(self._robot)
 
+    def map_pose(self):
+        from spotlab.backends.real import graphnav
+
+        return graphnav.localization_pose(self._robot)
+
     def travel_params(self, limits):
         from spotlab.backends.real import graphnav
 

@@ -270,6 +270,24 @@ versionsgepinntes Extra `spotlab[sim]`.
   Unbekanntes für frei. Das Gitter des echten Dienstes ist an den WELTACHSEN ausgerichtet;
   `ObstacleGrid` rechnet in Weltkoordinaten — `is_free(0.5, 0.0)` ist ein Weltpunkt, nicht
   „einen halben Meter voraus".
+- **Eine Sperrzone ist eine REGEL, kein Hindernis.** Sie steht in keinem Gitter, wirft
+  keinen Schatten und verändert das Gelände nicht — `zone_bei` sitzt bewusst NEBEN
+  `hindernis_bei`, nicht darin. Das ist ihr ganzer Zweck: sie hält dort, wo der SENSOR frei
+  sagt. Glas löst keine Tiefenkamera und kein Hindernisgitter; am 07.09.2026 fuhr der
+  Explorer am echten Spot dicht an eine Glasfront. Wer es weiss, ist der Mensch, also trägt
+  er es im Raumeditor ein. Zonen haben **keine Höhe** (die Gefahr ist der Ort, nicht das
+  Volumen), halten nur beim HINEINfahren (wer drinsteht, muss herauskommen) und gelten in
+  beiden Sims wie eine Wand — nur heisst das Hindernis „Sperrzone <name>", damit im
+  Protokoll steht, warum. Der Sicherheitsabstand ist `ZONE_RAND_M` zusätzlich zum
+  Roboterradius: am echten Gerät kommt die Pose aus der GraphNav-Verortung, und die driftet.
+- **Der rekonstruierte Raum kennt seine Karte (`[karte]`, Fassung 5).** `ausrichten()` dreht
+  ihn und schiebt die Hülle nach (0, 0), `rekonstruiere` zieht den tiefsten Boden auf z = 0
+  — bis zum 07.09.2026 wurde diese Beziehung weggeworfen. Ohne sie weiss ein Lauf am echten
+  Roboter nicht, WO IM RAUM er steht, und jede Sperrzone wäre geraten. `welt/raum.py::
+  aus_karte`/`nach_karte` rechnen um, `spot.map_pose()` liefert `seed_tform_body` aus
+  GraphNav (leerer `waypoint_id` heisst NICHT verortet und gibt `None` — eine Ursprungspose
+  wäre eine erfundene Position). Geprüft gegen die echte Katakomben-Karte: ein Tag des
+  Raums landet über `nach_karte` auf 5 cm genau auf seiner Ankerlage in der Karte.
 - **Das Hindernisgitter ist eine BODENkarte — Überhänge stehen nicht darin.**
   `obstacle_distance` ist flach; eine Tischplatte in 75 cm Höhe kommt darin nicht vor,
   und unter einer Tischreihe steht für jeden Planer freie Fläche mit unerkundetem Raum

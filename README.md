@@ -342,6 +342,24 @@ Installation (einmalig; `matura-spot` liegt neben spotlab):
     pip install -e ../matura-spot
     python ../matura-spot/scripts/fetch_menagerie.py
 
+### Sperrzonen — Gefahr, die kein Sensor sieht
+
+Glas löst kein Sensor des Spot: die Stereokameras schauen hindurch, das Hindernisgitter
+meldet freie Fläche. Dasselbe gilt für eine Treppe hinter der Ecke oder einen Bereich mit
+teurem Gerät. Wer es weiss, ist der Mensch.
+
+Im Raumeditor gibt es dafür das Werkzeug **Sperrzone**: ein Rechteck aufziehen, Namen und
+**Grund** eintragen („Glasfront"). Der Roboter fährt nicht hinein — im Übungsraum bleibt er
+an der Grenze stehen wie an einer Wand, und am echten Gerät nimmt das Explorationsskript
+aus `matura-spot` die Vorwärtsfahrt aus dem Kommando (`--raum <name>`).
+
+Eine Zone ist eine **Regel, kein Hindernis**: sie steht in keinem Hindernisgitter und
+taucht in keiner Rekonstruktion auf. Genau deshalb hält sie dort, wo der Sensor „frei" sagt.
+
+Am echten Roboter braucht sie die **Verortung**: der Raum trägt seit Fassung 5 seinen
+Kartenbezug (`[karte]`), das Skript spielt die Karte ein und verortet sich; ohne das fährt
+es nicht vorwärts. Eine Zone an der falschen Stelle wäre schlimmer als keine.
+
 ## Fahren — den echten Spot über die Tastatur
 
 In der Ansicht **Fahren** startet **„🎮 Fahrt beginnen"** das Programm `fahren.py` aus dem

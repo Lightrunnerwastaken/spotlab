@@ -38,6 +38,11 @@ ROBOTER_RADIUS_M = 0.27
 # "kein Programm faehrt durch eine Wand" an der Abfragehaeufigkeit.
 MAX_SCHRITT_M = 0.10
 
+# Sicherheitsabstand um eine Sperrzone, zusaetzlich zum Roboterradius. Am echten
+# Roboter kommt die Pose aus der GraphNav-Verortung; die driftet, und eine Zone
+# ist genau dort noetig, wo kein Sensor nachhilft.
+ZONE_RAND_M = 0.15
+
 
 def _abstand_punkt_strecke(px, py, x1, y1, x2, y2):
     dx, dy = x2 - x1, y2 - y1
@@ -76,6 +81,51 @@ def klippen_von(raum, alles=False):
     _KLIPPEN_MEMO.clear()
     _KLIPPEN_MEMO[schluessel] = (raum.boeden, raum.gelaende, ergebnis)
     return ergebnis
+
+
+def zone_bei(raum, x, y, radius=None):
+    """Name der Sperrzone, in deren Rand der Punkt faellt -- oder None.
+
+    ABSICHTLICH nicht in `hindernis_bei`: eine Zone ist eine Regel, kein
+    Hindernis. Sie darf im Hindernisgitter nicht auftauchen, sonst wuerde ein
+    Programm, das der freien Strecke folgt, sie umfahren statt sie zu
+    respektieren -- und der Sensor haette wieder das letzte Wort. Genau das
+    soll die Zone aufheben (Glasfront am echten Spot, 07.09.2026).
+
+    Der Rand ist Roboterradius plus `ZONE_RAND_M`.
+    """
+    if not raum.sperrzonen:
+        return None
+    if radius is None:
+        radius = ROBOTER_RADIUS_M + ZONE_RAND_M
+    for zone in raum.sperrzonen:
+        lx, ly = zone.lokal(x, y)
+        if abs(lx) <= zone.breite / 2 + radius and abs(ly) <= zone.tiefe / 2 + radius:
+            return zone.name
+    return None
+
+
+def zone_voraus(raum, pose, strecke=1.0, schritt=0.1):
+    """Name der Sperrzone, die vor dem Roboter liegt -- oder None.
+
+    Prueft den Weg von der Pose aus `strecke` weit geradeaus. Der Roboter soll
+    schon anhalten, BEVOR er die Zone beruehrt: am echten Gerät kommt die
+    Pose aus der GraphNav-Verortung und der Befehl gilt gut eine Sekunde.
+    Was hinter oder neben ihm liegt, zaehlt nicht -- rueckwaerts und drehen
+    bleiben der Weg aus der Falle.
+    """
+    if not raum.sperrzonen:
+        return None
+    x, y, grad = pose
+    bogen = math.radians(grad)
+    dx, dy = math.cos(bogen), math.sin(bogen)
+    schritte = max(1, int(round(strecke / schritt)))
+    for i in range(schritte + 1):
+        d = strecke * i / schritte
+        zone = zone_bei(raum, x + dx * d, y + dy * d)
+        if zone is not None:
+            return zone
+    return None
 
 
 def hindernis_bei(raum, x, y, radius=ROBOTER_RADIUS_M, z=None, klippen_=None):
@@ -159,6 +209,13 @@ def bewege_mit_hoehe(raum, von, nach, z, klippen_):
         px = x0 + (x1 - x0) * anteil
         py = y0 + (y1 - y0) * anteil
         getroffen = hindernis_bei(raum, px, py, z=z_gut, klippen_=klippen_)
+        if getroffen is None:
+            # Eine Sperrzone haelt nur beim HINEINfahren. Wer drinsteht -- von
+            # Hand hingestellt, Drift, nachtraeglich eingezeichnet --, muss
+            # herauskommen; sonst waere die Regel eine Falle.
+            zone = zone_bei(raum, px, py)
+            if zone is not None and zone_bei(raum, x0, y0) != zone:
+                getroffen = f"Sperrzone {zone}"
         if getroffen is not None:
             return (letztes_gutes[0], letztes_gutes[1], yaw1), z_gut, getroffen
         z_neu, _boden = boden_bei(raum, px, py, z_nahe=z_gut)

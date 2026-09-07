@@ -7,7 +7,8 @@ Funktionen. Alles hier ist ohne Fenster testbar -- und Standardbibliothek, wie
 der Rest von `welt/`.
 
 Ein Element wird ueber einen Schluessel angesprochen:
-    ("wand", i)  ("block", i)  ("boden", i)  ("tag", i)  ("gelaende", 0)  ("start",)  ("raum",)
+    ("wand", i)  ("block", i)  ("boden", i)  ("sperrzone", i)  ("tag", i)
+    ("gelaende", 0)  ("start",)  ("raum",)
 Das Gelaende ist gerechnet, nicht gezeichnet: es verschiebt, hebt und loescht
 sich, dreht und skaliert aber nicht und hat keine Felder.
 Eine Auswahl ist ein frozenset solcher Schluessel. Indizes gelten fuer den Raum,
@@ -18,8 +19,8 @@ import math
 from dataclasses import replace
 
 from spotlab.welt.gelaende import umriss, verschoben
-from spotlab.welt.kollision import abstand_block, hindernis_bei
-from spotlab.welt.raum import BLOCK_HOEHE_M, MAX_STUFE_M, Block, Boden, RaumTag, Wand
+from spotlab.welt.kollision import abstand_block, hindernis_bei, zone_bei
+from spotlab.welt.raum import BLOCK_HOEHE_M, MAX_STUFE_M, Block, Boden, RaumTag, Sperrzone, Wand
 
 RASTER_M = 0.05
 RASTER_GRAD = 5.0
@@ -37,6 +38,7 @@ FELDER = {
     "wand": ("x1", "y1", "x2", "y2", "z"),
     "block": ("name", "x", "y", "breite", "tiefe", "hoehe", "drehung", "z"),
     "boden": ("name", "x", "y", "breite", "tiefe", "z", "anstieg", "stufen", "drehung"),
+    "sperrzone": ("name", "x", "y", "breite", "tiefe", "drehung", "grund"),
     "tag": ("id", "x", "y", "grad", "hoehe", "z"),
     "gelaende": (),
     "start": ("x", "y", "grad"),
@@ -65,6 +67,8 @@ def element(raum, schluessel):
         return raum.bloecke[schluessel[1]]
     if art == "boden":
         return raum.boeden[schluessel[1]]
+    if art == "sperrzone":
+        return raum.sperrzonen[schluessel[1]]
     if art == "tag":
         return raum.tags[schluessel[1]]
     if art == "gelaende":
@@ -79,7 +83,7 @@ def lage(raum, schluessel):
     art = schluessel[0]
     if art == "wand":
         return e.mitte
-    if art in ("block", "boden", "tag"):
+    if art in ("block", "boden", "sperrzone", "tag"):
         return (e.x, e.y)
     if art == "start":
         return (e[0], e[1])
@@ -111,6 +115,10 @@ def _ersetze(raum, schluessel, neu):
         boeden = list(raum.boeden)
         boeden[schluessel[1]] = neu
         return replace(raum, boeden=tuple(boeden))
+    if art == "sperrzone":
+        zonen = list(raum.sperrzonen)
+        zonen[schluessel[1]] = neu
+        return replace(raum, sperrzonen=tuple(zonen))
     if art == "tag":
         tags = list(raum.tags)
         tags[schluessel[1]] = neu
@@ -134,7 +142,7 @@ def verschiebe(raum, auswahl, dx, dy):
         e = element(raum, s)
         if s[0] == "wand":
             neu = replace(e, x1=e.x1 + dx, y1=e.y1 + dy, x2=e.x2 + dx, y2=e.y2 + dy)
-        elif s[0] in ("block", "boden", "tag"):
+        elif s[0] in ("block", "boden", "sperrzone", "tag"):
             neu = replace(e, x=e.x + dx, y=e.y + dy)
         elif s[0] == "start":
             neu = (e[0] + dx, e[1] + dy, e[2])
@@ -153,7 +161,7 @@ def hebe(raum, auswahl, dz):
         e = element(raum, s)
         if s[0] == "gelaende" and e is not None:
             raum = _ersetze(raum, s, verschoben(e, 0.0, 0.0, dz))
-        elif s[0] in ("wand", "block", "boden", "tag"):
+        elif s[0] in ("wand", "block", "boden", "sperrzone", "tag"):
             raum = _ersetze(raum, s, replace(e, z=e.z + dz))
     return raum
 
@@ -168,7 +176,7 @@ def drehe(raum, auswahl, grad, um=None):
             a = _drehe_punkt(e.x1, e.y1, um, grad)
             z = _drehe_punkt(e.x2, e.y2, um, grad)
             neu = replace(e, x1=a[0], y1=a[1], x2=z[0], y2=z[1])
-        elif s[0] in ("block", "boden"):
+        elif s[0] in ("block", "boden", "sperrzone"):
             x, y = _drehe_punkt(e.x, e.y, um, grad)
             neu = replace(e, x=x, y=y, drehung=(e.drehung + grad) % 360.0)
         elif s[0] == "tag":
@@ -199,8 +207,9 @@ def skaliere(raum, auswahl, fx, fy, fz=1.0, um=None):
             x, y = p(e.x, e.y)
             neu = replace(e, x=x, y=y, breite=_kante(e.breite * fx),
                           tiefe=_kante(e.tiefe * fy), hoehe=_kante(e.hoehe * fz))
-        elif s[0] == "boden":
+        elif s[0] in ("boden", "sperrzone"):
             # Der Anstieg bleibt: eine laengere Rampe wird flacher, nicht hoeher.
+            # Eine Sperrzone hat ohnehin keine Hoehe.
             x, y = p(e.x, e.y)
             neu = replace(e, x=x, y=y, breite=_kante(e.breite * fx), tiefe=_kante(e.tiefe * fy))
         elif s[0] == "tag":
@@ -227,7 +236,7 @@ def dupliziere(raum, auswahl):
     """(Raum, neue Auswahl): Kopien VERSATZ_KOPIE_M nach rechts oben, angehaengt."""
     d = VERSATZ_KOPIE_M
     waende, bloecke, tags = list(raum.waende), list(raum.bloecke), list(raum.tags)
-    boeden = list(raum.boeden)
+    boeden, zonen = list(raum.boeden), list(raum.sperrzonen)
     neue = set()
     for s in sorted(auswahl):
         e = element(raum, s)
@@ -240,24 +249,29 @@ def dupliziere(raum, auswahl):
         elif s[0] == "boden":
             boeden.append(replace(e, x=e.x + d, y=e.y + d, name=f"{e.name} Kopie"))
             neue.add(("boden", len(boeden) - 1))
+        elif s[0] == "sperrzone":
+            zonen.append(replace(e, x=e.x + d, y=e.y + d, name=f"{e.name} Kopie"))
+            neue.add(("sperrzone", len(zonen) - 1))
         elif s[0] == "tag":
             tags.append(replace(e, x=e.x + d, y=e.y + d, id=_freie_nummer(t.id for t in tags)))
             neue.add(("tag", len(tags) - 1))
     return (
         replace(raum, waende=tuple(waende), bloecke=tuple(bloecke), tags=tuple(tags),
-                boeden=tuple(boeden)),
+                boeden=tuple(boeden), sperrzonen=tuple(zonen)),
         frozenset(neue),
     )
 
 
 def loesche(raum, auswahl):
     """(Raum, leere Auswahl). Der Start bleibt immer."""
-    weg = {s for s in auswahl if s[0] in ("wand", "block", "boden", "tag")}
+    weg = {s for s in auswahl if s[0] in ("wand", "block", "boden", "sperrzone", "tag")}
     return replace(
         raum,
         waende=tuple(w for i, w in enumerate(raum.waende) if ("wand", i) not in weg),
         bloecke=tuple(b for i, b in enumerate(raum.bloecke) if ("block", i) not in weg),
         boeden=tuple(b for i, b in enumerate(raum.boeden) if ("boden", i) not in weg),
+        sperrzonen=tuple(z for i, z in enumerate(raum.sperrzonen)
+                         if ("sperrzone", i) not in weg),
         tags=tuple(t for i, t in enumerate(raum.tags) if ("tag", i) not in weg),
         gelaende=None if GELAENDE in auswahl else raum.gelaende,
     ), frozenset()
@@ -296,6 +310,15 @@ def neuer_boden(raum, x, y, breite, tiefe, z=0.0, anstieg=0.0, stufen=0, name=No
     return replace(raum, boeden=boeden), ("boden", len(boeden) - 1)
 
 
+def neue_sperrzone(raum, x, y, breite, tiefe, name=None, grund=""):
+    """Eine verbotene Flaeche. Ohne Hoehe -- die Gefahr ist der Ort, nicht das Volumen."""
+    zonen = list(raum.sperrzonen) + [Sperrzone(
+        name=name or _freier_name([z.name for z in raum.sperrzonen], "Sperrzone"),
+        x=raste(x), y=raste(y), breite=_kante(breite), tiefe=_kante(tiefe), grund=grund,
+    )]
+    return replace(raum, sperrzonen=tuple(zonen)), ("sperrzone", len(zonen) - 1)
+
+
 def neuer_tag(raum, x, y, grad=0.0, z=0.0):
     tag = RaumTag(_freie_nummer(t.id for t in raum.tags), float(x), float(y), float(grad),
                   z=float(z))
@@ -319,7 +342,7 @@ def setze_feld(raum, schluessel, feld, wert):
         return replace(raum, start=(werte["x"], werte["y"], werte["grad"] % 360.0))
     if feld in ("breite", "tiefe", "hoehe", "wand_dicke", "wand_hoehe"):
         wert = _kante(wert)
-    elif feld in ("name", "beschreibung"):
+    elif feld in ("name", "beschreibung", "grund"):
         wert = str(wert)
     elif feld == "id":
         wert = int(wert)
@@ -359,7 +382,7 @@ def fange_ende(raum, x, y, ausser=None):
     return beste
 
 
-_RANG = {"start": 0, "tag": 1, "block": 2, "boden": 3, "wand": 4}
+_RANG = {"start": 0, "tag": 1, "block": 2, "sperrzone": 3, "boden": 4, "wand": 5}
 
 
 def treffer(raum, x, y, toleranz=0.1):
@@ -380,6 +403,10 @@ def treffer(raum, x, y, toleranz=0.1):
         d = abstand_block(boden, x, y)              # dieselbe Rechnung: gedrehtes Rechteck
         if d <= toleranz:
             kandidaten.append((d, _RANG["boden"], ("boden", i)))
+    for i, zone in enumerate(raum.sperrzonen):
+        d = abstand_block(zone, x, y)
+        if d <= toleranz:
+            kandidaten.append((d, _RANG["sperrzone"], ("sperrzone", i)))
     halbe_dicke = raum.wand_dicke / 2
     for i, wand in enumerate(raum.waende):
         d = _abstand_strecke(x, y, *wand)
@@ -397,6 +424,7 @@ def im_rahmen(raum, x1, y1, x2, y2):
     schluessel = [("wand", i) for i in range(len(raum.waende))]
     schluessel += [("block", i) for i in range(len(raum.bloecke))]
     schluessel += [("boden", i) for i in range(len(raum.boeden))]
+    schluessel += [("sperrzone", i) for i in range(len(raum.sperrzonen))]
     schluessel += [("tag", i) for i in range(len(raum.tags))]
     schluessel.append(START)
     return frozenset(
@@ -426,7 +454,7 @@ def griffe(raum, auswahl):
         if s[0] == "wand":
             ergebnis.append((s, "ende_a", e.x1, e.y1))
             ergebnis.append((s, "ende_b", e.x2, e.y2))
-        elif s[0] in ("block", "boden"):
+        elif s[0] in ("block", "boden", "sperrzone"):
             for i, (x, y) in enumerate(e.ecken()):
                 ergebnis.append((s, f"ecke{i}", x, y))
             ergebnis.append((s, "drehring", *drehring_lage(e)))
@@ -463,6 +491,9 @@ def pruefe(raum):
     z_start, _ = boden_bei(raum, raum.start[0], raum.start[1])
     getroffen = hindernis_bei(raum, raum.start[0], raum.start[1], z=z_start,
                               klippen_=klippen(raum) if raum.boeden else None)
+    zone = zone_bei(raum, raum.start[0], raum.start[1])
+    if zone is not None:
+        hinweise.append(f"Der Start liegt in der Sperrzone „{zone}“. Verschiebe ihn.")
     if getroffen == "Kante":
         hinweise.append("Der Start steht an einer Kante. Verschiebe ihn oder setze einen Boden davor.")
     elif getroffen is not None:

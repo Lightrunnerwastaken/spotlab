@@ -53,14 +53,15 @@ from spotlab.welt.raum import (
 START_TEXT = "▶ Offene Datei starten"
 STOPP_TEXT = "■ Stopp"
 WERKZEUGE = (("auswahl", "Auswählen"), ("wand", "Wand"), ("block", "Block"),
-             ("boden", "Boden"), ("tag", "Tag"), ("start", "Start"))
+             ("boden", "Boden"), ("sperrzone", "Sperrzone"), ("tag", "Tag"),
+             ("start", "Start"))
 ALLE_EBENEN = "alle Ebenen"
 NEUER_RAUM = Raum(
     name="Neuer Raum", beschreibung="", start=(1.0, 1.0, 0.0),
     waende=((0, 0, 6, 0), (6, 0, 6, 4), (6, 4, 0, 4), (0, 4, 0, 0)),
 )
 GRAD_FELDER = ("grad", "drehung")
-TEXT_FELDER = ("name", "beschreibung")
+TEXT_FELDER = ("name", "beschreibung", "grund")
 PFADZEICHEN = '/\\:*?"<>|'
 
 
@@ -88,6 +89,9 @@ def _beschrifte(raum, schluessel):
     if art == "boden":
         boden = raum.boeden[schluessel[1]]
         return f"{boden.name} ({ {'podest': 'Podest', 'rampe': 'Rampe', 'treppe': 'Treppe'}[boden.art] })"
+    if art == "sperrzone":
+        zone = raum.sperrzonen[schluessel[1]]
+        return f"{zone.name} (Sperrzone{f' — {zone.grund}' if zone.grund else ''})"
     if art == "tag":
         return f"Tag {raum.tags[schluessel[1]].id}"
     if art == "gelaende":
