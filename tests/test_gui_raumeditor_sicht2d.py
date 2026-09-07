@@ -106,3 +106,20 @@ def test_markierung_kandidaten_und_offene_raender_zeichnen(qapp):
     sicht.grab()
     assert sicht._markierung == [(0, 0, 1, 1)] and sicht._offen == [(0.5, 0.5)]
     assert len(sicht._kandidaten) == 2
+
+
+def test_ein_grosses_pauspapier_zeichnet_sich_als_bild_schnell(qapp):
+    """190 000 Punkte einzeln zu zeichnen kostete 0.7 s je Bild -- bei jeder Mausbewegung."""
+    import random
+    import time
+
+    zufall = random.Random(3)
+    punkte = [(zufall.uniform(0, 40), zufall.uniform(0, 40)) for _ in range(190_000)]
+    sicht = _sicht()
+    sicht.setze_pauspapier(punkte)
+    sicht.grab()                                      # einmal rendern
+    beginn = time.perf_counter()
+    for _ in range(3):
+        sicht.grab()
+    assert (time.perf_counter() - beginn) / 3 < 0.25
+    assert sicht._pauspapier_schluessel == id(sicht._pauspapier)

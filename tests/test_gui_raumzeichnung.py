@@ -135,3 +135,26 @@ def test_das_rechteck_reicht_eine_halbe_zelle_ueber_die_knoten():
     from spotlab.gui.raumzeichnung import gelaende_rechteck
 
     assert gelaende_rechteck(_gelaende(lambda x, y: 0.0)) == pytest.approx((-0.1, -0.1, 1.1, 0.7))
+
+
+# ------------------------------------------------------------- Pauspapier
+
+
+def test_das_pauspapier_wird_ein_bild_mit_punkten_und_durchsichtigem_rest():
+    from spotlab.gui.raumzeichnung import pauspapier_bild
+
+    bild, rechteck = pauspapier_bild([(1.0, 2.0), (3.0, 4.0)], DUNKEL, zelle=0.5)
+    x0, y0, x1, y1 = rechteck
+    assert x0 <= 1.0 and y0 <= 2.0 and x1 >= 3.0 and y1 >= 4.0
+    assert bild.width() >= 5 and bild.height() >= 5
+    # Der Punkt (1, 2) liegt links unten: Spalte 0 .. 1, Zeile unten (Bild zeigt y nach oben).
+    getroffen = [(x, y) for x in range(bild.width()) for y in range(bild.height())
+                 if bild.pixelColor(x, y).alpha() > 0]
+    assert len(getroffen) == 2
+    assert all(bild.pixelColor(x, y).name() == DUNKEL.gedaempft for x, y in getroffen)
+
+
+def test_ein_leeres_pauspapier_gibt_kein_bild():
+    from spotlab.gui.raumzeichnung import pauspapier_bild
+
+    assert pauspapier_bild([], DUNKEL) == (None, None)

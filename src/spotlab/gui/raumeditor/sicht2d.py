@@ -14,6 +14,7 @@ from PySide6.QtWidgets import QWidget
 from spotlab.gui.raumzeichnung import (
     gelaende_bild,
     gelaende_rechteck,
+    pauspapier_bild,
     zeichne_anstoesse,
     zeichne_offen,
     zeichne_raum,
@@ -64,6 +65,9 @@ class Sicht2D(QWidget):
         self._gelaende_bild = None   # einmal je (Gelaende, Ebene) gerendert
         self._gelaende_ref = None    # haelt das Gelaende, damit id() stabil bleibt
         self._gelaende_schluessel = None
+        self._pauspapier_bild = None     # die Punktwolke als Bild, einmal je Punktliste
+        self._pauspapier_rechteck = None
+        self._pauspapier_schluessel = None
         self.skala = 60.0             # Pixel je Meter
         self._ursprung = (RAND, 0.0)  # Pixel des Weltpunkts (0, 0); y wird gespiegelt
         self._schwenk = None
@@ -238,6 +242,20 @@ class Sicht2D(QWidget):
         maler.drawImage(QRectF(px1, py1, px2 - px1, py2 - py1), self._gelaende_bild)
         maler.setRenderHint(QPainter.SmoothPixmapTransform, False)
 
+    def _zeichne_pauspapier(self, maler):
+        """Die Punktwolke als Bild -- gerendert nur, wenn die Punktliste wechselt."""
+        if not self._pauspapier:
+            return
+        if self._pauspapier_bild is None or self._pauspapier_schluessel != id(self._pauspapier):
+            self._pauspapier_bild, self._pauspapier_rechteck = pauspapier_bild(self._pauspapier, self._p)
+            self._pauspapier_schluessel = id(self._pauspapier)
+        if self._pauspapier_bild is None:
+            return
+        x0, y0, x1, y1 = self._pauspapier_rechteck
+        px1, py1 = self.meter_zu_schirm(x0, y1)
+        px2, py2 = self.meter_zu_schirm(x1, y0)
+        maler.drawImage(QRectF(px1, py1, px2 - px1, py2 - py1), self._pauspapier_bild)
+
     def paintEvent(self, _ereignis):
         maler = QPainter(self)
         maler.setRenderHint(QPainter.Antialiasing)
@@ -249,12 +267,7 @@ class Sicht2D(QWidget):
         self._raster(maler)
         self._zeichne_gelaende(maler)
 
-        if self._pauspapier:
-            farbe = QColor(self._p.gedaempft)
-            farbe.setAlpha(120)
-            maler.setPen(QPen(farbe, 2))
-            for x, y in self._pauspapier:
-                maler.drawPoint(QPointF(*self.meter_zu_schirm(x, y)))
+        self._zeichne_pauspapier(maler)
 
         zeichne_raum(maler, self._raum, self.meter_zu_schirm, self.skala, self._p, self._auswahl,
                      ebene=self._ebene, klippen_=self._klippen)

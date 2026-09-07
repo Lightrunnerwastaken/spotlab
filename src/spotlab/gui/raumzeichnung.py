@@ -242,3 +242,39 @@ def gelaende_bild(gelaende, palette, ebene=None):
             farbe.setAlpha(GELAENDE_ALPHA)
             bild.setPixelColor(j, gelaende.zeilen - 1 - i, farbe)
     return bild
+
+
+# ------------------------------------------------------------- Pauspapier
+
+PAUSPAPIER_ZELLE_M = 0.05      # ein Pixel je 5 cm, grob wie das Gitter der Rekonstruktion
+PAUSPAPIER_MAX_PX = 3000       # groessere Karten bekommen groebere Zellen
+PAUSPAPIER_ALPHA = 120
+
+
+def pauspapier_bild(punkte, palette, zelle=PAUSPAPIER_ZELLE_M):
+    """(QImage, (x0, y0, x1, y1)): die Punktwolke als Bild, ein Pixel je Zelle, Zeile 0 oben.
+
+    190 000 Punkte einzeln zu zeichnen kostete 0.7 s je Bild -- bei jeder Mausbewegung
+    im Editor (07.09.2026). Das Bild entsteht einmal je Punktwolke und wird skaliert
+    gezeichnet. Ohne Punkte (None, None).
+    """
+    punkte = list(punkte)
+    if not punkte:
+        return None, None
+    xs = [p[0] for p in punkte]
+    ys = [p[1] for p in punkte]
+    x0, y0, x1, y1 = min(xs), min(ys), max(xs), max(ys)
+    zelle = max(zelle, max(x1 - x0, y1 - y0) / PAUSPAPIER_MAX_PX)
+    breite = int((x1 - x0) / zelle) + 1
+    hoehe = int((y1 - y0) / zelle) + 1
+    farbe = QColor(palette.gedaempft)
+    r, g, b = farbe.red(), farbe.green(), farbe.blue()
+    puffer = bytearray(breite * hoehe * 4)              # Format_ARGB32: B, G, R, A je Pixel
+    for x, y in punkte:
+        j = int((x - x0) / zelle)
+        i = hoehe - 1 - int((y - y0) / zelle)
+        k = (i * breite + j) * 4
+        puffer[k], puffer[k + 1], puffer[k + 2], puffer[k + 3] = b, g, r, PAUSPAPIER_ALPHA
+    bild = QImage(bytes(puffer), breite, hoehe, breite * 4, QImage.Format_ARGB32).copy()
+    return bild, (x0, y0, x0 + breite * zelle, y0 + hoehe * zelle)
+
