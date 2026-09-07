@@ -930,3 +930,30 @@ def test_stairs_nennt_treppen_mit_richtung_stufen_und_achse(uhr):
     weit = SimBackend(jetzt=uhr, raum=raum, start=(-2.0, 0.0, 0.0))
     assert weit.stairs() == []                                                          # 4 m: ausser Reichweite
     assert SimBackend(jetzt=uhr).stairs() == []                                         # ohne Raum
+
+
+# ------------------------------------------- Weltpruefung je Strecke, nicht je Takt
+
+
+def test_die_weltpruefung_haengt_an_der_strecke_nicht_am_takt(uhr, monkeypatch):
+    """Auf den korrigierten Katakomben (330 Waende, Hunderte Klippenstrecken) kostet
+    `hindernis_bei` rund 3 ms -- und lief bei JEDEM 5-ms-Integrationsschritt, 200-mal
+    je Sekunde. Der Sim fiel hinter die Echtzeit, `walk` brauchte 50-100 ms, der
+    Fahrmodus haengte (07.09.2026). Die Zusicherung "kein Tunneln" braucht eine
+    Pruefung je MAX_SCHRITT_M Weg (und eine je Abfrage), nicht eine je Takt."""
+    from spotlab.welt import kollision
+
+    zaehler = {"n": 0}
+    echt = kollision.hindernis_bei
+
+    def gezaehlt(*args, **kwargs):
+        zaehler["n"] += 1
+        return echt(*args, **kwargs)
+
+    monkeypatch.setattr(kollision, "hindernis_bei", gezaehlt)
+    backend = SimBackend(raum=_uebungsraum(), start=(1.0, 5.0, 0.0), jetzt=uhr)
+    backend.power_on()
+    _fahre(backend, uhr, vx=0.4, sekunden=2.0, schritt=0.05)      # 0.8 m, 41 Abfragen
+    assert zaehler["n"] <= 41 + 8 + 2, zaehler["n"]
+    x, y, _ = backend._pose
+    assert x == pytest.approx(1.8, abs=0.05) and y == pytest.approx(5.0, abs=0.01)

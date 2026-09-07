@@ -47,6 +47,7 @@ from spotlab.backends.base import (
     richtung,
 )
 from spotlab.errors import CommandRejected, NotPowered, UnsupportedCapability
+from spotlab.welt.kollision import MAX_SCHRITT_M
 
 # Wie lange ein Fahrkommando gilt, wenn keine Endzeit mitkommt. Der echte Spot
 # hält ohne Nachschub an; das muss hier genauso sein, sonst liefe ein Skript im
@@ -670,6 +671,7 @@ class SimBackend:
         if jetzt <= self._t:
             return
         ende = min(jetzt, self._gueltig_bis)
+        geprueft = self._pose
         while self._t < ende:
             if not self._powered or self._sitzt or (
                 self._ziel is None and self._soll == (0.0, 0.0, 0.0)
@@ -681,7 +683,10 @@ class SimBackend:
             weiter = min(ende, self._t + MAX_DT_S)
             dt = weiter - self._t
             self._schritt(dt, self._t)
+            if math.dist(geprueft[:2], self._pose[:2]) >= MAX_SCHRITT_M:
+                geprueft = self._welt_pruefen(geprueft)
             self._t = weiter
+        self._welt_pruefen(geprueft)
         if jetzt >= self._gueltig_bis:
             self._beende_ziel("abgelaufen (Sim)", rejected=True)
             self._soll = (0.0, 0.0, 0.0)
@@ -711,12 +716,26 @@ class SimBackend:
             dauer = self._modell.zyklusdauer(tempo, wz)
             if dauer > 0:
                 self._phase = (self._phase + dt / dauer) % 1.0
-            neu = integriere(self._pose, vx, vy, wz, dt)
-            self._pose = self._bewege_gegen_welt(self._pose, neu)
-            if self._raum is not None:
-                from spotlab.welt.hoehe import nick_grad
+            self._pose = integriere(self._pose, vx, vy, wz, dt)
 
-                self._nick_grad = nick_grad(self._raum, *self._pose, z_nahe=self._z)
+    def _welt_pruefen(self, von):
+        """Die Welt gegen den Weg seit `von` halten: Waende, Kanten, Hoehe, Nick.
+
+        Nicht je Integrationsschritt, sondern je MAX_SCHRITT_M Weg und am Ende
+        jeder Abfrage -- die Zusicherung "kein Tunneln" haengt an der Strecke,
+        der 5-ms-Takt dient nur dem Zielprofil. Auf den Katakomben (330 Waende,
+        Hunderte Klippenstrecken, Gelaende) kostete die Pruefung 2-3 ms und lief
+        200-mal je Sekunde: der Sim fiel hinter die Echtzeit (07.09.2026). Eine
+        Pose sieht niemand, bevor sie hier war.
+        """
+        if self._pose == von:
+            return von
+        self._pose = self._bewege_gegen_welt(von, self._pose)
+        if self._raum is not None:
+            from spotlab.welt.hoehe import nick_grad
+
+            self._nick_grad = nick_grad(self._raum, *self._pose, z_nahe=self._z)
+        return self._pose
 
     @synchronisiert
     def robot_state(self):

@@ -282,6 +282,15 @@ versionsgepinntes Extra `spotlab[sim]`.
   muss im Sim begehbar sein; mit 0.35 m blieb ein Programm, das der freien Strecke
   folgte, an der Türkante hängen (06.09.2026). Die Zelle Luft braucht es, weil das Gitter
   Abstände nur je Zellmitte kennt. `tests/test_welt_kollision.py` hält die Kopplung fest.
+- **Die Welt wird je `MAX_SCHRITT_M` Weg und je Abfrage geprüft, nie je Integrationsschritt.**
+  `SimBackend._fortschreiben` integriert in 5-ms-Schritten (fürs Zielprofil) und ruft
+  `_welt_pruefen` erst, wenn der Weg seit der letzten Prüfung 0.1 m erreicht, und am Ende
+  jeder Abfrage — eine Pose sieht niemand, bevor sie geprüft war. Auf den korrigierten
+  Katakomben kostete eine Prüfung 2–3 ms (61 Wände, rund 280 Klippenstrecken des Geländes;
+  in MuJoCo Puppe setzen, `mj_forward`, Kontakte lesen) und lief 200-mal je Sekunde: der Sim
+  fiel hinter die Echtzeit, `walk` brauchte 50–100 ms statt 9–12, der Fahrmodus „hing"
+  (07.09.2026). Die Zusicherung „kein Tunneln" hängt an der Strecke, nicht am Takt; beide
+  Backends haben einen Test, der die Prüfungen zählt.
 - **`welt/` bleibt Standardbibliothek — auch `bearbeitung.py`.** Das ist der Grund, warum
   die GUI es importieren darf (`tests/test_welt_raum.py`); numpy nur in `wahrnehmung.py`.
 - **Der Raumeditor arbeitet auf unveränderlichen Räumen; Undo ist eine Liste von
@@ -374,7 +383,9 @@ versionsgepinntes Extra `spotlab[sim]`.
   `gelaende.umriss` wird einmal beim Bau gerechnet (`huelle` fragt ihn, der Raumplot fragt
   `huelle` je Punkt — 56 s je Bild, „Python reagiert nicht"), und das Pauspapier ist in
   `Sicht2D` ein einmal gerastertes Bild (`raumzeichnung.pauspapier_bild`), keine 190 000
-  einzelnen `drawPoint`.
+  einzelnen `drawPoint`. Dieselbe Regel im Übungsfenster: `RaumPlot` merkt sich `huelle(raum)`
+  in `setze_raum`; `_massstab` rechnete sie je `meter_zu_schirm` neu — 950-mal je Bild,
+  172 ms auf den Katakomben, bei zehn Zuständen je Sekunde stand die GUI (07.09.2026).
 - **`errors/` darf nichts aus `backends/` importieren.** `backends/base.py` importiert
   `UnsupportedCapability` aus `errors`; die Gegenrichtung schliesst den Kreis, sobald
   `backends.base` zuerst geladen wird. Die Position der Importzeile hilft dagegen nicht.

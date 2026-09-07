@@ -460,3 +460,21 @@ def test_die_ansicht_folgt_dem_kamerawunsch_auch_im_stand(uhr, tmp_path):
         assert _bytes_mit_geduld(ziel) != raumbild, "die Kamera hat sich nicht geaendert"
     finally:
         backend.close()
+
+
+def test_die_weltpruefung_haengt_an_der_strecke_nicht_am_takt(uhr):
+    """Je Integrationsschritt (5 ms) die Puppe setzen, `mj_forward` und die Kontakte
+    lesen kostete auf den Katakomben (Gelaende, 330 Waende) 1.6 ms -- 200-mal je
+    Sekunde. Wie in 2D: eine Pruefung je MAX_SCHRITT_M und je Abfrage (07.09.2026)."""
+    backend = _backend(uhr, (1.0, 0.7, 0.0))
+    zaehler = {"n": 0}
+    echt = backend.puppe.kollisionen
+
+    def gezaehlt():
+        zaehler["n"] += 1
+        return echt()
+
+    backend.puppe.kollisionen = gezaehlt
+    _fahre(backend, uhr, vx=0.4, sekunden=2.0, schritt=0.05)      # 0.8 m, 41 Abfragen
+    assert zaehler["n"] <= 41 + 8 + 2, zaehler["n"]
+    assert backend.puppe.pose()[0] == pytest.approx(1.8, abs=0.05)

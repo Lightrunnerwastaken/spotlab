@@ -130,3 +130,31 @@ def test_ohne_groesse_zeichnet_die_huelle(qapp):
     plot.setze_raum(Raum(name="T", beschreibung="", start=(0, 0, 0), waende=((0, 0, 4, 0),)))
     x, y = plot.schirm_zu_meter(*plot.meter_zu_schirm(2.0, 0.0))
     assert (x, y) == (pytest.approx(2.0), pytest.approx(0.0, abs=1e-6))
+
+
+def test_die_huelle_wird_je_raum_gerechnet_nicht_je_punkt(qapp, monkeypatch):
+    """`meter_zu_schirm` wird je gezeichnetem Punkt gerufen -- und rechnete ueber
+    `_massstab` jedes Mal `huelle(raum)` neu, ueber alle Waende, Boeden und den
+    Gelaende-Umriss: auf den korrigierten Katakomben 950 Aufrufe und 172 ms je Bild,
+    bei 10 Zustaenden je Sekunde stand die GUI (07.09.2026). Was je Punkt gefragt
+    wird, muss O(1) sein -- die Huelle gehoert zum Raum, nicht zum Punkt."""
+    from spotlab.gui import raumplot as modul
+    from spotlab.welt.raum import Raum
+
+    zaehler = {"n": 0}
+    echt = modul.huelle
+
+    def gezaehlt(raum):
+        zaehler["n"] += 1
+        return echt(raum)
+
+    monkeypatch.setattr(modul, "huelle", gezaehlt)
+    plot = RaumPlot(DUNKEL)
+    plot.resize(400, 300)
+    plot.setze_raum(Raum(name="T", beschreibung="", start=(0, 0, 0),
+                         waende=tuple((i, 0, i + 1, 1) for i in range(40))))
+    for _ in range(3):
+        plot.grab()
+    assert zaehler["n"] <= 1, zaehler["n"]
+    x, y = plot.schirm_zu_meter(*plot.meter_zu_schirm(2.0, 0.5))
+    assert (x, y) == (pytest.approx(2.0), pytest.approx(0.5))

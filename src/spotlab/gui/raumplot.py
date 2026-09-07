@@ -31,6 +31,7 @@ class RaumPlot(QWidget):
         self.setMinimumHeight(260)
         self._p = palette
         self._raum = None
+        self._huelle = None            # (x0, y0, x1, y1) des Raums, einmal je Raum
         self._spur = []
         self._anstoesse = []
         self._start = None
@@ -44,6 +45,10 @@ class RaumPlot(QWidget):
         from spotlab.welt.kollision import klippen_von
 
         self._raum = raum
+        # Einmal je Raum: `huelle` laeuft ueber alle Waende, Boeden und den
+        # Gelaende-Umriss, und `meter_zu_schirm` wird je gezeichnetem Punkt gerufen
+        # -- auf den Katakomben 950-mal je Bild, 172 ms, die GUI stand (07.09.2026).
+        self._huelle = huelle(raum) if raum is not None else None
         self._klippen = klippen_von(raum) if raum is not None and raum.boeden else []
         self.update()
 
@@ -98,7 +103,7 @@ class RaumPlot(QWidget):
         """Pixel je Meter, Seitenverhaeltnis erhalten."""
         if self._raum is None:
             return 1.0, RAND, self.height() - RAND
-        x0, y0, x1, y1 = huelle(self._raum)          # groesse oder die Huelle
+        x0, y0, x1, y1 = self._huelle                # groesse oder die Huelle, gemerkt
         breite, hoehe = max(x1 - x0, 1e-6), max(y1 - y0, 1e-6)
         nutzbar_x = max(self.width() - 2 * RAND, 1)
         nutzbar_y = max(self.height() - 2 * RAND, 1)
