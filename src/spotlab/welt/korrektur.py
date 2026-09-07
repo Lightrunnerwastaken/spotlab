@@ -216,3 +216,46 @@ def finde_luecken(raum, weg=(), pauspapier=(), max_luecke=MAX_LUECKE_M,
     index = punktindex(pauspapier)
     gefunden = [_mit_vorschlag(lk, list(weg), index) for lk in gefunden]
     return sorted(gefunden, key=lambda lk: lk.laenge)
+
+
+# ------------------------------------------------------------- Anwenden
+
+
+def wende_an(raum, luecken, entscheide):
+    """Die Entscheide anwenden: {index: "wand" | "durchgang" | "loeschen" | "lassen"}.
+
+    "wand" rueckt die genannten Enden auf das Ziel -- die Waende bleiben
+    getrennte Elemente und beruehren sich dort, kein Verschmelzen, keine
+    Indexverschiebung. "loeschen" merkt die Wand vor; geloescht wird am Ende.
+    "durchgang" und "lassen" tun nichts. Das `z` der Waende bleibt.
+    """
+    waende = list(raum.waende)
+    weg = set()
+    for index, luecke in enumerate(luecken):
+        entscheid = entscheide.get(index, "lassen")
+        if entscheid == "wand" and luecke.art != "kreuzt":
+            for wand_index, ende in zip(luecke.waende, luecke.enden):
+                w = waende[wand_index]
+                x, y = round(luecke.ziel[0], 3), round(luecke.ziel[1], 3)
+                waende[wand_index] = replace(w, x1=x, y1=y) if ende == 1 else replace(w, x2=x, y2=y)
+        elif entscheid == "loeschen":
+            weg.update(luecke.waende)
+    if not weg and all(a is b for a, b in zip(waende, raum.waende)):
+        return raum
+    return replace(raum, waende=tuple(w for i, w in enumerate(waende) if i not in weg))
+
+
+def uebernimm_gelaende(raum, gelaende, boeden_aufloesen):
+    """Das Gelaende in den Raum: Rampen und Podeste gehen darin auf (wenn gewuenscht),
+    Waende und Tags bekommen das `z` des Grunds unter ihrer Mitte, Treppen bleiben."""
+    boeden = raum.boeden
+    if boeden_aufloesen:
+        boeden = tuple(b for b in raum.boeden if b.stufen > 0)
+
+    def z_von(x, y, sonst):
+        h = gelaende.hoehe_bei(x, y)
+        return sonst if h is None else round(h, 3)
+
+    waende = tuple(replace(w, z=z_von(*w.mitte, w.z)) for w in raum.waende)
+    tags = tuple(replace(t, z=z_von(t.x, t.y, t.z)) for t in raum.tags)
+    return replace(raum, gelaende=gelaende, boeden=boeden, waende=waende, tags=tags)

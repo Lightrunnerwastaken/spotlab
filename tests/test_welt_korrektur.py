@@ -3,7 +3,7 @@
 import pytest
 
 from spotlab.welt import korrektur as k
-from spotlab.welt.raum import Boden, Raum, RaumTag, Wand  # noqa: F401 -- Boden, RaumTag ab Task 3
+from spotlab.welt.raum import Boden, Raum, RaumTag, Wand
 
 
 def _raum(*waende):
@@ -49,7 +49,7 @@ def test_kein_kandidat_durch_eine_dritte_wand():
 def test_je_ende_der_kuerzeste_und_jedes_paar_einmal():
     raum = _raum((0, 0, 2, 0), (2.4, 0, 4, 0), (2.8, 0.05, 5, 0.05))
     luecken = k.finde_luecken(raum)
-    assert [l.waende for lk in luecken].count((0, 1)) == 1
+    assert [lk.waende for lk in luecken].count((0, 1)) == 1
     assert all(sorted(lk.waende) != [0, 2] for lk in luecken)
 
 
@@ -80,7 +80,7 @@ def test_ohne_beides_unklar():
 def test_eine_wand_quer_ueber_den_weg_soll_weg():
     raum = _raum((0, 0, 6, 0), (3, -1, 3, 1))
     luecken = k.finde_luecken(raum, weg=[(1.0, 0.5, 0.0), (5.0, 0.5, 0.0)])
-    (kreuzt,) = [l for lk in luecken if lk.art == "kreuzt"]
+    (kreuzt,) = [lk for lk in luecken if lk.art == "kreuzt"]
     assert kreuzt.waende == (1,) and kreuzt.vorschlag == "loeschen" and kreuzt.enden == ()
     assert kreuzt.strecken == ((3.0, -1.0, 3.0, 1.0),)
 
@@ -103,7 +103,8 @@ def test_das_u_mit_tuer():
 def test_wende_an_rueckt_enden_und_loescht():
     raum = _raum((0, 0, 2, 0), (2.6, 0, 5, 0), (3, -1, 3, 1))
     luecken = k.finde_luecken(raum, weg=[(1.0, 0.5, 0.0), (4.0, 0.5, 0.0)])
-    entscheide = {i: ("wand" if lk.art == "luecke" else "loeschen") for i, lk in enumerate(luecken)}
+    entscheide = {i: {"luecke": "wand", "kreuzt": "loeschen"}.get(lk.art, "lassen")
+                  for i, lk in enumerate(luecken)}
     neu = k.wende_an(raum, luecken, entscheide)
     assert len(neu.waende) == 2 and (neu.waende[0].x2, neu.waende[0].y2) == pytest.approx((2.6, 0.0))
 
