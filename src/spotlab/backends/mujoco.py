@@ -45,7 +45,7 @@ from spotlab.welt.kollision import MAX_SCHRITT_M
 from spotlab.welt.raum import BLOCK_HOEHE_M, MAX_STUFE_M, TAG_HOEHE_M
 from spotlab.welt.wahrnehmung import TAG_REICHWEITE_M
 
-PUPPE_FASSUNG = 4      # 4: Nick, Bodenhoehe, Sprungregel; 3: Quader mit yaw; 2: weltfestes Gitter
+PUPPE_FASSUNG = 5      # 5: Gelaende als hfield; 4: Nick, Bodenhoehe, Sprungregel; 3: Quader mit yaw
 
 # Die Höhen und Dicken stehen im Raum (`welt/raum.py`: `wand_dicke`,
 # `wand_hoehe`, `Block.hoehe`, `RaumTag.hoehe`) — die Vorgaben dort sind die
@@ -100,10 +100,21 @@ def welt_aus_raum(raum, puppe):
     als geneigter Kasten mit Fuellung, ein Podest als Kasten bis zum tiefsten
     Boden des Raums. Dort liegt auch die Bodenebene (`Welt.boden_z`); ein Raum
     mit negativen Hoehen (Katakomben) steckt sonst in ihr.
+
+    Das Gelaende (`welt/gelaende.py`) geht als Feld (zeilen, spalten) mit NaN
+    fuer „kein Boden" an die Puppe, die daraus ein hfield baut -- dasselbe
+    Raster, das `boden_bei` bilinear abtastet.
     """
     if raum is None:
         return puppe.Welt()
     tiefster = boden_z(raum)
+    gelaende = None
+    if raum.gelaende is not None:
+        import numpy as np
+
+        g = raum.gelaende
+        feld = np.array([np.nan if h is None else float(h) for h in g.hoehen], dtype=float)
+        gelaende = puppe.Gelaende(g.x0, g.y0, g.zelle, feld.reshape(g.zeilen, g.spalten))
     quader = []
     for i, wand in enumerate(raum.waende):
         if wand.laenge <= 0:
@@ -128,7 +139,7 @@ def welt_aus_raum(raum, puppe):
     tags = tuple(
         puppe.TagMarke(t.id, t.x, t.y, t.z + t.hoehe, math.radians(t.grad)) for t in raum.tags
     )
-    return puppe.Welt(quader=tuple(quader), tags=tags, boden_z=tiefster)
+    return puppe.Welt(quader=tuple(quader), tags=tags, boden_z=tiefster, gelaende=gelaende)
 
 
 class _Ansichtsschreiber(threading.Thread):

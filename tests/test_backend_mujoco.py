@@ -341,7 +341,7 @@ def test_fassung_und_stufenhoehe_sind_die_der_puppe():
     from spotlab.backends.mujoco import PUPPE_FASSUNG
     from spotlab.welt.raum import MAX_STUFE_M
 
-    assert PUPPE_FASSUNG == puppe.FASSUNG == 4
+    assert PUPPE_FASSUNG == puppe.FASSUNG == 5
     assert PUPPE_STUFE == MAX_STUFE_M
 
 
@@ -402,3 +402,23 @@ def test_das_tiefengitter_misst_vom_boden_unter_dem_koerper(uhr):
         assert gitter.free_distance(6.8, 0.0, 180.0) < 0.9                     # die Podestkante bei x = 6 (Grad)
     finally:
         unten.close()
+
+
+# ----------------------------------------------------------------- Gelaende (Fassung 5)
+
+
+def test_welt_aus_raum_uebergibt_das_gelaende_als_feld():
+    import numpy as np
+    import spotsim.puppe as puppe
+
+    from spotlab.backends.mujoco import welt_aus_raum
+    from spotlab.welt import gelaende as g
+    from spotlab.welt.raum import Raum
+
+    ge = g.gitter(1.0, 2.0, 0.5, 3, 4, lambda x, y: None if x > 2.2 else 0.1 * y)
+    welt = welt_aus_raum(Raum(name="G", beschreibung="", start=(1, 2, 0), gelaende=ge), puppe)
+    assert isinstance(welt.gelaende, puppe.Gelaende)
+    assert (welt.gelaende.x0, welt.gelaende.y0, welt.gelaende.zelle) == (1.0, 2.0, 0.5)
+    assert welt.gelaende.hoehen.shape == (3, 4)
+    assert np.isnan(welt.gelaende.hoehen[0, 3]) and welt.gelaende.hoehen[2, 0] == pytest.approx(0.3)
+    assert welt_aus_raum(Raum(name="G", beschreibung="", start=(1, 2, 0)), puppe).gelaende is None
