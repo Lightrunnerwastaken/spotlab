@@ -211,8 +211,27 @@ def klippen(raum, schritt=0.05, alles=False):
             if offen is not None:
                 ergebnis.append(offen)
     if raum.gelaende is not None:
-        ergebnis += gelaende_klippen(raum.gelaende)
+        # Eine Klippe des Gelaendes UNTER einem Boden zaehlt nicht: dort steht man auf dem
+        # Boden (eine Treppe ueber dem Gelaende, das die Rekonstruktion darunter faltet).
+        # Stueckweise, Zelle fuer Zelle -- eine lange Kante kann halb unter der Treppe liegen.
+        for kante in gelaende_klippen(raum.gelaende):
+            offen = None
+            for stueck in _kante_stuecke(kante[:2], kante[2:], raum.gelaende.zelle):
+                mx, my = (stueck[0] + stueck[2]) / 2, (stueck[1] + stueck[3]) / 2
+                if any(_enthaelt(boden, mx, my) for boden in raum.boeden):
+                    if offen is not None:
+                        ergebnis.append(offen)
+                        offen = None
+                else:
+                    offen = (offen[0], offen[1], stueck[2], stueck[3]) if offen else stueck
+            if offen is not None:
+                ergebnis.append(offen)
     return ergebnis
+
+
+def _enthaelt(boden, x, y):
+    lx, ly = boden.lokal(x, y)
+    return abs(lx) <= boden.breite / 2 and abs(ly) <= boden.tiefe / 2
 
 
 # ------------------------------------------------------------- Treppen

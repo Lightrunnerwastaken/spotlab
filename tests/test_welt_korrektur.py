@@ -137,4 +137,17 @@ def test_uebernimm_gelaende_loest_rampen_auf_und_setzt_z():
     assert neu.gelaende is ge
     assert [b.name for b in neu.boeden] == ["Treppe"]
     assert neu.waende[0].z == pytest.approx(0.2) and neu.tags[0].z == pytest.approx(0.4)
-    assert k.uebernimm_gelaende(raum, ge, False).boeden == raum.boeden
+    behalten = k.uebernimm_gelaende(raum, ge, False).boeden
+    assert [b.name for b in behalten] == ["Rampe 1", "Podest 1", "Treppe"]
+    assert behalten[:2] == raum.boeden[:2]                 # nur die Treppe stellt sich aufs Gelaende
+
+
+def test_eine_treppe_steht_mit_fuss_und_kopf_auf_dem_gelaende():
+    from spotlab.welt import gelaende as g
+
+    ge = g.gitter(0.0, 0.0, 0.5, 5, 13, lambda x, y: 0.2 * x)      # steigt 0.2 je Meter
+    treppe = Boden("Treppe", 3.0, 1.0, 2.0, 1.0, z=0.0, anstieg=1.0, stufen=6)   # Fuss x=2, Kopf x=4
+    raum = Raum("K", "", (0.5, 0.5, 0.0), boeden=(treppe,))
+    neu = k.uebernimm_gelaende(raum, ge, True)
+    (t,) = neu.boeden
+    assert t.z == pytest.approx(0.4) and t.anstieg == pytest.approx(0.4) and t.stufen == 6

@@ -8,13 +8,28 @@ Das Raster ist ein Knotenraster; "Zelle" meint die Umgebung eines Knotens.
    (kleine Flecken sind Rauschen); Wegknoten sind immer frei.
 2. Weg: das geglaettete Hoehenprofil liegt auf den Wegknoten (fest).
 3. Region: Flut von den Wegknoten ueber freie Knoten bis `abstand` neben dem
-   Weg; eingeschlossene Loecher kommen dazu (ein umschlossener Raum ist Boden).
+   Weg.
 4. Offene Raender: Regionsknoten mit freiem Nachbarn ausserhalb -- dort hielt
    nichts auf, der Autor sieht sie in der 2D-Sicht.
-5. Membran: jede freie Regionszelle ist der Mittelwert ihrer Nachbarn
-   (Ueber-Relaxation, Rot-Schwarz), Wegknoten bleiben fest, am Rand ohne
-   Bedingung. Quer zum Gang eben, laengs das Gefaelle, weich an Abzweigungen.
-6. Der tiefste Knoten wird 0.
+5. Loecher: freie Knoten, die der Gitterrand ueber freie Knoten nicht erreicht
+   (eingeschlossen von Region, Waenden oder Punkten -- ein Punktfleck im Gang,
+   die Tasche hinter einem Punktband, ein umschlossener Raum), kommen zur
+   Region: ein Loch im Gang waere eine Klippe, die es nicht gibt.
+6. Membran: jede freie Regionszelle ist der Mittelwert ihrer Nachbarn
+   (Ueber-Relaxation, Rot-Schwarz), Wegknoten bleiben fest -- vorher raeumlich
+   geglaettet (`glaettung`), damit zwei Fahrten mit Drift durch denselben Gang
+   keine Klippe reissen. Quer zum Gang eben, laengs das Gefaelle.
+7. Flaechenglaettung: `glaettung_flaeche` Durchgaenge eines Fuenf-Punkte-Mittels
+   ueber die Region -- die Stufe am Ende eines Wegstummels, den die Membran
+   sonst scharf gegen das Nachbarniveau setzt, wird ein Uebergang.
+8. Gesperrte Zusammenhaenge, die die Region beruehren (die Wand selbst, ein
+   Punktband davor), bekommen danach die Hoehe ihres Nachbarn kopiert: unter
+   einer Wand liegt kein Graben, und der Rand des Gelaendes liegt hinter den
+   Waenden. Sie rechnen in der Membran NICHT mit -- eine Wand, die Hoehe an
+   sich entlang leitete, verzerrte den Gang daneben. Freie Taschen, die erst
+   jetzt einen Regionsnachbarn haben (ein Knoten hinter einem Punktband),
+   bekommen ebenfalls eine Kopie.
+9. Der tiefste Knoten wird 0.
 """
 
 import math
@@ -40,6 +55,8 @@ class Einstellungen:
     punkte_je_zelle: int = 5             # ab hier sperrt das Pauspapier einen Knoten
     min_fleck: int = 3                   # kleinere gesperrte Flecken sind Rauschen
     profil_toleranz: float = 0.10        # Douglas-Peucker auf dem Wegprofil
+    glaettung: float = 1.0               # Wegknoten mitteln sich mit Wegknoten in diesem Umkreis
+    glaettung_flaeche: int = 1           # Durchgaenge des Fuenf-Punkte-Mittels nach der Membran
     hoechstens_iterationen: int = 3000
     genau_m: float = 0.001
     rand: float = 1.0                    # Raster ueber die Huelle hinaus
@@ -192,7 +209,7 @@ def _wegknoten(weg, X, Y, x0, y0, e):
 
 
 def _region(gesperrt, fest, werte, abstand, e):
-    """(region, startwerte): Flut von den Wegknoten, dann die eingeschlossenen Loecher."""
+    """(region, startwerte): Flut von den Wegknoten ueber freie Knoten bis `abstand`."""
     zeilen, spalten = gesperrt.shape
     frei = ~gesperrt
     region = fest.copy()
@@ -207,22 +224,100 @@ def _region(gesperrt, fest, werte, abstand, e):
                 region[ni, nj] = True
                 start[ni, nj] = start[i, j]
                 schlange.append((ni, nj))
-    # Loecher: freie Knoten ausserhalb der Region, die der Gitterrand ohne Wand nicht erreicht.
-    rand = np.zeros_like(frei)
+    return region, start
+
+
+def _wachse(region, start, dazu):
+    """Knoten aus `dazu` an die Region anschliessen, Startwert vom Nachbarn (Flutreihenfolge)."""
+    zeilen, spalten = region.shape
+    schlange = deque((int(i), int(j)) for i, j in zip(*np.nonzero(region)))
+    while schlange:
+        i, j = schlange.popleft()
+        for di, dj in NACHBARN:
+            ni, nj = i + di, j + dj
+            if 0 <= ni < zeilen and 0 <= nj < spalten and dazu[ni, nj] and not region[ni, nj]:
+                region[ni, nj] = True
+                start[ni, nj] = start[i, j]
+                schlange.append((ni, nj))
+    return region, start
+
+
+def _fuelle_loecher(region, start, gesperrt):
+    """Freie Knoten, die der Gitterrand ueber freie Nicht-Regionsknoten nicht erreicht,
+    sind eingeschlossen und werden Boden (Membranknoten); gesperrte Flecken darin
+    ebenfalls -- sie liegen mitten im Gang."""
+    frei = ~gesperrt
+    rand = np.zeros_like(region)
     rand[0, :] = rand[-1, :] = rand[:, 0] = rand[:, -1] = True
     draussen = _flut(rand & frei & ~region, frei & ~region)
     loecher = frei & ~region & ~draussen
     if loecher.any():
-        schlange = deque((int(i), int(j)) for i, j in zip(*np.nonzero(region)))
-        while schlange:
-            i, j = schlange.popleft()
-            for di, dj in NACHBARN:
-                ni, nj = i + di, j + dj
-                if 0 <= ni < zeilen and 0 <= nj < spalten and loecher[ni, nj] and not region[ni, nj]:
-                    region[ni, nj] = True
-                    start[ni, nj] = start[i, j]
-                    schlange.append((ni, nj))
+        region, start = _wachse(region, start, loecher)
+    # Gesperrte Flecken, die nur Region beruehren (kein Weg nach draussen ueber Sperren
+    # bis zum Rand), sind Rauschen mitten im Boden: ebenfalls Membran.
+    aussen_gesperrt = _flut(rand & gesperrt & ~region, gesperrt & ~region)
+    nachbar = np.zeros_like(region)
+    for di, dj in NACHBARN:
+        nachbar |= _nachbar(region.astype(np.int8), di, dj) > 0
+    ring = gesperrt & ~region & nachbar
+    if ring.any():
+        cluster = _flut(ring, gesperrt & ~region)
+        innen = cluster & ~aussen_gesperrt
+        if innen.any():
+            region, start = _wachse(region, start, innen)
     return region, start
+
+
+def _glaette_flaeche(h, region, durchgaenge):
+    """Fuenf-Punkte-Mittel ueber die Region (Nachbarn ausserhalb zaehlen nicht)."""
+    r = region.astype(float)
+    for _ in range(int(durchgaenge)):
+        summe = h * r + sum(_nachbar(h * r, di, dj) for di, dj in NACHBARN)
+        anzahl = r + sum(_nachbar(r, di, dj) for di, dj in NACHBARN)
+        h = np.where(region, summe / np.where(anzahl > 0, anzahl, 1.0), h)
+    return h
+
+
+def _fuelle_taschen(region, h, gesperrt):
+    """Freie Knoten, die der Gitterrand ueber freie Nicht-Regionsknoten nicht erreicht,
+    bekommen die Hoehe ihres Nachbarn kopiert -- nach dem Cluster-Schritt haben auch
+    Taschen hinter einem Punktband einen Regionsnachbarn."""
+    frei = ~gesperrt
+    rand = np.zeros_like(region)
+    rand[0, :] = rand[-1, :] = rand[:, 0] = rand[:, -1] = True
+    draussen = _flut(rand & frei & ~region, frei & ~region)
+    taschen = frei & ~region & ~draussen
+    if not taschen.any():
+        return region, h
+    return _wachse(region.copy(), h, taschen)
+
+
+def _fuelle_cluster(region, h, gesperrt):
+    """Gesperrte Zusammenhaenge, die die Region beruehren, bekommen die Hoehe ihres
+    Nachbarn kopiert (nach der Membran, sie rechnen nicht mit)."""
+    nachbar = np.zeros_like(region)
+    for di, dj in NACHBARN:
+        nachbar |= _nachbar(region.astype(np.int8), di, dj) > 0
+    ring = gesperrt & ~region & nachbar
+    if not ring.any():
+        return region, h
+    cluster = _flut(ring, gesperrt & ~region)
+    return _wachse(region.copy(), h, cluster)
+
+
+def _glaette_fest(fest, werte, radius_knoten):
+    """Jeder Wegknoten wird das Mittel der Wegknoten in seinem Umkreis."""
+    ii, jj = np.nonzero(fest)
+    if len(ii) == 0 or radius_knoten <= 0:
+        return werte
+    lage = np.column_stack([ii, jj]).astype(float)
+    z = werte[ii, jj]
+    d2 = ((lage[:, None, :] - lage[None, :, :]) ** 2).sum(axis=2)
+    nah = d2 <= radius_knoten ** 2
+    glatt = (nah * z[None, :]).sum(axis=1) / nah.sum(axis=1)
+    ergebnis = werte.copy()
+    ergebnis[ii, jj] = glatt
+    return ergebnis
 
 
 def _offene_raender(region, gesperrt):
@@ -309,12 +404,17 @@ def baue_gelaende(raum, weg, pauspapier, einstellungen=None, fortschritt=None):
     X, Y = np.broadcast_arrays(X, Y)
     gesperrt, hart, punkte = _gesperrt(raum, pauspapier, X, Y, x0, y0, e)
     fest, werte, abstand = _wegknoten(weg, X, Y, x0, y0, e)
+    werte = _glaette_fest(fest, werte, e.glaettung / e.zelle)
     gesperrt &= ~fest                      # der Roboter war dort: frei
     melde("Fluten")
     region, start = _region(gesperrt, fest, werte, abstand, e)
     offen, laeufe = _offene_raender(region, gesperrt)
+    region, start = _fuelle_loecher(region, start, gesperrt)
     melde("Membran")
-    h, iterationen = _membran(start.copy(), fest, region, e)
+    h, iterationen = _membran(np.where(fest, werte, start), fest, region, e)
+    h = _glaette_flaeche(h, region, e.glaettung_flaeche)
+    region, h = _fuelle_cluster(region, h, gesperrt)
+    region, h = _fuelle_taschen(region, h, gesperrt)
     melde(f"Membran {iterationen} Iterationen")
     tiefster = float(h[region].min()) if region.any() else 0.0
     h = h - tiefster

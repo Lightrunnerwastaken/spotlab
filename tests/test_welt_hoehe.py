@@ -173,3 +173,17 @@ def test_klippen_des_gelaendes_gehoeren_zum_raum():
 
 def test_boden_z_ist_der_tiefste_knoten():
     assert h.boden_z(_mit_gelaende(lambda x, y: -0.4 + 0.1 * x)) == pytest.approx(-0.4)
+
+
+def test_gelaendeklippen_unter_einem_boden_zaehlen_nicht():
+    sprung = lambda x, y: 0.0 if x < 3.0 else 0.6                       # noqa: E731
+    ohne = _mit_gelaende(sprung)
+    treppe = Boden("T", 3.0, 1.0, 2.0, 2.2, z=0.0, anstieg=0.6, stufen=4)   # deckt x 2..4, y -0.1..2.1
+    mit = _mit_gelaende(sprung, boeden=(treppe,))
+    # Die senkrechte Klippe des Gelaendes bei x = 2.9 (Sprung 0 -> 0.6) faellt unter der
+    # Treppe weg; die Kanten der Treppe selbst (waagrecht, an ihren Seiten) bleiben.
+    def senkrecht_bei_29(klippen_):
+        return [k for k in klippen_ if abs(k[0] - k[2]) < 1e-9 and abs(k[0] - 2.9) < 1e-6]
+
+    assert senkrecht_bei_29(h.klippen(ohne))
+    assert not senkrecht_bei_29(h.klippen(mit))

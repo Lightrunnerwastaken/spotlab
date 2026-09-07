@@ -247,7 +247,9 @@ def wende_an(raum, luecken, entscheide):
 
 def uebernimm_gelaende(raum, gelaende, boeden_aufloesen):
     """Das Gelaende in den Raum: Rampen und Podeste gehen darin auf (wenn gewuenscht),
-    Waende und Tags bekommen das `z` des Grunds unter ihrer Mitte, Treppen bleiben."""
+    Waende und Tags bekommen das `z` des Grunds unter ihrer Mitte. Treppen bleiben und
+    stehen auf dem Gelaende: Fuss und Kopf nehmen dessen Hoehe, damit Treppe und
+    Boden am Uebergang keine Stufe ueber MAX_STUFE_M bilden."""
     boeden = raum.boeden
     if boeden_aufloesen:
         boeden = tuple(b for b in raum.boeden if b.stufen > 0)
@@ -255,6 +257,19 @@ def uebernimm_gelaende(raum, gelaende, boeden_aufloesen):
     def z_von(x, y, sonst):
         h = gelaende.hoehe_bei(x, y)
         return sonst if h is None else round(h, 3)
+
+    def auf_gelaende(boden):
+        if boden.stufen <= 0:
+            return boden
+        c, s = math.cos(math.radians(boden.drehung)), math.sin(math.radians(boden.drehung))
+        halb = boden.breite / 2
+        fuss = gelaende.hoehe_bei(boden.x - halb * c, boden.y - halb * s)
+        kopf = gelaende.hoehe_bei(boden.x + halb * c, boden.y + halb * s)
+        if fuss is None or kopf is None:
+            return boden
+        return replace(boden, z=round(fuss, 3), anstieg=round(kopf - fuss, 3))
+
+    boeden = tuple(auf_gelaende(b) for b in boeden)
 
     waende = tuple(replace(w, z=z_von(*w.mitte, w.z)) for w in raum.waende)
     tags = tuple(replace(t, z=z_von(t.x, t.y, t.z)) for t in raum.tags)
