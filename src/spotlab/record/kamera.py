@@ -9,8 +9,9 @@ darf einen Lauf nie anhalten.
 """
 
 import json
-import os
 from pathlib import Path
+
+from spotlab.record import atomar
 
 DATEI = "kamera.json"
 MODI = ("raum", "verfolgen")        # dieselben Namen wie spotsim.puppe.ANSICHT_MODI
@@ -27,10 +28,7 @@ def schreibe(lauf_dir, modus, zoom):
     """Atomar: erst `.tmp`, dann ersetzen -- der Leser sieht nie eine halbe Datei."""
     if modus not in MODI:
         raise ValueError(f"Kameramodus {modus!r} -- erwartet einen von {MODI}.")
-    ziel = Path(lauf_dir) / DATEI
-    temporaer = ziel.with_suffix(".tmp")
-    temporaer.write_text(json.dumps({"modus": modus, "zoom": _begrenzt(zoom)}), encoding="utf-8")
-    os.replace(temporaer, ziel)
+    atomar.schreibe_atomar(Path(lauf_dir) / DATEI, json.dumps({"modus": modus, "zoom": _begrenzt(zoom)}))
 
 
 def lies(lauf_dir):

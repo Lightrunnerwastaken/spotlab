@@ -9,6 +9,7 @@ bleibt. Löschst du eine Datei, kommt das Original beim nächsten Start wieder.
 | `uebungsraum.py` | im gezeichneten Zimmer fahren, Tags und Hindernisgitter lesen |
 | `durchgang_finden.py` | mit den Sensoren eine Tür finden, in den nächsten Raum gehen, absitzen |
 | `treppe_steigen.py` | die Treppe mit `spot.stairs()` finden, vorwärts hinauf, rückwärts hinunter |
+| `fahren.py` | selbst fahren: W/S, A/D, Q/E im Übungsfenster — der Knopf „🎮 Fahren" startet es |
 
 Starten: Datei öffnen, über dem Editor „Wo läuft es?" wählen, ▶ Starten.
 Für `durchgang_finden.py` vorher im Raumeditor den Raum `durchgang` wählen,

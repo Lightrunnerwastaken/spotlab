@@ -30,3 +30,30 @@ def test_die_tastenbelegung():
     assert fahrt.befehl_aus_tasten({"a", "e"}) == (0.0, fahrt.QUER_M_S, -fahrt.DREH_RAD_S)
     assert fahrt.befehl_aus_tasten({"w", "s"}) == (0.0, 0.0, 0.0)          # hebt sich auf
     assert fahrt.befehl_aus_tasten({"q", "x"}) == (0.0, 0.0, fahrt.DREH_RAD_S)
+
+
+def test_schreiben_uebersteht_einen_kurzen_lesekonflikt(tmp_path, monkeypatch):
+    """Windows: os.replace scheitert mit PermissionError, solange der Leser die Datei
+    offen hat (gesehen in der Gesamtsuite am 07.09.2026). Kurz wiederholen, dann
+    aufgeben -- der naechste Takt schreibt ohnehin; nie werfen."""
+    from spotlab.record import atomar
+
+    echt = atomar._ersetze
+    versuche = {"n": 0}
+
+    def zickig(quelle, ziel):
+        versuche["n"] += 1
+        if versuche["n"] < 3:
+            raise PermissionError("Zugriff verweigert")
+        return echt(quelle, ziel)
+
+    monkeypatch.setattr(atomar, "_ersetze", zickig)
+    fahrt.schreibe(tmp_path, 0.1, 0.0, 0.0)
+    assert fahrt.lies(tmp_path)[0] == 0.1 and versuche["n"] == 3
+
+    def nie(quelle, ziel):
+        raise PermissionError("Zugriff verweigert")
+
+    monkeypatch.setattr(atomar, "_ersetze", nie)
+    fahrt.schreibe(tmp_path, 0.2, 0.0, 0.0)                 # gibt auf, wirft nicht
+    assert fahrt.lies(tmp_path)[0] == 0.1 and not list(tmp_path.glob("*.tmp"))

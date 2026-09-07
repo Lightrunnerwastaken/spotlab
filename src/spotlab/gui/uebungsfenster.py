@@ -159,7 +159,9 @@ class Uebungsfenster(QWidget):
         self._lauf_dir_fahrt = Path(lauf_dir) if lauf_dir else None
         if self._fahrt:
             self.verfolgen.setChecked(True)
-            self.setFocus()
+            self._tastatur_greifen()
+        else:
+            self._tastatur_loslassen()
         self._videopfad = None
         self.video.hide()
         self.video_oeffnen.hide()
@@ -308,8 +310,29 @@ class Uebungsfenster(QWidget):
         if self._fahrt:
             self._fahrt_schreiben()
 
+    def _tastatur_greifen(self):
+        """Im Fahrmodus bekommt dieses Fenster alle Tasten der App -- egal welches
+        Widget den Fokus hat; sonst kam W bei niemandem an, und die Leertaste
+        drueckte den fokussierten Stopp-Knopf. Nur ein sichtbares Fenster kann greifen."""
+        if self._fahrt and self.isVisible():
+            self.grabKeyboard()
+
+    def _tastatur_loslassen(self):
+        if QWidget.keyboardGrabber() is self:
+            self.releaseKeyboard()
+
+    def showEvent(self, ereignis):
+        super().showEvent(ereignis)
+        self._tastatur_greifen()
+
+    def hideEvent(self, ereignis):
+        self._tastatur_loslassen()
+        super().hideEvent(ereignis)
+
     def beendet(self, text="", lauf=None):
         self._fahrt_takt.stop()
+        self._fahrt = False
+        self._tastatur_loslassen()
         self.stopp.setEnabled(False)
         self.kopf.setText("Fertig.")
         if text:

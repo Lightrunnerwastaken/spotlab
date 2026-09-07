@@ -35,3 +35,14 @@ def test_stand_sagt_ob_sich_die_datei_geaendert_hat(tmp_path):
     assert erster is not None
     kamera.schreibe(tmp_path, "verfolgen", 1.0)
     assert kamera.stand(tmp_path) != erster
+
+
+def test_schreiben_uebersteht_einen_kurzen_lesekonflikt(tmp_path, monkeypatch):
+    from spotlab.record import atomar
+
+    def nie(quelle, ziel):
+        raise PermissionError("Zugriff verweigert")
+
+    monkeypatch.setattr(atomar, "_ersetze", nie)
+    kamera.schreibe(tmp_path, "verfolgen", 2.0)             # gibt auf, wirft nicht
+    assert kamera.lies(tmp_path) == ("raum", 1.0) and not list(tmp_path.glob("*.tmp"))

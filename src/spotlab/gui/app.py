@@ -345,14 +345,27 @@ class MainWindow(QWidget):
         """Der Fahrmodus: das mitgelieferte `fahren.py` als virtueller Lauf, W A S D Q E
         im Uebungsfenster. Derselbe Startweg und dieselben Regeln wie „Starten"."""
         from spotlab.workshop import fahren
+        from spotlab.workshop.beispiele import bereitstellen
 
         if self.ansichten["code"].laeuft():
             self.ansichten["code"].starte_aktuelles()        # heisst dann Stopp
             return
+        arbeitsordner = self._config.workspace if self._config else None
+        if not arbeitsordner:
+            self._melde("Zum Fahren zuerst einen Arbeitsordner wählen — das Programm "
+                        "liegt im Projekt Beispiele dort.")
+            return
+        # Im Arbeitsordner, nicht im Paket: Laeufe landen neben dem Skript, und nur
+        # dort findet der Watcher sie (sonst erfaehrt das Fenster das Verzeichnis nie).
+        try:
+            bereitstellen(arbeitsordner)
+        except OSError as fehler:
+            self._melde(f"Beispiele konnten nicht angelegt werden: {fehler}")
+            return
         namen = [name for _, name in verfuegbare_backends()]
         self.ansichten["code"].setze_backend("mujoco" if "mujoco" in namen else "sim")
         self._fahrt_erwartet = True
-        self.ansichten["code"].starte_skript(fahren.SKRIPT)
+        self.ansichten["code"].starte_skript(fahren.skript_in(arbeitsordner))
 
     def _oeffne_uebungsfenster(self, titel=""):
         if self.uebungsfenster is None:

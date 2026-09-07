@@ -314,9 +314,10 @@ Spot dasselbe Programm.
   schaut; das **Mausrad über dem Bild** zoomt in beiden Ansichten. Der Wunsch geht
   als `kamera.json` ins Lauf-Verzeichnis und bleibt über Läufe hinweg erhalten.
 
-**Selbst fahren.** „🎮 Fahren" im Raumeditor startet das mitgelieferte Programm
-`fahren.py` im gewählten Raum (3D, wenn MuJoCo da ist, sonst 2D) und öffnet das
-Übungsfenster mit der Verfolgerkamera. Dort fährst du mit **W/S** vor und zurück,
+**Selbst fahren.** „🎮 Fahren" im Raumeditor startet `fahren.py` aus dem Projekt
+`Beispiele` im gewählten Raum (3D, wenn MuJoCo da ist, sonst 2D) und öffnet das
+Übungsfenster mit der Verfolgerkamera; solange gefahren wird, gehören alle Tasten
+diesem Fenster. Dort fährst du mit **W/S** vor und zurück,
 **A/D** seitwärts, **Q/E** drehen; die Leertaste hält, „Stopp" beendet. Die
 Tasten gehen als `fahrt.json` ins Lauf-Verzeichnis, und ein Befehl, der älter ist
 als eine halbe Sekunde, heisst Stopp — losgelassene Taste, eingeschlafene GUI.

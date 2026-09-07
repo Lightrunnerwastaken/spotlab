@@ -1,9 +1,13 @@
-"""Fahren: mit W A S D Q E durch den Übungsraum — der Fahrmodus des Raumeditors.
+"""Fahren: mit W A S D Q E durch den Übungsraum — der Kern des Fahrmodus.
 
-Das Programm läuft wie jedes Schülerprogramm über `spotlab.connect()` und wird
-vom Knopf „Fahren" im Raumeditor gestartet. Die Tasten drückt man im
-Übungsfenster; es schreibt sie als `fahrt.json` ins Lauf-Verzeichnis
-(`record/fahrt.py`), hier wird die Datei mit 20 Hz gelesen und gefahren:
+Das Programm dazu ist `Beispiele/fahren.py` im Arbeitsordner (Vorlage in
+`workshop/beispiele/`), gestartet vom Knopf „Fahren" im Raumeditor. Es muss dort
+liegen und NICHT hier im Paket: Läufe landen neben dem Skript, und der Watcher
+der GUI sucht nur unter `<Arbeitsordner>/<Projekt>/runs/` — ein Skript im Paket
+legte seine Läufe unter `src/spotlab/workshop/runs/` an, wo sie niemand fand,
+und das Übungsfenster erfuhr das Lauf-Verzeichnis nie (07.09.2026).
+Die Tasten drückt man im Übungsfenster; es schreibt sie als `fahrt.json` ins
+Lauf-Verzeichnis (`record/fahrt.py`), hier wird die Datei mit 20 Hz gelesen:
 
     W / S   vorwärts, rückwärts        A / D   seitwärts links, rechts
     Q / E   links, rechts drehen       Leertaste hält
@@ -18,9 +22,15 @@ from pathlib import Path
 
 from spotlab.record import fahrt
 from spotlab.record.run import STOPP_DATEI
+from spotlab.workshop.beispiele import ORDNER
 
-SKRIPT = Path(__file__)
+DATEINAME = "fahren.py"
 TAKT_S = 0.05                     # 20 Hz: schneller als das Fenster schreibt
+
+
+def skript_in(arbeitsordner):
+    """Das Fahrprogramm im Projekt Beispiele des Arbeitsordners (`bereitstellen` legt es an)."""
+    return Path(arbeitsordner) / ORDNER / DATEINAME
 
 
 def fahre(spot, lauf_dir, jetzt=time.time, schlaf=time.sleep, takt_s=TAKT_S, laeuft=None):
@@ -46,13 +56,3 @@ def fahre(spot, lauf_dir, jetzt=time.time, schlaf=time.sleep, takt_s=TAKT_S, lae
         schlaf(takt_s)
     spot.stop()
 
-
-if __name__ == "__main__":
-    import spotlab
-
-    with spotlab.connect() as spot:
-        spot.power_on()
-        spot.stand()
-        print("Fahren: W/S vor und zurück · A/D seitwärts · Q/E drehen · Leertaste hält")
-        fahre(spot, spot.recorder.dir)
-        spot.sit()

@@ -526,13 +526,24 @@ Abnahme A28. Spec `docs/superpowers/specs/2026-09-07-korrigierer-gelaende-design
 Übungsfenster; der Wunsch geht als `kamera.json` ins Lauf-Verzeichnis (`record/kamera.py`,
 Standardbibliothek), der Ansichtsthread liest ihn je Bild über die Änderungszeit — die GUI
 hält weiter keinen Draht in den Lauf, die Platte ist der einzige Kanal, in beide Richtungen.
-Dazu der **Fahrmodus**: „🎮 Fahren" im Raumeditor startet `workshop/fahren.py` über denselben
-einen Startweg wie die offene Datei (`editor/view.py::starte_skript`, virtuelles Backend
-erzwungen, gleiche Raum- und Startregeln); das Übungsfenster schreibt die Tasten W A S D Q E
-als `fahrt.json` (`record/fahrt.py`, Tastenbelegung ohne Qt prüfbar), `fahren.py` liest mit
-20 Hz und fährt mit `walk(stop=False)`; **ein Befehl älter als 0.5 s heisst Stopp**
-(Totmannschalter). Das Fenster braucht dafür den Tastaturfokus (`StrongFocus`,
-`activateWindow` beim Start).
+Dazu der **Fahrmodus**: „🎮 Fahren" im Raumeditor startet `Beispiele/fahren.py` aus dem
+Arbeitsordner (Vorlage `workshop/beispiele/fahren.py`, Kern `workshop/fahren.py::fahre`) über
+denselben einen Startweg wie die offene Datei (`editor/view.py::starte_skript`, virtuelles
+Backend erzwungen, gleiche Raum- und Startregeln); das Übungsfenster schreibt die Tasten
+W A S D Q E als `fahrt.json` (`record/fahrt.py`, Tastenbelegung ohne Qt prüfbar), `fahren.py`
+liest mit 20 Hz und fährt mit `walk(stop=False)`; **ein Befehl älter als 0.5 s heisst Stopp**
+(Totmannschalter). Beide Dateien schreibt `record/atomar.py`: `.tmp`, dann `os.replace` —
+das scheitert unter Windows mit `PermissionError`, solange der Leser die Datei gerade offen
+hat (20-mal je Sekunde); der Schreiber wiederholt kurz und gibt dann auf, ohne zu werfen,
+denn der nächste Takt schreibt ohnehin, und ein Fahrbefehl darf nie die GUI oder den Lauf
+anhalten. **Ein Programm, das die GUI startet, muss in einem Projekt des
+Arbeitsordners liegen, nie im Paket:** Läufe landen neben dem Skript, und der Watcher sucht
+nur unter `<Arbeitsordner>/<Projekt>/runs/` — die erste Fassung lag im Paket, die Läufe
+lagen unter `src/spotlab/workshop/runs/`, niemand fand sie, und das Übungsfenster erfuhr das
+Verzeichnis nie (07.09.2026). Im Fahrmodus **greift das Übungsfenster die Tastatur**
+(`grabKeyboard`, bis „Stopp" oder Schliessen): so kommen die Tasten an, egal welches Widget
+den Fokus hat, und die Leertaste drückt nicht den fokussierten Stopp-Knopf. Ein Test fährt
+die ganze Kette — Knopf, Prozess, Watcher, Fenster, Taste, Aufzeichnung.
 
 **Stufe 13 (06.09.2026): Höhe, Rampen und Treppen — alle vier Etappen gebaut** — Raumformat
 v3 (`Boden` als Podest, Rampe oder Treppe; `z` an Wand, Block, Tag), `welt/hoehe.py`

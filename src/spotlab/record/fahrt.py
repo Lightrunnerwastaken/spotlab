@@ -10,9 +10,10 @@ dasselbe Muster wie `record/kamera.py`: die Platte ist der einzige Kanal.
 
 import json
 import math
-import os
 import time
 from pathlib import Path
+
+from spotlab.record import atomar
 
 DATEI = "fahrt.json"
 TOTMANN_S = 0.5
@@ -41,13 +42,10 @@ def befehl_aus_tasten(tasten):
 
 def schreibe(lauf_dir, vx, vy, wz, jetzt=time.time):
     """Atomar: erst `.tmp`, dann ersetzen. `jetzt` ist die Wanduhr (auch im Leser)."""
-    ziel = Path(lauf_dir) / DATEI
-    temporaer = ziel.with_suffix(".tmp")
-    temporaer.write_text(
+    atomar.schreibe_atomar(
+        Path(lauf_dir) / DATEI,
         json.dumps({"vx": float(vx), "vy": float(vy), "wz": float(wz), "t": float(jetzt())}),
-        encoding="utf-8",
     )
-    os.replace(temporaer, ziel)
 
 
 def lies(lauf_dir, jetzt=time.time):

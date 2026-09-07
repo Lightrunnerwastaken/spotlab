@@ -43,32 +43,43 @@ def test_am_ende_haelt_er_immer(tmp_path):
     assert spot.befehle == [("stop",)]
 
 
-def test_das_programm_ist_eine_datei_die_sich_starten_laesst():
-    assert fahren.SKRIPT.is_file() and fahren.SKRIPT.name == "fahren.py"
-    quelle = fahren.SKRIPT.read_text(encoding="utf-8")
+def test_das_programm_liegt_im_projekt_beispiele(tmp_path):
+    """Laeufe landen neben dem Skript. Ein Skript im PAKET legte sie unter
+    src/spotlab/workshop/runs/ an, wo der Watcher nie sucht -- das Uebungsfenster
+    erfuhr das Lauf-Verzeichnis nie, die Tasten schrieben ins Leere (07.09.2026)."""
+    from spotlab.workshop.beispiele import bereitstellen
+
+    bereitstellen(tmp_path)
+    skript = fahren.skript_in(tmp_path)
+    assert skript == tmp_path / "Beispiele" / "fahren.py" and skript.is_file()
+    quelle = skript.read_text(encoding="utf-8")
     assert "spotlab.connect(" in quelle and "power_on()" in quelle and "stand()" in quelle
+    assert "from spotlab.workshop.fahren import fahre" in quelle
+    assert not hasattr(fahren, "SKRIPT"), "kein Skript im Paket -- Laeufe landen neben dem Skript"
 
 
 def test_fahren_faehrt_wirklich_als_prozess(tmp_path):
     """Ein Prozess, der wirklich startet: fahren.py im 2D-Sim, Befehle ueber fahrt.json,
     Bewegung in der Aufzeichnung, freundlicher Stopp beendet ihn."""
     import json
-    import shutil
     import time
 
+    from spotlab.workshop.beispiele import bereitstellen
     from spotlab.workshop.control import stoppe_freundlich
     from spotlab.workshop.launcher import start_script
     from tests_zeitgrenzen import TEST_TIMEOUT_S
 
-    skript = tmp_path / "fahren.py"
-    shutil.copy(fahren.SKRIPT, skript)
+    bereitstellen(tmp_path)
+    skript = fahren.skript_in(tmp_path)
     prozess = start_script(skript, backend="sim", nur_trocken=True,
                            umgebung={"SPOTLAB_RAUM": "leer"})
     lauf = None
     try:
+        from spotlab.laufsuche import lauf_verzeichnisse
+
         frist = time.monotonic() + TEST_TIMEOUT_S
         while lauf is None and time.monotonic() < frist:
-            laeufe = list((tmp_path / "runs").glob("*")) if (tmp_path / "runs").is_dir() else []
+            laeufe = lauf_verzeichnisse(tmp_path)          # so sucht auch der Watcher
             lauf = laeufe[0] if laeufe else None
             time.sleep(0.1)
         assert lauf is not None, "kein Lauf-Verzeichnis"

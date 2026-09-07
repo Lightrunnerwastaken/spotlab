@@ -667,15 +667,83 @@ def test_hoehe_und_nick_des_laufs_erreichen_das_uebungsfenster(qapp, tmp_path):
     assert "1.72 m" in fenster.uebungsfenster.hoehe.text() and "-12°" in fenster.uebungsfenster.hoehe.text()
 
 
-def test_fahren_startet_das_mitgelieferte_programm_und_das_fenster_kennt_es(qapp, monkeypatch):
-    from spotlab.workshop import fahren
+def test_fahren_startet_das_programm_aus_beispiele_und_das_fenster_kennt_es(qapp, tmp_path, monkeypatch):
+    from dataclasses import replace
+
+    from spotlab.config import Config, Limits
 
     fenster = MainWindow()
+    fenster._config = replace(fenster._config or Config(ip="", username="", limits=Limits()),
+                              workspace=str(tmp_path))
     gestartet = []
     monkeypatch.setattr(fenster.ansichten["code"], "starte_skript", lambda pfad: gestartet.append(pfad))
     fenster.ansichten["raumeditor"].fahrt_gewuenscht.emit()
-    assert gestartet == [fahren.SKRIPT]
+    assert gestartet == [tmp_path / "Beispiele" / "fahren.py"] and gestartet[0].is_file()
     assert fenster.ansichten["code"].gewaehltes_backend() in ("sim", "mujoco")
     fenster._oeffne_uebungsfenster("fahren.py")
     assert fenster.uebungsfenster._fahrt
     fenster.uebungsfenster.close()
+
+
+def test_fahren_ohne_arbeitsordner_sagt_es(qapp, monkeypatch):
+    fenster = MainWindow()
+    fenster._config = None
+    gestartet, meldungen = [], []
+    monkeypatch.setattr(fenster.ansichten["code"], "starte_skript", lambda pfad: gestartet.append(pfad))
+    monkeypatch.setattr(fenster, "_melde", meldungen.append)
+    fenster.ansichten["raumeditor"].fahrt_gewuenscht.emit()
+    assert gestartet == [] and meldungen and "Arbeitsordner" in meldungen[0]
+
+
+def test_fahren_faehrt_wirklich_ueber_knopf_watcher_und_tasten(qapp, tmp_path, monkeypatch):
+    """Die ganze Kette, wie sie beim Autor scheiterte (07.09.2026): Knopf im Raumeditor,
+    echter Prozess, der Watcher meldet den Lauf, das Uebungsfenster erfaehrt das
+    Verzeichnis, W schreibt fahrt.json, Spot bewegt sich in der Aufzeichnung."""
+    import json
+    import time
+    from dataclasses import replace
+
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+
+    from spotlab.config import Config, Limits
+    from spotlab.gui import app as app_modul
+    from spotlab.workshop.control import stoppe_freundlich
+    from tests_zeitgrenzen import TEST_TIMEOUT_S
+
+    monkeypatch.setattr(app_modul, "verfuegbare_backends", lambda: [("2D", "sim")])
+    fenster = MainWindow()
+    fenster._config = replace(fenster._config or Config(ip="", username="", limits=Limits()),
+                              workspace=str(tmp_path))
+    fenster._setze_arbeitsordner(str(tmp_path))
+    fenster.ansichten["raumeditor"].waehle_raum("leer")
+    fenster.ansichten["raumeditor"].fahrt_gewuenscht.emit()
+    assert fenster.ansichten["code"].laeuft(), fenster.statuszeile.text()
+    prozess = fenster.ansichten["code"]._prozess
+    lauf = None
+    try:
+        frist = time.monotonic() + TEST_TIMEOUT_S
+        while lauf is None and time.monotonic() < frist:
+            qapp.processEvents()
+            time.sleep(0.05)
+            if fenster.uebungsfenster is not None:
+                lauf = fenster.uebungsfenster._lauf_dir_fahrt
+        assert lauf is not None, "der Watcher hat dem Uebungsfenster nie das Lauf-Verzeichnis gemeldet"
+        assert fenster.uebungsfenster._fahrt and fenster.uebungsfenster.isVisible()
+        QTest.keyPress(fenster.uebungsfenster, Qt.Key_W)
+        ende = time.monotonic() + 4.0                 # der 200-ms-Takt frischt den Befehl auf
+        while time.monotonic() < ende:
+            qapp.processEvents()
+            time.sleep(0.02)
+        QTest.keyRelease(fenster.uebungsfenster, Qt.Key_W)
+        stoppe_freundlich(lauf)
+        prozess.wait(timeout=TEST_TIMEOUT_S)
+    finally:
+        if prozess.poll() is None:
+            prozess.kill()
+        if fenster.uebungsfenster is not None:
+            fenster.uebungsfenster.close()
+    zeilen = [json.loads(z) for z in (lauf / "zustand.jsonl").read_text(encoding="utf-8").splitlines()
+              if z.strip()]
+    xs = [z["daten"]["pose"][0] for z in zeilen if "pose" in (z.get("daten") or {})]
+    assert xs and max(xs) - min(xs) > 0.2, (min(xs) if xs else None, max(xs) if xs else None)

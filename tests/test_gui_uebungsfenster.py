@@ -209,6 +209,22 @@ def test_im_fahrmodus_schreiben_die_tasten_den_fahrbefehl(qapp, tmp_path):
     assert not fenster._fahrt_takt.isActive()
 
 
+def test_im_fahrmodus_haelt_das_fenster_die_tastatur(qapp, tmp_path):
+    """Die Tasten muessen ankommen, egal welches Widget der App gerade den Fokus hat --
+    sonst fuhr nichts, und die Leertaste haette den fokussierten Stopp-Knopf gedrueckt."""
+    from PySide6.QtWidgets import QWidget
+
+    fenster = Uebungsfenster(DUNKEL)
+    fenster.show()
+    fenster.beginne(raum_laden("leer"), (1.0, 1.0, 0.0), "fahren.py", lauf_dir=tmp_path, fahrt=True)
+    assert QWidget.keyboardGrabber() is fenster
+    fenster.beendet("fertig")
+    assert QWidget.keyboardGrabber() is None
+    fenster.beginne(raum_laden("leer"), (1.0, 1.0, 0.0), "hallo.py", lauf_dir=tmp_path)
+    assert QWidget.keyboardGrabber() is None
+    fenster.close()
+
+
 def test_ohne_fahrmodus_schreiben_die_tasten_nichts(qapp, tmp_path):
     from PySide6.QtCore import Qt
     from PySide6.QtTest import QTest
