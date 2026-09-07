@@ -1,7 +1,8 @@
 """Wie hoch ist der Boden hier? -- die eine Antwort fuer alle Sichten.
 
 Reine Standardbibliothek. `boden_bei` ist die einzige Stelle, die entscheidet,
-auf welchem Boden ein Punkt liegt; 2D-Sim, MuJoCo-Welt, 3D-Sicht, Ebenen im
+auf welchem Boden ein Punkt liegt -- und der Grund darunter ist das Gelaende
+(`welt/gelaende.py`), wo der Raum eines hat, sonst die 0; 2D-Sim, MuJoCo-Welt, 3D-Sicht, Ebenen im
 Editor und die Pruefungen rufen sie. `kaesten_fuer` ist die einzige Zerlegung
 eines Bodens in Kaesten -- MuJoCo und die 3D-Sicht bekommen dieselben.
 
@@ -17,6 +18,8 @@ Abnahmepunkt A25 etwas anderes ergibt.
 import math
 from dataclasses import dataclass
 
+from spotlab.welt.gelaende import klippen as gelaende_klippen
+from spotlab.welt.gelaende import plateaus as gelaende_plateaus
 from spotlab.welt.kollision import sicht_frei
 from spotlab.welt.raum import MAX_STUFE_M, Block, Boden, RaumTag, Wand
 
@@ -48,8 +51,8 @@ __all__ = [
 def boden_bei(raum, x, y, z_nahe=None, ohne=None):
     """(z, boden | None): der Boden unter dem Punkt.
 
-    Kandidaten sind der Grundboden (0.0) und jeder Boden, der den Punkt
-    enthaelt. Ohne `z_nahe` (eine frische Frage: Editor, Start) gilt der
+    Kandidaten sind der Grund (das Gelaende, wo es eines gibt, sonst 0.0) und
+    jeder Boden, der den Punkt enthaelt. Ohne `z_nahe` (eine frische Frage: Editor, Start) gilt der
     hoechste -- der Grund unter einem Podest ist kein Boden. Mit `z_nahe`
     (ein Roboter, der schon irgendwo steht) gilt der hoechste ERREICHBARE
     (innerhalb MAX_STUFE_M), sonst der naechste: so bleibt ein Roboter unter
@@ -57,7 +60,12 @@ def boden_bei(raum, x, y, z_nahe=None, ohne=None):
     hoeher nimmt er mit. `ohne` schliesst einen Boden aus: was liegt NEBEN
     diesem Boden?
     """
-    kandidaten = [(0.0, None)]
+    grund = 0.0
+    if raum.gelaende is not None:
+        hoehe = raum.gelaende.hoehe_bei(x, y)
+        if hoehe is not None:
+            grund = hoehe
+    kandidaten = [(grund, None)]
     for boden in raum.boeden:
         if boden is ohne:
             continue
@@ -73,9 +81,12 @@ def boden_bei(raum, x, y, z_nahe=None, ohne=None):
 
 
 def neigung_bei(raum, x, y, z_nahe=None):
-    """(dz/dx, dz/dy) im Weltframe des Bodens unter dem Punkt; (0, 0) auf Podest und Grund."""
+    """(dz/dx, dz/dy) im Weltframe des Bodens unter dem Punkt; (0, 0) auf einem
+    Podest und auf dem ebenen Grund -- auf dem Gelaende dessen Gefaelle."""
     _z, boden = boden_bei(raum, x, y, z_nahe)
-    if boden is None or boden.anstieg == 0.0 or boden.breite <= 0:
+    if boden is None:
+        return raum.gelaende.neigung_bei(x, y) if raum.gelaende is not None else (0.0, 0.0)
+    if boden.anstieg == 0.0 or boden.breite <= 0:
         return 0.0, 0.0
     steigung = boden.anstieg / boden.breite
     winkel = math.radians(boden.drehung)
@@ -95,17 +106,25 @@ def nick_grad(raum, x, y, yaw, z_nahe=None):
 
 
 def ebenen(raum):
-    """Sortierte, auf 0.1 m gerundete Bodenhoehen: 0.0, jedes z und z_oben der Boeden."""
+    """Sortierte, auf 0.1 m gerundete Bodenhoehen: 0.0, jedes z und z_oben der
+    Boeden, dazu die Plateaus des Gelaendes."""
     hoehen = {0.0}
     for boden in raum.boeden:
         hoehen.add(round(boden.z, 1))
         hoehen.add(round(boden.z_oben, 1))
+    if raum.gelaende is not None:
+        hoehen.update(gelaende_plateaus(raum.gelaende))
     return sorted(hoehen)
 
 
 def boden_z(raum):
     """Der tiefste Boden im Raum -- dort liegt die Bodenebene der 3D-Welt."""
-    return min([0.0] + [min(b.z, b.z_oben) for b in raum.boeden])
+    tiefster = min([0.0] + [min(b.z, b.z_oben) for b in raum.boeden])
+    if raum.gelaende is not None:
+        werte = [h for h in raum.gelaende.hoehen if h is not None]
+        if werte:
+            tiefster = min(tiefster, min(werte))
+    return tiefster
 
 
 def hoehenband(element, raum):
@@ -163,7 +182,8 @@ def klippen(raum, schritt=0.05, alles=False):
     am Kopf, aber an den Seiten, sobald sie hoeher als eine Stufe ueber dem
     Nachbarboden liegt. `alles=True` macht jede Kante einer Rampe oder Treppe
     zur Klippe -- der Treppenmodus ist aus.
-    Zusammenhaengende Stuecke einer Kante werden zu einer Strecke.
+    Zusammenhaengende Stuecke einer Kante werden zu einer Strecke. Dazu kommen
+    die Klippen des Gelaendes (`gelaende.klippen`).
     """
     versatz = 1e-3
     ergebnis = []
@@ -190,6 +210,8 @@ def klippen(raum, schritt=0.05, alles=False):
                     offen = None
             if offen is not None:
                 ergebnis.append(offen)
+    if raum.gelaende is not None:
+        ergebnis += gelaende_klippen(raum.gelaende)
     return ergebnis
 
 

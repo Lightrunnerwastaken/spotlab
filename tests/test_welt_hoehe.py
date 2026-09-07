@@ -129,3 +129,47 @@ def test_kaesten_fuer_treppe_rampe_und_podest():
 
 def test_max_stufe_ist_die_regel():
     assert h.MAX_STUFE_M == MAX_STUFE_M == 0.25
+
+
+# ------------------------------------------------------------- Gelaende
+
+
+def _mit_gelaende(f, boeden=()):
+    from spotlab.welt import gelaende as g
+    return Raum("G", "", (0.5, 0.5, 0.0), boeden=boeden,
+                gelaende=g.gitter(0.0, 0.0, 0.2, 11, 31, f))     # 6 x 2 m
+
+
+def test_der_grund_ist_das_gelaende():
+    raum = _mit_gelaende(lambda x, y: 0.1 * x)
+    z, boden = h.boden_bei(raum, 3.0, 1.0)
+    assert z == pytest.approx(0.3) and boden is None
+
+
+def test_ausserhalb_des_gelaendes_ist_der_grund_null():
+    assert h.boden_bei(_mit_gelaende(lambda x, y: 0.5), 9.0, 9.0) == (0.0, None)
+
+
+def test_eine_treppe_auf_dem_gelaende_gewinnt():
+    treppe = Boden("T", 3.0, 1.0, 2.0, 1.0, z=0.3, anstieg=1.0, stufen=6)
+    raum = _mit_gelaende(lambda x, y: 0.3, boeden=(treppe,))
+    assert h.boden_bei(raum, 3.0, 1.0)[1] is treppe
+
+
+def test_nick_auf_dem_gefaelle():
+    raum = _mit_gelaende(lambda x, y: 0.1 * x)
+    assert h.nick_grad(raum, 3.0, 1.0, 0.0) == pytest.approx(-math.degrees(math.atan(0.1)), abs=0.3)
+
+
+def test_ebenen_mit_plateaus():
+    raum = _mit_gelaende(lambda x, y: 0.0 if x < 2.0 else (1.0 if x > 4.0 else (x - 2.0) * 0.5))
+    assert h.ebenen(raum) == [0.0, 1.0]
+
+
+def test_klippen_des_gelaendes_gehoeren_zum_raum():
+    raum = _mit_gelaende(lambda x, y: 0.0 if x < 3.0 else 0.6)
+    assert any(abs(k[0] - 2.9) < 1e-6 or abs(k[0] - 3.1) < 1e-6 for k in h.klippen(raum))
+
+
+def test_boden_z_ist_der_tiefste_knoten():
+    assert h.boden_z(_mit_gelaende(lambda x, y: -0.4 + 0.1 * x)) == pytest.approx(-0.4)
