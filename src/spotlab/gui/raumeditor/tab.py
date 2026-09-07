@@ -40,6 +40,7 @@ from spotlab.gui.raumeditor.sicht3d import Sicht3D, gl_verfuegbar
 from spotlab.gui.raumeditor.steuerung import Steuerung
 from spotlab.welt import bearbeitung as b
 from spotlab.welt import pauspapier
+from spotlab.welt.gelaende import zusammenfassung
 from spotlab.welt.raum import (
     Raum,
     eigene_raeume,
@@ -89,6 +90,8 @@ def _beschrifte(raum, schluessel):
         return f"{boden.name} ({ {'podest': 'Podest', 'rampe': 'Rampe', 'treppe': 'Treppe'}[boden.art] })"
     if art == "tag":
         return f"Tag {raum.tags[schluessel[1]].id}"
+    if art == "gelaende":
+        return zusammenfassung(raum.gelaende)
     return "Start"
 
 
@@ -508,7 +511,8 @@ class RaumeditorView(QWidget):
         from spotlab.welt.kollision import klippen_von
 
         st = self.steuerung
-        klippen_ = klippen_von(st.raum) if st.raum is not None and st.raum.boeden else []
+        mit_hoehe = st.raum is not None and (st.raum.boeden or st.raum.gelaende is not None)
+        klippen_ = klippen_von(st.raum) if mit_hoehe else []
         self.sicht.zeige(st.raum, st.auswahl, st.griffe(), st.rahmen, st.kette,
                          ebene=st.ebene, klippen_=klippen_)
         self.sicht3d.zeige(st.raum, st.auswahl)
@@ -545,6 +549,12 @@ class RaumeditorView(QWidget):
             return
         schluessel = next(iter(st.auswahl)) if st.auswahl else b.RAUM
         e = b.element(st.raum, schluessel)
+        if schluessel[0] == "gelaende":
+            self._form.addRow(QLabel(zusammenfassung(e)))
+            hinweis = QLabel("gerechnet aus Wänden, Weg und Pauspapier — nicht von Hand zu ändern")
+            hinweis.setWordWrap(True)
+            self._form.addRow(hinweis)
+            return
         for feld in b.FELDER[schluessel[0]]:
             if schluessel[0] == "start":
                 wert = {"x": e[0], "y": e[1], "grad": e[2]}[feld]

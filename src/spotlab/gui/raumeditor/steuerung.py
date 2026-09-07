@@ -275,6 +275,7 @@ class Steuerung:
             + [("block", i) for i in range(len(r.bloecke))]
             + [("boden", i) for i in range(len(r.boeden))]
             + [("tag", i) for i in range(len(r.tags))]
+            + ([b.GELAENDE] if r.gelaende is not None else [])
             + [b.START]
         )
 

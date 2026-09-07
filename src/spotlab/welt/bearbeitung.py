@@ -7,7 +7,9 @@ Funktionen. Alles hier ist ohne Fenster testbar -- und Standardbibliothek, wie
 der Rest von `welt/`.
 
 Ein Element wird ueber einen Schluessel angesprochen:
-    ("wand", i)  ("block", i)  ("tag", i)  ("start",)  ("raum",)
+    ("wand", i)  ("block", i)  ("boden", i)  ("tag", i)  ("gelaende", 0)  ("start",)  ("raum",)
+Das Gelaende ist gerechnet, nicht gezeichnet: es verschiebt, hebt und loescht
+sich, dreht und skaliert aber nicht und hat keine Felder.
 Eine Auswahl ist ein frozenset solcher Schluessel. Indizes gelten fuer den Raum,
 aus dem sie stammen: `loesche` gibt deshalb die leere Auswahl zurueck.
 """
@@ -15,6 +17,7 @@ aus dem sie stammen: `loesche` gibt deshalb die leere Auswahl zurueck.
 import math
 from dataclasses import replace
 
+from spotlab.welt.gelaende import umriss, verschoben
 from spotlab.welt.kollision import abstand_block, hindernis_bei
 from spotlab.welt.raum import BLOCK_HOEHE_M, MAX_STUFE_M, Block, Boden, RaumTag, Wand
 
@@ -28,12 +31,14 @@ RING_ABSTAND_M = 0.3     # Drehring: so weit ausserhalb des Blocks
 PFEIL_M = 0.4            # Richtungsgriff von Tag und Start
 START = ("start",)
 RAUM = ("raum",)
+GELAENDE = ("gelaende", 0)
 
 FELDER = {
     "wand": ("x1", "y1", "x2", "y2", "z"),
     "block": ("name", "x", "y", "breite", "tiefe", "hoehe", "drehung", "z"),
     "boden": ("name", "x", "y", "breite", "tiefe", "z", "anstieg", "stufen", "drehung"),
     "tag": ("id", "x", "y", "grad", "hoehe", "z"),
+    "gelaende": (),
     "start": ("x", "y", "grad"),
     "raum": ("name", "beschreibung", "wand_dicke", "wand_hoehe"),
 }
@@ -62,6 +67,8 @@ def element(raum, schluessel):
         return raum.boeden[schluessel[1]]
     if art == "tag":
         return raum.tags[schluessel[1]]
+    if art == "gelaende":
+        return raum.gelaende
     if art == "start":
         return raum.start
     return raum
@@ -76,6 +83,9 @@ def lage(raum, schluessel):
         return (e.x, e.y)
     if art == "start":
         return (e[0], e[1])
+    if art == "gelaende" and e is not None:
+        u = umriss(e)
+        return ((u[0] + u[2]) / 2, (u[1] + u[3]) / 2) if u else (0.0, 0.0)
     return (0.0, 0.0)
 
 
@@ -107,6 +117,8 @@ def _ersetze(raum, schluessel, neu):
         return replace(raum, tags=tuple(tags))
     if art == "start":
         return replace(raum, start=tuple(neu))
+    if art == "gelaende":
+        return replace(raum, gelaende=neu)
     return neu
 
 
@@ -126,6 +138,8 @@ def verschiebe(raum, auswahl, dx, dy):
             neu = replace(e, x=e.x + dx, y=e.y + dy)
         elif s[0] == "start":
             neu = (e[0] + dx, e[1] + dy, e[2])
+        elif s[0] == "gelaende" and e is not None:
+            neu = verschoben(e, dx, dy, 0.0)
         else:
             continue
         raum = _ersetze(raum, s, neu)
@@ -134,12 +148,13 @@ def verschiebe(raum, auswahl, dx, dy):
 
 def hebe(raum, auswahl, dz):
     """Die Auswahl um `dz` in der Hoehe -- Blender "G, dann Z". Der Start bleibt:
-    seine Hoehe folgt aus dem Boden unter ihm."""
+    seine Hoehe folgt aus dem Boden unter ihm. Das Gelaende hebt alle Knoten."""
     for s in auswahl:
-        if s[0] not in ("wand", "block", "boden", "tag"):
-            continue
         e = element(raum, s)
-        raum = _ersetze(raum, s, replace(e, z=e.z + dz))
+        if s[0] == "gelaende" and e is not None:
+            raum = _ersetze(raum, s, verschoben(e, 0.0, 0.0, dz))
+        elif s[0] in ("wand", "block", "boden", "tag"):
+            raum = _ersetze(raum, s, replace(e, z=e.z + dz))
     return raum
 
 
@@ -244,6 +259,7 @@ def loesche(raum, auswahl):
         bloecke=tuple(b for i, b in enumerate(raum.bloecke) if ("block", i) not in weg),
         boeden=tuple(b for i, b in enumerate(raum.boeden) if ("boden", i) not in weg),
         tags=tuple(t for i, t in enumerate(raum.tags) if ("tag", i) not in weg),
+        gelaende=None if GELAENDE in auswahl else raum.gelaende,
     ), frozenset()
 
 

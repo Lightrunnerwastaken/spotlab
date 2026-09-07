@@ -332,3 +332,21 @@ def test_pruefe_meldet_eine_schwebende_und_eine_steckende_wand():
     hinweise = b.pruefe(raum)
     assert any("Wand 1 schwebt 0.8 m" in h for h in hinweise)
     assert any("Wand 2 steckt 0.5 m" in h for h in hinweise)
+
+
+def test_das_gelaende_verschiebt_hebt_und_loescht_sich_und_dreht_nicht():
+    from spotlab.welt import gelaende as g
+
+    raum = Raum("G", "", (0.5, 0.5, 0.0), gelaende=g.gitter(0.0, 0.0, 1.0, 2, 2, lambda x, y: 0.1))
+    assert b.element(raum, b.GELAENDE) is raum.gelaende
+    assert b.lage(raum, b.GELAENDE) == (0.5, 0.5)
+    r2 = b.verschiebe(raum, {b.GELAENDE}, 1.0, 0.0)
+    assert r2.gelaende.x0 == 1.0
+    r3 = b.hebe(r2, {b.GELAENDE}, 0.5)
+    assert r3.gelaende.knoten(0, 0) == pytest.approx(0.6)
+    assert b.drehe(r3, {b.GELAENDE}, 90.0).gelaende == r3.gelaende
+    assert b.skaliere(r3, {b.GELAENDE}, 2.0, 2.0).gelaende == r3.gelaende
+    assert b.dupliziere(r3, {b.GELAENDE})[0].gelaende == r3.gelaende
+    assert b.loesche(r3, {b.GELAENDE})[0].gelaende is None
+    assert b.treffer(r3, 1.5, 0.5) is None
+    assert b.FELDER["gelaende"] == ()

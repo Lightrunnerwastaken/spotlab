@@ -227,3 +227,14 @@ def test_hinweise_nennen_die_kante_und_alle_kennt_boeden():
     st = Steuerung(raum)
     assert any("Kante" in h for h in st.hinweise())
     assert ("boden", 0) in st.alle()
+
+
+def test_alle_enthaelt_das_gelaende_wenn_es_eines_gibt():
+    from spotlab.welt import bearbeitung as b
+    from spotlab.welt import gelaende as g
+    from spotlab.welt.raum import Raum
+
+    st = Steuerung(Raum("G", "", (0.5, 0.5, 0.0), gelaende=g.gitter(0.0, 0.0, 1.0, 2, 2, lambda x, y: 0.1)))
+    assert b.GELAENDE in st.alle()
+    st.setze_raum(Raum("G", "", (0.5, 0.5, 0.0)))
+    assert b.GELAENDE not in st.alle()

@@ -9,7 +9,7 @@ pytest.importorskip("PySide6.QtWidgets")
 
 from PySide6.QtCore import QPoint, Qt  # noqa: E402
 from PySide6.QtTest import QTest  # noqa: E402
-from PySide6.QtWidgets import QInputDialog  # noqa: E402
+from PySide6.QtWidgets import QDoubleSpinBox, QInputDialog  # noqa: E402
 
 from spotlab.config import Config, Limits  # noqa: E402
 from spotlab.gui.raumeditor import RaumeditorView  # noqa: E402
@@ -285,3 +285,21 @@ def test_ein_neuer_raum_leert_markierung_und_offene_raender(qapp):
     ansicht.sicht.setze_offen([(0.5, 0.5)])
     ansicht.neu()
     assert ansicht.sicht._markierung == [] and ansicht.sicht._kandidaten == [] and ansicht.sicht._offen == []
+
+
+def test_die_liste_zeigt_das_gelaende_nur_lesend_und_entf_loescht_es(qapp):
+    from spotlab.welt import bearbeitung as b
+    from spotlab.welt import gelaende as g
+    from spotlab.welt.raum import Raum
+
+    ansicht = RaumeditorView(DUNKEL)
+    raum = Raum("G", "", (0.5, 0.5, 0.0), waende=[(0, 0, 3, 0)],
+                gelaende=g.gitter(0.0, 0.0, 0.5, 5, 5, lambda x, y: 0.1 * x))
+    ansicht._setze(raum, "", False, True)
+    texte = [ansicht.liste.item(i).text() for i in range(ansicht.liste.count())]
+    assert any(t.startswith("Gelände · 0.5 m · 25 Knoten") for t in texte)
+    ansicht.steuerung.auswahl = frozenset({b.GELAENDE})
+    ansicht._zeige()
+    assert ansicht._form.rowCount() == 2 and ansicht.findChild(QDoubleSpinBox, "feld_x0") is None
+    ansicht.steuerung.taste("delete")
+    assert ansicht.steuerung.raum.gelaende is None
