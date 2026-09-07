@@ -41,6 +41,10 @@ class Gelaende:
         if len(hoehen) != self.zeilen * self.spalten:
             raise ValueError("hoehen passt nicht zu zeilen x spalten.")
         object.__setattr__(self, "hoehen", hoehen)
+        # Der Umriss der gueltigen Knoten, EINMAL beim Bau: `huelle(raum)` fragt ihn,
+        # und der Raumplot fragt `huelle` je gezeichnetem Punkt -- ueber alle Knoten
+        # zu laufen kostete dort 56 s je Bild (Katakomben, 07.09.2026).
+        object.__setattr__(self, "_umriss", _umriss_rechnen(self))
 
     def knoten(self, i, j):
         """Die Hoehe am Knoten (Zeile i, Spalte j); ausserhalb None."""
@@ -96,17 +100,27 @@ def gitter(x0, y0, zelle, zeilen, spalten, funktion):
     return Gelaende(x0, y0, zelle, zeilen, spalten, hoehen)
 
 
-def umriss(gelaende):
-    """(x_min, y_min, x_max, y_max) der gueltigen Knoten; None ohne Boden."""
-    xs, ys = [], []
-    for i in range(gelaende.zeilen):
-        for j in range(gelaende.spalten):
-            if gelaende.knoten(i, j) is not None:
-                xs.append(gelaende.x0 + j * gelaende.zelle)
-                ys.append(gelaende.y0 + i * gelaende.zelle)
-    if not xs:
+def _umriss_rechnen(gelaende):
+    zeilen, spalten, h = gelaende.zeilen, gelaende.spalten, gelaende.hoehen
+    i_min = i_max = j_min = j_max = None
+    for i in range(zeilen):
+        zeile = h[i * spalten:(i + 1) * spalten]
+        gueltig = [j for j, wert in enumerate(zeile) if wert is not None]
+        if not gueltig:
+            continue
+        i_min = i if i_min is None else i_min
+        i_max = i
+        j_min = gueltig[0] if j_min is None else min(j_min, gueltig[0])
+        j_max = gueltig[-1] if j_max is None else max(j_max, gueltig[-1])
+    if i_min is None:
         return None
-    return (min(xs), min(ys), max(xs), max(ys))
+    z, x0, y0 = gelaende.zelle, gelaende.x0, gelaende.y0
+    return (x0 + j_min * z, y0 + i_min * z, x0 + j_max * z, y0 + i_max * z)
+
+
+def umriss(gelaende):
+    """(x_min, y_min, x_max, y_max) der gueltigen Knoten; None ohne Boden. Gemerkt."""
+    return gelaende._umriss
 
 
 def verschoben(gelaende, dx, dy, dz):

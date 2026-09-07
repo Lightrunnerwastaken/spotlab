@@ -124,3 +124,16 @@ def test_falsche_kennung_ist_ein_fehler(tmp_path):
     pfad.write_bytes(b"PAUS1" + b"\0" * 40)
     with pytest.raises(SpotlabError, match="Gelände"):
         g.lies(pfad)
+
+
+def test_der_umriss_ist_gemerkt_und_ein_aufruf_billig():
+    """`huelle(raum)` ruft `umriss`, und der Raumplot ruft `huelle` je gezeichnetem Punkt:
+    ueber 33 000 Knoten zu laufen kostete 46 ms je Aufruf, 56 s je Bild (07.09.2026)."""
+    import time
+
+    ge = g.gitter(0.0, 0.0, 0.2, 200, 200, lambda x, y: None if x < 5.0 else 0.1)
+    assert g.umriss(ge) == pytest.approx((5.0, 0.0, 39.8, 39.8))
+    beginn = time.perf_counter()
+    for _ in range(200):
+        g.umriss(ge)
+    assert time.perf_counter() - beginn < 0.1          # ungemerkt waeren es Sekunden
