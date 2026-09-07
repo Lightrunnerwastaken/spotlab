@@ -27,7 +27,22 @@ from PySide6.QtWidgets import (
 )
 
 from spotlab.gui.liveplot import LiveRaumPlot
+from spotlab.record import kamera
 from spotlab.welt.raum import raum_laden
+
+ZOOM_STUFE = 1.25            # je Rad-Raste
+
+
+class _Ansichtsbild(QLabel):
+    """Das gerenderte Zimmer; das Mausrad darueber meldet Zoom-Stufen."""
+
+    gezoomt = Signal(int)    # +1 naeher, -1 weiter
+
+    def wheelEvent(self, ereignis):
+        delta = ereignis.angleDelta().y()
+        if delta:
+            self.gezoomt.emit(1 if delta > 0 else -1)
+        ereignis.accept()
 
 TITEL = "Übungsraum — spotlab"
 
@@ -51,9 +66,19 @@ class Uebungsfenster(QWidget):
         # Das gerenderte Zimmer des MuJoCo-Backends. Versteckt, bis ein Bild
         # da ist -- der 2D-Sim liefert keines, und ein leerer Rahmen saehe
         # aus wie ein Fehler.
-        self.bild = QLabel()
+        self.bild = _Ansichtsbild()
         self.bild.setAlignment(Qt.AlignCenter)
         self.bild.hide()
+        self.bild.gezoomt.connect(self._zoome)
+        # Kamerawunsch fuer die Zimmeransicht: ueber Laeufe hinweg gemerkt und je
+        # Lauf als kamera.json ins Lauf-Verzeichnis geschrieben (record/kamera.py).
+        self._kamera_modus, self._kamera_zoom = kamera.VORGABE_MODUS, kamera.VORGABE_ZOOM
+        self._lauf_dir = None
+        self.verfolgen = QPushButton("Verfolgen")
+        self.verfolgen.setCheckable(True)
+        self.verfolgen.setToolTip("Kamera schräg hinter Spot; das Mausrad über dem Bild zoomt")
+        self.verfolgen.hide()
+        self.verfolgen.toggled.connect(self._verfolgen_umgeschaltet)
         self.kopf = QLabel("Kein Lauf.")
         self.zeile = QLabel("")
         self.zeile.setObjectName("Gedaempft")
@@ -78,6 +103,7 @@ class Uebungsfenster(QWidget):
         unten = QHBoxLayout()
         unten.addWidget(self.zeile, 1)
         unten.addWidget(self.hoehe)
+        unten.addWidget(self.verfolgen)
         unten.addWidget(self.video_oeffnen)
         unten.addWidget(self.video)
         unten.addWidget(self.stopp)
@@ -103,6 +129,8 @@ class Uebungsfenster(QWidget):
         self.hoehe.setText("")
         self.stopp.setEnabled(True)
         self.bild.hide()                   # das Bild des letzten Laufs gehoert nicht zum neuen
+        self.verfolgen.hide()
+        self._lauf_dir = None
         self._lauf = None
         self._videopfad = None
         self.video.hide()
@@ -171,6 +199,31 @@ class Uebungsfenster(QWidget):
         breite = max(320, min(self.width() - 24, 640))
         self.bild.setPixmap(pixmap.scaledToWidth(breite, Qt.SmoothTransformation))
         self.bild.show()
+        if self._lauf_dir is None:
+            # Das erste Bild nennt das Lauf-Verzeichnis: den gemerkten Wunsch dorthin.
+            self._lauf_dir = Path(pfad).parent
+            self._kamera_schreiben()
+        self.verfolgen.show()
+
+    # -------------------------------------------------------------- Kamera
+
+    def _kamera_schreiben(self):
+        if self._lauf_dir is None:
+            return
+        try:
+            kamera.schreibe(self._lauf_dir, self._kamera_modus, self._kamera_zoom)
+        except OSError:
+            pass                           # ein Kamerawunsch darf nichts anhalten
+
+    def _verfolgen_umgeschaltet(self, an):
+        self._kamera_modus = "verfolgen" if an else kamera.VORGABE_MODUS
+        self._kamera_schreiben()
+
+    def _zoome(self, richtung):
+        faktor = ZOOM_STUFE if richtung > 0 else 1 / ZOOM_STUFE
+        unten, oben = kamera.ZOOM_BEREICH
+        self._kamera_zoom = min(oben, max(unten, self._kamera_zoom * faktor))
+        self._kamera_schreiben()
 
     def zeige_ausgabe(self, zeile):
         """Nur die letzte Zeile. Die volle Ausgabe steht in der Ansicht „Code";

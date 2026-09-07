@@ -309,7 +309,10 @@ Spot dasselbe Programm.
 - **`spot.tags()` mit Kamerablickfeld, Ausrichtung und Sichtstrahl** — ein Tag
   hinter dem Tisch bleibt unsichtbar.
 - **`spot.camera("frontleft_fisheye_image")`** und die fünf Tiefenkameras.
-- Das Übungsfenster zeigt das gerenderte Zimmer über der Zeichnung.
+- Das Übungsfenster zeigt das gerenderte Zimmer über der Zeichnung. **Verfolgen**
+  schaltet auf eine Kamera, die schräg hinter Spot mitfährt und in seine Richtung
+  schaut; das **Mausrad über dem Bild** zoomt in beiden Ansichten. Der Wunsch geht
+  als `kamera.json` ins Lauf-Verzeichnis und bleibt über Läufe hinweg erhalten.
 
 Gemessen sind Gangarten (12.08.2026) und die Antwort auf `move()` (02.09.2026:
 Anfahren, Reisetempo, Bremsen, Totzeiten); die Standhöhe folgt aus den

@@ -422,3 +422,41 @@ def test_welt_aus_raum_uebergibt_das_gelaende_als_feld():
     assert welt.gelaende.hoehen.shape == (3, 4)
     assert np.isnan(welt.gelaende.hoehen[0, 3]) and welt.gelaende.hoehen[2, 0] == pytest.approx(0.3)
     assert welt_aus_raum(Raum(name="G", beschreibung="", start=(1, 2, 0)), puppe).gelaende is None
+
+
+def _bytes_mit_geduld(pfad, versuche=20):
+    import time
+
+    for _ in range(versuche):
+        try:
+            return pfad.read_bytes()
+        except PermissionError:                 # der Thread ersetzt die Datei gerade
+            time.sleep(0.02)
+    return pfad.read_bytes()
+
+
+def test_die_ansicht_folgt_dem_kamerawunsch_auch_im_stand(uhr, tmp_path):
+    """kamera.json im Lauf-Verzeichnis wechselt die Kamera -- auch wenn Spot stillsteht."""
+    import time
+
+    from spotlab.record import kamera
+
+    ziel = tmp_path / "ansicht.jpg"
+    backend = _backend(uhr, (1.0, 2.0, 0.0), ansicht_ziel=ziel)
+    try:
+        frist = time.monotonic() + 15.0
+        while not ziel.is_file() and time.monotonic() < frist:
+            time.sleep(0.05)
+        assert ziel.is_file(), "keine Ansicht geschrieben"
+        time.sleep(0.4)
+        raumbild = _bytes_mit_geduld(ziel)
+        stand = ziel.stat().st_mtime_ns
+        kamera.schreibe(tmp_path, "verfolgen", 2.0)
+        frist = time.monotonic() + 15.0
+        while ziel.stat().st_mtime_ns == stand and time.monotonic() < frist:
+            time.sleep(0.05)
+        assert ziel.stat().st_mtime_ns != stand, "kein neues Bild nach dem Kamerawechsel"
+        time.sleep(0.4)
+        assert _bytes_mit_geduld(ziel) != raumbild, "die Kamera hat sich nicht geaendert"
+    finally:
+        backend.close()

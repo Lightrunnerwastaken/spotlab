@@ -152,3 +152,37 @@ def test_hoehe_und_neigung_stehen_im_fenster(qapp):
     assert "1.72 m" in fenster.hoehe.text() and "-12°" in fenster.hoehe.text()
     fenster.zeige_pose(1.5, 2.0, 0.0)                                  # ohne Hoehe: nichts erfinden
     assert fenster.hoehe.text() == ""
+
+
+def test_verfolgen_und_mausrad_schreiben_den_kamerawunsch(qapp, tmp_path):
+    from PySide6.QtCore import QPoint, QPointF, Qt
+    from PySide6.QtGui import QColor, QImage, QWheelEvent
+
+    from spotlab.record import kamera
+
+    def bild_nach(pfad):
+        bild = QImage(64, 36, QImage.Format_RGB32)
+        bild.fill(QColor(30, 60, 90))
+        assert bild.save(str(pfad), "JPG")
+
+    fenster = Uebungsfenster(DUNKEL)
+    fenster.beginne(raum_laden("leer"), (1.0, 1.0, 0.0))
+    assert fenster.verfolgen.isHidden()                  # der 2D-Sim hat kein Bild
+    bild_nach(tmp_path / "ansicht.jpg")
+    fenster.zeige_ansicht(tmp_path / "ansicht.jpg")
+    assert not fenster.verfolgen.isHidden()
+    fenster.verfolgen.click()
+    assert kamera.lies(tmp_path) == ("verfolgen", 1.0)
+    rad = QWheelEvent(QPointF(5, 5), QPointF(5, 5), QPoint(0, 0), QPoint(0, 120),
+                      Qt.NoButton, Qt.NoModifier, Qt.ScrollUpdate, False)
+    qapp.sendEvent(fenster.bild, rad)
+    assert kamera.lies(tmp_path) == ("verfolgen", 1.25)
+    fenster.verfolgen.click()
+    assert kamera.lies(tmp_path)[0] == "raum"
+    # Der Wunsch ueberlebt den naechsten Lauf: er wird ins neue Verzeichnis geschrieben.
+    zwei = tmp_path / "zwei"
+    zwei.mkdir()
+    fenster.beginne(raum_laden("leer"), (1.0, 1.0, 0.0))
+    bild_nach(zwei / "ansicht.jpg")
+    fenster.zeige_ansicht(zwei / "ansicht.jpg")
+    assert kamera.lies(zwei) == ("raum", 1.25)

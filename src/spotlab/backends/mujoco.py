@@ -170,12 +170,12 @@ class _LiveAnsicht:
         self.data = mujoco.MjData(self.model)
         self._renderer = mujoco.Renderer(self.model, ANSICHT_HOEHE, ANSICHT_BREITE)
 
-    def bild(self, qpos):
+    def bild(self, qpos, modus="raum", zoom=1.0):
         mj = self._mj
         self.data.qpos[:] = qpos
         mj.mj_forward(self.model, self.data)
         self._renderer.update_scene(
-            self.data, camera=self._kamera(self.model, self.welt, self.data),
+            self.data, camera=self._kamera(self.model, self.welt, self.data, modus, zoom),
         )
         self._renderer.scene.flags[mj.mjtRndFlag.mjRND_SHADOW] = False
         self._renderer.scene.flags[mj.mjtRndFlag.mjRND_REFLECTION] = False
@@ -189,7 +189,9 @@ class _Ansichtsschreiber(threading.Thread):
     """Schreibt `ansicht.jpg` aus einem eigenen Thread — höchstens ANSICHT_TAKT_S.
 
     Eigener Renderer, eigener GL-Kontext, privates MjData: der Schülerthread
-    zahlt für das Bild nichts. Steht der Roboter still, wird nicht gerendert.
+    zahlt für das Bild nichts. Steht der Roboter still, wird nicht gerendert —
+    ausser die Kamera wechselt: `kamera.json` im Lauf-Verzeichnis (Übungsfenster,
+    `record/kamera.py`) wird je Bild über die Änderungszeit geprüft.
     Eine Datei, atomar ersetzt — kein Strom. Ein Fehler beim Rendern beendet
     den Thread, nie den Lauf.
     """
@@ -224,23 +226,31 @@ class _Ansichtsschreiber(threading.Thread):
     def run(self):
         from PIL import Image
 
+        from spotlab.record import kamera
+
         ansicht = None
         letzte = None
+        kamera_stand, modus, zoom = None, kamera.VORGABE_MODUS, kamera.VORGABE_ZOOM
         try:
             ansicht = _LiveAnsicht(self._modul, self._puppe)
             while True:
                 beginn = time.monotonic()
                 beendet = self._halt.is_set()
+                stand = kamera.stand(self._ziel.parent)
+                if stand != kamera_stand:
+                    kamera_stand = stand
+                    modus, zoom = kamera.lies(self._ziel.parent)
                 qpos = self._posen.bei(float("inf") if beendet else beginn - ANZEIGE_VERZUG_S)
-                if qpos is not None and qpos != letzte:
+                if qpos is not None and (qpos, modus, zoom) != letzte:
                     temporaer = self._ziel.with_suffix(".tmp")
-                    Image.fromarray(ansicht.bild(qpos)).save(temporaer, format="JPEG", quality=82)
+                    Image.fromarray(ansicht.bild(qpos, modus, zoom)).save(
+                        temporaer, format="JPEG", quality=82)
                     try:
                         os.replace(temporaer, self._ziel)
                     except PermissionError:
                         pass  # kurzer Windows-Lesekonflikt: naechstes Bild erneut versuchen
                     else:
-                        letzte = qpos
+                        letzte = (qpos, modus, zoom)
                 if beendet:
                     break
                 self._warte_bis(beginn + ANSICHT_TAKT_S)

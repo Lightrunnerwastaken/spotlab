@@ -519,7 +519,13 @@ Cluster-Kopien), Dialog „Korrigieren…" (nicht modal, Tabelle mit Vorschlag u
 im Arbeiter, ein Verlaufsschritt), Katakomben: 73 Kandidaten (70 Wand, 1 Durchgang, 2 unklar),
 Gelände ~6900 Knoten, Weg ohne Anstoss abgefahren (`tests/test_katakomben_korrektur.py`).
 Abnahme A28. Spec `docs/superpowers/specs/2026-09-07-korrigierer-gelaende-design.md`
-(§ 14 Nachträge), Pläne `docs/superpowers/plans/2026-09-07-gelaende-*.md`.
+(§ 14 Nachträge), Pläne `docs/superpowers/plans/2026-09-07-gelaende-*.md`. Danach
+(07.09.2026): die Live-Animation von GPT Astra eingeräumt (`animation.py`, `gui/liveplot.py`,
+30-Hz-Zimmeransicht ohne Schatten), und die **Zimmeransicht hat Kameramodi**: „Verfolgen"
+(schräg hinter Spot, `spotsim.puppe.zimmerkamera(modus, zoom)`) und Mausrad-Zoom im
+Übungsfenster; der Wunsch geht als `kamera.json` ins Lauf-Verzeichnis (`record/kamera.py`,
+Standardbibliothek), der Ansichtsthread liest ihn je Bild über die Änderungszeit — die GUI
+hält weiter keinen Draht in den Lauf, die Platte ist der einzige Kanal, in beide Richtungen.
 
 **Stufe 13 (06.09.2026): Höhe, Rampen und Treppen — alle vier Etappen gebaut** — Raumformat
 v3 (`Boden` als Podest, Rampe oder Treppe; `z` an Wand, Block, Tag), `welt/hoehe.py`

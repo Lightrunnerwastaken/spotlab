@@ -133,7 +133,7 @@ def test_beenden_schreibt_letzte_pose_ohne_anzeigeverzug(tmp_path, monkeypatch):
         def __init__(self, *_args):
             pass
 
-        def bild(self, qpos):
+        def bild(self, qpos, modus="raum", zoom=1.0):     # wie _LiveAnsicht.bild seit dem Kamerawunsch
             gesehen.append(qpos)
             return np.zeros((2, 2, 3), dtype=np.uint8)
 
