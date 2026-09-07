@@ -11,7 +11,7 @@ def test_rundreise(tmp_path):
     pfad = tmp_path / "gang.pauspapier"
     pauspapier.schreibe(pfad, [(0.0, 0.0), (1.5, -2.25), (3.0, 4.0)])
     assert pauspapier.lies(pfad) == [(0.0, 0.0), (1.5, -2.25), (3.0, 4.0)]
-    assert pfad.read_bytes()[:5] == b"PAUS1"
+    assert pfad.read_bytes()[:5] == b"PAUS2"
 
 
 def test_zu_viele_punkte_werden_gleichmaessig_geduennt(tmp_path):
@@ -32,3 +32,22 @@ def test_fehlende_datei_ist_leer_und_falsche_kennung_ein_fehler(tmp_path):
 
 def test_der_pfad_liegt_neben_der_raumdatei():
     assert pauspapier.pfad_zu(Path("raeume") / "gang.toml") == Path("raeume") / "gang.pauspapier"
+
+
+# ------------------------------------------------------------- PAUS2: der Weg
+
+
+def test_paus2_traegt_den_weg(tmp_path):
+    pfad = tmp_path / "r.pauspapier"
+    pauspapier.schreibe(pfad, [(1.0, 2.0)], weg=[(0.0, 0.0, 0.0), (1.0, 0.0, 0.5)])
+    assert pauspapier.lies(pfad) == [(1.0, 2.0)]
+    assert pauspapier.lies_weg(pfad) == [(0.0, 0.0, 0.0), (1.0, 0.0, 0.5)]
+    assert pauspapier.lies_weg(tmp_path / "nix.pauspapier") == []
+
+
+def test_paus1_bleibt_lesbar_mit_leerem_weg(tmp_path):
+    import struct
+
+    pfad = tmp_path / "alt.pauspapier"
+    pfad.write_bytes(b"PAUS1" + struct.pack("<I", 1) + struct.pack("<ff", 3.0, 4.0))
+    assert pauspapier.lies(pfad) == [(3.0, 4.0)] and pauspapier.lies_weg(pfad) == []
