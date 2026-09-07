@@ -51,3 +51,47 @@ def test_je_ende_der_kuerzeste_und_jedes_paar_einmal():
     luecken = k.finde_luecken(raum)
     assert [l.waende for l in luecken].count((0, 1)) == 1
     assert all(sorted(l.waende) != [0, 2] for l in luecken)
+
+
+# ------------------------------------------------------------- Vorschlaege
+
+
+def _punkte_auf(x1, y1, x2, y2, n=40):
+    return [(x1 + (x2 - x1) * i / n, y1 + (y2 - y1) * i / n) for i in range(n + 1)]
+
+
+def test_der_weg_durch_die_luecke_macht_einen_durchgang():
+    raum = _raum((0, 0, 2, 0), (3, 0, 5, 0))
+    (l,) = k.finde_luecken(raum, weg=[(2.5, -1.0, 0.0), (2.5, 1.0, 0.0)])
+    assert l.vorschlag == "durchgang" and "lief hindurch" in l.grund
+
+
+def test_punkte_in_der_luecke_machen_eine_wand():
+    raum = _raum((0, 0, 2, 0), (3, 0, 5, 0))
+    (l,) = k.finde_luecken(raum, pauspapier=_punkte_auf(2.0, 0.0, 3.0, 0.0))
+    assert l.vorschlag == "wand" and "Punkte" in l.grund
+
+
+def test_ohne_beides_unklar():
+    (l,) = k.finde_luecken(_raum((0, 0, 2, 0), (3, 0, 5, 0)))
+    assert l.vorschlag == "unklar" and "entscheiden" in l.grund
+
+
+def test_eine_wand_quer_ueber_den_weg_soll_weg():
+    raum = _raum((0, 0, 6, 0), (3, -1, 3, 1))
+    luecken = k.finde_luecken(raum, weg=[(1.0, 0.5, 0.0), (5.0, 0.5, 0.0)])
+    (kreuzt,) = [l for l in luecken if l.art == "kreuzt"]
+    assert kreuzt.waende == (1,) and kreuzt.vorschlag == "loeschen" and kreuzt.enden == ()
+    assert kreuzt.strecken == ((3.0, -1.0, 3.0, 1.0),)
+
+
+def test_das_u_mit_tuer():
+    # U: unten 0..6, links in zwei Stuecken mit Bruch (Punkte), rechts mit Tuer (Weg hindurch).
+    raum = _raum((0, 0, 6, 0), (0, 0, 0, 1.8), (0, 2.2, 0, 4), (6, 0.5, 6, 1.5), (6, 2.6, 6, 4))
+    punkte = _punkte_auf(0, 1.8, 0, 2.2) + _punkte_auf(6, 0, 6, 0.5)
+    weg = [(5.0, 2.0, 0.0), (7.0, 2.0, 0.0)]
+    luecken = k.finde_luecken(raum, weg=weg, pauspapier=punkte)
+    arten = {(tuple(sorted(l.waende)), l.art): l.vorschlag for l in luecken}
+    assert arten[((1, 2), "luecke")] == "wand"
+    assert arten[((3, 4), "luecke")] == "durchgang"
+    assert arten[((0, 3), "ecke")] == "wand"

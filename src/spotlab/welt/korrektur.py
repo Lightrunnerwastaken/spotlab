@@ -131,15 +131,65 @@ def _schluessel(luecke):
 
 
 def _kreuzende(raum, weg):
-    return []
+    """Waende, die eine Strecke des gelaufenen Wegs schneiden: Fehler der Linienfindung."""
+    gefunden = []
+    strecken = list(zip(weg, weg[1:]))
+    for i, wand in enumerate(raum.waende):
+        a, b = (wand.x1, wand.y1), (wand.x2, wand.y2)
+        if any(_kreuzt(a, b, (p[0], p[1]), (q[0], q[1])) for p, q in strecken):
+            gefunden.append(Luecke("kreuzt", (i,), (), wand.mitte, ((*a, *b),), wand.laenge,
+                                   "loeschen", "kreuzt den Weg des Roboters"))
+    return gefunden
 
 
-def _mit_vorschlag(luecke, weg, index):
-    return luecke
+# ------------------------------------------------------------- Vorschlaege
 
 
 def punktindex(pauspapier, zelle=INDEX_ZELLE_M):
-    return {}
+    """Zelle -> Anzahl Punkte; einmal ueber das Pauspapier, dann sind Anfragen billig."""
+    index = {}
+    for x, y in pauspapier:
+        schluessel = (math.floor(x / zelle), math.floor(y / zelle))
+        index[schluessel] = index.get(schluessel, 0) + 1
+    return index
+
+
+def _hat_punkte(index, x, y, zelle=INDEX_ZELLE_M, mindestens=PUNKTE_JE_ZELLE):
+    i, j = math.floor(x / zelle), math.floor(y / zelle)
+    return any(index.get((i + di, j + dj), 0) >= mindestens
+               for di in (-1, 0, 1) for dj in (-1, 0, 1))
+
+
+def _punkte_entlang(strecken, index, schritt=PROBE_M):
+    """Anteil der Proben entlang der Strecken, an denen das Pauspapier Punkte hat."""
+    proben, mit = 0, 0
+    for x1, y1, x2, y2 in strecken:
+        laenge = math.hypot(x2 - x1, y2 - y1)
+        n = max(1, math.ceil(laenge / schritt))
+        for k in range(n + 1):
+            t = k / n
+            proben += 1
+            if _hat_punkte(index, x1 + (x2 - x1) * t, y1 + (y2 - y1) * t):
+                mit += 1
+    return mit / proben if proben else 0.0
+
+
+def _weg_kreuzt(strecken, weg):
+    for p, q in zip(weg, weg[1:]):
+        for x1, y1, x2, y2 in strecken:
+            if _kreuzt((x1, y1), (x2, y2), (p[0], p[1]), (q[0], q[1])):
+                return True
+    return False
+
+
+def _mit_vorschlag(luecke, weg, index):
+    if luecke.art == "kreuzt":
+        return luecke
+    if _weg_kreuzt(luecke.strecken, weg):
+        return replace(luecke, vorschlag="durchgang", grund="der Roboter lief hindurch")
+    if index and _punkte_entlang(luecke.strecken, index) >= ANTEIL_WAND:
+        return replace(luecke, vorschlag="wand", grund="Punkte in der Lücke")
+    return replace(luecke, vorschlag="unklar", grund="kein Weg, keine Punkte — bitte entscheiden")
 
 
 def finde_luecken(raum, weg=(), pauspapier=(), max_luecke=MAX_LUECKE_M,
