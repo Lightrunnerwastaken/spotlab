@@ -38,8 +38,9 @@ class Steuerung:
 
     # ------------------------------------------------------------ innen
 
-    def _uebernimm(self, raum):
-        """Eine bestaetigte Aenderung: in den Verlauf, als geaendert merken."""
+    def uebernimm(self, raum):
+        """Eine bestaetigte Aenderung: in den Verlauf, als geaendert merken.
+        Auch der Korrigierer uebergibt sein Ergebnis so -- als EINEN Schritt."""
         self.raum = raum
         self.verlauf.merke(raum)
         self.geaendert = True
@@ -84,7 +85,7 @@ class Steuerung:
             return
         if self.modus.aktiv:
             if taste == "links":
-                self._uebernimm(self.modus.bestaetige())
+                self.uebernimm(self.modus.bestaetige())
             else:
                 self.raum = self.modus.abbruch()
             return
@@ -104,7 +105,7 @@ class Steuerung:
         elif self.werkzeug == "tag":
             raum, s = b.neuer_tag(self.raum, self._rast(x, ctrl), self._rast(y, ctrl),
                                   z=self._z_neu)
-            self._uebernimm(raum)
+            self.uebernimm(raum)
             self.auswahl = frozenset({s})
         elif self.werkzeug == "start":
             sx, sy = self._rast(x, ctrl), self._rast(y, ctrl)
@@ -139,7 +140,7 @@ class Steuerung:
         if math.hypot(px - self.kette[0], py - self.kette[1]) < b.MINDESTKANTE_M:
             return
         raum, s = b.neue_wand(self.raum, self.kette[0], self.kette[1], px, py, z=self._z_neu)
-        self._uebernimm(raum)
+        self.uebernimm(raum)
         self.auswahl = frozenset({s})
         self.kette = (px, py)
 
@@ -202,11 +203,11 @@ class Steuerung:
                 return
             bauen = b.neuer_block if art == "block" else b.neuer_boden
             raum, s = bauen(self.raum, (x1 + x2) / 2, (y1 + y2) / 2, breite, tiefe, z=self._z_neu)
-            self._uebernimm(raum)
+            self.uebernimm(raum)
             self.auswahl = frozenset({s})
             return
         if self.raum is not z["raum"]:
-            self._uebernimm(self.raum)       # etwas hat sich bewegt
+            self.uebernimm(self.raum)       # etwas hat sich bewegt
 
     # ------------------------------------------------------------ Tasten
 
@@ -217,7 +218,7 @@ class Steuerung:
         name = name.lower()
         if self.modus.aktiv:
             if name in ("return", "enter"):
-                self._uebernimm(self.modus.bestaetige())
+                self.uebernimm(self.modus.bestaetige())
                 return True
             if name == "escape":
                 self.raum = self.modus.abbruch()
@@ -242,13 +243,13 @@ class Steuerung:
             return True
         if name == "d" and shift:
             raum, neue = b.dupliziere(self.raum, self.auswahl)
-            self._uebernimm(raum)
+            self.uebernimm(raum)
             self.auswahl = neue
             self.modus.beginne(b.Modus.BEWEGEN, self.raum, self.auswahl, self.zeiger)
             return True
         if name == "delete":
             raum, self.auswahl = b.loesche(self.raum, self.auswahl)
-            self._uebernimm(raum)
+            self.uebernimm(raum)
             return True
         return False
 
@@ -280,7 +281,7 @@ class Steuerung:
         )
 
     def setze_feld(self, schluessel, feld, wert):
-        self._uebernimm(b.setze_feld(self.raum, schluessel, feld, wert))
+        self.uebernimm(b.setze_feld(self.raum, schluessel, feld, wert))
 
     def griffe(self):
         if self.raum is None or self.modus.aktiv:

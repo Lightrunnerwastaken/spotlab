@@ -303,3 +303,38 @@ def test_die_liste_zeigt_das_gelaende_nur_lesend_und_entf_loescht_es(qapp):
     assert ansicht._form.rowCount() == 2 and ansicht.findChild(QDoubleSpinBox, "feld_x0") is None
     ansicht.steuerung.taste("delete")
     assert ansicht.steuerung.raum.gelaende is None
+
+
+def test_der_tab_uebernimmt_eine_korrektur_als_einen_verlaufsschritt(qapp):
+    from PySide6.QtWidgets import QPushButton
+
+    from spotlab.gui.raumeditor.korrektur_dialog import Korrektur
+    from spotlab.welt import gelaende as g
+    from spotlab.welt.raum import Raum
+
+    ansicht = RaumeditorView(DUNKEL)
+    assert ansicht.findChild(QPushButton, "knopf_korrigieren") is not None
+    ansicht.waehle_raum("leer")
+    alt = ansicht.steuerung.raum
+    neu = Raum("K", "", (1.0, 1.0, 0.0), waende=[(0, 0, 4, 0)],
+               gelaende=g.gitter(0.0, 0.0, 0.5, 5, 5, lambda x, y: 0.1))
+    meldungen = []
+    ansicht.meldung.connect(meldungen.append)
+    bericht = {"waende_verbunden": 2, "durchgaenge": 1, "geloescht": 0,
+               "gelaende": {"knoten": 25, "z_min": 0.0, "z_max": 0.1, "offen": 1}}
+    ansicht.uebernimm_korrektur(Korrektur(neu, [(0.5, 0.5)], bericht))
+    assert ansicht.steuerung.raum is neu and ansicht.steuerung.geaendert
+    assert ansicht.sicht._offen == [(0.5, 0.5)]
+    assert meldungen[-1].startswith("Korrigiert: 2 Wände verbunden, 1 Durchgang, 0 Wände gelöscht")
+    assert "25 Knoten" in meldungen[-1] and "1 offener Rand" in meldungen[-1]
+    ansicht.steuerung.rueckgaengig()
+    assert ansicht.steuerung.raum == alt
+
+
+def test_korrigieren_oeffnet_den_dialog_nicht_modal(qapp):
+    ansicht = RaumeditorView(DUNKEL)
+    ansicht.waehle_raum("durchgang")
+    ansicht._korrigieren()
+    dialog = ansicht._korrektur_dialog
+    assert dialog is not None and dialog.isVisible() and not dialog.isModal()
+    dialog.close()

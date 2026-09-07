@@ -111,6 +111,7 @@ class RaumeditorView(QWidget):
         self._liste_sperre = False
         self._pauspapier = []        # Punktwolke einer Rekonstruktion, neben dem Raum gespeichert
         self._weg = []               # der gelaufene Weg (x, y, z_boden) derselben Rekonstruktion
+        self._korrektur_dialog = None
         self.steuerung = Steuerung()
 
         # -- links: Werkzeuge und Dateien
@@ -132,6 +133,11 @@ class RaumeditorView(QWidget):
             knopf = QPushButton(text)
             knopf.clicked.connect(ziel)
             links.addWidget(knopf)
+        korrigieren = QPushButton("Korrigieren…")
+        korrigieren.setObjectName("knopf_korrigieren")
+        korrigieren.setToolTip("Wandlücken schliessen und das Gelände aus dem gelaufenen Weg bauen")
+        korrigieren.clicked.connect(self._korrigieren)
+        links.addWidget(korrigieren)
         links.addStretch(1)
 
         # -- Mitte: Titel, Umschalter, Sicht
@@ -272,6 +278,42 @@ class RaumeditorView(QWidget):
             f"{b.get('treppen', 0)} Treppen, {b.get('rampen', 0)} Rampen, {b.get('boeden', 0)} Böden"
             + (" — " + " ".join(hinweise) if hinweise else "")
         )
+
+    def _korrigieren(self):
+        """Der Korrigierer: nicht modal, die 2D-Sicht leuchtet die gewaehlte Luecke auf."""
+        from spotlab.gui.raumeditor.korrektur_dialog import KorrekturDialog
+
+        if self.steuerung.raum is None:
+            return
+        if self._korrektur_dialog is not None:
+            self._korrektur_dialog.close()
+        dialog = KorrekturDialog(self, self.steuerung.raum, self._weg, self._pauspapier)
+        dialog.markiere.connect(self.sicht.setze_markierung)
+        dialog.kandidaten.connect(self.sicht.setze_kandidaten)
+        dialog.angewendet.connect(self.uebernimm_korrektur)
+        dialog.finished.connect(lambda _ergebnis: (self.sicht.setze_markierung([]),
+                                                   self.sicht.setze_kandidaten([])))
+        self._korrektur_dialog = dialog
+        dialog.show()
+
+    def uebernimm_korrektur(self, korrektur):
+        """Das Ergebnis des Korrigierers als EIN Verlaufsschritt, offene Raender sichtbar."""
+        self.steuerung.uebernimm(korrektur.raum)
+        self.sicht.setze_markierung([])
+        self.sicht.setze_kandidaten([])
+        self.sicht.setze_offen(korrektur.offene_raender)
+        self.sicht3d.zeige(korrektur.raum, self.steuerung.auswahl)
+        self._zeige()
+        b = korrektur.bericht
+        text = (f"Korrigiert: {b['waende_verbunden']} Wände verbunden, "
+                f"{b['durchgaenge']} {'Durchgang' if b['durchgaenge'] == 1 else 'Durchgänge'}, "
+                f"{b['geloescht']} Wände gelöscht")
+        g = b.get("gelaende")
+        if g:
+            offen = g.get("offen", 0)
+            text += (f" · Gelände {g['knoten']} Knoten, {g['z_min']:.2f} bis {g['z_max']:.2f} m, "
+                     f"{offen} {'offener Rand' if offen == 1 else 'offene Ränder'}")
+        self.meldung.emit(text)
 
     def neu(self):
         self._setze(NEUER_RAUM, "", False, True)
