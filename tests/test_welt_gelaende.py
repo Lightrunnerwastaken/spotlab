@@ -98,3 +98,29 @@ def test_plateaus_sind_die_ebenen_flaechen():
         return 1.0
     ge = g.gitter(0.0, 0.0, 0.2, 12, 31, f)      # 12 Zeilen x 10 Spalten je Plateau = 120 Knoten
     assert g.plateaus(ge) == [0.0, 1.0]
+
+
+# ------------------------------------------------------------- Datei
+
+
+def test_datei_hin_und_zurueck_mit_none(tmp_path):
+    ge = g.gitter(1.0, 2.0, 0.25, 3, 4, lambda x, y: None if x > 1.6 else x + y)
+    pfad = g.pfad_zu(tmp_path / "raum.toml")
+    assert pfad.suffix == ".gelaende"
+    g.schreibe(pfad, ge)
+    zurueck = g.lies(pfad)
+    assert (zurueck.x0, zurueck.y0, zurueck.zelle, zurueck.zeilen, zurueck.spalten) == (1.0, 2.0, 0.25, 3, 4)
+    assert zurueck.knoten(0, 3) is None
+    assert zurueck.knoten(1, 1) == pytest.approx(1.25 + 2.25, abs=1e-6)
+
+
+def test_fehlende_datei_ist_none(tmp_path):
+    assert g.lies(tmp_path / "nix.gelaende") is None
+
+
+def test_falsche_kennung_ist_ein_fehler(tmp_path):
+    from spotlab.errors import SpotlabError
+    pfad = tmp_path / "kaputt.gelaende"
+    pfad.write_bytes(b"PAUS1" + b"\0" * 40)
+    with pytest.raises(SpotlabError, match="Gelände"):
+        g.lies(pfad)

@@ -12,8 +12,12 @@ unter einem Zentimeter.
 """
 
 import math
+import struct
+from array import array
 from dataclasses import dataclass, replace
+from pathlib import Path
 
+from spotlab.errors import SpotlabError
 from spotlab.welt.raum import MAX_STUFE_M
 
 GELAENDE_ZELLE_M = 0.2
@@ -183,6 +187,52 @@ def plateaus(gelaende):
     return sorted(s for s, n in zaehler.items() if n >= PLATEAU_KNOTEN)
 
 
+# ------------------------------------------------------------- Datei
+#
+# Neben der Raumdatei, wie das Pauspapier: Kennung, Kopf (x0, y0, zelle als
+# double, zeilen und spalten als uint32), dann float32 je Knoten, NaN fuer None.
+
+KENNUNG = b"GEL1"
+ENDUNG = ".gelaende"
+_KOPF = "<4sdddII"
+
+
+def pfad_zu(raumpfad):
+    """`raeume/gang.toml` -> `raeume/gang.gelaende`."""
+    return Path(raumpfad).with_suffix(ENDUNG)
+
+
+def schreibe(pfad, gelaende):
+    werte = array("f", (math.nan if h is None else float(h) for h in gelaende.hoehen))
+    pfad = Path(pfad)
+    pfad.parent.mkdir(parents=True, exist_ok=True)
+    with open(pfad, "wb") as datei:
+        datei.write(struct.pack(_KOPF, KENNUNG, gelaende.x0, gelaende.y0, gelaende.zelle,
+                                gelaende.zeilen, gelaende.spalten))
+        datei.write(werte.tobytes())
+
+
+def lies(pfad):
+    """Das Gelaende aus der Datei; eine fehlende Datei ist None, kein Fehler."""
+    pfad = Path(pfad)
+    if not pfad.is_file():
+        return None
+    roh = pfad.read_bytes()
+    kopf = struct.calcsize(_KOPF)
+    if len(roh) < kopf or roh[:4] != KENNUNG:
+        raise SpotlabError(
+            f"{pfad.name} ist keine Gelände-Datei (Kennung fehlt). Die Datei löschen und "
+            f"den Raum neu korrigieren."
+        )
+    _kennung, x0, y0, zelle, zeilen, spalten = struct.unpack(_KOPF, roh[:kopf])
+    werte = array("f")
+    werte.frombytes(roh[kopf:kopf + zeilen * spalten * 4])
+    if len(werte) != zeilen * spalten:
+        raise SpotlabError(f"{pfad.name} ist unvollständig. Den Raum neu korrigieren.")
+    return Gelaende(x0, y0, zelle, zeilen, spalten,
+                    tuple(None if math.isnan(w) else float(w) for w in werte))
+
+
 __all__ = ["GELAENDE_ZELLE_M", "PLATEAU_NEIGUNG_GRAD", "PLATEAU_KNOTEN", "MAX_STUFE_M",
            "Gelaende", "gitter", "umriss", "verschoben", "zusammenfassung",
-           "klippen", "plateaus"]
+           "klippen", "plateaus", "KENNUNG", "ENDUNG", "pfad_zu", "schreibe", "lies"]
