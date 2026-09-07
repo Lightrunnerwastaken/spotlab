@@ -125,6 +125,10 @@ class RaumPlot(QWidget):
         x, y = self.schirm_zu_meter(punkt.x(), punkt.y())
         self.start_gewaehlt.emit(x, y)
 
+    def anzeigepose(self):
+        pose = self._spur[-1] if self._spur else self._start
+        return (pose[0], pose[1], self._blick) if pose is not None else None
+
     def paintEvent(self, _ereignis):
         maler = QPainter(self)
         maler.setRenderHint(QPainter.Antialiasing)
@@ -140,10 +144,7 @@ class RaumPlot(QWidget):
         zeichne_spur(maler, self._spur, self.meter_zu_schirm, self._p)
         zeichne_anstoesse(maler, self._anstoesse, self.meter_zu_schirm, self._p)
 
-        pose = self._spur[-1] if self._spur else None
-        blick = self._blick
-        if pose is None and self._start is not None:
-            pose = (self._start[0], self._start[1])
+        pose = self.anzeigepose()
         if pose is not None:
             px, py = self.meter_zu_schirm(pose[0], pose[1])
-            zeichne_spot(maler, px, py, blick, skala, self._p)
+            zeichne_spot(maler, px, py, pose[2], skala, self._p)

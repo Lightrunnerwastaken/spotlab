@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from spotlab.gui.raumplot import RaumPlot
+from spotlab.gui.liveplot import LiveRaumPlot
 from spotlab.welt.raum import raum_laden
 
 TITEL = "Übungsraum — spotlab"
@@ -47,7 +47,7 @@ class Uebungsfenster(QWidget):
         # blieb ueber und unter der Zeichnung die halbe Flaeche leer.
         self.resize(760, 520)
 
-        self.plot = RaumPlot(palette)
+        self.plot = LiveRaumPlot(palette)
         # Das gerenderte Zimmer des MuJoCo-Backends. Versteckt, bis ein Bild
         # da ist -- der 2D-Sim liefert keines, und ein leerer Rahmen saehe
         # aus wie ein Fehler.
@@ -158,7 +158,14 @@ class Uebungsfenster(QWidget):
 
     def zeige_ansicht(self, pfad):
         """Das gerenderte Zimmer -- aus dem Lauf-Verzeichnis, wie alle Live-Daten."""
-        pixmap = QPixmap(str(pfad))
+        # Gleicher Dateiname mit neuen Bytes: den dateibasierten QPixmap-Cache
+        # umgehen. Das File ist vor dem Dekodieren wieder geschlossen.
+        try:
+            daten = Path(pfad).read_bytes()
+        except OSError:
+            return
+        pixmap = QPixmap()
+        pixmap.loadFromData(daten)
         if pixmap.isNull():
             return                         # halb geschrieben? naechster Takt bringt es
         breite = max(320, min(self.width() - 24, 640))

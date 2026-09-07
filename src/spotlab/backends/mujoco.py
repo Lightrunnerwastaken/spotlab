@@ -25,7 +25,7 @@ THREADS. Der Abtaster ruft `robot_state()` aus seinem Thread; das Schülerskript
 ruft `local_grid()`, `images()`, `world_objects()` aus dem Hauptthread. Die
 Puppe führt ein Lock um ihren Zustand. Jeder GL-Kontext gehört genau EINEM
 Thread: Tiefe und Graubilder dem Hauptthread, die Zimmeransicht einem eigenen
-Thread mit eigenem Renderer und privatem MjData (`spotsim.puppe.Zimmeransicht`).
+Thread mit eigenem Renderer und privatem MjData (`_LiveAnsicht`).
 Bis zum 06.09.2026 rendertete der Hauptthread die Ansicht nebenbei — und
 `spot.state` kostete 160 ms für ein Bild, das es nicht brauchte. Ein
 GL-Kontext, den zwei Threads benutzen, ist ein Absturz ohne Traceback.
@@ -37,6 +37,7 @@ import threading
 import time
 from pathlib import Path
 
+from spotlab.animation import ANZEIGE_VERZUG_S, Zeitpuffer, linear
 from spotlab.backends.base import Capability, Tag, richtung
 from spotlab.backends.sim import SimBackend, synchronisiert
 from spotlab.errors import SpotlabError
@@ -51,9 +52,8 @@ PUPPE_FASSUNG = 5      # 5: Gelaende als hfield; 4: Nick, Bodenhoehe, Sprungrege
 # `wand_hoehe`, `Block.hoehe`, `RaumTag.hoehe`) — die Vorgaben dort sind die
 # alten Annahmen: Übungswand 1 m, Blöcke tischhoch, Tags auf Kniehöhe.
 
-# Höchstens so oft wird die Ansicht gerendert; ein Bild kostet einige
-# Millisekunden, und die GUI liest ohnehin nur viermal je Sekunde.
-ANSICHT_TAKT_S = 0.1
+# Live-Bilder mit maximal 30 Hz; Renderzeit gehoert zur Periode.
+ANSICHT_TAKT_S = 1 / 30
 ANSICHT_BREITE, ANSICHT_HOEHE = 640, 360
 
 HINWEIS = (
@@ -142,6 +142,49 @@ def welt_aus_raum(raum, puppe):
     return puppe.Welt(quader=tuple(quader), tags=tags, boden_z=tiefster, gelaende=gelaende)
 
 
+def _mische_qpos(a, b, anteil):
+    """Position/Gelenke linear, Koerperquaternion normiert auf dem kurzen Bogen."""
+    werte = list(linear(a, b, anteil))
+    qa, qb = a[3:7], b[3:7]
+    if sum(x * y for x, y in zip(qa, qb)) < 0:
+        qb = tuple(-x for x in qb)
+    q = linear(qa, qb, anteil)
+    norm = math.sqrt(sum(x * x for x in q))
+    werte[3:7] = tuple(x / norm for x in q) if norm > 1e-12 else qa
+    return tuple(werte)
+
+
+class _LiveAnsicht:
+    """Privater Renderer: schnelle Live-Qualitaet ohne Schatten/Spiegelungen.
+
+    Kameras, Sensoren, Weltgeometrie und der Filmrenderer bleiben unveraendert.
+    Der GL-Kontext wird ausschliesslich im Ansichtsthread benutzt.
+    """
+
+    def __init__(self, modul, puppe):
+        import mujoco
+
+        self._mj = mujoco
+        self._kamera = modul.zimmerkamera
+        self.model, self.welt = puppe.model, puppe.welt
+        self.data = mujoco.MjData(self.model)
+        self._renderer = mujoco.Renderer(self.model, ANSICHT_HOEHE, ANSICHT_BREITE)
+
+    def bild(self, qpos):
+        mj = self._mj
+        self.data.qpos[:] = qpos
+        mj.mj_forward(self.model, self.data)
+        self._renderer.update_scene(
+            self.data, camera=self._kamera(self.model, self.welt, self.data),
+        )
+        self._renderer.scene.flags[mj.mjtRndFlag.mjRND_SHADOW] = False
+        self._renderer.scene.flags[mj.mjtRndFlag.mjRND_REFLECTION] = False
+        return self._renderer.render()
+
+    def close(self):
+        self._renderer.close()
+
+
 class _Ansichtsschreiber(threading.Thread):
     """Schreibt `ansicht.jpg` aus einem eigenen Thread — höchstens ANSICHT_TAKT_S.
 
@@ -157,31 +200,57 @@ class _Ansichtsschreiber(threading.Thread):
         self._puppe = puppe
         self._ziel = ziel
         self._halt = threading.Event()
+        self._posen = Zeitpuffer(_mische_qpos)
+        self.publiziere(puppe.qpos())
+
+    def publiziere(self, qpos):
+        # Nur fertig berechnete Zustaende. Der Renderer fragt weder den
+        # Simulator ab noch rechnet er Bewegung voraus.
+        self._posen.anhaengen(time.monotonic(), qpos)
 
     def beenden(self, frist_s=2.0):
         self._halt.set()
         self.join(timeout=frist_s)
 
+    def _warte_bis(self, ende):
+        # Event.wait rundet unter Windows auf grobe Timerintervalle. Wie beim
+        # StateSampler den hochaufloesenden sleep nutzen, ohne busy-wait.
+        while not self._halt.is_set():
+            rest = ende - time.monotonic()
+            if rest <= 0:
+                break
+            time.sleep(min(rest, 0.005))
+
     def run(self):
         from PIL import Image
 
-        ansicht = self._modul.Zimmeransicht(self._puppe, ANSICHT_BREITE, ANSICHT_HOEHE)
+        ansicht = None
         letzte = None
         try:
-            while not self._halt.wait(ANSICHT_TAKT_S):
-                qpos = self._puppe.qpos()
-                if letzte is not None and (qpos == letzte).all():
-                    continue
-                letzte = qpos
-                temporaer = self._ziel.with_suffix(".tmp")
-                Image.fromarray(ansicht.bild(qpos)).save(temporaer, format="JPEG", quality=82)
-                os.replace(temporaer, self._ziel)
+            ansicht = _LiveAnsicht(self._modul, self._puppe)
+            while True:
+                beginn = time.monotonic()
+                beendet = self._halt.is_set()
+                qpos = self._posen.bei(float("inf") if beendet else beginn - ANZEIGE_VERZUG_S)
+                if qpos is not None and qpos != letzte:
+                    temporaer = self._ziel.with_suffix(".tmp")
+                    Image.fromarray(ansicht.bild(qpos)).save(temporaer, format="JPEG", quality=82)
+                    try:
+                        os.replace(temporaer, self._ziel)
+                    except PermissionError:
+                        pass  # kurzer Windows-Lesekonflikt: naechstes Bild erneut versuchen
+                    else:
+                        letzte = qpos
+                if beendet:
+                    break
+                self._warte_bis(beginn + ANSICHT_TAKT_S)
         except Exception as fehler:            # die Ansicht darf den Lauf nie anhalten
             from spotlab import protokoll
 
             protokoll.notiere(f"Ansicht nicht geschrieben: {fehler}")
         finally:
-            ansicht.close()
+            if ansicht is not None:
+                ansicht.close()
 
 
 class MujocoBackend(SimBackend):
@@ -261,6 +330,9 @@ class MujocoBackend(SimBackend):
     def _synchronisiere(self):
         """Die Puppe auf den Stand des 2D-Sim bringen: Pose, Winkel, Hoehe, Nick."""
         self._setze_puppe(self._pose, self._winkel(), self._z)
+        ansicht = getattr(self, "_ansicht", None)
+        if ansicht is not None:
+            ansicht.publiziere(self.puppe.qpos())
 
     @synchronisiert
     def _fortschreiben(self):

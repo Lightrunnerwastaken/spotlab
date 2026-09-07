@@ -2,8 +2,9 @@
 
 Abgefragt statt QFileSystemWatcher: Anfügungen an eine offene Datei lösen
 unter Windows keine verlässliche Verzeichnisbenachrichtigung aus, und 10 Hz
-Anfügungen würden einen Ereignis-Beobachter überschwemmen. Ein 250-ms-Takt,
-der nur die neuen Bytes liest, kostet praktisch nichts.
+Anfügungen würden einen Ereignis-Beobachter überschwemmen. Die Lauf-Suche und
+Ereignisse bleiben bei 250 ms. Ein eigener 16-ms-Takt liest neue Zustaende und
+Ansichtsbilder ausschliesslich aus den bereits bekannten laufenden Ordnern.
 
 Die Logik steckt vollständig in RunScanner (Qt-frei, geprüft); RunWatcher ist
 nur die Hülle, die den Takt gibt und Signale aussendet.
@@ -14,13 +15,14 @@ der MCP-Server, damit beide dasselbe finden.
 
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QTimer, Signal
+from PySide6.QtCore import QObject, Qt, QTimer, Signal
 
 from spotlab.laufsuche import lauf_verzeichnisse  # noqa: F401  (Re-Export)
 from spotlab.record.tail import JsonlTail
 from spotlab.workshop.control import ist_aktiv
 
 TAKT_MS = 250
+LIVE_TAKT_MS = 16  # neue 30-Hz-Bilder ohne zusaetzlichen ganzen Bildtakt abholen
 
 
 class _Lauf:
@@ -46,6 +48,14 @@ class RunScanner:
         ereignisse.extend(self._neue_laeufe())
         for schluessel in list(self._offen):
             ereignisse.extend(self._neuigkeiten(schluessel))
+        return ereignisse
+
+    def live_tick(self):
+        """Nur bekannte Laeufe: keine Verzeichnissuche und keine Kamera-PNGs."""
+        ereignisse = []
+        for lauf in self._offen.values():
+            ereignisse.extend(("zustand", satz) for satz in lauf.zustand.neue_saetze())
+            ereignisse.extend(self._neue_ansicht(lauf))
         return ereignisse
 
     # ------------------------------------------------------------------ intern
@@ -81,7 +91,7 @@ class RunScanner:
         """`ansicht.jpg`, wenn sie sich seit dem letzten Takt geaendert hat.
 
         Eine Datei, die ersetzt wird, kein Strom: gemeldet wird nur eine
-        Aenderung, sonst zeichnete die GUI viermal je Sekunde dasselbe Bild.
+        Aenderung, sonst dekodierte die GUI immer wieder dasselbe Bild.
         """
         pfad = lauf.dir / "ansicht.jpg"
         try:
@@ -123,12 +133,24 @@ class RunWatcher(QObject):
         self._timer = QTimer(self)
         self._timer.setInterval(TAKT_MS)
         self._timer.timeout.connect(self._takt)
+        self._live_timer = QTimer(self)
+        self._live_timer.setTimerType(Qt.PreciseTimer)
+        self._live_timer.setInterval(LIVE_TAKT_MS)
+        self._live_timer.timeout.connect(self._live_takt)
 
     def start(self):
         self._timer.start()
+        self._live_timer.start()
 
     def stop(self):
         self._timer.stop()
+        self._live_timer.stop()
+
+    def _live_takt(self):
+        try:
+            self._sende(self._scanner.live_tick())
+        except Exception as fehler:
+            self.fehler.emit(f"Live-Ansicht: {type(fehler).__name__}: {fehler}")
 
     def _takt(self):
         try:
@@ -136,6 +158,9 @@ class RunWatcher(QObject):
         except Exception as fehler:  # eine GUI, die still nichts mehr tut, ist schlimmer
             self.fehler.emit(f"Beobachter: {type(fehler).__name__}: {fehler}")
             return
+        self._sende(ereignisse)
+
+    def _sende(self, ereignisse):
         signale = {
             "lauf_begonnen": self.lauf_begonnen,
             "zustand": self.zustand,
