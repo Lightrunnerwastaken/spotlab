@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
 )
 
 from spotlab.gui.liveplot import LiveRaumPlot
+from spotlab.gui.symbol import symbol
 from spotlab.gui.tastenfahrt import Tastenfahrt
 from spotlab.record import kamera
 from spotlab.welt.raum import raum_laden
@@ -61,6 +62,7 @@ class Uebungsfenster(QWidget):
         self._p = palette
         self._arbeitsordner = None
         self.setWindowTitle(TITEL)
+        self.setWindowIcon(symbol())
         # Breiter als hoch: die Vorlagen sind Zimmer (9 x 5 m). Quadratisch
         # blieb ueber und unter der Zeichnung die halbe Flaeche leer.
         self.resize(760, 520)

@@ -61,6 +61,9 @@ where = ["src"]
 # (`pip install .`), und `backend="sim"` scheitert erst zur Laufzeit mit
 # FileNotFoundError — auf dem Schullaptop, nicht hier.
 "spotlab.kalibrierung" = ["daten/*.json"]
+# Das Fenstersymbol: ohne diese Zeile traegt ein installiertes spotlab das
+# Standardbild von Qt -- auf dem Schullaptop, nicht hier.
+"spotlab.gui" = ["spotlab.png"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -28,6 +28,7 @@ from spotlab.gui.editor.view import EditorView, verfuegbare_backends
 from spotlab.gui.header import Header
 from spotlab.gui.raumeditor import RaumeditorView
 from spotlab.gui.sidebar import Sidebar
+from spotlab.gui.symbol import symbol
 from spotlab.gui.theme import palette_fuer, stylesheet
 from spotlab.gui.uebungsfenster import Uebungsfenster
 from spotlab.gui.views.anbindungen import AnbindungenView
@@ -64,6 +65,7 @@ class MainWindow(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("spotlab")
+        self.setWindowIcon(symbol())
         self.resize(1080, 720)
 
         try:
@@ -632,6 +634,9 @@ class MainWindow(QWidget):
 def main(argv=None):
     app = QApplication(argv if argv is not None else sys.argv)
     app.setApplicationName("spotlab")
+    # Auch an der Anwendung: sonst tragen Dialoge und das Uebungsfenster unter
+    # Windows das Standardbild von Qt.
+    app.setWindowIcon(symbol())
     app.setStyleSheet(stylesheet(palette_fuer(system_ist_dunkel(app))))
     fenster = MainWindow()
     fenster.show()

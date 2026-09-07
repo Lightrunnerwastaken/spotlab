@@ -463,6 +463,13 @@ versionsgepinntes Extra `spotlab[sim]`.
 - Der Editor schreibt Dateien mit `encoding="utf-8", newline="\n"`. Ohne das schreibt Python
   auf Windows CRLF, und jede Datei sieht nach dem ersten Speichern in git vollständig
   geändert aus.
+- **Das Fenstersymbol ist FREIGESTELLT und liegt im Paket** (`gui/spotlab.png`, runde
+  Ecken mit Transparenz aussen, dazu `package-data`). Ein Symbol mit eigenem
+  Hintergrund sitzt in der Taskleiste in einem grauen Kasten, und ohne den
+  package-data-Eintrag trägt ein installiertes spotlab das Standardbild von Qt.
+  `gui/symbol.py::symbol()` gibt ein leeres `QIcon`, wenn die Datei fehlt — ein
+  fehlendes Bild darf das Fenster mit dem NOT-AUS-Knopf nie anhalten. Dieselbe
+  Vorlage steckt in `spotlab.ico` (Wurzel) für die Desktop-Verknüpfung.
 - **Externe Programme immer erst mit `shutil.which()` auflösen, dann mit vollem Pfad
   starten.** Python startet über `CreateProcess`; das durchsucht den PATH, hängt aber nur
   `.exe` an und wertet `PATHEXT` nicht aus. `code.cmd` ist damit aus `subprocess` heraus
