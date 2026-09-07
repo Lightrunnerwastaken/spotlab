@@ -62,3 +62,39 @@ def test_umriss_und_verschieben():
 def test_zusammenfassung_nennt_zelle_knoten_und_spanne():
     text = g.zusammenfassung(_ebene(f=lambda x, y: 0.1 * x))
     assert text.startswith("Gelände · 0.5 m · 20 Knoten · 0.00 bis 0.20 m")
+
+
+# ------------------------------------------------------------- Klippen, Plateaus
+
+
+def test_ein_sprung_ueber_max_stufe_ist_eine_klippe_und_eine_strecke():
+    ge = g.gitter(0.0, 0.0, 0.2, 4, 6, lambda x, y: 0.0 if x < 0.5 else 0.5)
+    kl = [k for k in g.klippen(ge) if abs(k[0] - 0.5) < 1e-9 and abs(k[2] - 0.5) < 1e-9]
+    assert len(kl) == 1                       # eine Strecke, nicht vier Stuecke
+    x1, y1, x2, y2 = kl[0]
+    assert min(y1, y2) == pytest.approx(-0.1) and max(y1, y2) == pytest.approx(0.7)
+
+
+def test_ein_sprung_unter_max_stufe_ist_keine_klippe():
+    ge = g.gitter(0.0, 0.0, 0.2, 4, 6, lambda x, y: 0.0 if x < 0.5 else 0.2)
+    assert not [k for k in g.klippen(ge) if abs(k[0] - 0.5) < 1e-9]
+
+
+def test_der_rand_ueber_max_stufe_ist_eine_klippe():
+    ge = g.gitter(0.0, 0.0, 0.2, 3, 3, lambda x, y: 0.6)
+    assert len(g.klippen(ge)) == 4                 # vier Kanten, je eine Strecke
+
+
+def test_der_rand_auf_dem_grund_ist_keine_klippe():
+    assert g.klippen(g.gitter(0.0, 0.0, 0.2, 3, 3, lambda x, y: 0.1)) == []
+
+
+def test_plateaus_sind_die_ebenen_flaechen():
+    def f(x, y):
+        if x < 2.0:
+            return 0.0
+        if x < 4.0:
+            return (x - 2.0) * 0.5          # Rampe auf 1.0
+        return 1.0
+    ge = g.gitter(0.0, 0.0, 0.2, 12, 31, f)      # 12 Zeilen x 10 Spalten je Plateau = 120 Knoten
+    assert g.plateaus(ge) == [0.0, 1.0]

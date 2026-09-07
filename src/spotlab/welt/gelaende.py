@@ -118,5 +118,71 @@ def zusammenfassung(gelaende):
             f"{min(werte):.2f} bis {max(werte):.2f} m")
 
 
+# ------------------------------------------------------------- Klippen, Plateaus
+
+
+def _laeufe(indizes):
+    """[3, 4, 5, 8] -> [(3, 5), (8, 8)]: zusammenhaengende Indizes als Laeufe."""
+    laeufe = []
+    for k in sorted(indizes):
+        if laeufe and laeufe[-1][1] == k - 1:
+            laeufe[-1] = (laeufe[-1][0], k)
+        else:
+            laeufe.append((k, k))
+    return laeufe
+
+
+def klippen(gelaende):
+    """[(x1, y1, x2, y2)]: Zellgrenzen, an denen der Grund um mehr als MAX_STUFE_M springt.
+
+    Ein fehlender Knoten -- auch ausserhalb des Rasters -- gilt als Grund 0:
+    wo das Gelaende hoch endet, ist sein Rand eine Klippe. Aufeinanderfolgende
+    Stuecke auf einer Linie werden eine Strecke.
+    """
+    z, x0, y0 = gelaende.zelle, gelaende.x0, gelaende.y0
+
+    def wert(i, j):
+        h = gelaende.knoten(i, j)
+        return 0.0 if h is None else h
+
+    def springt(i, j, i2, j2):
+        if gelaende.knoten(i, j) is None and gelaende.knoten(i2, j2) is None:
+            return False
+        return abs(wert(i, j) - wert(i2, j2)) > MAX_STUFE_M
+
+    ergebnis = []
+    for j in range(-1, gelaende.spalten):            # senkrechte Grenzen zwischen j und j+1
+        zeilen = [i for i in range(gelaende.zeilen) if springt(i, j, i, j + 1)]
+        x = x0 + (j + 0.5) * z
+        for a, b in _laeufe(zeilen):
+            ergebnis.append((x, y0 + (a - 0.5) * z, x, y0 + (b + 0.5) * z))
+    for i in range(-1, gelaende.zeilen):             # waagrechte Grenzen zwischen i und i+1
+        spalten = [j for j in range(gelaende.spalten) if springt(i, j, i + 1, j)]
+        y = y0 + (i + 0.5) * z
+        for a, b in _laeufe(spalten):
+            ergebnis.append((x0 + (a - 0.5) * z, y, x0 + (b + 0.5) * z, y))
+    return ergebnis
+
+
+def plateaus(gelaende):
+    """Sortierte Hoehen (auf 0.1 m) der ebenen Flaechen: Knoten, die zu allen vier
+    Nachbarn flacher als PLATEAU_NEIGUNG_GRAD liegen, in Gruppen ab PLATEAU_KNOTEN."""
+    grenze = math.tan(math.radians(PLATEAU_NEIGUNG_GRAD)) * gelaende.zelle
+    zaehler = {}
+    for i in range(gelaende.zeilen):
+        for j in range(gelaende.spalten):
+            h = gelaende.knoten(i, j)
+            if h is None:
+                continue
+            nachbarn = [gelaende.knoten(i + di, j + dj)
+                        for di, dj in ((0, 1), (0, -1), (1, 0), (-1, 0))]
+            if any(n is None or abs(n - h) > grenze for n in nachbarn):
+                continue
+            stufe = round(h, 1)
+            zaehler[stufe] = zaehler.get(stufe, 0) + 1
+    return sorted(s for s, n in zaehler.items() if n >= PLATEAU_KNOTEN)
+
+
 __all__ = ["GELAENDE_ZELLE_M", "PLATEAU_NEIGUNG_GRAD", "PLATEAU_KNOTEN", "MAX_STUFE_M",
-           "Gelaende", "gitter", "umriss", "verschoben", "zusammenfassung"]
+           "Gelaende", "gitter", "umriss", "verschoben", "zusammenfassung",
+           "klippen", "plateaus"]
