@@ -262,7 +262,8 @@ class Sicht3D(QOpenGLWidget):
             return self._p.akzent
         art = schluessel[0]
         if art == "gelaende":
-            return mische(self._p.rand, self._p.text, min(0.35, 0.05 * schluessel[1]))
+            # Heller als die Boeden (`rand`), damit ein Podest auf dem Gelaende absetzt.
+            return mische(self._p.rand, self._p.text, min(0.5, 0.25 + 0.05 * schluessel[1]))
         if art == "tag":
             return self._p.zahl
         if art == "start":
