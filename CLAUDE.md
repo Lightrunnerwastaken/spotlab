@@ -480,6 +480,19 @@ versionsgepinntes Extra `spotlab[sim]`.
 
 ## Umsetzungsstand
 
+**Stufe 14 (07.09.2026): Korrigierer und Gelände — Etappen 1 „Kern" und 2 „Sichten" gebaut**
+— Raumformat v4: `Raum.gelaende` (`welt/gelaende.py`, Höhenraster mit `None` für „kein
+Boden", bilinear abgetastet, Klippen an Knotensprüngen über `MAX_STUFE_M`, Plateaus als
+Ebenen, Binärdatei `.gelaende` neben der Raumdatei mit Verweis `[gelaende]`); der Grund in
+`boden_bei` ist das Gelände, wo es eines gibt, sonst 0; `klippen_von` merkt sich Klippen je
+Böden und Gelände; Pauspapier PAUS2 trägt den gelaufenen Weg mit Bodenhöhe, die
+Rekonstruktion liefert ihn (`Ergebnis.weg`), der Tab speichert und lädt ihn. Sichten: 2D als
+Relief-Bild mit Höhenlinien alle 0.25 m (einmal je Raum gerendert, `theme.mische`), Markierung,
+Kandidaten und offene Ränder in `Sicht2D`; 3D als Dreiecksnetz je Höhenband; MuJoCo als
+`hfield` (Puppe Fassung 5, Zeilenrichtung per Strahl geprüft); im Editor eine Listenzeile,
+nur lesend, verschieben/heben/löschen. Offen: Etappe 3 (Korrigierer: Lücken, Geländebau,
+Dialog, Katakomben) — Spec `docs/superpowers/specs/2026-09-07-korrigierer-gelaende-design.md`.
+
 **Stufe 13 (06.09.2026): Höhe, Rampen und Treppen — alle vier Etappen gebaut** — Raumformat
 v3 (`Boden` als Podest, Rampe oder Treppe; `z` an Wand, Block, Tag), `welt/hoehe.py`
 (Boden unter einem Punkt, Neigung, Ebenen, Klippen, Treppenlage und -regel, Kästen),

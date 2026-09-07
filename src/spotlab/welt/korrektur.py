@@ -214,5 +214,5 @@ def finde_luecken(raum, weg=(), pauspapier=(), max_luecke=MAX_LUECKE_M,
             gefunden.append(luecke)
     gefunden += _kreuzende(raum, weg)
     index = punktindex(pauspapier)
-    gefunden = [_mit_vorschlag(l, list(weg), index) for l in gefunden]
-    return sorted(gefunden, key=lambda l: l.laenge)
+    gefunden = [_mit_vorschlag(lk, list(weg), index) for lk in gefunden]
+    return sorted(gefunden, key=lambda lk: lk.laenge)
