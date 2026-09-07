@@ -43,16 +43,34 @@ def test_die_tasten_werden_zum_befehl_und_der_takt_laeuft_solange_etwas_gedrueck
     assert befehle[-1] == (0.0, 0.0, 0.0) and befehle[0] == (fahrt.TEMPO_M_S, 0.0, 0.0)
 
 
-def test_der_faktor_drosselt_alle_drei_achsen(qapp, tmp_path):
+def test_die_stufe_drosselt_alle_drei_achsen(qapp, tmp_path):
     t = Tastenfahrt()
     t.beginne(tmp_path)
-    t.faktor = 0.5
+    assert t.stufe == "normal" and t.faktor == 1.0
+    t.setze_stufe("langsam")
     t.druecke("w")
     t.druecke("a")
     t.druecke("e")
     vx, vy, wz = fahrt.lies(tmp_path)
     assert (vx, vy, wz) == (pytest.approx(fahrt.TEMPO_M_S / 2), pytest.approx(fahrt.QUER_M_S / 2),
                             pytest.approx(-fahrt.DREH_RAD_S / 2))
+    with pytest.raises(ValueError):
+        t.setze_stufe("rasend")
+
+
+def test_die_zifferntasten_schalten_die_stufe_waehrend_der_fahrt(qapp, tmp_path):
+    t = Tastenfahrt()
+    stufen = []
+    t.stufe_geaendert.connect(stufen.append)
+    assert not t.tastenereignis(_taste(Qt.Key_3), gedrueckt=True), "ohne Lauf keine Wirkung"
+    t.beginne(tmp_path)
+    t.druecke("w")
+    assert t.tastenereignis(_taste(Qt.Key_3), gedrueckt=True)
+    assert t.stufe == "schnell" and stufen == ["schnell"]
+    assert fahrt.lies(tmp_path) == (pytest.approx(2 * fahrt.TEMPO_M_S), 0.0, 0.0), "sofort geschrieben"
+    assert t.tastenereignis(_taste(Qt.Key_1), gedrueckt=True)
+    assert fahrt.lies(tmp_path) == (pytest.approx(fahrt.TEMPO_M_S / 2), 0.0, 0.0)
+    assert not t.tastenereignis(_taste(Qt.Key_3), gedrueckt=False), "Loslassen einer Ziffer ist nichts"
 
 
 def test_alle_los_und_beende_lassen_spot_stehen(qapp, tmp_path):

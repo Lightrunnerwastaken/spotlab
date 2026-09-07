@@ -20,17 +20,20 @@ FAHRT_TAKT_MS = 200          # solange eine Taste gedrueckt ist: den Zeitstempel
 TASTE_VON_QT = {Qt.Key_W: "w", Qt.Key_A: "a", Qt.Key_S: "s", Qt.Key_D: "d",
                 Qt.Key_Q: "q", Qt.Key_E: "e"}
 HALT_TASTEN = (Qt.Key_Space, Qt.Key_Escape)
+STUFE_VON_QT = {Qt.Key_1: "langsam", Qt.Key_2: "normal", Qt.Key_3: "schnell"}
+VORGABE_STUFE = "normal"
 
 
 class Tastenfahrt(QObject):
     befehl = Signal(float, float, float)      # (vx, vy, wz) nach jedem Schreiben
+    stufe_geaendert = Signal(str)             # Tempostufe, auch per Ziffer gewechselt
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._aktiv = False
         self._tasten = set()
         self._lauf_dir = None
-        self.faktor = 1.0                     # 0.5 = „Langsam" in der Ansicht „Fahren"
+        self._stufe = VORGABE_STUFE
         self.takt = QTimer(self)
         self.takt.setInterval(FAHRT_TAKT_MS)
         self.takt.timeout.connect(self.schreibe)
@@ -48,6 +51,23 @@ class Tastenfahrt(QObject):
     @property
     def lauf_dir(self):
         return self._lauf_dir
+
+    @property
+    def stufe(self):
+        return self._stufe
+
+    @property
+    def faktor(self):
+        return fahrt.faktor_der_stufe(self._stufe)
+
+    def setze_stufe(self, name):
+        """Tempostufe wechseln -- sofort geschrieben, damit eine gehaltene Taste
+        nicht erst beim naechsten Takt langsamer wird."""
+        fahrt.faktor_der_stufe(name)          # unbekannt -> ValueError, nichts geaendert
+        self._stufe = name
+        self.stufe_geaendert.emit(name)
+        if self._aktiv:
+            self.schreibe()
 
     def beginne(self, lauf_dir=None):
         """Ein Lauf faengt an. `lauf_dir` kennt die App oft erst spaeter (Watcher)."""
@@ -78,6 +98,11 @@ class Tastenfahrt(QObject):
         if gedrueckt and taste in HALT_TASTEN:
             self.alle_los()
             return True
+        if taste in STUFE_VON_QT:
+            if gedrueckt:
+                self.setze_stufe(STUFE_VON_QT[taste])
+                return True
+            return False
         if taste not in TASTE_VON_QT:
             return False
         if gedrueckt:

@@ -354,8 +354,12 @@ jedes Kommando trägt eine Endzeit von rund einer Sekunde: stirbt die GUI oder d
 steht der Roboter. Wechselst du den Reiter oder verliert das Fenster den Fokus (Alt-Tab mit
 gehaltenem W), lässt der Tab alle Tasten los und Spot steht.
 
-**„Langsam"** (vorausgewählt) halbiert alle drei Achsen auf 0.2 m/s; der Deckel aus
-`config.toml` gilt zusätzlich. „■ Stopp" ist derselbe freundliche Stopp wie in der
+**Drei Tempostufen**, als Auswahl im Tab oder mit den Tasten **1**, **2**, **3** während
+der Fahrt: Langsam 0.2 m/s (vorausgewählt), Normal 0.4 m/s, Schnell 0.8 m/s; seitwärts und
+drehen skalieren mit. Der Deckel aus `config.toml` gilt zusätzlich, „Schnell" ist genau die
+Voreinstellung `max_speed`, und die Drehrate wird dort auf `max_turn_rate` geklemmt. Ein
+Wechsel wirkt sofort, auch bei gehaltener Taste. Dieselben Stufen gelten im Übungsfenster
+(dort ist Normal vorausgewählt). „■ Stopp" ist derselbe freundliche Stopp wie in der
 Live-Ansicht, der **NOT-AUS** steht im Kopf, in jedem Reiter. Freifläche, Aufsicht, Tablet mit
 Not-Aus in Reichweite — und vor dem ersten Mal Abnahmepunkt **A1** (`docs/ABNAHME.md`), sonst
 ist nicht belegt, dass der Not-Aus am Tablet während des Laufs wirkt.

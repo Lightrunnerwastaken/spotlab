@@ -209,6 +209,21 @@ def test_im_fahrmodus_schreiben_die_tasten_den_fahrbefehl(qapp, tmp_path):
     assert not fenster.tastenfahrt.takt.isActive()
 
 
+def test_im_fahrmodus_schalten_die_ziffern_das_tempo(qapp, tmp_path):
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+
+    from spotlab.record import fahrt
+
+    fenster = Uebungsfenster(DUNKEL)
+    fenster.beginne(raum_laden("leer"), (1.0, 1.0, 0.0), "fahren.py", lauf_dir=tmp_path, fahrt=True)
+    assert fenster.tastenfahrt.stufe == "normal"
+    QTest.keyPress(fenster, Qt.Key_W)
+    QTest.keyPress(fenster, Qt.Key_3)
+    assert fahrt.lies(tmp_path) == (pytest.approx(2 * fahrt.TEMPO_M_S), 0.0, 0.0)
+    assert "1/2/3" in fenster.fahrt_zeile.text()
+
+
 def test_im_fahrmodus_haelt_das_fenster_die_tastatur(qapp, tmp_path):
     """Die Tasten muessen ankommen, egal welches Widget der App gerade den Fokus hat --
     sonst fuhr nichts, und die Leertaste haette den fokussierten Stopp-Knopf gedrueckt."""

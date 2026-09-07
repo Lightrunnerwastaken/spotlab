@@ -29,6 +29,18 @@ TASTEN = {
     "a": (0.0, QUER_M_S, 0.0), "d": (0.0, -QUER_M_S, 0.0),
     "q": (0.0, 0.0, DREH_RAD_S), "e": (0.0, 0.0, -DREH_RAD_S),
 }
+# Tempostufen: ein Faktor auf alle drei Achsen (Tasten 1 2 3, Auswahl im Tab
+# „Fahren"). Der Deckel aus config.toml gilt zusaetzlich -- `walk` klemmt:
+# "schnell" heisst 0.8 m/s, so viel wie die Vorgabe max_speed, und 90 Grad/s,
+# mehr als max_turn_rate erlaubt; was darueber liegt, kommt nie beim Roboter an.
+STUFEN = (("langsam", 0.5), ("normal", 1.0), ("schnell", 2.0))
+
+
+def faktor_der_stufe(name):
+    for stufe, faktor in STUFEN:
+        if stufe == name:
+            return faktor
+    raise ValueError(f"Tempostufe {name!r} -- erwartet eine von {[s for s, _ in STUFEN]}.")
 
 
 def befehl_aus_tasten(tasten, faktor=1.0):

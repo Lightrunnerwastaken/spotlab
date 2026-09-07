@@ -38,6 +38,16 @@ def test_die_tastenbelegung():
         pytest.approx(fahrt.DREH_RAD_S / 2))
 
 
+def test_die_tempostufen():
+    """Drei Stufen als Faktor auf alle Achsen; der Deckel aus config.toml gilt zusaetzlich."""
+    assert [name for name, _ in fahrt.STUFEN] == ["langsam", "normal", "schnell"]
+    assert fahrt.faktor_der_stufe("langsam") == 0.5
+    assert fahrt.faktor_der_stufe("normal") == 1.0
+    assert fahrt.faktor_der_stufe("schnell") == 2.0
+    with pytest.raises(ValueError):
+        fahrt.faktor_der_stufe("rasend")
+
+
 def test_schreiben_uebersteht_einen_kurzen_lesekonflikt(tmp_path, monkeypatch):
     """Windows: os.replace scheitert mit PermissionError, solange der Leser die Datei
     offen hat (gesehen in der Gesamtsuite am 07.09.2026). Kurz wiederholen, dann

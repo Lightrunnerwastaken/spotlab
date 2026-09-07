@@ -24,7 +24,7 @@ import math
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QApplication,
-    QCheckBox,
+    QComboBox,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -35,17 +35,18 @@ from PySide6.QtWidgets import (
 from spotlab.gui.tastenfahrt import Tastenfahrt
 from spotlab.record import fahrt
 
-LANGSAM_FAKTOR = 0.5
+VORGABE_STUFE = "langsam"             # am echten Roboter gemächlich anfangen
 
 HINWEIS = (
     'Startet das Programm „fahren.py" aus dem Projekt Beispiele am ECHTEN Spot — mit Lease, '
     "Not-Aus-Endpunkt und den Tempogrenzen aus der Konfiguration, aufgezeichnet wie jeder Lauf. "
-    "Tasten: W/S vor und zurück · A/D seitwärts · Q/E drehen · Leertaste oder Esc hält. "
+    "Tasten: W/S vor und zurück · A/D seitwärts · Q/E drehen · 1/2/3 Tempo · "
+    "Leertaste oder Esc hält. "
     "Losgelassen heisst Stopp (Totmannschalter, ½ s); stirbt die GUI, steht Spot nach einer "
     "Sekunde. Freifläche, Aufsicht, Tablet mit Not-Aus in Reichweite — "
     "vor dem ersten Mal Abnahmepunkt A1 (docs/ABNAHME.md)."
 )
-BELEGUNG = "W A S D Q E  ·  Leertaste hält"
+BELEGUNG = "W A S D Q E  ·  1 2 3 Tempo  ·  Leertaste hält"
 
 
 class FahrenView(QWidget):
@@ -66,11 +67,12 @@ class FahrenView(QWidget):
 
         self.start = QPushButton("🎮 Fahrt beginnen")
         self.start.clicked.connect(self._start_geklickt)
-        self.langsam = QCheckBox(
-            f"Langsam — halbes Tempo ({fahrt.TEMPO_M_S * LANGSAM_FAKTOR:.1f} m/s)"
-        )
-        self.langsam.setChecked(True)
-        self.langsam.toggled.connect(self._tempo_umgeschaltet)
+        self.stufe = QComboBox()
+        self.stufe.setToolTip("Tempostufe — auch mit den Tasten 1, 2, 3 während der Fahrt")
+        for name, faktor in fahrt.STUFEN:
+            self.stufe.addItem(f"{name.capitalize()} — {fahrt.TEMPO_M_S * faktor:.1f} m/s", name)
+        self.stufe.setCurrentIndex(self.stufe.findData(VORGABE_STUFE))
+        self.stufe.currentIndexChanged.connect(self._stufe_gewaehlt)
         self.stopp = QPushButton("■ Stopp")
         self.stopp.setEnabled(False)
         self.stopp.clicked.connect(self._stopp_geklickt)
@@ -78,7 +80,8 @@ class FahrenView(QWidget):
         knoepfe = QHBoxLayout()
         knoepfe.addWidget(self.start)
         knoepfe.addWidget(self.stopp)
-        knoepfe.addWidget(self.langsam)
+        knoepfe.addWidget(QLabel("Tempo"))
+        knoepfe.addWidget(self.stufe)
         knoepfe.addStretch(1)
 
         self.belegung = QLabel(BELEGUNG)
@@ -101,7 +104,8 @@ class FahrenView(QWidget):
 
         self.tastenfahrt = Tastenfahrt(self)
         self.tastenfahrt.befehl.connect(self._zeige_befehl)
-        self._tempo_umgeschaltet(self.langsam.isChecked())
+        self.tastenfahrt.stufe_geaendert.connect(self._zeige_stufe)
+        self.tastenfahrt.setze_stufe(VORGABE_STUFE)
         app = QApplication.instance()
         if app is not None:
             app.applicationStateChanged.connect(self._app_zustand)
@@ -151,10 +155,17 @@ class FahrenView(QWidget):
         self.tastenfahrt.alle_los()
         self.stopp_gewuenscht.emit()
 
-    def _tempo_umgeschaltet(self, langsam):
-        self.tastenfahrt.faktor = LANGSAM_FAKTOR if langsam else 1.0
-        if self._laeuft:
-            self.tastenfahrt.schreibe()
+    def _stufe_gewaehlt(self, _index):
+        name = self.stufe.currentData()
+        if name and name != self.tastenfahrt.stufe:
+            self.tastenfahrt.setze_stufe(name)
+
+    def _zeige_stufe(self, name):
+        # Per Ziffer gewechselt: die Auswahl folgt, ohne noch einmal zu setzen.
+        if self.stufe.currentData() != name:
+            self.stufe.blockSignals(True)
+            self.stufe.setCurrentIndex(self.stufe.findData(name))
+            self.stufe.blockSignals(False)
 
     # -------------------------------------------------------------- Tasten
 

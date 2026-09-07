@@ -32,7 +32,8 @@ from spotlab.record import kamera
 from spotlab.welt.raum import raum_laden
 
 ZOOM_STUFE = 1.25            # je Rad-Raste
-FAHRT_HINWEIS = "Fahren: W/S vor und zurück · A/D seitwärts · Q/E drehen · Leertaste hält"
+FAHRT_HINWEIS = ("Fahren: W/S vor und zurück · A/D seitwärts · Q/E drehen · "
+                 "1/2/3 Tempo · Leertaste hält")
 
 
 class _Ansichtsbild(QLabel):

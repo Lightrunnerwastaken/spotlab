@@ -37,16 +37,30 @@ def test_der_knopf_wuenscht_die_fahrt_und_der_stopp_delegiert(qapp, tmp_path):
 def test_im_lauf_schreiben_die_tasten_den_befehl_langsam_voreingestellt(qapp, tmp_path):
     ansicht = FahrenView()
     ansicht.lauf_beginnt(tmp_path, "fahren.py")
-    assert ansicht.laeuft() and ansicht.langsam.isChecked()
+    assert ansicht.laeuft() and ansicht.stufe.currentData() == "langsam"
     QTest.keyPress(ansicht, Qt.Key_W)
     assert fahrt.lies(tmp_path) == (pytest.approx(fahrt.TEMPO_M_S / 2), 0.0, 0.0)
     assert "W" in ansicht.gedrueckt.text()
-    ansicht.langsam.setChecked(False)
+    ansicht.stufe.setCurrentIndex(1)                             # normal
     QTest.keyPress(ansicht, Qt.Key_Q)
     assert fahrt.lies(tmp_path) == (fahrt.TEMPO_M_S, 0.0, fahrt.DREH_RAD_S)
     QTest.keyPress(ansicht, Qt.Key_Space)
     assert fahrt.lies(tmp_path) == (0.0, 0.0, 0.0)
     assert "—" in ansicht.gedrueckt.text()
+
+
+def test_die_stufen_stehen_zur_wahl_und_die_ziffern_schalten_sie(qapp, tmp_path):
+    ansicht = FahrenView()
+    assert [ansicht.stufe.itemData(i) for i in range(ansicht.stufe.count())] == ["langsam", "normal", "schnell"]
+    assert "0.2" in ansicht.stufe.itemText(0) and "0.8" in ansicht.stufe.itemText(2)
+    ansicht.lauf_beginnt(tmp_path, "fahren.py")
+    QTest.keyPress(ansicht, Qt.Key_3)
+    assert ansicht.stufe.currentData() == "schnell", "die Auswahl folgt der Taste"
+    QTest.keyPress(ansicht, Qt.Key_W)
+    assert fahrt.lies(tmp_path) == (pytest.approx(2 * fahrt.TEMPO_M_S), 0.0, 0.0)
+    ansicht.stufe.setCurrentIndex(0)
+    assert fahrt.lies(tmp_path) == (pytest.approx(fahrt.TEMPO_M_S / 2), 0.0, 0.0), "die Auswahl schreibt sofort"
+    assert ansicht.tastenfahrt.stufe == "langsam"
 
 
 def test_die_ansicht_haelt_die_tastatur_nur_solange_sie_sichtbar_ist(qapp, tmp_path):

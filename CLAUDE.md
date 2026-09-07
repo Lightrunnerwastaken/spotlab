@@ -558,7 +558,10 @@ die ganze Kette — Knopf, Prozess, Watcher, Fenster, Taste, Aufzeichnung. **Der
 „Fahren"** (`gui/views/fahren.py`) fährt damit den ECHTEN Spot: dasselbe Programm aus
 Beispiele, derselbe eine Startweg (`app.py::_starte_fahrt(FAHREN_BACKEND)`, Backend „real"
 erzwungen, nie die Wahl im Editor geerbt), die Tasten über `gui/tastenfahrt.py` — die eine
-Formulierung für Übungsfenster und Tab (Tastenmenge, 200-ms-Takt, Faktor „Langsam" 0.5).
+Formulierung für Übungsfenster und Tab (Tastenmenge, 200-ms-Takt, Tempostufen
+`record/fahrt.py::STUFEN` langsam 0.5 / normal 1 / schnell 2 als Faktor auf alle drei
+Achsen, Tasten 1 2 3; im Tab ist langsam vorausgewählt, im Übungsfenster normal; ein
+Wechsel schreibt sofort, sonst führe eine gehaltene Taste bis zum nächsten Takt weiter).
 Der Tab hält die Tastatur nur, solange er sichtbar ist und der Lauf lebt; **Reiterwechsel
 und Fokusverlust der App lassen alle Tasten los und schreiben Stillstand** — Qt schickt bei
 Alt-Tab kein KeyRelease, der Takt frischte den letzten Befehl sonst blind auf. Stopp

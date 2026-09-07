@@ -644,16 +644,18 @@ Anstoss durch (07.09.2026).
 während des Laufs nachweislich wirken.
 
 **Vorgehen** Freifläche, Aufsicht, Tablet mit Not-Aus in der Hand einer zweiten Person. In
-der Ansicht „Fahren" „🎮 Fahrt beginnen" („Langsam" bleibt an). Warten, bis die Zeile
-„fahren.py läuft — Tasten sind scharf" steht. Dann nacheinander: W kurz halten und
-loslassen; Q, dann E; A, dann D; W halten und dabei mit der Maus auf den Reiter „Live-Lauf"
-klicken; zurück, W halten und mit Alt-Tab in ein anderes Fenster wechseln; zurück und
-„■ Stopp".
+der Ansicht „Fahren" „🎮 Fahrt beginnen" (Tempo „Langsam" bleibt gewählt). Warten, bis die
+Zeile „fahren.py läuft — Tasten sind scharf" steht. Dann nacheinander: W kurz halten und
+loslassen; Q, dann E; A, dann D; W halten, dabei 2 drücken (Normal) und wieder 1 (Langsam);
+W halten und dabei mit der Maus auf den Reiter „Live-Lauf" klicken; zurück, W halten und
+mit Alt-Tab in ein anderes Fenster wechseln; zurück und „■ Stopp".
 
 **Erwartung**
 - (1) W bewegt den Spot vorwärts mit etwa 0.2 m/s, das Tempo in der Zustandszeile passt;
   losgelassen steht er binnen einer halben Sekunde (Totmannschalter).
 - (2) Q und E drehen links und rechts, A und D gehen seitwärts, ohne Vorwärtsanteil.
+- (2a) Mit 2 wird der Spot bei gehaltenem W sichtbar schneller (0.4 m/s), mit 1 sofort
+  wieder langsamer; die Auswahl im Tab folgt der Taste.
 - (3) Beim Reiterwechsel mit gehaltenem W steht der Spot sofort; ebenso bei Alt-Tab.
 - (4) „■ Stopp" beendet den Lauf geordnet: Spot setzt sich, `lauf.json` trägt
   `abgebrochen`, die Aufzeichnung enthält `walk`-Kommandos mit `vx` 0.2.
