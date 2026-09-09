@@ -101,3 +101,40 @@ def test_die_zustandszeile_zeigt_pose_tempo_und_akku(qapp, tmp_path):
                                      "battery": 77.0}})
     text = ansicht.zustand.text()
     assert "1.25" in text and "0.31" in text and "77" in text
+
+
+def test_der_tab_zeigt_den_blick_nach_vorn(qapp, tmp_path):
+    """Wer faehrt, will sehen, wohin: `ansicht.jpg` aus dem Lauf-Verzeichnis --
+    am echten Roboter die Frontkameras, im Uebungsraum das gerenderte Zimmer."""
+    from PySide6.QtGui import QImage
+
+    ansicht = FahrenView()
+    assert "Kein Bild" in ansicht.bild.text()
+    pfad = tmp_path / "ansicht.jpg"
+    QImage(64, 32, QImage.Format_RGB888).save(str(pfad))
+
+    ansicht.lauf_beginnt(tmp_path, "fahren.py")
+    ansicht.zeige_ansicht(pfad)
+    assert ansicht.bild.pixmap() is not None and not ansicht.bild.pixmap().isNull()
+
+    ansicht.zeige_ansicht(tmp_path / "gibtsnicht.jpg")     # halb geschrieben oder weg
+    assert not ansicht.bild.pixmap().isNull(), "das letzte Bild bleibt stehen"
+
+    ansicht.lauf_beendet()
+    assert "Kein Bild" in ansicht.bild.text()
+
+
+def test_die_app_reicht_die_ansicht_in_den_tab(qapp, tmp_path):
+    from PySide6.QtGui import QImage
+
+    from spotlab.gui.app import MainWindow
+
+    pfad = tmp_path / "ansicht.jpg"
+    QImage(64, 32, QImage.Format_RGB888).save(str(pfad))
+    fenster = MainWindow()
+    tab = fenster.ansichten["fahren"]
+    fenster._ansicht(pfad)
+    assert tab.bild.pixmap() is None or tab.bild.pixmap().isNull(), "ohne Lauf kein Bild"
+    tab.lauf_beginnt(tmp_path, "fahren.py")
+    fenster._ansicht(pfad)
+    assert not tab.bild.pixmap().isNull()

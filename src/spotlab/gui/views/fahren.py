@@ -22,6 +22,7 @@ Diese Ansicht importiert weder `bosdyn` noch `spotlab.backends`.
 import math
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -47,6 +48,7 @@ HINWEIS = (
     "vor dem ersten Mal Abnahmepunkt A1 (docs/ABNAHME.md)."
 )
 BELEGUNG = "W A S D Q E  ·  1 2 3 Tempo  ·  Leertaste hält"
+BILD_BREITE_PX = 640          # die beiden Frontbilder nebeneinander
 
 
 class FahrenView(QWidget):
@@ -84,6 +86,15 @@ class FahrenView(QWidget):
         knoepfe.addWidget(self.stufe)
         knoepfe.addStretch(1)
 
+        # Der Blick nach vorn: `workshop/blick.py` schreibt `ansicht.jpg` aus den
+        # beiden Frontkameras ins Lauf-Verzeichnis, der Watcher meldet jede
+        # Aenderung. Die GUI holt sich nichts vom Roboter -- die Platte bleibt
+        # der einzige Kanal.
+        self.bild = QLabel("Kein Bild — der Blick kommt, sobald der Lauf steht.")
+        self.bild.setObjectName("Gedaempft")
+        self.bild.setAlignment(Qt.AlignCenter)
+        self.bild.setMinimumHeight(200)
+
         self.belegung = QLabel(BELEGUNG)
         self.belegung.setObjectName("Kachelname")
         self.gedrueckt = QLabel("—")
@@ -96,6 +107,7 @@ class FahrenView(QWidget):
         anordnung.addWidget(titel)
         anordnung.addWidget(hinweis)
         anordnung.addLayout(knoepfe)
+        anordnung.addWidget(self.bild, 1)
         anordnung.addWidget(self.belegung)
         anordnung.addWidget(self.gedrueckt)
         anordnung.addWidget(self.befehl_zeile)
@@ -133,6 +145,15 @@ class FahrenView(QWidget):
         self.gedrueckt.setText("—")
         self.befehl_zeile.setText("Spot steht.")
         self.zustand.setText("Kein Lauf.")
+        self.bild.clear()
+        self.bild.setText("Kein Bild — der Blick kommt, sobald der Lauf steht.")
+
+    def zeige_ansicht(self, pfad):
+        """Das neueste Kamerabild des Laufs (`ansicht.jpg`)."""
+        pixmap = QPixmap(str(pfad))
+        if pixmap.isNull():                      # halb geschriebene Datei: nicht leeren
+            return
+        self.bild.setPixmap(pixmap.scaledToWidth(BILD_BREITE_PX, Qt.SmoothTransformation))
 
     def zeige_zustand(self, satz):
         daten = satz.get("daten") or {}

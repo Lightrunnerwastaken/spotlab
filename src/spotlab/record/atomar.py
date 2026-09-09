@@ -18,11 +18,19 @@ PAUSE_S = 0.01
 _ersetze = os.replace          # austauschbar fuer Tests
 
 
-def schreibe_atomar(ziel, text, versuche=VERSUCHE, pause_s=PAUSE_S):
-    """`text` nach `ziel`: erst `.tmp`, dann ersetzen. True, wenn es gelang."""
+def schreibe_atomar(ziel, inhalt, versuche=VERSUCHE, pause_s=PAUSE_S):
+    """`inhalt` nach `ziel`: erst `.tmp`, dann ersetzen. True, wenn es gelang.
+
+    Text wird als UTF-8 geschrieben, `bytes` woertlich -- dasselbe Verfahren
+    traegt `fahrt.json` und das Bild `ansicht.jpg`, das die GUI im selben
+    Augenblick liest.
+    """
     ziel = Path(ziel)
     temporaer = ziel.with_suffix(".tmp")
-    temporaer.write_text(text, encoding="utf-8")
+    if isinstance(inhalt, (bytes, bytearray)):
+        temporaer.write_bytes(inhalt)
+    else:
+        temporaer.write_text(inhalt, encoding="utf-8")
     for versuch in range(versuche):
         try:
             _ersetze(temporaer, ziel)

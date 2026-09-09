@@ -31,6 +31,7 @@ Bis zum 06.09.2026 rendertete der Hauptthread die Ansicht nebenbei — und
 GL-Kontext, den zwei Threads benutzen, ist ein Absturz ohne Traceback.
 """
 
+import io
 import math
 import os
 import threading
@@ -226,7 +227,7 @@ class _Ansichtsschreiber(threading.Thread):
     def run(self):
         from PIL import Image
 
-        from spotlab.record import kamera
+        from spotlab.record import atomar, kamera
 
         ansicht = None
         letzte = None
@@ -242,14 +243,13 @@ class _Ansichtsschreiber(threading.Thread):
                     modus, zoom = kamera.lies(self._ziel.parent)
                 qpos = self._posen.bei(float("inf") if beendet else beginn - ANZEIGE_VERZUG_S)
                 if qpos is not None and (qpos, modus, zoom) != letzte:
-                    temporaer = self._ziel.with_suffix(".tmp")
+                    puffer = io.BytesIO()
                     Image.fromarray(ansicht.bild(qpos, modus, zoom)).save(
-                        temporaer, format="JPEG", quality=82)
-                    try:
-                        os.replace(temporaer, self._ziel)
-                    except PermissionError:
-                        pass  # kurzer Windows-Lesekonflikt: naechstes Bild erneut versuchen
-                    else:
+                        puffer, format="JPEG", quality=82)
+                    # Derselbe geduldige Ersetzer wie fuer fahrt.json: unter
+                    # Windows scheitert os.replace, solange die GUI die Datei
+                    # gerade liest.
+                    if atomar.schreibe_atomar(self._ziel, puffer.getvalue()):
                         letzte = (qpos, modus, zoom)
                 if beendet:
                     break
@@ -265,6 +265,11 @@ class _Ansichtsschreiber(threading.Thread):
 
 class MujocoBackend(SimBackend):
     """Bewegt sich nach Gangkennlinie und Antwortmodell — in einem 3D-Zimmer."""
+
+    # Dieses Backend schreibt `ansicht.jpg` selbst (Ansichtsthread): das Zimmer
+    # von aussen, zum Fahren besser als ein Fischauge. `workshop/blick.py`
+    # haelt sich deshalb heraus -- zwei Schreiber auf einer Datei gibt es nie.
+    schreibt_ansicht = True
 
     def __init__(self, recorder=None, jetzt=time.time, modell=None, raum=None,
                  start=None, antwort=None, ansicht_ziel=None, treppen="auto"):

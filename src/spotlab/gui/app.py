@@ -425,9 +425,16 @@ class MainWindow(QWidget):
             self.uebungsfenster.activateWindow()             # die Tasten sollen dort ankommen
 
     def _ansicht(self, pfad):
-        """Das gerenderte Zimmer des MuJoCo-Backends -- ans offene Uebungsfenster."""
+        """Die Ansicht des Laufs -- ans Uebungsfenster und in den Tab „Fahren".
+
+        Im Uebungsraum ist das Zimmer von aussen (MuJoCo rendert es), am echten
+        Roboter der Blick der Frontkameras (`workshop/blick.py`). Dieselbe
+        Datei, derselbe Weg: die Platte ist der einzige Kanal.
+        """
         if self.uebungsfenster is not None and self.uebungsfenster.isVisible():
             self.uebungsfenster.zeige_ansicht(pfad)
+        if self.ansichten["fahren"].laeuft():
+            self.ansichten["fahren"].zeige_ansicht(pfad)
 
     # ---------------------------------------------------------------- Video
 

@@ -463,6 +463,17 @@ versionsgepinntes Extra `spotlab[sim]`.
 - Der Editor schreibt Dateien mit `encoding="utf-8", newline="\n"`. Ohne das schreibt Python
   auf Windows CRLF, und jede Datei sieht nach dem ersten Speichern in git vollständig
   geändert aus.
+- **`ansicht.jpg` ist DIE ANSICHT DES LAUFS — geschrieben von dem, der sie hat.** Im
+  Übungsraum rendert MuJoCo das Zimmer von aussen (Ansichtsthread), am echten Roboter
+  schreibt `workshop/blick.py` das Bild der beiden Frontkameras: aufrecht gedreht
+  (−102° und −78°, die Winkel des SDK-Beispiels `image_viewer.py`, an der Aufzeichnung
+  vom 12.08.2026 nachgeprüft) und `frontright` LINKS neben `frontleft`, denn die
+  Kameras schauen über Kreuz. **Zwei Schreiber gibt es nie:** ein Lauf hat genau ein
+  Backend, und `MujocoBackend.schreibt_ansicht` sagt es dem Blick. Der Blick läuft in
+  einem eigenen Thread (ein Bildabruf über WLAN dauert länger als ein Fahrtakt) und
+  **nicht über `spot.camera()`** — jenes schreibt über den `RunRecorder` mit, und
+  `bilder.json` wird dabei je Bild vollständig neu geschrieben. Ein Fehler beendet den
+  Blick, nie den Lauf: ohne Bild fährt man weiter, ohne Fahrbefehle nicht.
 - **Das Fenstersymbol ist FREIGESTELLT und liegt im Paket** (`gui/spotlab.png`, runde
   Ecken mit Transparenz aussen, dazu `package-data`). Ein Symbol mit eigenem
   Hintergrund sitzt in der Taskleiste in einem grauen Kasten, und ohne den

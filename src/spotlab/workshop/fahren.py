@@ -22,6 +22,7 @@ from pathlib import Path
 
 from spotlab.record import fahrt
 from spotlab.record.run import STOPP_DATEI
+from spotlab.workshop import blick
 from spotlab.workshop.beispiele import ORDNER
 
 DATEINAME = "fahren.py"
@@ -33,26 +34,40 @@ def skript_in(arbeitsordner):
     return Path(arbeitsordner) / ORDNER / DATEINAME
 
 
-def fahre(spot, lauf_dir, jetzt=time.time, schlaf=time.sleep, takt_s=TAKT_S, laeuft=None):
+def fahre(spot, lauf_dir, jetzt=time.time, schlaf=time.sleep, takt_s=TAKT_S, laeuft=None,
+          mit_blick=True):
     """Die Schleife: `fahrt.json` lesen, fahren oder einmal anhalten, bis `laeuft()` falsch ist.
 
     Testbar ohne Roboter: `spot` braucht nur `walk` und `stop`, `jetzt` und
     `schlaf` sind die Uhr. Am Ende hält Spot immer.
+
+    `mit_blick`: nebenher schreibt ein eigener Thread `ansicht.jpg` aus den
+    Frontkameras, damit man beim Fahren SIEHT, wohin (`workshop/blick.py`).
+    Im Übungsraum rendert MuJoCo die Ansicht selbst; dann hält der Blick sich
+    heraus. Ein Bildabruf dauert länger als ein Fahrtakt -- deshalb ein Thread
+    und nicht diese Schleife.
     """
     lauf_dir = Path(lauf_dir)
     if laeuft is None:
         def laeuft():
             return not (lauf_dir / STOPP_DATEI).exists()
 
+    seher = blick.starte(spot, lauf_dir) if mit_blick else None
     faehrt = False
-    while laeuft():
-        vx, vy, wz = fahrt.lies(lauf_dir, jetzt=jetzt)
-        if (vx, vy, wz) != fahrt.STILL:
-            spot.walk(vx=vx, vy=vy, wz=wz, stop=False)
-            faehrt = True
-        elif faehrt:
-            spot.stop()
-            faehrt = False
-        schlaf(takt_s)
-    spot.stop()
+    try:
+        while laeuft():
+            vx, vy, wz = fahrt.lies(lauf_dir, jetzt=jetzt)
+            if (vx, vy, wz) != fahrt.STILL:
+                spot.walk(vx=vx, vy=vy, wz=wz, stop=False)
+                faehrt = True
+            elif faehrt:
+                spot.stop()
+                faehrt = False
+            schlaf(takt_s)
+    finally:
+        # Erst anhalten, dann den Blick abbauen: ein haengender Bildabruf darf
+        # den Stopp nicht verzoegern.
+        spot.stop()
+        if seher is not None:
+            seher.beenden()
 
