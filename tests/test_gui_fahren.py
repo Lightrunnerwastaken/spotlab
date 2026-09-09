@@ -103,38 +103,69 @@ def test_die_zustandszeile_zeigt_pose_tempo_und_akku(qapp, tmp_path):
     assert "1.25" in text and "0.31" in text and "77" in text
 
 
+def _bild(pfad, farbe):
+    from PySide6.QtGui import QColor, QImage
+
+    bild = QImage(64, 36, QImage.Format_RGB888)
+    bild.fill(QColor(farbe))
+    bild.save(str(pfad))
+
+
 def test_der_tab_zeigt_den_blick_nach_vorn(qapp, tmp_path):
     """Wer faehrt, will sehen, wohin: `ansicht.jpg` aus dem Lauf-Verzeichnis --
     am echten Roboter die Frontkameras, im Uebungsraum das gerenderte Zimmer."""
-    from PySide6.QtGui import QImage
-
     ansicht = FahrenView()
-    assert "Kein Bild" in ansicht.bild.text()
+    assert not ansicht.bild.hat_bild() and not ansicht.hinweis_bild.isHidden()
     pfad = tmp_path / "ansicht.jpg"
-    QImage(64, 32, QImage.Format_RGB888).save(str(pfad))
+    _bild(pfad, "red")
 
     ansicht.lauf_beginnt(tmp_path, "fahren.py")
     ansicht.zeige_ansicht(pfad)
-    assert ansicht.bild.pixmap() is not None and not ansicht.bild.pixmap().isNull()
+    assert ansicht.bild.hat_bild() and ansicht.hinweis_bild.isHidden()
 
     ansicht.zeige_ansicht(tmp_path / "gibtsnicht.jpg")     # halb geschrieben oder weg
-    assert not ansicht.bild.pixmap().isNull(), "das letzte Bild bleibt stehen"
+    assert ansicht.bild.hat_bild(), "das letzte Bild bleibt stehen"
 
     ansicht.lauf_beendet()
-    assert "Kein Bild" in ansicht.bild.text()
+    assert not ansicht.bild.hat_bild() and not ansicht.hinweis_bild.isHidden()
+
+
+def test_neue_bytes_unter_gleichem_namen_kommen_an(qapp, tmp_path):
+    """`ansicht.jpg` wird ERSETZT, nicht neu angelegt. Qts Dateicache in
+    `QPixmap(pfad)` zeigte fuer denselben Namen das alte Bild."""
+    ansicht = FahrenView()
+    ansicht.lauf_beginnt(tmp_path, "fahren.py")
+    pfad = tmp_path / "ansicht.jpg"
+    _bild(pfad, "red")
+    ansicht.zeige_ansicht(pfad)
+    _bild(pfad, "blue")
+    ansicht.zeige_ansicht(pfad)
+    farbe = ansicht.bild.pixmap().toImage().pixelColor(5, 5)
+    assert farbe.blue() > 200 > farbe.red()
+
+
+def test_die_bildrate_steht_unter_dem_bild(qapp, tmp_path):
+    ansicht = FahrenView()
+    ansicht.lauf_beginnt(tmp_path, "fahren.py")
+    pfad = tmp_path / "ansicht.jpg"
+    _bild(pfad, "red")
+    uhr = iter([0.0, 0.25, 0.5, 0.75, 1.0])
+    for _ in range(5):
+        ansicht.zeige_ansicht(pfad, jetzt=lambda: next(uhr))
+    assert ansicht.bildrate.text() == "Blick: 4 Bilder/s"
+    ansicht.lauf_beendet()
+    assert ansicht.bildrate.text() == ""
 
 
 def test_die_app_reicht_die_ansicht_in_den_tab(qapp, tmp_path):
-    from PySide6.QtGui import QImage
-
     from spotlab.gui.app import MainWindow
 
     pfad = tmp_path / "ansicht.jpg"
-    QImage(64, 32, QImage.Format_RGB888).save(str(pfad))
+    _bild(pfad, "red")
     fenster = MainWindow()
     tab = fenster.ansichten["fahren"]
     fenster._ansicht(pfad)
-    assert tab.bild.pixmap() is None or tab.bild.pixmap().isNull(), "ohne Lauf kein Bild"
+    assert not tab.bild.hat_bild(), "ohne Lauf kein Bild"
     tab.lauf_beginnt(tmp_path, "fahren.py")
     fenster._ansicht(pfad)
-    assert not tab.bild.pixmap().isNull()
+    assert tab.bild.hat_bild()

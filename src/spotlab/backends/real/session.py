@@ -49,8 +49,18 @@ def _rollback(lease, wache):
             pass
 
 
+# Zeitgrenze eines Bildabrufs: ein abgerissenes WLAN darf keinen Thread ewig halten.
+BILD_FRIST_S = 3.0
+
+
 class RealSpot:
     """Backend für den echten Roboter."""
+
+    # Erlaubnis für `workshop/blick.py`: hier kommt der Blick beim Fahren aus den
+    # Frontkameras. Eine ERLAUBNIS, keine Sperrliste — ein Sim, der Kameras
+    # vortäuscht und die Ansicht selbst rendert, bekommt sonst zwei Schreiber
+    # auf `ansicht.jpg`.
+    blick_aus_kameras = True
 
     def __init__(
         self,
@@ -71,6 +81,7 @@ class RealSpot:
         self._recorder = recorder
         self._geschlossen = False
         self._quellen = None
+        self._farbe_moeglich = None     # None: noch nicht gefragt
         # Lesedienste, erst bei Bedarf angelegt (siehe Abschnitt Wahrnehmung).
         self._welt = None
         self._gitter = None
@@ -212,8 +223,36 @@ class RealSpot:
             self._quellen = [q.name for q in self._images.list_image_sources()]
         return list(self._quellen)
 
-    def images(self, sources):
-        return self._images.get_image([build_image_request(name) for name in sources])
+    def images(self, sources, farbe=False, guete=None):
+        """Bilder der Quellen. `farbe`: RGB erbitten, wo die Kamera es kann.
+
+        Neuere Spots haben farbige Frontkameras (das Tablet zeigt sie so), ältere
+        nur Graustufen. Erbeten wird RGB mit Graustufen als Rückfall; ein Roboter,
+        dessen Software den Rückfall nicht kennt, weist RGB ab — dann wird ohne
+        Farbe erneut gefragt und das Ergebnis gemerkt, damit die Frage nicht bei
+        jedem Bild zweimal über das WLAN geht.
+        """
+        from bosdyn.api import image_pb2
+        from bosdyn.client.image import UnsupportedPixelFormatRequestedError
+
+        guete = 75 if guete is None else guete
+        if farbe and self._farbe_moeglich is not False:
+            anfragen = [
+                build_image_request(
+                    name, quality_percent=guete,
+                    pixel_format=image_pb2.Image.PIXEL_FORMAT_RGB_U8,
+                    fallback_formats=[image_pb2.Image.PIXEL_FORMAT_GREYSCALE_U8])
+                for name in sources]
+            try:
+                antworten = self._images.get_image(anfragen, timeout=BILD_FRIST_S)
+            except UnsupportedPixelFormatRequestedError:
+                self._farbe_moeglich = False
+            else:
+                self._farbe_moeglich = True
+                return antworten
+        return self._images.get_image(
+            [build_image_request(name, quality_percent=guete) for name in sources],
+            timeout=BILD_FRIST_S)
 
     def power_on(self):
         self._lease.raise_if_lost()

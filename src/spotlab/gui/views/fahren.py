@@ -20,15 +20,18 @@ Diese Ansicht importiert weder `bosdyn` noch `spotlab.backends`.
 """
 
 import math
+import time
+from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QPixmap
+from PySide6.QtCore import QRect, Qt, Signal
+from PySide6.QtGui import QPainter, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -48,7 +51,46 @@ HINWEIS = (
     "vor dem ersten Mal Abnahmepunkt A1 (docs/ABNAHME.md)."
 )
 BELEGUNG = "W A S D Q E  ·  1 2 3 Tempo  ·  Leertaste hält"
-BILD_BREITE_PX = 640          # die beiden Frontbilder nebeneinander
+KEIN_BILD = "Kein Bild — der Blick kommt, sobald der Lauf steht."
+
+
+class Bildfeld(QWidget):
+    """Zeigt ein Bild so gross wie möglich, im Seitenverhältnis, ohne eigene Farben.
+
+    Kein `QLabel` mit vorskaliertem Pixmap: das skalierte bei jedem Bild ein
+    zweites Mal auf dem GUI-Thread. Hier wird nur beim Zeichnen skaliert, und
+    nur in die Grösse, die das Feld gerade hat.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._pixmap = None
+        self.setMinimumHeight(240)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+    def setze(self, pixmap):
+        self._pixmap = pixmap
+        self.update()
+
+    def leeren(self):
+        self._pixmap = None
+        self.update()
+
+    def hat_bild(self):
+        return self._pixmap is not None
+
+    def pixmap(self):
+        return self._pixmap
+
+    def paintEvent(self, _ereignis):
+        if self._pixmap is None:
+            return
+        maler = QPainter(self)
+        maler.setRenderHint(QPainter.SmoothPixmapTransform)
+        groesse = self._pixmap.size().scaled(self.size(), Qt.KeepAspectRatio)
+        ziel = QRect(0, 0, groesse.width(), groesse.height())
+        ziel.moveCenter(self.rect().center())
+        maler.drawPixmap(ziel, self._pixmap)
 
 
 class FahrenView(QWidget):
@@ -86,14 +128,19 @@ class FahrenView(QWidget):
         knoepfe.addWidget(self.stufe)
         knoepfe.addStretch(1)
 
-        # Der Blick nach vorn: `workshop/blick.py` schreibt `ansicht.jpg` aus den
-        # beiden Frontkameras ins Lauf-Verzeichnis, der Watcher meldet jede
-        # Aenderung. Die GUI holt sich nichts vom Roboter -- die Platte bleibt
-        # der einzige Kanal.
-        self.bild = QLabel("Kein Bild — der Blick kommt, sobald der Lauf steht.")
-        self.bild.setObjectName("Gedaempft")
-        self.bild.setAlignment(Qt.AlignCenter)
-        self.bild.setMinimumHeight(200)
+        # Der Blick nach vorn: `workshop/blick.py` schreibt `ansicht.jpg` (beide
+        # Frontkameras zu einem Bild) ins Lauf-Verzeichnis, der Watcher meldet
+        # jede Aenderung mit bis zu 60 Hz. Die GUI holt sich nichts vom Roboter
+        # -- die Platte bleibt der einzige Kanal.
+        self.hinweis_bild = QLabel(KEIN_BILD)
+        self.hinweis_bild.setObjectName("Gedaempft")
+        self.hinweis_bild.setAlignment(Qt.AlignCenter)
+        self.bild = Bildfeld()
+        self.bild.hide()
+        self.bildrate = QLabel("")
+        self.bildrate.setObjectName("Gedaempft")
+        self._bilder_seit = 0
+        self._rate_beginn = None
 
         self.belegung = QLabel(BELEGUNG)
         self.belegung.setObjectName("Kachelname")
@@ -107,7 +154,9 @@ class FahrenView(QWidget):
         anordnung.addWidget(titel)
         anordnung.addWidget(hinweis)
         anordnung.addLayout(knoepfe)
+        anordnung.addWidget(self.hinweis_bild)
         anordnung.addWidget(self.bild, 1)
+        anordnung.addWidget(self.bildrate)
         anordnung.addWidget(self.belegung)
         anordnung.addWidget(self.gedrueckt)
         anordnung.addWidget(self.befehl_zeile)
@@ -145,15 +194,38 @@ class FahrenView(QWidget):
         self.gedrueckt.setText("—")
         self.befehl_zeile.setText("Spot steht.")
         self.zustand.setText("Kein Lauf.")
-        self.bild.clear()
-        self.bild.setText("Kein Bild — der Blick kommt, sobald der Lauf steht.")
+        self.bild.leeren()
+        self.bild.hide()
+        self.hinweis_bild.show()
+        self.bildrate.setText("")
+        self._bilder_seit, self._rate_beginn = 0, None
 
-    def zeige_ansicht(self, pfad):
-        """Das neueste Kamerabild des Laufs (`ansicht.jpg`)."""
-        pixmap = QPixmap(str(pfad))
-        if pixmap.isNull():                      # halb geschriebene Datei: nicht leeren
+    def zeige_ansicht(self, pfad, jetzt=time.monotonic):
+        """Das neueste Bild des Laufs (`ansicht.jpg`) -- und die erreichte Bildrate."""
+        # Gleicher Dateiname, neue Bytes: den dateibasierten QPixmap-Cache umgehen
+        # (derselbe Weg wie im Uebungsfenster). Die Datei ist vor dem Dekodieren zu.
+        try:
+            daten = Path(pfad).read_bytes()
+        except OSError:
+            return                               # gerade ersetzt: der naechste Takt bringt es
+        pixmap = QPixmap()
+        if not pixmap.loadFromData(daten):       # halb geschrieben: das letzte Bild bleibt
             return
-        self.bild.setPixmap(pixmap.scaledToWidth(BILD_BREITE_PX, Qt.SmoothTransformation))
+        self.bild.setze(pixmap)
+        if self.bild.isHidden():
+            self.hinweis_bild.hide()
+            self.bild.show()
+        self._zaehle_bild(jetzt())
+
+    def _zaehle_bild(self, t):
+        if self._rate_beginn is None:
+            self._rate_beginn = t
+            return
+        self._bilder_seit += 1
+        dauer = t - self._rate_beginn
+        if dauer >= 1.0:
+            self.bildrate.setText(f"Blick: {self._bilder_seit / dauer:.0f} Bilder/s")
+            self._bilder_seit, self._rate_beginn = 0, t
 
     def zeige_zustand(self, satz):
         daten = satz.get("daten") or {}

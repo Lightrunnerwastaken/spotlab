@@ -373,9 +373,10 @@ steht der Roboter. Wechselst du den Reiter oder verliert das Fenster den Fokus (
 gehaltenem W), lässt der Tab alle Tasten los und Spot steht.
 
 **Der Blick nach vorn.** Während der Fahrt zeigt der Tab, was die beiden Frontkameras
-sehen — aufrecht gedreht und nebeneinander, etwa zweimal je Sekunde. Im Übungsraum steht
-dort stattdessen das gerenderte Zimmer von aussen. Beides kommt als Datei aus dem
-Lauf-Verzeichnis; die Oberfläche spricht nie selbst mit dem Roboter.
+sehen — zu einem Bild zusammengesetzt wie auf dem Tablet, in Farbe, wo der Spot Farbe kann,
+und so schnell, wie er Bilder liefert (die erreichte Rate steht unter dem Bild). Im
+Übungsraum steht dort stattdessen das gerenderte Zimmer von aussen. Beides kommt als Datei
+aus dem Lauf-Verzeichnis; die Oberfläche spricht nie selbst mit dem Roboter.
 
 **Drei Tempostufen**, als Auswahl im Tab oder mit den Tasten **1**, **2**, **3** während
 der Fahrt: Langsam 0.2 m/s (vorausgewählt), Normal 0.4 m/s, Schnell 0.8 m/s; seitwärts und

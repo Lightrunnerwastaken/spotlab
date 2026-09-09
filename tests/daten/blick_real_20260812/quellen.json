@@ -1,0 +1,150 @@
+[
+ {
+  "name": "frontleft_fisheye_image",
+  "cols": 640,
+  "rows": 480,
+  "bildart": "IMAGE_TYPE_VISUAL",
+  "tiefenskala": null,
+  "intrinsik": {
+   "fx": 330.1600646972656,
+   "fy": 329.1148986816406,
+   "cx": 313.14068603515625,
+   "cy": 233.8507537841797
+  },
+  "sensorrahmen": "frontleft_fisheye",
+  "rahmenbaum": {
+   "childToParentEdgeMap": {
+    "frontleft_fisheye": {
+     "parentFrameName": "frontleft",
+     "parentTformChild": {
+      "position": {
+       "x": 0.07845854341867471,
+       "y": -0.00012606923630387008,
+       "z": 0.0011860107354451366
+      },
+      "rotation": {
+       "x": 0.0005418159466751734,
+       "y": 0.002373587868355125,
+       "z": -0.004711623608371918,
+       "w": 0.9999859364606506
+      }
+     }
+    },
+    "frontleft": {
+     "parentFrameName": "head",
+     "parentTformChild": {
+      "position": {
+       "x": 0.4142129344117996,
+       "y": 0.03907723297634222,
+       "z": 0.02519471949190405
+      },
+      "rotation": {
+       "x": 0.147363685111972,
+       "y": 0.8081901726577871,
+       "z": -0.22481771952094806,
+       "w": 0.5239938760319591
+      }
+     }
+    },
+    "head": {
+     "parentFrameName": "body",
+     "parentTformChild": {
+      "position": {
+       "x": -0.0,
+       "y": -0.0,
+       "z": -0.0
+      },
+      "rotation": {
+       "x": -0.0,
+       "y": -0.0,
+       "z": -0.0,
+       "w": 1.0
+      }
+     }
+    },
+    "body": {
+     "parentTformChild": {
+      "position": {},
+      "rotation": {
+       "w": 1.0
+      }
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "frontright_fisheye_image",
+  "cols": 640,
+  "rows": 480,
+  "bildart": "IMAGE_TYPE_VISUAL",
+  "tiefenskala": null,
+  "intrinsik": {
+   "fx": 329.10101318359375,
+   "fy": 328.1240539550781,
+   "cx": 316.4183654785156,
+   "cy": 237.47625732421875
+  },
+  "sensorrahmen": "frontright_fisheye",
+  "rahmenbaum": {
+   "childToParentEdgeMap": {
+    "frontright_fisheye": {
+     "parentFrameName": "frontright",
+     "parentTformChild": {
+      "position": {
+       "x": 0.07814960331643613,
+       "y": 0.0007922994872610268,
+       "z": 0.0019342237853357362
+      },
+      "rotation": {
+       "x": -0.002354829078548453,
+       "y": -0.0010199549685390781,
+       "z": 0.007407353700659904,
+       "w": 0.999969272319418
+      }
+     }
+    },
+    "frontright": {
+     "parentFrameName": "head",
+     "parentTformChild": {
+      "position": {
+       "x": 0.41401703051704125,
+       "y": -0.03514633371386494,
+       "z": 0.02523230217544281
+      },
+      "rotation": {
+       "x": -0.15076761093719496,
+       "y": 0.8087382706873179,
+       "z": 0.2261647127319066,
+       "w": 0.5215947274780214
+      }
+     }
+    },
+    "head": {
+     "parentFrameName": "body",
+     "parentTformChild": {
+      "position": {
+       "x": -0.0,
+       "y": -0.0,
+       "z": -0.0
+      },
+      "rotation": {
+       "x": -0.0,
+       "y": -0.0,
+       "z": -0.0,
+       "w": 1.0
+      }
+     }
+    },
+    "body": {
+     "parentTformChild": {
+      "position": {},
+      "rotation": {
+       "w": 1.0
+      }
+     }
+    }
+   }
+  }
+ }
+]

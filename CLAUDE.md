@@ -463,17 +463,24 @@ versionsgepinntes Extra `spotlab[sim]`.
 - Der Editor schreibt Dateien mit `encoding="utf-8", newline="\n"`. Ohne das schreibt Python
   auf Windows CRLF, und jede Datei sieht nach dem ersten Speichern in git vollständig
   geändert aus.
-- **`ansicht.jpg` ist DIE ANSICHT DES LAUFS — geschrieben von dem, der sie hat.** Im
-  Übungsraum rendert MuJoCo das Zimmer von aussen (Ansichtsthread), am echten Roboter
-  schreibt `workshop/blick.py` das Bild der beiden Frontkameras: aufrecht gedreht
-  (−102° und −78°, die Winkel des SDK-Beispiels `image_viewer.py`, an der Aufzeichnung
-  vom 12.08.2026 nachgeprüft) und `frontright` LINKS neben `frontleft`, denn die
-  Kameras schauen über Kreuz. **Zwei Schreiber gibt es nie:** ein Lauf hat genau ein
-  Backend, und `MujocoBackend.schreibt_ansicht` sagt es dem Blick. Der Blick läuft in
-  einem eigenen Thread (ein Bildabruf über WLAN dauert länger als ein Fahrtakt) und
-  **nicht über `spot.camera()`** — jenes schreibt über den `RunRecorder` mit, und
-  `bilder.json` wird dabei je Bild vollständig neu geschrieben. Ein Fehler beendet den
-  Blick, nie den Lauf: ohne Bild fährt man weiter, ohne Fahrbefehle nicht.
+- **`ansicht.jpg` ist DIE ANSICHT DES LAUFS — geschrieben von dem, der sie hat, und nur
+  mit ERLAUBNIS.** Im Übungsraum rendert MuJoCo das Zimmer von aussen (Ansichtsthread);
+  am echten Roboter schreibt `workshop/blick.py` den Blick der Frontkameras. Einen Blick
+  bekommt nur ein Backend mit `blick_aus_kameras = True` (`RealSpot`) — eine Erlaubnisliste
+  wie `OHNE_ROBOTER`, denn ein Sim, der Kameras vortäuscht und die Ansicht selbst rendert,
+  hätte als Sperrliste zwei Schreiber auf einer Datei. **Das Bild ist EIN Rechteck wie auf
+  dem Tablet** (`backends/real/panorama.py`): beide Bilder auf eine Ebene 1.5 m vor der
+  Kamera projiziert und mit einer virtuellen Zylinderkamera zwischen den beiden angesehen,
+  Intrinsik und Rahmenbaum aus der `ImageResponse` selbst — die Kameras schauen über Kreuz
+  (rechts 34° nach links, beide 20° nach unten), nichts davon wird angenommen. Geprüft an
+  einer echten Aufzeichnung (`tests/daten/blick_real_20260812/`): in der Überlappung
+  stimmen die Bilder überein, mit vertauschter Kalibrierung dreimal schlechter. Farbe wird
+  mit Graustufen als Rückfall erbeten (ältere Spots haben keine). Zwei Threads (holen und
+  schreiben), das Neueste ersetzt das Alte, dieselbe Aufnahmezeit wird nie zweimal
+  geschrieben; **nicht über `spot.camera()`** — jenes schreibt `bilder.json` je Bild
+  vollständig neu. Ein Fehler beendet den Blick, nie den Lauf: ohne Bild fährt man weiter,
+  ohne Fahrbefehle nicht. Die GUI liest die Datei über `read_bytes` + `loadFromData`, nie
+  `QPixmap(pfad)`: gleicher Name, neue Bytes — Qts Dateicache zeigte sonst das alte Bild.
 - **Das Fenstersymbol ist FREIGESTELLT und liegt im Paket** (`gui/spotlab.png`, runde
   Ecken mit Transparenz aussen, dazu `package-data`). Ein Symbol mit eigenem
   Hintergrund sitzt in der Taskleiste in einem grauen Kasten, und ohne den

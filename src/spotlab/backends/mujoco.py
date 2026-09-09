@@ -266,11 +266,6 @@ class _Ansichtsschreiber(threading.Thread):
 class MujocoBackend(SimBackend):
     """Bewegt sich nach Gangkennlinie und Antwortmodell — in einem 3D-Zimmer."""
 
-    # Dieses Backend schreibt `ansicht.jpg` selbst (Ansichtsthread): das Zimmer
-    # von aussen, zum Fahren besser als ein Fischauge. `workshop/blick.py`
-    # haelt sich deshalb heraus -- zwei Schreiber auf einer Datei gibt es nie.
-    schreibt_ansicht = True
-
     def __init__(self, recorder=None, jetzt=time.time, modell=None, raum=None,
                  start=None, antwort=None, ansicht_ziel=None, treppen="auto"):
         super().__init__(recorder=recorder, jetzt=jetzt, modell=modell,

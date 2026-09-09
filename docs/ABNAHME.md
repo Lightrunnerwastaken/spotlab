@@ -661,6 +661,13 @@ mit Alt-Tab in ein anderes Fenster wechseln; zurück und „■ Stopp".
   `abgebrochen`, die Aufzeichnung enthält `walk`-Kommandos mit `vx` 0.2.
 - (5) Zur Probe einmal die GUI während einer Fahrt hart schliessen (Task-Manager): der Spot
   steht nach spätestens einer Sekunde — die Endzeit der Kommandos, nicht die GUI, hält ihn.
+- (6) Der Blick nach vorn: EIN Rechteck ohne schwarzen Rand, der Boden läuft in der Mitte
+  durch, ein Gegenstand vor dem Roboter erscheint nicht doppelt; in Farbe, wenn das Tablet
+  unter „Robot Cameras" Farbe zeigt (sonst grau — ältere Spots); die Zeile „Blick: n Bilder/s"
+  unter dem Bild zeigt mindestens 10, und beim Drehen mit Q/E folgt das Bild ohne
+  merklichen Verzug (unter einer halben Sekunde). Liegt die Rate darunter, entscheidet das
+  WLAN oder die Kamera, nicht die Oberfläche: `ansicht.jpg` im Lauf-Verzeichnis wird genau
+  so oft ersetzt, wie Bilder ankommen.
 
 **Ergebnis** _(offen)_
 
