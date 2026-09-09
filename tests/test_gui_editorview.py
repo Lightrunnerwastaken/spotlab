@@ -665,7 +665,7 @@ def test_die_auswahl_zeigt_die_verfuegbaren_backends(qapp, tmp_path, monkeypatch
     monkeypatch.setattr(modul.importlib.util, "find_spec", lambda name: object())
     ansicht, _ordner, _projekt = _ansicht(tmp_path)
     namen = [ansicht.backendwahl.itemData(i) for i in range(ansicht.backendwahl.count())]
-    assert namen == ["real", "dryrun", "sim", "mujoco"]
+    assert namen == ["real", "dryrun", "sim", "mujoco", "physics"]
 
 
 def test_die_umgebung_darf_den_start_verweigern(qapp, tmp_path, monkeypatch):

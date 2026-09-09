@@ -71,7 +71,7 @@ class Spot:
     # ------------------------------------------------------------ Bewegung
 
     def move(self, forward=0.0, left=0.0, turn=0.0, timeout=30.0):
-        """Geht eine feste Strecke in Metern und dreht sich um turn im Bogenmass."""
+        """Geht eine feste Strecke in Metern und dreht sich um turn in Grad."""
         motion.move(
             self.backend,
             self.recorder,
@@ -101,6 +101,36 @@ class Spot:
 
     # ------------------------------------------------------------ Wahrnehmung
 
+    def supports(self, feature):
+        """Prueft look, camera, tags, stairs, navigate_to, pose, lights oder beep."""
+        from spotlab.api.features import supports
+
+        return supports(self, feature)
+
+    def look(self, max_distance=1.8, margin=0.3, start=0.0):
+        """Umgebung relativ zu Spot: front/left/right/back mit status, distance und known."""
+        from spotlab.api.convenience import look
+
+        return look(self.backend, self.recorder, max_distance, margin, start)
+
+    def lights(self, color='blue', duration=2.0, brightness=0.25):
+        """LEDs fuer duration Sekunden; blockierend, mit anschliessendem Aufraeumen."""
+        from spotlab.api.signals import lights
+
+        lights(self, color, duration, brightness)
+
+    def beep(self, note='C', octave=5, duration=0.3):
+        """Spielt eine Note auf dem Summer; blockiert bis zum Ende (keine WAV-Wiedergabe)."""
+        from spotlab.api.signals import beep
+
+        beep(self, note, octave, duration)
+
+    def pose(self, roll=0.0, pitch=0.0, yaw=0.0, height=0.0, timeout=10.0):
+        """Richtet den Koerper im Stand aus: Winkel in Grad, Hoehenversatz in Metern."""
+        from spotlab.api.body import pose
+
+        pose(self, roll, pitch, yaw, height, timeout)
+
     def cameras(self):
         """Nennt die Namen der Kameras, die dieser Spot hat."""
         return perception.cameras(self.backend)
@@ -108,6 +138,31 @@ class Spot:
     def camera(self, name):
         """Holt ein Bild der genannten Kamera und zeichnet es auf."""
         return perception.camera(self.backend, self.recorder, name)
+
+    def depth(self, name="frontleft"):
+        """Tiefenbild in Metern mit valid-Maske, Kalibrierung und Aufnahmezeit."""
+        from spotlab.api import sensors
+
+        return sensors.depth(self, name)
+
+    def point_cloud(self, name="frontleft", frame="body", stride=2,
+                    min_distance=0.0, max_distance=5.0):
+        """Punktwolke in Metern aus einer Tiefenaufnahme, mit angegebenem Rahmen."""
+        from spotlab.api import sensors
+
+        return sensors.point_cloud(self, name, frame, stride, min_distance, max_distance)
+
+    def grid_types(self):
+        """Nennt die vom Backend angebotenen LocalGrid-Ebenen."""
+        from spotlab.api import sensors
+
+        return sensors.grid_types(self)
+
+    def local_grid(self, name="obstacle_distance"):
+        """Liest eine LocalGrid-Ebene; terrain nutzt auch terrain_valid."""
+        from spotlab.api import sensors
+
+        return sensors.local_grid(self, name)
 
     def world_objects(self, kinds=None):
         """Nennt alles, was Spot gerade als Objekt führt — nächstes zuerst."""

@@ -308,7 +308,7 @@ class MainWindow(QWidget):
     def _lauf_aus_code(self, prozess, skript):
         # Kein Ansichtswechsel: wer aus „Code" startet, will dort bleiben.
         self._start_aus = "code"
-        if self.ansichten["code"].gewaehltes_backend() in ("sim", "mujoco"):
+        if self.ansichten["code"].gewaehltes_backend() in ("sim", "mujoco", "physics"):
             self._oeffne_uebungsfenster(Path(skript).name)
         self._starte_leser(prozess)
 
@@ -331,7 +331,7 @@ class MainWindow(QWidget):
         die Waende. Ein `SpotlabError` hier verweigert den Start; der Editor
         faengt ihn wie einen Startfehler und zeigt den Grund.
         """
-        if self.ansichten["code"].gewaehltes_backend() not in ("sim", "mujoco"):
+        if self.ansichten["code"].gewaehltes_backend() not in ("sim", "mujoco", "physics"):
             return {}
         ansicht = self.ansichten["raumeditor"]
         grund = ansicht.bereit_fuer_lauf()

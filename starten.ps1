@@ -24,7 +24,7 @@ $pythonw = Join-Path $wurzel ".venv\Scripts\pythonw.exe"
 
 # Die eigene .venv hat Vorrang: auf einem Schul-Laptop ist sie das, was
 # einrichten.ps1 angelegt und geprueft hat.
-if (-not (Test-Path $pythonw)) {
+if (-not (Test-Path $pythonw) -and -not (Test-Path (Join-Path $wurzel "release.json"))) {
     # Steht schon ein spotlab im PATH? Das ist der Entwicklungsrechner-Fall --
     # dort liegt spotlab oft in einer Conda-Umgebung. Ohne diese Suche legte ein
     # Doppelklick dort ein ZWEITES Environment an (allein PySide6 sind 642 MB),
@@ -68,4 +68,4 @@ if ($NurPruefen) {
 }
 
 # Start-Process statt `&`: die Konsole schliesst sich sofort, das Fenster bleibt.
-Start-Process -FilePath $pythonw -ArgumentList "-m", "spotlab.cli", "gui" -WorkingDirectory $wurzel
+Start-Process -FilePath $pythonw -ArgumentList "-m", "spotlab.cli", "gui" -WorkingDirectory $wurzel -WindowStyle Hidden

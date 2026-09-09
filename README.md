@@ -1,5 +1,12 @@
 # spotlab
 
+Python programmieren: **[vollständige API-Referenz](docs/API.md)** mit allen
+30 Methoden und 4 Properties, Einheiten und Backend-Grenzen.
+[Beispiel-Abdeckung](docs/EXAMPLE_COVERAGE.md): was direkt geht und was das SDK benötigt.
+Neu: `spot.look()` für benannte Umgebungsrichtungen, `state.x/y/heading/speed`,
+`spot.lights()`, `spot.beep()`, `spot.pose()` und `spot.supports()`.
+
+
 Den Boston Dynamics Spot programmieren — für den Unterricht an der Kantonsschule.
 
 `spotlab` nimmt die Betriebsmechanik des Spot-SDK ab (Anmeldung, Zeitsynchronisierung,
@@ -13,43 +20,28 @@ aus [`matura-spot`](../matura-spot) gegen das echte Verhalten zu kalibrieren.
 
 ## Installation
 
-Auf einem Schul-Laptop einmalig, im Ordner dieser Datei:
+**Schüler:** Das Schüler-Release-ZIP herunterladen, entpacken und `einrichten.cmd`
+doppelklicken. Danach Spotlab über die Desktop-Verknüpfung öffnen und in der GUI
+programmieren. Das Paket enthält GUI und Simulation samt Robotermodell; das
+Matura-Repository und Entwicklerwerkzeuge werden nicht benötigt.
 
-```
-powershell -ExecutionPolicy Bypass -File einrichten.ps1
-```
+[Schulanleitung](docs/INSTALLATION_SCHULE.md) · [Releases bauen](docs/SCHUELER_RELEASES.md)
 
-Das Skript legt eine eigene Umgebung unter `.venv` an, installiert spotlab mit
-allen drei Extras, **prüft danach nach**, dass SDK, Oberfläche, MCP und pytest
-wirklich da sind, und legt zum Schluss eine **Verknüpfung „spotlab" auf den
-Desktop**. Zweimal ausgeführt ändert es nichts.
+Python 3.11–3.14 und einmalig Internetzugang werden vorausgesetzt. Die Pakete
+werden in einer eigenen `.venv` installiert; der Installer prüft Abhängigkeiten
+und den Modellaufbau. GitHubs „Source code“-Archiv ist kein Schüler-Release.
 
-Danach genügt ein Doppelklick auf das Symbol — kein Terminal, keine
-Umgebung aktivieren. Fehlt die Umgebung einmal (neu aufgesetzter Laptop,
-gelöschter Ordner), richtet der Klick sie zuerst selbst ein und startet dann;
-nur dieser erste Klick dauert ein paar Minuten.
+**Entwickler:** Im geklonten Repository:
 
-Die Verknüpfung allein noch einmal anlegen, ohne neu zu installieren:
-
-```
-powershell -ExecutionPolicy Bypass -File verknuepfung.ps1
+```powershell
+.\einrichten.cmd -Entwickler
+# Optional mit den lokalen Sim-Quellen:
+.\einrichten.cmd -Entwickler -MitSim -SimPfad ..\matura-spot
 ```
 
-Von Hand geht es auch — dann aber mit allen Extras:
-
-```
-python -m venv .venv
-.\.venv\Scripts\activate
-pip install -e ".[dev,gui,mcp]"
-```
-
-`pip install -e ".[dev]"` allein reicht **nicht**: ohne `gui` gibt es kein
-Fenster und keinen Editor, ohne `mcp` keine Agenten-Anbindung. Die
-Grundausstattung ist trotzdem eine gültige Installation — `spotlab doctor`,
-`spotlab run` und die Auswertung laufen damit, und die Tests, die Qt brauchen,
-überspringen sich sauber. Genau das prüft die CI im Auftrag `nur [dev]`.
-
-Getestet auf Windows mit Python 3.11 und 3.13.
+Dieser ausdrückliche Modus installiert weiterhin `dev`, `gui` und `mcp` editierbar.
+Die Schülerausgabe installiert nur die GUI-/Sim-Abhängigkeiten. Die CLI bleibt
+für Fortgeschrittene verfügbar; für die Schüler ist kein Terminal im Alltag nötig.
 
 ## Schnellstart
 
@@ -575,3 +567,38 @@ pytest
 Alle Tests laufen ohne Roboter und ohne Netz. Das `dryrun`-Backend ist das
 Standard-Testdouble; die Kommando-Protobufs werden dabei echt gebaut und gegen die
 SDK-Schemata geprüft.
+
+### Quantitative Wahrnehmung aus Python
+
+```python
+with connect() as spot:
+    if spot.supports("depth"):
+        depth = spot.depth("frontleft")
+        print(depth.distance_at(212, 120))  # Meter oder None
+        cloud = depth.point_cloud(frame="body", stride=2)
+        cloud.save("punkte.ply")
+    if spot.supports("local_grid"):
+        print(spot.grid_types())
+```
+
+[Tiefenbilder, Punktwolken und LocalGrids](docs/PERCEPTION.md): Rohdatenexport,
+Gültigkeitsmasken und Koordinatenrahmen. Keine Motorfreigabe nötig; connect()
+verwendet weiterhin den normalen Sitzungskern.
+
+### Experimenteller Physikmodus
+
+Neu in der Backend-Auswahl: **Physik 3D (experimentell, ebener Boden)**.
+Der Koerper wird von Kontaktkraeften getragen. Start im Stand; walk/stop,
+Sensorik und Livebild sind angebunden. Treppen, sit und move sind noch nicht
+unterstuetzt. [Anleitung und Grenzen](docs/PHYSICS.md).
+
+
+Experimenteller Einzelstufenversuch: `physik_einzelstufe.py` mit Raum
+`physik_einzelstufe` und Start `(0, 0, 0)` im Modus **Physik 3D**.
+6-cm-Podest vorwärts hinauf, rückwärts herunter; mehrere Minuten Laufzeit.
+Grenzen und Messwerte: [docs/PHYSICS.md](docs/PHYSICS.md).
+
+
+Neu: `physik_treppe_3stufen.py` mit Raum `physik_treppe_3stufen`,
+Physik 3D und Start `(0,0,0)`: drei niedrige 4-cm-Stufen vorwärts hinauf und
+rückwärts herunter. Etwa 7–12 Minuten; Grenzen und Messwerte in `docs/PHYSICS.md`.

@@ -37,7 +37,7 @@ NUR_TROCKEN_MELDUNG = (
 # ERLAUBNISLISTE, keine Sperrliste. Ein neues Backend ist gesperrt, bis jemand
 # es hier einträgt — und wer es einträgt, hat die Frage beantwortet, ob es den
 # Spot bewegen kann. Andersherum wäre jedes künftige Backend versehentlich frei.
-OHNE_ROBOTER = ("dryrun", "sim", "mujoco")
+OHNE_ROBOTER = ("dryrun", "sim", "mujoco", "physics")
 
 
 @contextlib.contextmanager
@@ -95,7 +95,7 @@ def connect(
 
         roher_roboter, unten = None, DryRunBackend(recorder)
         recorder.event("verbunden", backend="dryrun")
-    elif art in ("sim", "mujoco"):
+    elif art in ("sim", "mujoco", "physics"):
         # `mujoco` ist der 2D-Sim mit einem 3D-Koerper (backends/mujoco.py):
         # dieselben Kommandos, dieselbe Gangkennlinie, dieselbe Antwort — dazu
         # Kameras, Tiefengitter und Kollision an der Mesh-Geometrie. Er braucht
@@ -117,7 +117,17 @@ def connect(
         if gewaehlt is not None and start is None:
             start = gewaehlt.start
 
-        if art == "mujoco":
+        if art == "physics":
+            from spotlab.backends.physics import PhysicsBackend
+
+            try:
+                unten = PhysicsBackend(recorder=recorder, raum=gewaehlt, start=start,
+                                       ansicht_ziel=recorder.dir / "ansicht.jpg")
+            except BaseException as fehler:
+                recorder.finish("fehler", f"{type(fehler).__name__}: {fehler}")
+                protokoll.setze_ziel(None)
+                raise
+        elif art == "mujoco":
             from spotlab.backends.mujoco import MujocoBackend
 
             unten = MujocoBackend(

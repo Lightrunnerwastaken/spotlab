@@ -1,0 +1,16 @@
+[raum]
+name = "Physik-Einzelstufe (6 cm)"
+fassung = 3
+beschreibung = "Experiment: vorwaerts auf das 6-cm-Podest, rueckwaerts herunter. Startwinkel 0."
+groesse = [2.2, 2.0]
+start = [0.0, 0.0, 0.0]
+waende = []
+
+[[boden]]
+name = "Versuchspodest"
+mitte = [0.9, 0.0]
+groesse = [0.9, 2.0]
+z = 0.06
+anstieg = 0.0
+stufen = 0
+drehung = 0.0

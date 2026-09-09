@@ -56,6 +56,7 @@ version = {attr = "spotlab.__version__"}
 where = ["src"]
 
 [tool.setuptools.package-data]
+"spotlab.welt" = ["vorlagen/*.toml"]
 "spotlab.workshop" = ["templates/*.py", "beispiele/*.py", "beispiele/*.md"]
 # Ohne diese Zeile fehlt die Gangkennlinie in einem nicht-editierbaren Install
 # (`pip install .`), und `backend="sim"` scheitert erst zur Laufzeit mit

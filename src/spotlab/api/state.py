@@ -43,6 +43,26 @@ class State:
     motor_temps: dict = field(default_factory=dict)
     faults: dict = field(default_factory=dict)
 
+    @property
+    def x(self):
+        """Position in odom, Meter."""
+        return self.pose[0]
+
+    @property
+    def y(self):
+        """Position in odom, Meter."""
+        return self.pose[1]
+
+    @property
+    def heading(self):
+        """Blickrichtung in odom, Grad; pose[2] bleibt im Bogenmass."""
+        return math.degrees(self.pose[2])
+
+    @property
+    def speed(self):
+        """Betrag der horizontalen Geschwindigkeit in m/s."""
+        return math.hypot(self.velocity[0], self.velocity[1])
+
 
 def rpy_aus(quaternion):
     """Roll, Pitch, Yaw aus einem Quaternion. Die Yaw-Formel ist bitgleich zu früher."""

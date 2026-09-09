@@ -14,6 +14,8 @@ Strecken auf.
 import math
 from dataclasses import dataclass, replace
 
+from spotlab.welt.hoehe import trifft_koerper
+
 MAX_LUECKE_M = 1.5          # weiter auseinander schliesst der Korrigierer nichts
 WINKEL_LUECKE_GRAD = 15.0   # so schraeg duerfen Wand und Wand fuer Luecke und Ecke stehen
 WINKEL_ANSCHLUSS_GRAD = 25.0
@@ -22,6 +24,7 @@ INDEX_ZELLE_M = 0.1         # Zellen des Punktindex
 PROBE_M = 0.05              # Abtastung der Lueckenstrecken
 PUNKTE_JE_ZELLE = 2         # ab hier "hat Punkte"
 ANTEIL_WAND = 0.6           # so viele Proben mit Punkten machen eine Wand
+EBENEN_TOLERANZ_M = 0.25    # kleine Rekonstruktionsabweichungen, keine Etagen verbinden
 
 
 @dataclass(frozen=True)
@@ -80,7 +83,10 @@ def _kreuzt(a1, a2, b1, b2):
 
 def _durch_dritte(raum, strecke, ausser):
     a, b = (strecke[0], strecke[1]), (strecke[2], strecke[3])
-    return any(i not in ausser and _kreuzt(a, b, (w.x1, w.y1), (w.x2, w.y2))
+    unten = min(raum.waende[i].z for i in ausser)
+    oben = max(raum.waende[i].z for i in ausser) + raum.wand_hoehe
+    return any(i not in ausser and w.z < oben and w.z + raum.wand_hoehe > unten
+               and _kreuzt(a, b, (w.x1, w.y1), (w.x2, w.y2))
                for i, w in enumerate(raum.waende))
 
 
@@ -90,16 +96,31 @@ def _durch_dritte(raum, strecke, ausser):
 def _kandidaten_fuer_ende(raum, i, ende, max_luecke, winkel_grad):
     wand = raum.waende[i]
     e = _ende(wand, ende)
+    # Ein Ende auf einer vorhandenen Wand braucht keine weitere Verlaengerung.
+    for j, andere in enumerate(raum.waende):
+        if j != i and abs(wand.z - andere.z) <= EBENEN_TOLERANZ_M:
+            fuss, t = _fusspunkt(e, (andere.x1, andere.y1), (andere.x2, andere.y2))
+            if 0 < t < 1 and _abstand(e, fuss) <= max(INDEX_ZELLE_M / 2, raum.wand_dicke / 2):
+                return None
     treffer = []
     for j, andere in enumerate(raum.waende):
-        if j == i or andere.laenge <= 0:
+        if j == i or andere.laenge <= 0 or abs(wand.z - andere.z) > EBENEN_TOLERANZ_M:
             continue
         diff = _winkel_diff(wand.winkel, andere.winkel)
         f_nummer = min((1, 2), key=lambda n: _abstand(e, _ende(andere, n)))
         f = _ende(andere, f_nummer)
         if diff <= winkel_grad:
             d = _abstand(e, f)
-            if BERUEHRT_M < d <= max_luecke:
+            # Ein Anschluss muss vor beiden Enden liegen und der Wandrichtung
+            # folgen. Parallel allein wuerde zwei Gangseiten diagonal verbinden.
+            innen = _ende(wand, 3 - ende)
+            innen_f = _ende(andere, 3 - f_nummer)
+            richtung = math.degrees(math.atan2(f[1] - e[1], f[0] - e[0]))
+            vor_e = sum((e[k] - innen[k]) * (f[k] - e[k]) for k in (0, 1)) > 0
+            vor_f = sum((f[k] - innen_f[k]) * (e[k] - f[k]) for k in (0, 1)) > 0
+            if (BERUEHRT_M < d <= max_luecke and vor_e and vor_f
+                    and _winkel_diff(richtung, wand.winkel) <= winkel_grad
+                    and _winkel_diff(richtung, andere.winkel) <= winkel_grad):
                 treffer.append(Luecke("luecke", (i, j), (ende, f_nummer), f, ((*e, *f),),
                                       d, "unklar", ""))
         elif abs(diff - 90.0) <= winkel_grad:
@@ -136,7 +157,7 @@ def _kreuzende(raum, weg):
     strecken = list(zip(weg, weg[1:]))
     for i, wand in enumerate(raum.waende):
         a, b = (wand.x1, wand.y1), (wand.x2, wand.y2)
-        if any(_kreuzt(a, b, (p[0], p[1]), (q[0], q[1])) for p, q in strecken):
+        if any(_weg_trifft(a, b, p, q, wand.z, raum.wand_hoehe) for p, q in strecken):
             gefunden.append(Luecke("kreuzt", (i,), (), wand.mitte, ((*a, *b),), wand.laenge,
                                    "loeschen", "kreuzt den Weg des Roboters"))
     return gefunden
@@ -174,18 +195,31 @@ def _punkte_entlang(strecken, index, schritt=PROBE_M):
     return mit / proben if proben else 0.0
 
 
-def _weg_kreuzt(strecken, weg):
+def _weg_trifft(a, b, p, q, z, hoehe):
+    if not _kreuzt(a, b, p[:2], q[:2]):
+        return False
+    if len(p) < 3 or len(q) < 3:
+        return True  # Alte 2D-Wege bleiben nutzbar.
+    schnitt = _schnitt(a, b, p[:2], q[:2])
+    if schnitt is None:
+        return False
+    _, t = _fusspunkt(schnitt, p[:2], q[:2])
+    boden = p[2] + t * (q[2] - p[2])
+    return trifft_koerper((z, z + hoehe), boden)
+
+
+def _weg_kreuzt(strecken, weg, z, hoehe):
     for p, q in zip(weg, weg[1:]):
         for x1, y1, x2, y2 in strecken:
-            if _kreuzt((x1, y1), (x2, y2), (p[0], p[1]), (q[0], q[1])):
+            if _weg_trifft((x1, y1), (x2, y2), p, q, z, hoehe):
                 return True
     return False
 
 
-def _mit_vorschlag(luecke, weg, index):
+def _mit_vorschlag(luecke, weg, index, raum):
     if luecke.art == "kreuzt":
         return luecke
-    if _weg_kreuzt(luecke.strecken, weg):
+    if _weg_kreuzt(luecke.strecken, weg, raum.waende[luecke.waende[0]].z, raum.wand_hoehe):
         return replace(luecke, vorschlag="durchgang", grund="der Roboter lief hindurch")
     if index and _punkte_entlang(luecke.strecken, index) >= ANTEIL_WAND:
         return replace(luecke, vorschlag="wand", grund="Punkte in der Lücke")
@@ -199,6 +233,7 @@ def finde_luecken(raum, weg=(), pauspapier=(), max_luecke=MAX_LUECKE_M,
     Je Wandende der kuerzeste Anschluss (Luecke, Ecke, Anschluss) bis
     `max_luecke`; jedes Paar einmal; dazu die Waende, die den Weg kreuzen.
     """
+    weg = list(weg)  # Auch Iteratoren genau einmal lesen, nicht je Kandidat kopieren.
     gefunden, gesehen = [], set()
     for i, wand in enumerate(raum.waende):
         if wand.laenge <= 0:
@@ -214,7 +249,7 @@ def finde_luecken(raum, weg=(), pauspapier=(), max_luecke=MAX_LUECKE_M,
             gefunden.append(luecke)
     gefunden += _kreuzende(raum, weg)
     index = punktindex(pauspapier)
-    gefunden = [_mit_vorschlag(lk, list(weg), index) for lk in gefunden]
+    gefunden = [_mit_vorschlag(lk, weg, index, raum) for lk in gefunden]
     return sorted(gefunden, key=lambda lk: lk.laenge)
 
 

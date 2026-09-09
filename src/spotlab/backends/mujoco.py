@@ -71,8 +71,8 @@ def _puppe_laden():
         from spotsim import puppe, spot_asset_available
     except ImportError as fehler:
         raise SpotlabError(
-            "Das MuJoCo-Backend braucht das Paket `spotsim` aus matura-spot: "
-            "pip install -e ../matura-spot  und  pip install -e .[sim]"
+            "Die Simulation fehlt. Im Schueler-Release einrichten.cmd erneut ausfuehren. "
+            "Entwickler: einrichten.cmd -Entwickler -MitSim."
         ) from fehler
     if getattr(puppe, "FASSUNG", 0) != PUPPE_FASSUNG:
         raise SpotlabError(
@@ -81,10 +81,20 @@ def _puppe_laden():
         )
     if not spot_asset_available():
         raise SpotlabError(
-            "Das Menagerie-Modell des Spot fehlt: in matura-spot "
-            "`python scripts/fetch_menagerie.py` ausführen."
+            "Das Robotermodell fehlt. Das vollstaendige Schueler-Release neu installieren. "
+            "Entwickler: in matura-spot `python scripts/fetch_menagerie.py` ausfuehren."
         )
     return puppe
+
+
+def _physik_laden():
+    """Auch der Physikadapter verwendet diese eine optionale Sim-Schnittstelle."""
+    puppe = _puppe_laden()
+    from spotsim import sensors
+    from spotsim.sdk_sim import SpotSdkSim
+    from spotsim.terrain_sdk import TerrainSdkSim
+
+    return puppe, sensors, SpotSdkSim, TerrainSdkSim
 
 
 def welt_aus_raum(raum, puppe):

@@ -45,7 +45,8 @@ BACKENDS = (
     ("Echter Spot", "real"),
     ("Trockenlauf (nur Text)", "dryrun"),
     ("Übungsraum (virtuell)", "sim"),
-    ("Übungsraum 3D (MuJoCo)", "mujoco"),
+    ("Übungsraum 3D (Wiedergabe)", "mujoco"),
+    ("Physik 3D (experimentell)", "physics"),
 )
 
 
@@ -57,7 +58,7 @@ def verfuegbare_backends():
     nicht per Import -- die GUI importiert kein MuJoCo (CLAUDE.md).
     """
     dreidimensional = importlib.util.find_spec("spotsim") is not None
-    return tuple(b for b in BACKENDS if b[1] != "mujoco" or dreidimensional)
+    return tuple(b for b in BACKENDS if b[1] not in ("mujoco", "physics") or dreidimensional)
 
 
 def lade_text(pfad):
@@ -536,7 +537,7 @@ class EditorView(QWidget):
             # bewegen koennen. Beim Trockenlauf bleibt es wie bisher -- dessen
             # Bedeutung hier zu aendern, waere eine zweite, ungefragte Aenderung.
             prozess = start_script(
-                skript, backend=wo, nur_trocken=(wo == "sim"),
+                skript, backend=wo, nur_trocken=(wo in ("sim", "mujoco", "physics")),
                 umgebung=self.zusatz_umgebung(),
             )
         except SpotlabError as fehler:

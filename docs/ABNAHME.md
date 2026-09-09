@@ -755,3 +755,25 @@ Davon hängt ab, ob `ZONE_RAND_M` (0.15 m) reicht.
 
 Ergebnisse hier eintragen, Abweichungen als Befund in die Spec zurückspielen, und erst
 dann Schüler an das Gerät lassen.
+
+
+## Quantitative Wahrnehmung (Python-API)
+
+Noch am echten Spot zu prüfen, ohne Bewegungsbefehle:
+- depth(frontleft): Messung zu einer Fläche mit bekanntem Abstand; meters und
+  depth_scale plausibel, 0/65535 ungültig, gespeicherte NPZ mit Maske lesbar.
+- Punktwolke in body/vision: Bodenlage und Achsen kontrollieren, dieselbe
+  Aufnahme in beiden Rahmen vergleichen; PLY im externen Viewer öffnen.
+- grid_types und local_grid für terrain/no_step/intensity/obstacle_distance:
+  tatsächlich angebotene Typen festhalten. terrain_valid zeitlich/geometrisch
+  passend; unbekannte/ungültige Zellen bleiben maskiert. Falls die Firmware
+  verschiedene Erfassungszeiten liefert, meldet die API dies ausdrücklich.
+- Dienstfehler und fehlende Daten bleiben Fehler; keine Interpretation als freie
+  Fläche. Aufnahmen sind Momentaufnahmen und keine zusätzliche Fahrfreigabe.
+
+## Physikmodus (experimentell)
+
+Stand, Gehen, Drehen und Stopp in der GUI mit Livebild pruefen.
+Echtzeitfaktor und Ausgabe des Sturzfalls kontrollieren. Vergleiche gegen den
+echten Spot sind offen; keine Treppenfreigabe. Weitere Kriterien und bewusste
+Modellgrenzen: [PHYSICS.md](PHYSICS.md).

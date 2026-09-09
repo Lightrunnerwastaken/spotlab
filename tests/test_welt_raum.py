@@ -104,7 +104,7 @@ def test_jede_vorlage_ist_geometrisch_stimmig(name):
 
 
 def test_vorlagen_nennt_die_vier():
-    assert sorted(vorlagen()) == ["durchgang", "leer", "moebliert", "treppe"]
+    assert sorted(vorlagen()) == ["durchgang", "leer", "moebliert", "physik_einzelstufe", "physik_treppe_3stufen", "treppe"]
 
 
 # ------------------------------------------------------- die Schichtregel
