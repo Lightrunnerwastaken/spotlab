@@ -23,7 +23,13 @@ def _lauf(tmp_path, pid=4711, alter_s=0.0):
 
 
 def test_frischer_lauf_ist_aktiv(tmp_path):
-    assert ist_aktiv(_lauf(tmp_path)) is True
+    # Die Uhr ausdruecklich, an der Datei verankert: sonst entscheidet die
+    # Maschinenlast zwischen dem Schreiben und dieser Zeile, ob der Lauf noch
+    # als frisch gilt -- und der Test behauptete etwas ueber die Last statt
+    # ueber `ist_aktiv`.
+    lauf = _lauf(tmp_path)
+    gerade_eben = (lauf / "zustand.jsonl").stat().st_mtime + 0.1
+    assert ist_aktiv(lauf, jetzt=gerade_eben) is True
 
 
 def test_alter_lauf_ist_nicht_aktiv(tmp_path):
@@ -36,9 +42,13 @@ def test_lauf_ohne_zustandsdatei_ist_nicht_aktiv(tmp_path):
 
 
 def test_aktive_laeufe_filtert(tmp_path):
+    # `aktive_laeufe` nimmt keine Uhr, wohl aber die Grenze: eine Stunde gegen
+    # eben geschrieben trennt sicher, auch wenn der Test unter Last ein paar
+    # Sekunden braucht. Geprueft wird das Filtern, nicht die 2-Sekunden-Grenze
+    # (die hat ihren eigenen Test).
     frisch = _lauf(tmp_path)
-    _lauf(tmp_path, alter_s=30.0)
-    assert [p.name for p in aktive_laeufe(tmp_path)] == [frisch.name]
+    _lauf(tmp_path, alter_s=3600.0)
+    assert [p.name for p in aktive_laeufe(tmp_path, grenze_s=60.0)] == [frisch.name]
 
 
 def test_aktive_laeufe_bei_fehlendem_ordner(tmp_path):

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 pytest.importorskip("PySide6.QtWidgets")
@@ -265,10 +267,8 @@ def test_aktive_karte_wird_gemerkt(qapp, tmp_path, monkeypatch):
 # dann einen anderen Lauf als den, der den Roboter haelt.
 
 
-def _zweit_lauf(tmp_path, name, aktiv=True):
+def _zweit_lauf(tmp_path, name):
     import json
-    import os
-    import time
 
     ordner = tmp_path / name
     ordner.mkdir(parents=True, exist_ok=True)
@@ -276,20 +276,40 @@ def _zweit_lauf(tmp_path, name, aktiv=True):
         json.dumps({"pid": 4711, "ergebnis": "läuft", "skript": f"{name}.py"}),
         encoding="utf-8",
     )
-    zustand = ordner / "zustand.jsonl"
-    zustand.write_text("{}\n", encoding="utf-8")
-    if not aktiv:
-        alt = time.time() - 600
-        os.utime(zustand, (alt, alt))
+    (ordner / "zustand.jsonl").write_text("{}\n", encoding="utf-8")
     return ordner
 
 
-def test_ein_zweiter_lauf_entfuehrt_den_notaus_nicht(qapp, tmp_path):
+@pytest.fixture
+def lebendig(monkeypatch):
+    """Welche Laeufe leben, sagt der Test -- nicht die Wanduhr.
+
+    Ob ein Lauf lebt, misst `workshop/control.py::ist_aktiv` am Alter von
+    `zustand.jsonl` (Fenster: 2 s), und DAS hat eigene Tests (`test_control.py`,
+    mit gesetztem Alter statt echter Wartezeit). Die Tests hier prueften etwas
+    anderes: WOHIN Stopp und NOT-AUS zeigen, wenn schon ein Lauf laeuft. Ueber
+    die echte Uhr hing das an der Maschinenlast -- vergingen zwischen dem
+    Anlegen der Datei und der Behauptung mehr als zwei Sekunden, galt der erste
+    Lauf als tot und die Weiche stellte richtig, aber der Test behauptete das
+    Gegenteil (einmal in einem vollen Suite-Lauf am 09.09.2026). Eine
+    Attrappe hier ist kein Verlust an Deckung, sondern die Trennung zweier
+    Fragen: das Messen der Lebenszeichen und die Weiche dahinter.
+    """
+    from spotlab.gui import app as app_modul
+
+    lebende = set()
+    monkeypatch.setattr(app_modul, "ist_aktiv",
+                        lambda verzeichnis, *a, **kw: Path(verzeichnis) in lebende)
+    return lebende
+
+
+def test_ein_zweiter_lauf_entfuehrt_den_notaus_nicht(qapp, tmp_path, lebendig):
     """Der erste Lauf laeuft noch -- die Live-Ansicht muss bei ihm bleiben."""
     from spotlab.gui.app import MainWindow
 
     erst = _zweit_lauf(tmp_path, "lauf_a")
     zweit = _zweit_lauf(tmp_path, "lauf_b")
+    lebendig.update({erst, zweit})
     fenster = MainWindow()
     fenster._lauf_begonnen(erst)
     assert fenster.ansichten["live"]._lauf == erst
@@ -300,48 +320,69 @@ def test_ein_zweiter_lauf_entfuehrt_den_notaus_nicht(qapp, tmp_path):
     )
 
 
-def test_der_zweite_lauf_wird_gemeldet(qapp, tmp_path):
+def test_der_zweite_lauf_wird_gemeldet(qapp, tmp_path, lebendig):
     """Stillschweigend waere schlimmer als gar nicht: der Schueler glaubt sonst,
     er sehe seinen eben gestarteten Lauf."""
     from spotlab.gui.app import MainWindow
 
+    erst, zweit = _zweit_lauf(tmp_path, "lauf_a"), _zweit_lauf(tmp_path, "lauf_b")
+    lebendig.update({erst, zweit})
     fenster = MainWindow()
     meldungen = []
     fenster.ansichten["live"].meldung.connect(meldungen.append)
-    fenster._lauf_begonnen(_zweit_lauf(tmp_path, "lauf_a"))
-    fenster._lauf_begonnen(_zweit_lauf(tmp_path, "lauf_b"))
+    fenster._lauf_begonnen(erst)
+    fenster._lauf_begonnen(zweit)
     assert meldungen, "kein Hinweis auf den zweiten Lauf"
     assert "zwei" in meldungen[-1].lower() or "läuft bereits" in meldungen[-1].lower()
 
 
-def test_nach_dem_ende_wird_der_wartende_lauf_uebernommen(qapp, tmp_path):
+def test_nach_dem_ende_wird_der_wartende_lauf_uebernommen(qapp, tmp_path, lebendig):
     from spotlab.gui.app import MainWindow
 
     erst = _zweit_lauf(tmp_path, "lauf_a")
     zweit = _zweit_lauf(tmp_path, "lauf_b")
+    lebendig.update({erst, zweit})
     fenster = MainWindow()
     fenster._lauf_begonnen(erst)
     fenster._lauf_begonnen(zweit)
+    lebendig.discard(erst)                      # der erste ist fertig
     fenster._lauf_beendet(erst)
     assert fenster.ansichten["live"]._lauf == zweit
 
 
-def test_ein_toter_erster_lauf_gibt_den_platz_frei(qapp, tmp_path):
+def test_ein_wartender_lauf_der_inzwischen_tot_ist_rueckt_nicht_nach(qapp, tmp_path, lebendig):
+    """Sonst zeigte die Ansicht auf eine Leiche -- und der NOT-AUS traefe niemanden."""
+    from spotlab.gui.app import MainWindow
+
+    erst = _zweit_lauf(tmp_path, "lauf_a")
+    zweit = _zweit_lauf(tmp_path, "lauf_b")
+    lebendig.update({erst, zweit})
+    fenster = MainWindow()
+    fenster._lauf_begonnen(erst)
+    fenster._lauf_begonnen(zweit)
+    lebendig.clear()                            # beide sind inzwischen fertig
+    fenster._lauf_beendet(erst)
+    assert fenster.ansichten["live"]._lauf is None and fenster._aktiver_lauf is None
+
+
+def test_ein_toter_erster_lauf_gibt_den_platz_frei(qapp, tmp_path, lebendig):
     """Gegenprobe: sonst blockierte eine Leiche die Ansicht fuer immer."""
     from spotlab.gui.app import MainWindow
 
-    erst = _zweit_lauf(tmp_path, "lauf_a", aktiv=False)
+    erst = _zweit_lauf(tmp_path, "lauf_a")
     zweit = _zweit_lauf(tmp_path, "lauf_b")
+    lebendig.add(zweit)                         # nur der zweite lebt
     fenster = MainWindow()
     fenster._lauf_begonnen(erst)
     fenster._lauf_begonnen(zweit)
     assert fenster.ansichten["live"]._lauf == zweit
 
 
-def test_derselbe_lauf_nochmal_ist_kein_zweiter(qapp, tmp_path):
+def test_derselbe_lauf_nochmal_ist_kein_zweiter(qapp, tmp_path, lebendig):
     from spotlab.gui.app import MainWindow
 
     erst = _zweit_lauf(tmp_path, "lauf_a")
+    lebendig.add(erst)
     fenster = MainWindow()
     meldungen = []
     fenster.ansichten["live"].meldung.connect(meldungen.append)
@@ -405,7 +446,7 @@ def test_der_stopp_aus_anbindungen_geht_an_dieselbe_live_ansicht(qapp):
 def test_das_lauf_ende_versteckt_den_stopp_knopf_in_anbindungen(qapp, tmp_path):
     fenster = MainWindow()
     fenster.ansichten["anbindungen"].lauf_laeuft(True)
-    fenster._lauf_beendet(_zweit_lauf(tmp_path, "lauf_a", aktiv=False))
+    fenster._lauf_beendet(_zweit_lauf(tmp_path, "lauf_a"))
     assert fenster.ansichten["anbindungen"].stopp_knopf.isHidden()
 
 

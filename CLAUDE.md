@@ -649,7 +649,13 @@ versionsgepinntes Extra `spotlab[sim]`.
 - **Ein Test, der von der Maschinenlast abhängt, prüft die falsche Sache.** Ein
   20-ms-Takt rutscht unter Windows regelmässig auf 31 ms (Zeitgeberauflösung 15.6 ms).
   Nicht die Abwesenheit von Jitter behaupten, sondern die ART des Fehlers prüfen, gegen
-  den der Test steht — siehe `test_die_messfahrt_meldet_keine_falschen_luecken`.
+  den der Test steht — siehe `test_die_messfahrt_meldet_keine_falschen_luecken`. Dieselbe
+  Falle stellt jedes ZEITFENSTER der Produktion: `ist_aktiv` hält einen Lauf zwei Sekunden
+  lang für lebendig, und die Tests der Lauf-Weiche bauten dazwischen zweimal ein ganzes
+  MainWindow auf — unter Volllast galt der erste Lauf dann als tot, die Weiche stellte
+  richtig, und der Test behauptete das Gegenteil (09.09.2026). Wer die Weiche prüft, sagt
+  ausdrücklich, welcher Lauf lebt (Attrappe `lebendig` in `tests/test_gui_app.py`); wie
+  Lebenszeichen gemessen werden, hat eigene Tests mit gesetztem Alter.
 - **Eine Mitschreiber-Attrappe beweist nicht, dass die Ereignisart erlaubt ist.**
   `angestossen` fehlte bis zum 06.09.2026 in `record/events.py::ARTEN`; die Sim-Tests mit
   Attrappe waren grün, und jeder 2D-Lauf starb beim ersten Wandkontakt mitten in
