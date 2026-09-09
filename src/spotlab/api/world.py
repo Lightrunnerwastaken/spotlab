@@ -24,6 +24,10 @@ __all__ = [
 ]
 
 
+# So sicher muss sich die Firmware sein, bevor wir eine Person gelten lassen.
+MINDESTSICHERHEIT = 0.5
+
+
 def _protokolliere(recorder, name, **daten):
     if recorder is not None:
         recorder.event("kommando", name=name, **daten)
@@ -62,6 +66,26 @@ def tags(backend, recorder, id=None):
         distanzen=[round(t.distance, 2) for t in gefunden],
     )
     return gefunden
+
+
+def people(backend, recorder, mindestsicherheit=MINDESTSICHERHEIT):
+    """Menschen, die Spots Firmware gerade verfolgt — die nächsten zuerst.
+
+    Kein eigenes Modell: das ist der Tracker der Firmware, gelesen über denselben
+    Dienst wie die AprilTags. Gefiltert wird auf Typ „person" und auf eine
+    Mindestsicherheit — ein Ding, das die Firmware für halb wahrscheinlich hält,
+    ist kein Grund, einem Menschen hinterherzulaufen.
+
+    Eine leere Liste heisst zweierlei: niemand da, ODER dieser Roboter verfolgt
+    gar nichts. `spot.supports("people")` trennt das nicht — welche Software das
+    kann, sagt uns niemand vorab. Die Abnahme A34 klärt es am Gerät.
+    """
+    gefunden = [
+        o for o in world_objects(backend, recorder, kinds=["tracked_entity"])
+        if getattr(o, "entity_type", "") == "person"
+        and getattr(o, "likelihood", 0.0) >= mindestsicherheit
+    ]
+    return sorted(gefunden, key=lambda o: o.distance)
 
 
 def stairs(backend, recorder):

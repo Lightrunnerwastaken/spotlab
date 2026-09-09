@@ -122,3 +122,69 @@ def test_eine_treppe_ohne_rahmen_wird_uebersprungen():
     obj = _treppe(2.0, 0.0)
     obj.staircase_properties.staircase.stair_tform.frame_name = "gibt_es_nicht"
     assert objekte_aus(Antwort([obj]), jetzt=5.0) == []
+
+
+# ================== Spots eigener Personen-Tracker (tracked_entity)
+#
+# Der Tracker steckt in der Firmware: er vergibt eine Nummer, haelt sie ueber
+# die Zeit und sagt, fuer wie sicher er das Ding und seinen Typ haelt. Ob ein
+# Roboter das liefert, zeigt erst das Geraet (A34).
+
+
+def _verfolgt(name, x, y, art=2, sicher=0.9, person=0.8, vx=0.0, vy=0.0, gesehen=12):
+    obj = world_object_pb2.WorldObject()
+    obj.name = name
+    props = obj.tracked_entity_properties
+    props.entity_id = 7
+    props.entity_type = art
+    props.likelihood_exists = sicher
+    props.type_likelihoods[2] = person
+    props.velocity.x, props.velocity.y = vx, vy
+    props.num_observations = gesehen
+    _kante(obj, name, x, y)
+    obj.transforms_snapshot.child_to_parent_edge_map[BODY_FRAME_NAME].SetInParent()
+    return obj
+
+
+def test_ein_verfolgter_mensch_wird_zu_einer_trackedentity():
+    from spotlab.backends.base import TrackedEntity
+
+    [gefunden] = objekte_aus(Antwort([_verfolgt("entity_7", 3.0, 4.0, vx=0.3, vy=0.4)]),
+                             jetzt=100.0)
+    assert isinstance(gefunden, TrackedEntity) and gefunden.kind == "tracked_entity"
+    assert gefunden.entity_id == 7 and gefunden.entity_type == "person"
+    assert gefunden.distance == pytest.approx(5.0)
+    assert gefunden.bearing == pytest.approx(53.13, abs=0.1)
+    assert gefunden.likelihood == pytest.approx(0.9)
+    assert gefunden.person_likelihood == pytest.approx(0.8)
+    assert gefunden.speed == pytest.approx(0.5), "Betrag aus vx und vy"
+    assert gefunden.observations == 12
+
+
+def test_andere_entitaetsarten_behalten_ihren_namen():
+    [blob] = objekte_aus(Antwort([_verfolgt("entity_1", 1.0, 0.0, art=1)]), jetzt=100.0)
+    assert blob.entity_type == "3d_blob"
+    [unbekannt] = objekte_aus(Antwort([_verfolgt("entity_2", 1.0, 0.0, art=99)]), jetzt=100.0)
+    assert unbekannt.entity_type == "unknown"
+
+
+def test_ein_verfolgtes_ohne_rahmen_wird_uebersprungen():
+    """Wie bei jedem Objekt: keine erfundene Position (`bearing` 0 waere eine)."""
+    obj = world_object_pb2.WorldObject()
+    obj.name = "entity_7"
+    obj.tracked_entity_properties.entity_id = 7
+    assert objekte_aus(Antwort([obj]), jetzt=100.0) == []
+
+
+def test_ein_feld_das_diese_sdk_fassung_nicht_kennt_reisst_nichts_mit():
+    """`door_properties` gibt es in bosdyn-api 5.0.1.2 nicht, steht aber in
+    ARTEN. `HasField` wirft darauf -- und riss die ganze Wahrnehmung mit,
+    sobald ein Objekt kein Dock war (gefunden am 09.09.2026)."""
+    from spotlab.backends.real.wahrnehmung import ARTEN, _hat
+
+    obj = world_object_pb2.WorldObject()
+    assert "door_properties" in ARTEN
+    assert "door_properties" not in obj.DESCRIPTOR.fields_by_name
+    assert _hat(obj, "door_properties") is False
+    # Und der ganze Weg darueber: ein verfolgtes Objekt kommt trotzdem an.
+    assert len(objekte_aus(Antwort([_verfolgt("entity_7", 1.0, 0.0)]), jetzt=1.0)) == 1

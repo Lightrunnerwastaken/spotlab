@@ -15,22 +15,43 @@ import numpy as np
 from bosdyn.client import frame_helpers as fh
 from bosdyn.client.math_helpers import SE3Pose
 
-from spotlab.backends.base import ObstacleGrid, Staircase, Tag, WorldObject, richtung
+from spotlab.backends.base import (
+    ObstacleGrid,
+    Staircase,
+    Tag,
+    TrackedEntity,
+    WorldObject,
+    richtung,
+)
 
 GITTERTYP = "obstacle_distance"
 
 # Feldname im Protobuf -> unser Artname. AprilTags stehen ausserhalb, weil sie
 # als einzige einen eigenen Rahmennamen und eine gefilterte Pose mitbringen.
+# Nicht jede SDK-Fassung kennt jedes dieser Felder: `door_properties` gibt es in
+# bosdyn-api 5.0.1.2 nicht (mehr). `HasField` WIRFT auf ein unbekanntes Feld —
+# und weil diese Schleife fuer JEDES Objekt laeuft, riss ein einziger toter
+# Eintrag die ganze Wahrnehmung mit, sobald ein Objekt kein Dock war. Deshalb
+# wird gefragt, was das Protobuf hier wirklich hat (`_hat`), statt es zu glauben.
 ARTEN = {
     "dock_properties": "dock",
     "door_properties": "door",
     "image_properties": "image_coordinates",
+    "tracked_entity_properties": "tracked_entity",
 }
+
+# `TrackedEntityProperties.entity_type` -> unser Name.
+ENTITAETSARTEN = {
+    0: "unknown", 1: "3d_blob", 2: "person", 3: "forklift", 4: "spot",
+}
+# Derselbe Zahlenschluessel in `type_likelihoods` -- dort steht, fuer wie
+# wahrscheinlich die Firmware jeden Typ haelt.
+PERSON = 2
 
 
 def _art_und_rahmen(obj):
     """(Art, Rahmenname, gefiltert) — oder (None, None, False), wenn unbekannt."""
-    if obj.HasField("apriltag_properties"):
+    if _hat(obj, "apriltag_properties"):
         props = obj.apriltag_properties
         gefiltert = bool(props.frame_name_fiducial_filtered)
         # Die gefilterte Pose ist über die Zeit geglättet und ruhiger; die rohe
@@ -39,9 +60,14 @@ def _art_und_rahmen(obj):
         rahmen = props.frame_name_fiducial_filtered or props.frame_name_fiducial
         return "apriltag", rahmen, gefiltert
     for feld, art in ARTEN.items():
-        if obj.HasField(feld):
+        if _hat(obj, feld):
             return art, obj.name, False
     return None, None, False
+
+
+def _hat(obj, feld):
+    """Hat dieses Protobuf das Feld -- und ist es gesetzt?"""
+    return feld in obj.DESCRIPTOR.fields_by_name and obj.HasField(feld)
 
 
 def _pose(schnappschuss, rahmen, bezug):
@@ -92,7 +118,7 @@ def objekte_aus(antwort, jetzt):
     """
     gefunden = []
     for obj in antwort.world_objects:
-        if obj.HasField("staircase_properties"):
+        if _hat(obj, "staircase_properties"):
             treppe = _treppe_aus(obj, jetzt)
             if treppe is not None:
                 gefunden.append(treppe)
@@ -115,9 +141,26 @@ def objekte_aus(antwort, jetzt):
                 Tag(**gemeinsam, id=int(obj.apriltag_properties.tag_id),
                     filtered=gefiltert)
             )
+        elif art == "tracked_entity":
+            gefunden.append(_verfolgtes(obj, gemeinsam))
         else:
             gefunden.append(WorldObject(**gemeinsam))
     return sorted(gefunden, key=lambda o: o.distance)
+
+
+def _verfolgtes(obj, gemeinsam):
+    """Ein `TrackedEntity` aus `tracked_entity_properties`."""
+    props = obj.tracked_entity_properties
+    geschwindigkeit = math.hypot(float(props.velocity.x), float(props.velocity.y))
+    return TrackedEntity(
+        **gemeinsam,
+        entity_id=int(props.entity_id),
+        entity_type=ENTITAETSARTEN.get(int(props.entity_type), "unknown"),
+        likelihood=float(props.likelihood_exists),
+        person_likelihood=float(props.type_likelihoods.get(PERSON, 0.0)),
+        speed=geschwindigkeit,
+        observations=int(props.num_observations),
+    )
 
 
 def _dtypen():

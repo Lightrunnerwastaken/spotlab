@@ -824,6 +824,38 @@ es keine Schleife.
 
 ---
 
+## A34 — Folgen: Spot geht einem Menschen hinterher
+
+**Voraussetzung** A1 bestanden. Freifläche von mindestens fünf mal fünf Metern, Aufsicht,
+Tablet mit Not-Aus in der Hand einer zweiten Person. Ein AprilTag zum Tragen.
+
+**Teil 1 — verfolgt dieser Spot überhaupt Menschen?** Vor dem Fahren, ohne Bewegung: ein
+kurzes Programm mit `print(spot.people())`, während jemand vor dem Roboter steht und sich
+bewegt. Notieren, ob die Liste Einträge hat, welche `entity_type` und welche `likelihood`
+darin stehen und ob die Nummer über mehrere Sekunden dieselbe bleibt. Eine leere Liste ist
+kein Fehler: dann kann diese Software es nicht, und der Tag-Finder bleibt der Weg.
+
+**Teil 2 — folgen mit dem Tag.** `Beispiele/folgen.py` starten, Tag zeigen, langsam gehen.
+
+**Erwartung**
+- (1) Spot dreht sich zum Tag und folgt mit etwa anderthalb Metern Abstand.
+- (2) Beim Zugehen auf den Roboter bleibt er stehen und weicht NICHT rückwärts aus. Der
+  Abstand fällt nie unter einen Meter.
+- (3) Tag verdecken: Spot hält sofort an, nicht nach einer Sekunde. Nach einigen Sekunden
+  meldet er das Verlieren einmal; Tag wieder zeigen, er fährt weiter.
+- (4) Zwischen Tag und Roboter einen Stuhl stellen: Spot bleibt stehen und nennt den Grund.
+  Dasselbe mit einem Tisch, unter dessen Platte er sonst fahren würde (Kopfraum).
+- (5) „Stopp" beendet den Lauf geordnet; Spot setzt sich.
+- (6) Das Tempo bleibt unter `max_speed` aus der Konfiguration.
+
+**Beobachten statt annehmen** Wie ruhig der Kurs bei einer gehenden Person ist. Wenn Spot
+pendelt, sind `LENKUNG` und `SCHWENK_GRAD` die Stellschrauben; die Werte hier sind gesetzt,
+nicht gemessen. Ebenso notieren, ab welcher Gehgeschwindigkeit er nicht mehr mitkommt.
+
+**Ergebnis** _(offen)_
+
+---
+
 ## Nach der Abnahme
 
 Ergebnisse hier eintragen, Abweichungen als Befund in die Spec zurückspielen, und erst

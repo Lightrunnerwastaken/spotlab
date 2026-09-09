@@ -95,6 +95,24 @@ class Tag(WorldObject):
 
 
 @dataclass(frozen=True)
+class TrackedEntity(WorldObject):
+    """Etwas, das Spots Firmware als bewegtes Objekt VERFOLGT — auch Menschen.
+
+    Der Tracker der Firmware, nicht unserer: er vergibt eine Nummer, hält sie
+    über die Zeit, schätzt die Geschwindigkeit und sagt, für wie sicher er das
+    Ding und seinen Typ hält. Ob ein Roboter das überhaupt liefert, hängt an
+    seiner Software — `world_objects()` gibt dann einfach keine.
+    """
+
+    entity_id: int
+    entity_type: str         # "person" | "3d_blob" | "forklift" | "spot" | "unknown"
+    likelihood: float        # 0..1, wie sicher es dieses Ding überhaupt gibt
+    person_likelihood: float  # 0..1, wie sicher es ein Mensch ist
+    speed: float             # m/s, Betrag der geschätzten Geschwindigkeit
+    observations: int        # wie oft die Firmware es schon gesehen hat
+
+
+@dataclass(frozen=True)
 class Staircase(WorldObject):
     """Eine Treppe -- ein WorldObject mit Richtung, Stufen und Achse.
 

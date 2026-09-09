@@ -46,6 +46,25 @@ versionsgepinntes Extra `spotlab[sim]`.
   Aufzeichnen ist leaselos; nur deshalb darf die GUI es. Ein Lease dort bräche H1. Dasselbe
   gilt für die Nachbearbeitung: `ProcessTopologyRequest` und `ProcessAnchoringRequest` haben
   gar kein Lease-Feld.
+- **Beim Folgen entscheidet der FINDER, wo das Ziel ist, und der Regler, wie Spot fährt.**
+  `workshop/folgen.py`: ein Finder liefert nur Peilung in Grad und Abstand in Metern, egal
+  ob aus einem AprilTag oder aus Spots eigenem Personen-Tracker. Nur so lassen sich
+  Strategien VERGLEICHEN statt behaupten — und nur so bleibt der sicherheitsrelevante Teil
+  an einer Stelle.
+- **Jede Schranke im Folgemodus ist fail-closed, und sie gelten alle gleichzeitig.** Wer
+  ihre Daten nicht lesen kann, verbietet die Fahrt: ein unlesbares Hindernisgitter und ein
+  unlesbares Tiefenbild heissen „stehen bleiben", nicht „weiterfahren". Dazu: näher als
+  `MIN_ABSTAND_M` nie, RÜCKWÄRTS GAR NICHT (nach hinten sieht Spot nichts), ohne Ziel Halt
+  im selben Takt (derselbe Totmann-Gedanke wie im Fahrmodus, nicht nach einer Frist), und
+  der Kopfraum, weil das Hindernisgitter eine Bodenkarte ist. Der Kopfraum wird nur alle
+  `KOPFRAUM_TAKT_S` geholt — zwei Tiefenbilder über WLAN kosten mehr als ein Takt, und in
+  einer Sekunde legt Spot höchstens einen halben Meter zurück, während der geprüfte
+  Korridor zwei Meter reicht.
+- **`HasField` wirft auf ein Feld, das die SDK-Fassung nicht kennt — deshalb `_hat`.**
+  `ARTEN` in `backends/real/wahrnehmung.py` führte `door_properties`, das es in
+  bosdyn-api 5.0.1.2 nicht gibt. Die Schleife läuft für JEDES Objekt, also riss der eine
+  tote Eintrag die ganze Wahrnehmung mit, sobald ein Objekt kein Dock war (gefunden am
+  09.09.2026 beim Einbau von `tracked_entity`). Gefragt wird jetzt der Deskriptor.
 - **Das Protokoll der Nachbearbeitung steht in `maps/nachbearbeitung.py`, an genau einer
   Stelle** — und es kennt kein Lease: der Aufrufer bringt den Client mit. Zwei Wege führen
   hin, und der Unterschied ist der Grund für die Trennung: die frische Aufnahme bearbeitet
@@ -734,6 +753,13 @@ versionsgepinntes Extra `spotlab[sim]`.
   steht an genau EINER Stelle: `src/spotlab/__init__.py`.
 
 ## Umsetzungsstand
+
+**Stufe 19 (09.09.2026): Folgen** — `workshop/folgen.py` mit austauschbarem Ziel-Finder
+(`tag_finder` heute nachweisbar, `personen_finder` über Spots eigenen Tracker), Regler mit
+Abstand und Kurs, und vier Schranken, die alle fail-closed sind. Dazu neu an der Fassade:
+`spot.people()` und die Datenklasse `TrackedEntity` (Nummer, Typ, Sicherheit,
+Geschwindigkeit) aus `tracked_entity_properties`. Beispiel `folgen.py`. Am Gerät: A34,
+das auch klärt, ob dieser Spot überhaupt Menschen verfolgt.
 
 **Stufe 18 (09.09.2026): Schleifenschluss und Ankeroptimierung** — beim Speichern einer
 Aufnahme laufen `process_topology` und `process_anchoring` auf dem Roboter

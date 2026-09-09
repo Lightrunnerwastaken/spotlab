@@ -64,6 +64,7 @@ normalerweise weglassen.
 | `load_map(name=None)` | Lädt eine GraphNav-Karte; ohne Namen die aktive aus der Konfiguration. |
 | `localize()` | Bestimmt über ein Fiducial, wo Spot auf der geladenen Karte steht. |
 | `map_pose()` | Wo Spot auf der geladenen Karte steht: (x, y, grad) im Kartenrahmen. |
+| `people()` | Menschen, die Spots Firmware gerade verfolgt (nächste zuerst, Peilung in Grad, Abstand in Metern). Leer heisst: niemand da oder dieser Roboter verfolgt niemanden. |
 | `process_map(melde=print, fiducial=True, odometry=True)` | Bearbeitet die geladene Karte nach (Schleifen schliessen, Anker optimieren) und schreibt sie zurück. Braucht das Lease, weil die Karte dafür hochgeladen wird; Spot bewegt sich nicht. |
 | `navigate_to(ziel, timeout=120.0, abbruch=None)` | Fährt autonom zum genannten Wegpunkt der geladenen Karte. True bei Ankunft; `abbruch()` wird unterwegs je Nachsende-Takt gefragt — sagt es wahr, hält Spot an und die Antwort ist False. |
 | `waypoints()` | Nennt die Wegpunkte der geladenen Karte. |

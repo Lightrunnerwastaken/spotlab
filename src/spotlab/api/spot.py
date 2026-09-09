@@ -175,6 +175,13 @@ class Spot:
         """
         return world.tags(self.backend, self.recorder, id=id)
 
+    def people(self):
+        """Menschen, die Spots Firmware gerade verfolgt — die nächsten zuerst.
+
+        Leer heisst: niemand da, oder dieser Roboter verfolgt niemanden.
+        """
+        return world.people(self.backend, self.recorder)
+
     def stairs(self):
         """Die Treppen in Sicht, nächste zuerst: Richtung („auf"/„ab"), Stufen, Achse.
 

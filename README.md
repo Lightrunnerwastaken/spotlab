@@ -419,6 +419,40 @@ Live-Ansicht, der **NOT-AUS** steht im Kopf, in jedem Reiter. Freifläche, Aufsi
 Not-Aus in Reichweite — und vor dem ersten Mal Abnahmepunkt **A1** (`docs/ABNAHME.md`), sonst
 ist nicht belegt, dass der Not-Aus am Tablet während des Laufs wirkt.
 
+## Folgen — Spot geht dir hinterher
+
+Halte ein AprilTag in der Hand oder häng es an den Rucksack, starte
+`Beispiele/folgen.py` und geh los. Spot dreht sich zu dir und hält Abstand.
+
+Das Programm besteht aus zwei Teilen, die getrennt austauschbar sind. Ein
+**Ziel-Finder** sagt nur, wo das Ziel ist: Peilung in Grad, Abstand in Metern. Der
+**Regler** hält daraus Abstand und Kurs. Damit lassen sich Strategien vergleichen, statt
+sie zu behaupten:
+
+```python
+folgen.folge(spot, folgen.tag_finder(), lauf_dir=spot.recorder.dir)   # AprilTag
+folgen.folge(spot, folgen.personen_finder(), lauf_dir=spot.recorder.dir)  # Spots Tracker
+```
+
+`personen_finder` nutzt Spots eigenen Personen-Tracker über `spot.people()`. Kein eigenes
+Modell: der Tracker steckt in der Firmware und liefert Nummer, Position, Geschwindigkeit und
+eine Sicherheit. Ob dein Roboter ihn hat, zeigt erst das Gerät — findet er niemanden, bleibt
+Spot stehen. Abnahmepunkt A34 klärt es.
+
+**Die Schranken gelten alle gleichzeitig**, und jede, die ihre Daten nicht lesen kann,
+verbietet die Fahrt statt sie zu erlauben:
+
+| Schranke | Wirkung |
+|---|---|
+| Mindestabstand | Näher kommt Spot nie, und rückwärts fährt er gar nicht — nach hinten sieht er nichts. |
+| Ziel verloren | Er hält sofort, im selben Takt, nicht nach einer Frist. |
+| Hindernisgitter | Vorwärts nur, wenn voraus Platz gemeldet ist. |
+| Kopfraum | Vorwärts nur, wenn nichts über dem Weg hängt — das Gitter ist eine Bodenkarte und sieht keine Tischplatte. |
+| Sperrzonen | Nur mit Raum und Verortung; ohne beides sagt er es, statt Sicherheit vorzutäuschen. |
+
+Der Tempodeckel aus `config.toml` gilt zusätzlich. **Spot bewegt sich dabei autonom**:
+Freifläche, Aufsicht, Tablet mit Not-Aus in Reichweite, und vor dem ersten Mal A1 und A34.
+
 ## Umwelt — was Spot gerade sieht
 
 Der Spot führt selbst eine Liste der Objekte, die er erkennt: AprilTags, Dockingstationen,

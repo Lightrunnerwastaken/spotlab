@@ -249,3 +249,52 @@ def test_stairs_braucht_die_faehigkeit_und_der_trockenlauf_sieht_keine():
         world.stairs(Ohne(), None)
     assert "Treppen" in str(fehler.value)
     assert world.stairs(DryRunBackend(), None) == []
+
+
+# ---------------------------------------------------------- spot.people()
+
+
+class _WeltMitLeuten:
+    def __init__(self, objekte):
+        self._objekte = objekte
+        self.gefragt = []
+
+    def capabilities(self):
+        from spotlab.backends.base import Capability
+
+        return Capability.WORLD_OBJECTS
+
+    def world_objects(self, kinds=None):
+        self.gefragt.append(kinds)
+        return list(self._objekte)
+
+
+def _entity(name, distanz, art="person", sicher=0.9, nummer=1):
+    from spotlab.backends.base import TrackedEntity
+
+    return TrackedEntity(
+        name=name, kind="tracked_entity", bearing=0.0, distance=distanz,
+        world_xy=None, time=1.0, entity_id=nummer, entity_type=art,
+        likelihood=sicher, person_likelihood=sicher, speed=0.0, observations=3,
+    )
+
+
+def test_people_nimmt_nur_sichere_menschen_und_die_naechsten_zuerst():
+    from spotlab.api.world import people
+
+    backend = _WeltMitLeuten([
+        _entity("weit", 4.0, nummer=2),
+        _entity("nah", 1.5, nummer=1),
+        _entity("kein Mensch", 0.5, art="3d_blob", nummer=3),
+        _entity("unsicher", 0.8, sicher=0.2, nummer=4),
+    ])
+    gefunden = people(backend, None)
+    assert [p.name for p in gefunden] == ["nah", "weit"]
+    assert backend.gefragt == [["tracked_entity"]], "nur diese Art abfragen"
+
+
+def test_ohne_verfolgte_kommt_eine_leere_liste():
+    """Leer heisst zweierlei -- niemand da, oder dieser Roboter verfolgt nichts."""
+    from spotlab.api.world import people
+
+    assert people(_WeltMitLeuten([]), None) == []
