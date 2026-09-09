@@ -19,7 +19,8 @@ from bosdyn.api.graph_nav import map_pb2
 from google.protobuf.message import DecodeError
 
 from spotlab.errors import SpotlabError
-from spotlab.pfade import sicherer_name  # noqa: F401  (Re-Export, historischer Pfad)
+from spotlab.pfade import sicherer_name
+from spotlab.record import atomar
 
 KARTEN_ORDNER = "karten"
 METADATEN = "karte.json"
@@ -125,3 +126,43 @@ def finde(workspace, name):
 
 def loesche(kartenordner):
     shutil.rmtree(Path(kartenordner), ignore_errors=True)
+
+
+def wegpunkt_name(graph, kennung):
+    """Der Name eines Wegpunkts -- oder '' -- oder SpotlabError, wenn es ihn nicht gibt."""
+    for wp in graph.waypoints:
+        if wp.id == kennung:
+            return wp.annotations.name or ""
+    raise SpotlabError(f"Den Wegpunkt '{kennung}' gibt es auf dieser Karte nicht.")
+
+
+def benenne_wegpunkt(kartenordner, kennung, name):
+    """Einen Wegpunkt der gespeicherten Karte nachträglich (um)benennen. Gibt den Namen zurück.
+
+    Der Name ist eine Anmerkung im Graphen (`annotations.name`) -- dieselbe Stelle,
+    die „Wegpunkt setzen" bei der Aufnahme beschreibt, und genau die liest
+    `spot.navigate_to("kueche")` über `Map.id_fuer`. Das Format bleibt das des
+    SDK; der Roboter bekommt den Namen beim nächsten `load_map` mit. Bereinigt wie
+    bei der Aufnahme (`sicherer_name`: Leerzeichen und Satzzeichen werden `-`).
+    Leer heisst: Name entfernen. Ein Name, den schon ein anderer Wegpunkt trägt,
+    wird abgewiesen -- `id_fuer` nähme sonst stillschweigend den ersten.
+    `graph` wird atomar ersetzt; die Metadaten zählen nur und bleiben.
+    """
+    ordner = Path(kartenordner)
+    graph = lade_graph(ordner)
+    wegpunkt_name(graph, kennung)                      # gibt es ihn?
+    neu = sicherer_name(name or "", ersatz="")
+    if neu:
+        for wp in graph.waypoints:
+            if wp.id != kennung and wp.annotations.name == neu:
+                raise SpotlabError(
+                    f"Den Namen '{neu}' trägt schon ein anderer Wegpunkt. Namen müssen "
+                    f"eindeutig sein, sonst weiss navigate_to('{neu}') nicht, wohin.")
+    for wp in graph.waypoints:
+        if wp.id == kennung:
+            wp.annotations.name = neu
+    if not atomar.schreibe_atomar(ordner / "graph", graph.SerializeToString()):
+        raise SpotlabError(
+            "Die Karte liess sich nicht schreiben. Ist die Datei `graph` gerade in einem "
+            "anderen Programm offen? Schliessen und noch einmal versuchen.")
+    return neu

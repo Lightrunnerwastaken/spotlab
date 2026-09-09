@@ -30,6 +30,7 @@ TREFFER_PX = 12          # so nah muss ein Klick an einem Wegpunkt liegen
 
 class MapPlot(QWidget):
     wegpunkt_geklickt = Signal(str)
+    wegpunkt_doppelt = Signal(str)       # Doppelklick: benennen
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -128,6 +129,16 @@ class MapPlot(QWidget):
                 ereignis.accept()
                 return
         super().mousePressEvent(ereignis)
+
+    def mouseDoubleClickEvent(self, ereignis):
+        if ereignis.button() == Qt.LeftButton:
+            lage = ereignis.position()
+            kennung = self.wegpunkt_bei(lage.x(), lage.y())
+            if kennung is not None:
+                self.wegpunkt_doppelt.emit(kennung)
+                ereignis.accept()
+                return
+        super().mouseDoubleClickEvent(ereignis)
 
     # ------------------------------------------------------------- Zeichnen
 

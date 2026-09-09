@@ -173,3 +173,50 @@ def test_ein_unlesbarer_ordner_reisst_die_liste_nicht_mit(tmp_path, monkeypatch)
 
     monkeypatch.setattr(store, "_beschreibe", stolpert)
     assert [k.name for k in store.karten(tmp_path)] == ["heil"]
+
+
+# ---------------------------------------------------------- Benennen
+
+
+def _karte_mit_graph(tmp_path, graph):
+    ordner = karten_wurzel(tmp_path) / "flur"
+    ordner.mkdir(parents=True)
+    (ordner / "graph").write_bytes(graph.SerializeToString())
+    speichere_metadaten(ordner, "flur", "SN-1", graph)
+    return ordner
+
+
+def test_ein_wegpunkt_bekommt_nachtraeglich_einen_namen(tmp_path):
+    """Im SDK-Format, an derselben Stelle wie bei der Aufnahme: der Graph selbst."""
+    from spotlab.maps.store import benenne_wegpunkt, wegpunkt_name
+
+    ordner = _karte_mit_graph(tmp_path, _graph())
+    assert benenne_wegpunkt(ordner, "wp1", "Küche links") == "Küche-links"
+    graph = lade_graph(ordner)
+    assert wegpunkt_name(graph, "wp1") == "Küche-links" and wegpunkt_name(graph, "wp0") == ""
+    assert len(graph.waypoints) == 3 and len(graph.edges) == 2, "sonst nichts angefasst"
+    assert not list(ordner.glob("*.tmp")), "atomar ersetzt"
+    assert karten(tmp_path)[0].wegpunkte == 3
+
+
+def test_leer_entfernt_den_namen_und_fremde_kennungen_werden_abgewiesen(tmp_path):
+    from spotlab.maps.store import benenne_wegpunkt, wegpunkt_name
+
+    ordner = _karte_mit_graph(tmp_path, _graph())
+    benenne_wegpunkt(ordner, "wp1", "kueche")
+    assert benenne_wegpunkt(ordner, "wp1", "   ") == ""
+    assert wegpunkt_name(lade_graph(ordner), "wp1") == ""
+    with pytest.raises(SpotlabError, match="gibt es auf dieser Karte nicht"):
+        benenne_wegpunkt(ordner, "wp9", "x")
+
+
+def test_ein_doppelter_name_wird_abgewiesen(tmp_path):
+    """`id_fuer` naehme sonst stillschweigend den ersten -- und Spot fuehre woandershin."""
+    from spotlab.maps.store import benenne_wegpunkt, wegpunkt_name
+
+    ordner = _karte_mit_graph(tmp_path, _graph())
+    benenne_wegpunkt(ordner, "wp0", "kueche")
+    with pytest.raises(SpotlabError, match="schon ein anderer Wegpunkt"):
+        benenne_wegpunkt(ordner, "wp1", "kueche")
+    assert wegpunkt_name(lade_graph(ordner), "wp1") == ""
+    assert benenne_wegpunkt(ordner, "wp0", "kueche") == "kueche", "derselbe Name am selben Punkt geht"

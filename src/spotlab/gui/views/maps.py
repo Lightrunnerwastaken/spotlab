@@ -20,10 +20,18 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from spotlab.errors import SpotlabError
 from spotlab.gui.mapplot import MapPlot
 from spotlab.gui.theme import DUNKEL
 from spotlab.maps.geometry import grundriss, lage_im_grundriss
-from spotlab.maps.store import karten, karten_wurzel, lade_graph, loesche
+from spotlab.maps.store import (
+    benenne_wegpunkt,
+    karten,
+    karten_wurzel,
+    lade_graph,
+    loesche,
+    wegpunkt_name,
+)
 from spotlab.record import navigation as navigation_datei
 
 HINWEIS = (
@@ -94,6 +102,12 @@ class MapsView(QWidget):
         self.aktiv_knopf.clicked.connect(self._setze_aktiv)
         self.loeschen_knopf = QPushButton("Löschen")
         self.loeschen_knopf.clicked.connect(self._loesche)
+        # Nachtraeglich benennen: ein Wegpunkt in der Zeichnung anklicken, dann der
+        # Knopf -- oder gleich Doppelklick. Der Name landet im SDK-Graphen auf der
+        # Platte (`maps/store.py::benenne_wegpunkt`), nicht in einer Nebenliste.
+        self.benennen_knopf = QPushButton("✎ Wegpunkt benennen…")
+        self.benennen_knopf.setEnabled(False)
+        self.benennen_knopf.clicked.connect(self._benenne)
 
         # Navigation: Wegpunkte anklicken, Spot faehrt hin -- ueber denselben einen
         # Startweg wie „Fahren" (`app.py::_starte_navigation`). Das Ziel geht als
@@ -114,6 +128,7 @@ class MapsView(QWidget):
         self.plot = MapPlot()
         self.plot.palette_ = self._palette
         self.plot.wegpunkt_geklickt.connect(self._wegpunkt_geklickt)
+        self.plot.wegpunkt_doppelt.connect(self._wegpunkt_doppelt)
         self.plot_hinweis = QLabel("")
         self.plot_hinweis.setObjectName("Gedaempft")
         self.plot_hinweis.setWordWrap(True)
@@ -128,6 +143,7 @@ class MapsView(QWidget):
         kartenknoepfe = QHBoxLayout()
         kartenknoepfe.addWidget(self.aktiv_knopf)
         kartenknoepfe.addWidget(self.loeschen_knopf)
+        kartenknoepfe.addWidget(self.benennen_knopf)
         kartenknoepfe.addStretch(1)
 
         navigation = QHBoxLayout()
@@ -185,6 +201,7 @@ class MapsView(QWidget):
             return
         self.plot.setze_grundriss(riss)
         self.plot_hinweis.setText(riss.hinweis)
+        self.benennen_knopf.setEnabled(False)        # neue Karte, kein Wegpunkt gewaehlt
 
     # ------------------------------------------------------------- Karten
 
@@ -226,7 +243,7 @@ class MapsView(QWidget):
         self._ziel_nr = 0
         # Die Liste bleibt stehen: die Zeichnung muss die Karte des Laufs zeigen,
         # sonst stuende der Roboter auf der falschen Karte.
-        for knopf in (self.liste, self.aktiv_knopf, self.loeschen_knopf):
+        for knopf in (self.liste, self.aktiv_knopf, self.loeschen_knopf, self.benennen_knopf):
             knopf.setEnabled(False)
         self.navigation_knopf.setText("■ Navigation beenden")
         self.navigation_stopp.setEnabled(True)
@@ -276,14 +293,49 @@ class MapsView(QWidget):
         self.plot.setze_ziel(kennung)
         name = self._name_von(kennung)
         if not self.laeuft():
+            self.benennen_knopf.setEnabled(True)
             self.navigation_status.setText(
-                f'Wegpunkt {name} gewählt — „🧭 Zu Wegpunkten fahren" startet die Navigation.')
+                f'Wegpunkt {name} gewählt — „🧭 Zu Wegpunkten fahren" fährt hin, '
+                f'„✎ Wegpunkt benennen…" (oder Doppelklick) gibt ihm einen Namen.')
             return
         self._ziel_nr += 1
         if not navigation_datei.schreibe_ziel(self._lauf_dir, kennung, self._ziel_nr):
             self.meldung.emit("Das Ziel liess sich nicht schreiben — noch einmal klicken.")
             return
         self.navigation_status.setText(f"Ziel gesetzt: {name}. Spot fährt los, sobald er verortet ist.")
+
+    def _wegpunkt_doppelt(self, kennung):
+        if self.laeuft():
+            return                                   # unterwegs wird nicht umbenannt
+        self.plot.setze_ziel(kennung)
+        self.benennen_knopf.setEnabled(True)
+        self._benenne()
+
+    def _benenne(self):
+        """Den gewaehlten Wegpunkt (um)benennen -- Dialog, Platte, Zeichnung."""
+        eintrag, kennung = self._gewaehlte(), self.plot.ziel
+        if eintrag is None or kennung is None or self.laeuft():
+            return
+        try:
+            bisher = wegpunkt_name(lade_graph(eintrag.dir), kennung)
+        except (OSError, SpotlabError) as fehler:
+            self.meldung.emit(str(fehler))
+            return
+        name, ok = QInputDialog.getText(
+            self, "Wegpunkt benennen",
+            "Name (Leerzeichen werden zu -, leer entfernt den Namen):", text=bisher)
+        if not ok:
+            return
+        try:
+            neu = benenne_wegpunkt(eintrag.dir, kennung, name)
+        except (OSError, SpotlabError) as fehler:
+            self.meldung.emit(str(fehler))
+            return
+        self._zeige_karte(self.liste.currentRow())   # neu zeichnen, mit Namen
+        self.plot.setze_ziel(kennung)
+        self.benennen_knopf.setEnabled(True)
+        self.navigation_status.setText(
+            f'Wegpunkt heisst jetzt „{neu}".' if neu else "Der Wegpunkt hat keinen Namen mehr.")
 
     def _navigation_geklickt(self):
         # Am `clicked`-Signal: Qt reicht `checked` herein, deshalb kein Parameter.

@@ -182,3 +182,65 @@ def test_der_stand_kommt_in_zeile_und_zeichnung(qapp, tmp_path):
     text = ansicht.navigation_status.text()
     assert "verloren" in text and "andere" in text, "eine fremde Karte im Lauf wird gesagt"
     assert ansicht.plot.roboter is None
+
+
+# ------------------------------------------------------------- Benennen
+
+
+def test_ein_gewaehlter_wegpunkt_laesst_sich_benennen(qapp, tmp_path, monkeypatch):
+    from spotlab.gui.views import maps as maps_modul
+    from spotlab.maps.store import lade_graph, wegpunkt_name
+
+    ansicht = _mit_karte(tmp_path)
+    assert not ansicht.benennen_knopf.isEnabled()
+    ansicht.plot.wegpunkt_geklickt.emit("wp1")
+    assert ansicht.benennen_knopf.isEnabled() and "benennen" in ansicht.navigation_status.text()
+    gefragt = []
+    monkeypatch.setattr(maps_modul.QInputDialog, "getText",
+                        staticmethod(lambda *a, **k: (gefragt.append(k.get("text")), ("Fenster", True))[1]))
+    ansicht.benennen_knopf.click()
+    assert gefragt == ["kueche"], "der bisherige Name steht im Dialog"
+    assert wegpunkt_name(lade_graph(_karte_ordner(tmp_path)), "wp1") == "Fenster"
+    assert {p.id: p.name for p in ansicht.plot.grundriss.punkte}["wp1"] == "Fenster", "neu gezeichnet"
+    assert ansicht.plot.ziel == "wp1" and "Fenster" in ansicht.navigation_status.text()
+
+
+def test_doppelklick_benennt_und_abbrechen_aendert_nichts(qapp, tmp_path, monkeypatch):
+    from spotlab.gui.views import maps as maps_modul
+    from spotlab.maps.store import lade_graph, wegpunkt_name
+
+    ansicht = _mit_karte(tmp_path)
+    monkeypatch.setattr(maps_modul.QInputDialog, "getText", staticmethod(lambda *a, **k: ("egal", False)))
+    ansicht.plot.wegpunkt_doppelt.emit("wp0")
+    assert wegpunkt_name(lade_graph(_karte_ordner(tmp_path)), "wp0") == "start"
+    assert ansicht.plot.ziel == "wp0" and ansicht.benennen_knopf.isEnabled()
+
+
+def test_ein_doppelter_name_wird_gemeldet_nicht_geschrieben(qapp, tmp_path, monkeypatch):
+    from spotlab.gui.views import maps as maps_modul
+    from spotlab.maps.store import lade_graph, wegpunkt_name
+
+    ansicht = _mit_karte(tmp_path)
+    meldungen = []
+    ansicht.meldung.connect(meldungen.append)
+    monkeypatch.setattr(maps_modul.QInputDialog, "getText", staticmethod(lambda *a, **k: ("start", True)))
+    ansicht.plot.wegpunkt_doppelt.emit("wp1")
+    assert meldungen and "anderer Wegpunkt" in meldungen[0]
+    assert wegpunkt_name(lade_graph(_karte_ordner(tmp_path)), "wp1") == "kueche"
+
+
+def test_waehrend_der_navigation_wird_nicht_umbenannt(qapp, tmp_path, monkeypatch):
+    from spotlab.gui.views import maps as maps_modul
+
+    ansicht = _mit_karte(tmp_path)
+    ansicht.lauf_beginnt(tmp_path, "navigieren.py")
+    gefragt = []
+    monkeypatch.setattr(maps_modul.QInputDialog, "getText",
+                        staticmethod(lambda *a, **k: (gefragt.append(1), ("x", True))[1]))
+    ansicht.plot.wegpunkt_doppelt.emit("wp1")
+    ansicht.plot.wegpunkt_geklickt.emit("wp1")
+    assert gefragt == [] and not ansicht.benennen_knopf.isEnabled()
+
+
+def _karte_ordner(tmp_path):
+    return karten_wurzel(tmp_path) / "turnhalle"

@@ -350,6 +350,10 @@ versionsgepinntes Extra `spotlab[sim]`.
   ab (hält an, gibt False), ein gescheitertes Ziel beendet den Lauf NICHT, die Verortung wird
   alle zwei Sekunden wiederholt, bis ein Tag im Bild ist oder Stopp kommt — ohne Roboter
   gibt es kein GraphNav, und der Kettentest prüft, dass GENAU DAS dann im Tab steht.
+  **Wegpunktnamen sind Anmerkungen im SDK-Graphen** (`annotations.name`), nachträglich über
+  den Tab änderbar (`maps/store.py::benenne_wegpunkt`, atomar, bereinigt wie bei der
+  Aufnahme) und EINDEUTIG — `Map.id_fuer` nähme bei zwei gleichen Namen stillschweigend den
+  ersten, und Spot führe woandershin. Keine Nebenliste mit Namen: der Graph ist die Wahrheit.
 - **`einrichten.cmd` ist der eine Einstieg, und ohne `-Entwickler` installiert er nur aus
   dem ZIP.** Er ruft `einrichten.ps1`; ohne `-Entwickler` verlangt das Skript
   `schueler-requirements.txt` (liegt nur im Release) und installiert `--only-binary=:all:`
@@ -681,7 +685,8 @@ anklickbar (`gui/mapplot.py`: Treffer, Ring fürs Ziel, gefüllter Standort-Wegp
 den Roboter), „🧭 Zu Wegpunkten fahren" startet `Beispiele/navigieren.py` (Kern
 `workshop/navigieren.py::navigiere`: Karte laden, verorten mit Wiederholung, Ziele aus
 `ziel.json`, Stand nach `navigation.json`), `navigate_to(abbruch=)` in der API, die Ortung
-relativ zum Wegpunkt am Backend. Kette im Test mit dem Trockenlauf; am Gerät: A32. Davor
+relativ zum Wegpunkt am Backend; Wegpunkte lassen sich im Tab nachträglich benennen
+(Knopf oder Doppelklick, `maps/store.py::benenne_wegpunkt`). Kette im Test mit dem Trockenlauf; am Gerät: A32. Davor
 (09.09.2026) der Blick im Fahren-Tab wie auf dem Tablet: `backends/real/panorama.py`.
 
 **Stufe 15 (07.–09.09.2026, Codex): Physikmodus, Wahrnehmungs-API, Schüler-Release** —

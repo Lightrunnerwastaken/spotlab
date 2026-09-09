@@ -151,7 +151,10 @@ fahren" drücken und in der Zeichnung einen Wegpunkt anklicken — Spot fährt h
 Zeichnung zeigt das Ziel als Ring, den Wegpunkt, an dem Spot sich verortet hat, gefüllt, und
 Spot selbst als Pfeil; die Zeile darunter sagt, was der Lauf tut. Ein Klick während der Fahrt
 wechselt das Ziel, derselbe Wegpunkt noch einmal geklickt heisst noch einmal fahren, „■ Stopp"
-hält an und beendet. Dahinter steckt kein zweiter Weg zum Roboter: der Knopf startet das
+hält an und beendet. Wegpunkte lassen sich hier auch **nachträglich benennen**: anklicken und
+„✎ Wegpunkt benennen…", oder Doppelklick — der Name landet im Graphen der Karte, wo ihn auch
+`spot.navigate_to("kueche")` liest; Namen müssen eindeutig sein, leer entfernt den Namen.
+Dahinter steckt kein zweiter Weg zum Roboter: der Knopf startet das
 Programm `navigieren.py` aus dem Projekt Beispiele am echten Spot, mit Lease, Not-Aus-Endpunkt,
 Aufzeichnung und dem Tempodeckel wie jeder Lauf; der Tab schreibt nur das Ziel in eine Datei
 des Lauf-Verzeichnisses und liest den Stand aus einer anderen. Zum Verorten muss ein AprilTag

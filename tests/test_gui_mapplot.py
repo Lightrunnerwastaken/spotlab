@@ -102,3 +102,17 @@ def test_ziel_standort_und_roboter_werden_gezeichnet_und_mit_der_karte_geleert(q
     assert (plot.ziel, plot.standort, plot.roboter) == ("b", "a", (2.0, 1.5, 45.0))
     plot.setze_grundriss(_grundriss(), DUNKEL)
     assert plot.ziel is None and plot.standort is None and plot.roboter is None
+
+
+def test_ein_doppelklick_meldet_den_wegpunkt_zum_benennen(qapp):
+    from PySide6.QtCore import QPoint, Qt
+    from PySide6.QtTest import QTest
+
+    plot = MapPlot()
+    plot.setze_grundriss(_grundriss(), DUNKEL)
+    plot.resize(320, 240)
+    doppelt = []
+    plot.wegpunkt_doppelt.connect(doppelt.append)
+    x, y = plot.lagen_auf_schirm()["a"]
+    QTest.mouseDClick(plot, Qt.LeftButton, pos=QPoint(x, y))
+    assert doppelt == ["a"]
