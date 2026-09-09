@@ -1,16 +1,16 @@
 # Physikmodus: erste Integration
 
-Entscheidung des Autors im Chat: zusÃƒÂ¤tzlicher Physikmodus auf Basis des bestehenden
-SpotSdkSim, zunÃƒÂ¤chst Stand/Gehen/Stopp, danach einzelne Stufen und Treppen.
-Dies ergÃƒÂ¤nzt die Wiedergabe-Entscheidung vom 06.09.2026. Die bestehenden
-Forschungsregler, Messreihen, Raumrekonstruktion und Wiedergabe bleiben unverÃƒÂ¤ndert.
+Entscheidung des Autors im Chat: zusätzlicher Physikmodus auf Basis des bestehenden
+SpotSdkSim, zunächst Stand/Gehen/Stopp, danach einzelne Stufen und Treppen.
+Dies ergänzt die Wiedergabe-Entscheidung vom 06.09.2026. Die bestehenden
+Forschungsregler, Messreihen, Raumrekonstruktion und Wiedergabe bleiben unverändert.
 
 ## Start
 
-Im Code-Fenster unter Ã¢â‚¬Å¾Wo lÃƒÂ¤uft es?Ã¢â‚¬Å“ **Physik 3D (experimentell)**
-wÃƒÂ¤hlen. FÃƒÂ¼r ebenen Boden einen Raum ohne HÃƒÂ¶henflÃƒÂ¤chen/GelÃƒÂ¤nde/Sperrzonen verwenden.
-Neu: Die Szene `physik_einzelstufe` unterstÃƒÂ¼tzt einen begrenzten 6-cm-Podestversuch.
-Neue Vorlage: `physik_gehen.py` (erscheint beim nÃƒÂ¤chsten GUI-Start).
+Im Code-Fenster unter „Wo läuft es?“ **Physik 3D (experimentell)**
+wählen. Für ebenen Boden einen Raum ohne Höhenflächen/Gelände/Sperrzonen verwenden.
+Neu: Die Szene `physik_einzelstufe` unterstützt einen begrenzten 6-cm-Podestversuch.
+Neue Vorlage: `physik_gehen.py` (erscheint beim nächsten GUI-Start).
 
 ```python
 from spotlab import connect
@@ -24,36 +24,36 @@ with connect(backend="physics") as spot:
 
 Der Simulator beginnt in der bereits stehenden home-Pose. `power_on/off` schaltet
 in dieser ersten Version die virtuelle Kommandofreigabe, nicht eine simulierte
-Motor-Elektronik. `stand()` prÃƒÂ¼ft das Zur-Ruhe-Kommen; es simuliert noch keinen
-Aufstehvorgang vom Boden. Der KÃƒÂ¶rper bleibt physikalisch von den Beinen getragen.
+Motor-Elektronik. `stand()` prüft das Zur-Ruhe-Kommen; es simuliert noch keinen
+Aufstehvorgang vom Boden. Der Körper bleibt physikalisch von den Beinen getragen.
 
-## Was tatsÃƒÂ¤chlich anders ist
+## Was tatsächlich anders ist
 
-- Dynamik ÃƒÂ¼ber `mj_step`, Gewicht, TrÃƒÂ¤gheit, Aktuatoren und KontaktkrÃƒÂ¤fte.
-- FuÃƒÅ¸aufsetzplanung durch den vorhandenen TrotController; keine abgespielten
-  Gelenkkurven und keine gesetzte KÃƒÂ¶rperposition wÃƒÂ¤hrend des Laufs.
+- Dynamik über `mj_step`, Gewicht, Trägheit, Aktuatoren und Kontaktkräfte.
+- Fußaufsetzplanung durch den vorhandenen TrotController; keine abgespielten
+  Gelenkkurven und keine gesetzte Körperposition während des Laufs.
 - Einmalige Startpose (GUI-Winkel in Grad); danach schreibt nur die Physik die Basis.
-- Eigener Worker, unabhÃƒÂ¤ngig von GUI und Sensor-AbfragehÃƒÂ¤ufigkeit. Der Renderer
+- Eigener Worker, unabhängig von GUI und Sensor-Abfragehäufigkeit. Der Renderer
   verwendet private MjData und Kopien des berechneten Zustands.
-- Fester MuJoCo-Zeitschritt. Ist der Rechner zu langsam, lÃƒÂ¤uft die Simulation
-  langsamer; es werden keine Physikschritte ÃƒÂ¼bersprungen, um Echtzeit vorzutÃƒÂ¤uschen.
-- Kommandofristen werden aus lokaler Zeit in Simulationszeit ÃƒÂ¼bersetzt und auch
-  bei langsamer Simulation gegen die Wanduhr geprÃƒÂ¼ft.
-- Gelenke, Geschwindigkeiten und FuÃƒÅ¸kontakte kommen aus dem Physikzustand.
-- Sensorbilder und LocalGrid verwenden die bestehende Sensor-Pipeline. AuftrÃƒÂ¤ge
-  werden im Physik-Worker verarbeitet; teure Bilder kÃƒÂ¶nnen Echtzeit verlangsamen.
+- Fester MuJoCo-Zeitschritt. Ist der Rechner zu langsam, läuft die Simulation
+  langsamer; es werden keine Physikschritte übersprungen, um Echtzeit vorzutäuschen.
+- Kommandofristen werden aus lokaler Zeit in Simulationszeit übersetzt und auch
+  bei langsamer Simulation gegen die Wanduhr geprüft.
+- Gelenke, Geschwindigkeiten und Fußkontakte kommen aus dem Physikzustand.
+- Sensorbilder und LocalGrid verwenden die bestehende Sensor-Pipeline. Aufträge
+  werden im Physik-Worker verarbeitet; teure Bilder können Echtzeit verlangsamen.
 
 ## Grenzen dieser Version
 
-**Kein realitÃƒÂ¤tsgetreuer Treppenlauf fertiggestellt.** Der vorhandene Regler plant
-Schwungziele auf einer festen FuÃƒÅ¸bodenhÃƒÂ¶he. Ein separater TerrainStepper ergÃƒÂ¤nzt
-jetzt kleine Podeste. Andere HÃƒÂ¶henflÃƒÂ¤chen und Treppen werden weiterhin abgelehnt.
+**Kein realitätsgetreuer Treppenlauf fertiggestellt.** Der vorhandene Regler plant
+Schwungziele auf einer festen Fußbodenhöhe. Ein separater TerrainStepper ergänzt
+jetzt kleine Podeste. Andere Höhenflächen und Treppen werden weiterhin abgelehnt.
 
-UnterstÃƒÂ¼tzt: stand() in NeutralhÃƒÂ¶he, walk() mit HINT_AUTO/HINT_TROT, stop(), State,
+Unterstützt: stand() in Neutralhöhe, walk() mit HINT_AUTO/HINT_TROT, stop(), State,
 Tiefen-/Graukameras, LocalGrid obstacle_distance und GUI-Livebild.
-Noch nicht unterstÃƒÂ¼tzt: sit(), move()-Zieltrajektorien, KÃƒÂ¶rperpose, frei konfigurierbarer Kriechgang,
+Noch nicht unterstützt: sit(), move()-Zieltrajektorien, Körperpose, frei konfigurierbarer Kriechgang,
 WorldObjects/Tags, GraphNav und Treppen. UnsupportedCapability benennt die Grenze.
-Die grobe Capability POSTURE/LOCOMOTION garantiert nicht sÃƒÂ¤mtliche Einzelbefehle.
+Die grobe Capability POSTURE/LOCOMOTION garantiert nicht sämtliche Einzelbefehle.
 
 Die Adaptergrenzen betragen vorerst 0.30 m/s und 0.50 rad/s; Begrenzungen werden
 protokolliert. Das sind Versuchsgrenzen dieses Reglers, keine Eigenschaften des
@@ -61,74 +61,74 @@ realen Spot. Geschwindigkeits-Tracking und Anfahren weichen ab. Ein Sturz stoppt
 den Versuch mit Fehler. Der Modell-Massenwert steht im Laufbericht; er wird nicht
 heimlich an reale Messwerte angepasst. Nicht als Sim-zu-Real-Nachweis verwenden.
 
-Der ÃƒÅ“bergang vom Trab zum Stand benutzt den vorhandenen Brems-/Absetzablauf
-(maximal 4 s Simulationszeit). Neue Bewegungsbefehle wÃƒÂ¤hrend dieses ÃƒÅ“bergangs
-werden erst nach dem ÃƒÅ“bergang wirksam. Kein Echtzeitversprechen fÃƒÂ¼r die GUI.
+Der Übergang vom Trab zum Stand benutzt den vorhandenen Brems-/Absetzablauf
+(maximal 4 s Simulationszeit). Neue Bewegungsbefehle während dieses Übergangs
+werden erst nach dem Übergang wirksam. Kein Echtzeitversprechen für die GUI.
 
-## Validierung und nÃƒÂ¤chste Entwicklungsstufe
+## Validierung und nächste Entwicklungsstufe
 
-Automatische PrÃƒÂ¼fungen: Kontaktstand, Fortschritt beim Gehen, Stillstand nach
+Automatische Prüfungen: Kontaktstand, Fortschritt beim Gehen, Stillstand nach
 Stopp, Kommandoablauf bei langsamer Sim-Uhr, getrennte Zustandsabfragen, Startwinkel,
-Worker-Abbau und ausdrÃƒÂ¼cklich abgelehnte Funktionen. ZusÃƒÂ¤tzlich gerenderte
-Sequenz Stand Ã¢â€ â€™ Geradeaus Ã¢â€ â€™ Stopp visuell prÃƒÂ¼fen.
+Worker-Abbau und ausdrücklich abgelehnte Funktionen. Zusätzlich gerenderte
+Sequenz Stand → Geradeaus → Stopp visuell prüfen.
 
-FÃƒÂ¼r die nÃƒÂ¤chste Stufe nÃƒÂ¶tig:
-1. Lokale HÃƒÂ¶hen-/Kontaktabfrage pro FuÃƒÅ¸ und erreichbare AufsetzflÃƒÂ¤chen.
-2. Schwungtrajektorie ÃƒÂ¼ber Stufenkanten sowie Landung anhand realer Sim-Kontakte.
-3. StÃƒÂ¼tzbein-/KÃƒÂ¶rperplanung bei unterschiedlichen FuÃƒÅ¸hÃƒÂ¶hen.
-4. Einzelstufe auf/ab, anschlieÃƒÅ¸end vollstÃƒÂ¤ndige Treppe; FuÃƒÅ¸durchdringung,
-   Schlupf, Neigung, Sturz und Tracking messen, jeweils als Clip prÃƒÂ¼fen.
-5. Abgleich mit denselben ManÃƒÂ¶vern aus realen Aufnahmen.
+Für die nächste Stufe nötig:
+1. Lokale Höhen-/Kontaktabfrage pro Fuß und erreichbare Aufsetzflächen.
+2. Schwungtrajektorie über Stufenkanten sowie Landung anhand realer Sim-Kontakte.
+3. Stützbein-/Körperplanung bei unterschiedlichen Fußhöhen.
+4. Einzelstufe auf/ab, anschließend vollständige Treppe; Fußdurchdringung,
+   Schlupf, Neigung, Sturz und Tracking messen, jeweils als Clip prüfen.
+5. Abgleich mit denselben Manövern aus realen Aufnahmen.
 
-Diese Stufe verÃƒÂ¤ndert den Forschungsregler und braucht eigene Tests und ein
-protokolliertes Validierungsergebnis. Die bisherige GUI-Wiedergabe heiÃƒÅ¸t nun
-Ã¢â‚¬Å¾ÃƒÅ“bungsraum 3D (Wiedergabe)Ã¢â‚¬Å“, damit beide Modelle unterscheidbar bleiben.
+Diese Stufe verändert den Forschungsregler und braucht eigene Tests und ein
+protokolliertes Validierungsergebnis. Die bisherige GUI-Wiedergabe heißt nun
+„Übungsraum 3D (Wiedergabe)“, damit beide Modelle unterscheidbar bleiben.
 
 
 ## Neuer Einzelstufenversuch (08.09.2026)
 
 Im GUI den Raum **physik_einzelstufe**, Start **(0, 0, 0)** und das Beispiel
-**physik_einzelstufe.py** wÃƒÂ¤hlen. Mehrere Minuten einplanen. Die Vorlagen erscheinen
-beim nÃƒÂ¤chsten GUI-Start. Das Beispiel fÃƒÂ¤hrt positionsabhÃƒÂ¤ngig vorwÃƒÂ¤rts auf das
-6-cm-Podest und rÃƒÂ¼ckwÃƒÂ¤rts herunter.
+**physik_einzelstufe.py** wählen. Mehrere Minuten einplanen. Die Vorlagen erscheinen
+beim nächsten GUI-Start. Das Beispiel fährt positionsabhängig vorwärts auf das
+6-cm-Podest und rückwärts herunter.
 
-Der separate TerrainStepper verlagert das Gewicht auf drei StÃƒÂ¼tzbeine, sucht
-FuÃƒÅ¸flÃƒÂ¤chen, hebt das Schwungbein ÃƒÂ¼ber die Kante und bestÃƒÂ¤tigt die Landung durch
-Sim-Kontakte. WÃƒÂ¤hrend der Bewegung werden nur Gelenkziele gesetzt; die freie
+Der separate TerrainStepper verlagert das Gewicht auf drei Stützbeine, sucht
+Fußflächen, hebt das Schwungbein über die Kante und bestätigt die Landung durch
+Sim-Kontakte. Während der Bewegung werden nur Gelenkziele gesetzt; die freie
 Basis wird durch MuJoCo integriert. Die bisherigen Forschungsregler bleiben erhalten.
 
-Grenzen: eine horizontale, ungedrehte Plattform bis 6 cm, mindestens 0.8 Ãƒâ€” 1 m;
+Grenzen: eine horizontale, ungedrehte Plattform bis 6 cm, mindestens 0.8 × 1 m;
 validiert ist die mitgelieferte Szene. Start-Yaw 0, reine x-Bewegung, maximal
-0.02 m/s Sollgeschwindigkeit. Drehen, SeitwÃƒÂ¤rtsfahrt, hÃƒÂ¶here Stufen, Rampen,
-mehrere Ebenen und VorwÃƒÂ¤rtsabstieg sind gesperrt. `stairs()` bleibt unsupported.
-**Stopp und Kommandoablauf beenden zuerst den laufenden FuÃƒÅ¸schritt**, was mehrere
+0.02 m/s Sollgeschwindigkeit. Drehen, Seitwärtsfahrt, höhere Stufen, Rampen,
+mehrere Ebenen und Vorwärtsabstieg sind gesperrt. `stairs()` bleibt unsupported.
+**Stopp und Kommandoablauf beenden zuerst den laufenden Fußschritt**, was mehrere
 Sekunden dauern kann. Der Kriechgang erreicht die Sollgeschwindigkeit nicht
-verlÃƒÂ¤sslich. Die FuÃƒÅ¸planung kennt die statische Szene direkt (**scene oracle**);
+verlässlich. Die Fußplanung kennt die statische Szene direkt (**scene oracle**);
 sie arbeitet noch nicht aus Tiefenbildern oder LocalGrid-Rekonstruktionen.
 
-56 Schritte mit allen vier FÃƒÂ¼ÃƒÅ¸en hinauf und rÃƒÂ¼ckwÃƒÂ¤rts herunter bestanden ohne
-Sturz in 215.91 s Simulationszeit. Max. Roll/Nick: 9.61Ã‚Â°/3.67Ã‚Â°, Aufsetzfehler
-5.93 mm, kleinster gemessener StÃƒÂ¼tzrandabstand 31.85 mm. Keine gemessene
-Beindurchdringung wÃƒÂ¤hrend der mittleren 25Ã¢â‚¬â€œ75 % des Schwungs.
-**Unter Last bleiben bis zu 13.55 mm FuÃƒÅ¸penetration und 29.26 mm StÃƒÂ¼tzfuÃƒÅ¸schlupf.**
+56 Schritte mit allen vier Füßen hinauf und rückwärts herunter bestanden ohne
+Sturz in 215.91 s Simulationszeit. Max. Roll/Nick: 9.61°/3.67°, Aufsetzfehler
+5.93 mm, kleinster gemessener Stützrandabstand 31.85 mm. Keine gemessene
+Beindurchdringung während der mittleren 25–75 % des Schwungs.
+**Unter Last bleiben bis zu 13.55 mm Fußpenetration und 29.26 mm Stützfußschlupf.**
 Das sind offene Modell-/Reglerprobleme, keine realistischen Toleranzen.
-Die Robotermasse im Bericht betrÃƒÂ¤gt 50.34 kg ohne statische Raumobjekte.
+Die Robotermasse im Bericht beträgt 50.34 kg ohne statische Raumobjekte.
 
-Tests prÃƒÂ¼fen HÃƒÂ¶henabfragen ohne ZustandsÃƒÂ¤nderung, StÃƒÂ¼tzflÃƒÂ¤chenplanung, den ganzen
+Tests prüfen Höhenabfragen ohne Zustandsänderung, Stützflächenplanung, den ganzen
 Auf-/Abstieg, die SDK-Anbindung, Stopp und abgelehnte Bewegungen. Kein Nachweis
-fÃƒÂ¼r vollstÃƒÂ¤ndige Treppen oder Sim-zu-Real. NÃƒÂ¤chster Schritt: Kontaktpenetration
-und Schlupf reduzieren, weitere Geometrien prÃƒÂ¼fen, dann mehrere Stufen und
-sensorbasierte FuÃƒÅ¸planung. RealitÃƒÂ¤tsaussagen brauchen reale Vergleichsfahrten.
+für vollständige Treppen oder Sim-zu-Real. Nächster Schritt: Kontaktpenetration
+und Schlupf reduzieren, weitere Geometrien prüfen, dann mehrere Stufen und
+sensorbasierte Fußplanung. Realitätsaussagen brauchen reale Vergleichsfahrten.
 
 
-### Aktualisierung: kÃ¼rzere Wartephasen
+### Aktualisierung: kürzere Wartephasen
 
-Der gleiche 56-Schritt-Versuch benÃ¶tigt jetzt 195.08 statt 215.91 Sekunden
-(9.65 % kÃ¼rzer). Nur die Pause nach Gewichtsverlagerungen wurde von 0.4 auf
-0.2 s verkÃ¼rzt. Eine schnellere Verlagerung wurde wegen negativer StÃ¼tzreserve
-verworfen. Neue Werte: StÃ¼tzrand mindestens 30.27 mm, Schlupf maximal 30.47 mm,
-FuÃŸpenetration maximal 13.37 mm. Weiterhin ein langsamer experimenteller
-Kriechgang. Keine allgemeine Verbesserung der KontaktqualitÃ¤t nachgewiesen.
+Der gleiche 56-Schritt-Versuch benötigt jetzt 195.08 statt 215.91 Sekunden
+(9.65 % kürzer). Nur die Pause nach Gewichtsverlagerungen wurde von 0.4 auf
+0.2 s verkürzt. Eine schnellere Verlagerung wurde wegen negativer Stützreserve
+verworfen. Neue Werte: Stützrand mindestens 30.27 mm, Schlupf maximal 30.47 mm,
+Fußpenetration maximal 13.37 mm. Weiterhin ein langsamer experimenteller
+Kriechgang. Keine allgemeine Verbesserung der Kontaktqualität nachgewiesen.
 
 
 ## Kontakt-Diagnostik und Korrektur der Interpretation

@@ -683,8 +683,10 @@ Manifest), `einrichten.cmd` und `einrichten.ps1` neu, `tools/pruefe_schueler.py`
 Anleitungen `docs/INSTALLATION_SCHULE.md` und `docs/SCHUELER_RELEASES.md`. Abnahme: die
 Abschnitte „Quantitative Wahrnehmung" und „Physikmodus (experimentell)" in ABNAHME.md.
 Zusammengeführt mit den Kamera-Commits und am 09.09.2026 als erster Push von `main` auf
-GitHub gebracht. Bekannte Lücke: `docs/PHYSICS.md` ist mit gemischter Kodierung
-angekommen (Mojibake in den älteren Abschnitten); wer sie anfasst, repariert zuerst das.
+GitHub gebracht. `docs/PHYSICS.md` kam mit gemischter Kodierung an (die älteren
+Abschnitte ein- oder zweimal als cp1252 gelesen und erneut als UTF-8 gespeichert) und wurde
+am 09.09.2026 zeilenweise zurückgerechnet — Doku wird mit `encoding="utf-8"` geschrieben,
+dieselbe Regel wie im Editor.
 
 **Stufe 14 (07.09.2026): Korrigierer und Gelände — alle drei Etappen gebaut**
 — Raumformat v4: `Raum.gelaende` (`welt/gelaende.py`, Höhenraster mit `None` für „kein
