@@ -339,8 +339,16 @@ jeden Wegpunkt liegt ein Schnappschuss in `waypoint_snapshots/`; `spotlab maps` 
 Karte mit plausiblen Zahlen; die benannten Wegpunkte tauchen in `spot.load_map(...).waypoints`
 auf.
 
+**Schleifen** Mindestens einmal eine RUNDE fahren und an einer bekannten Stelle wieder
+vorbeikommen. Beim Speichern meldet die Statuszeile „n neue Verbindungen" und „Anker
+optimiert (n Rechenschritte)". Danach in der Draufsicht prüfen: die Runde schliesst sich,
+und zwischen zwei Punkten der Runde gibt es beide Wege. Fährt Spot später mit A32 zu einem
+Wegpunkt, nimmt er den kurzen — nicht die aufgezeichnete Strecke.
+
 **Beobachten statt annehmen** Wie dicht der Dienst von selbst Wegpunkte setzt, ist nicht
 dokumentiert festgelegt. Notieren, wie viele Wegpunkte auf welcher Strecke entstanden sind.
+Ebenso: wie viele neue Verbindungen der Schleifenschluss findet und wie lange er auf einer
+Karte dieser Grösse braucht — davon hängt ab, ob `SERVER_FRIST_S` (90 s) passt.
 
 **Ergebnis** _(offen)_
 

@@ -43,7 +43,22 @@ versionsgepinntes Extra `spotlab[sim]`.
   In `spotlab.connect()` steht `abtaster.stop()` aus demselben Grund **innerhalb** des
   `try`, das `spot.close()` und `recorder.finish()` schützt.
 - **Kein Lease-Client und kein E-Stop-Endpunkt unterhalb von `src/spotlab/maps/`.**
-  Aufzeichnen ist leaselos; nur deshalb darf die GUI es. Ein Lease dort bräche H1.
+  Aufzeichnen ist leaselos; nur deshalb darf die GUI es. Ein Lease dort bräche H1. Dasselbe
+  gilt für die Nachbearbeitung: `ProcessTopologyRequest` und `ProcessAnchoringRequest` haben
+  gar kein Lease-Feld.
+- **Eine Aufnahme wird vor dem Herunterladen nachbearbeitet — sonst ist sie eine KETTE.**
+  Der Aufzeichnungsdienst weiss nicht, dass der Gang, durch den Spot zum zweiten Mal fährt,
+  derselbe ist; er legt einen zweiten Strang daneben. Erst `process_topology`
+  (Schleifenschluss über Fiducials UND Odometrie) verbindet die Enden, und `process_anchoring`
+  bringt die Wegpunkte in einen gemeinsamen, global optimierten Rahmen. Ohne das fährt Spot
+  „wie auf Schienen" die aufgezeichnete Strecke ab, und die Anker sind die rohe Odometrie —
+  woran mehr hängt als die Zeichnung: `maps/geometry.py` bevorzugt die Anker, und
+  `maps/rekonstruktion.py` baut den Raum in genau diesem Rahmen. Die Reihenfolge ist
+  Absicht: beides ändert die Karte AUF DEM ROBOTER (`modify_map_on_server`), und die wird
+  danach heruntergeladen. **Jeder Schritt ist einzeln gekapselt und `nachbearbeiten` wirft
+  nie** — dieselbe Regel wie beim Abbau in `RealSpot.close()`: wer eine Stunde durch das
+  Schulhaus gefahren ist, bekommt seine Karte, notfalls unbearbeitet, aber mit dem Grund in
+  der Meldung.
 - **Autonome Fahrt bekommt immer `travel_params` mit `velocity_limit` aus der
   Konfiguration.** Ohne das führe ein Schüler autonom schneller als von Hand.
 - **Das Kartenformat auf der Platte ist das des SDK.** Kein eigenes Format — sonst geht die
@@ -703,6 +718,11 @@ versionsgepinntes Extra `spotlab[sim]`.
   steht an genau EINER Stelle: `src/spotlab/__init__.py`.
 
 ## Umsetzungsstand
+
+**Stufe 18 (09.09.2026): Schleifenschluss und Ankeroptimierung** — beim Speichern einer
+Aufnahme laufen `process_topology` und `process_anchoring` auf dem Roboter
+(`maps/session.py::nachbearbeiten`, leaselos, jeder Schritt gekapselt, Zwischenstand in der
+Statuszeile). Vorher war jede Karte eine Kette. Am Gerät: A13 (Abschnitt „Schleifen").
 
 **Stufe 17 (09.09.2026): Vorschläge im ganzen Editor** — bis dahin kehrte `anfordern` um,
 sobald die eigene Liste leer war; jedi kam nur über Strg+Leertaste zum Zug, und wer das

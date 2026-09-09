@@ -8,7 +8,7 @@ Warteschlange. Der QThread darum herum ist nur Transport.
 """
 
 import queue
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from PySide6.QtCore import QThread, Signal
 
@@ -23,11 +23,14 @@ class Auftrag:
     daten: dict = field(default_factory=dict)
 
 
-def verarbeite(sitzung, auftrag):
+def verarbeite(sitzung, auftrag, melde=None):
     """Einen Auftrag ausführen. Gibt ('status'|'gespeichert'|'fehler', Nutzlast).
 
     Wirft NICHT — ein Fehler in der Aufnahme darf den Arbeiter nicht beenden,
     sonst steht die Anzeige still und niemand weiss warum.
+
+    `melde(text)` ist der Zwischenstand: die Nachbearbeitung vor dem Speichern
+    dauert Sekunden, und ohne Zeichen sähe es aus, als hinge die Oberfläche.
     """
     try:
         if auftrag.art == "start":
@@ -38,6 +41,10 @@ def verarbeite(sitzung, auftrag):
             sitzung.stop()
         elif auftrag.art == "speichern":
             sitzung.stop()
+            # Erst nachbearbeiten, dann herunterladen: `nachbearbeiten` ändert
+            # die Karte AUF DEM ROBOTER, und die holen wir gleich.
+            if auftrag.daten.get("nachbearbeiten", True):
+                sitzung.nachbearbeiten(melde=melde)
             ziel = sitzung.download(
                 auftrag.daten["wurzel"],
                 auftrag.daten["name"],
@@ -77,9 +84,10 @@ class RecordingWorker(QThread):
     def beende(self):
         self._auftraege.put(Auftrag("stop"))
 
-    def speichere(self, wurzel, name, roboter=None):
+    def speichere(self, wurzel, name, roboter=None, nachbearbeiten=True):
         self._auftraege.put(
-            Auftrag("speichern", {"wurzel": wurzel, "name": name, "roboter": roboter})
+            Auftrag("speichern", {"wurzel": wurzel, "name": name, "roboter": roboter,
+                                  "nachbearbeiten": nachbearbeiten})
         )
 
     def schliesse(self):
@@ -110,7 +118,9 @@ class RecordingWorker(QThread):
                     continue
                 if auftrag.art == "ende":
                     break
-                art, nutzlast = verarbeite(sitzung, auftrag)
+                art, nutzlast = verarbeite(
+                    sitzung, auftrag, melde=lambda text: self._melde_text(sitzung, text)
+                )
                 if art == "fehler":
                     self.fehler.emit(nutzlast)
                 elif art == "gespeichert":
@@ -125,3 +135,13 @@ class RecordingWorker(QThread):
             self.status.emit(sitzung.status())
         except Exception as fehler:
             self.fehler.emit(f"Status nicht abrufbar: {fehler}")
+
+    def _melde_text(self, sitzung, text):
+        """Ein Zwischenstand mit den aktuellen Zahlen — die Kanten wachsen dabei."""
+        from spotlab.maps.session import RecordingStatus
+
+        try:
+            stand = replace(sitzung.status(), meldung=text)
+        except Exception:
+            stand = RecordingStatus(False, 0, 0, text)
+        self.status.emit(stand)

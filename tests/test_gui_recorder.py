@@ -26,6 +26,14 @@ class FakeSession:
     def stop(self):
         self.protokoll.append("stop")
 
+    def nachbearbeiten(self, melde=None, fiducial=True, odometrie=True):
+        from spotlab.maps.session import Nachbearbeitung
+
+        self.protokoll.append("nachbearbeiten")
+        if melde is not None:
+            melde("Schleifen werden gesucht…")
+        return Nachbearbeitung(2, 7, ("Schleifen werden gesucht…",))
+
     def download(self, wurzel, name, roboter=None):
         self.protokoll.append(f"download:{name}")
         return wurzel / name
@@ -83,3 +91,42 @@ def test_worker_ist_ein_qthread(qapp):
     from spotlab.gui.recorder import RecordingWorker
 
     assert issubclass(RecordingWorker, QThread)
+
+
+# ================== S1.13 Nachbearbeitung vor dem Herunterladen
+#
+# Ohne Schleifenschluss ist die Aufnahme eine Kette: wer zweimal durch denselben
+# Gang faehrt, bekommt zwei Straenge nebeneinander, und Spot faehrt „wie auf
+# Schienen" die aufgezeichnete Strecke ab, statt den kurzen Weg zu nehmen.
+
+
+def test_vor_dem_herunterladen_wird_nachbearbeitet(tmp_path):
+    """Die Reihenfolge ist der Punkt: `nachbearbeiten` aendert die Karte AUF DEM
+    ROBOTER, und genau die wird danach heruntergeladen."""
+    sitzung = FakeSession()
+    art, _ = verarbeite(
+        sitzung, Auftrag("speichern", {"wurzel": tmp_path, "name": "turnhalle"})
+    )
+    assert art == "gespeichert"
+    assert sitzung.protokoll == ["stop", "nachbearbeiten", "download:turnhalle"]
+
+
+def test_der_zwischenstand_wird_gemeldet(tmp_path):
+    """Die Nachbearbeitung dauert Sekunden; ohne Zeichen saehe es aus, als haenge es."""
+    meldungen = []
+    verarbeite(
+        FakeSession(),
+        Auftrag("speichern", {"wurzel": tmp_path, "name": "turnhalle"}),
+        melde=meldungen.append,
+    )
+    assert meldungen == ["Schleifen werden gesucht…"]
+
+
+def test_die_nachbearbeitung_laesst_sich_abwaehlen(tmp_path):
+    sitzung = FakeSession()
+    verarbeite(
+        sitzung,
+        Auftrag("speichern", {"wurzel": tmp_path, "name": "turnhalle",
+                              "nachbearbeiten": False}),
+    )
+    assert sitzung.protokoll == ["stop", "download:turnhalle"]

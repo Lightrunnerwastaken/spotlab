@@ -37,7 +37,9 @@ from spotlab.record import navigation as navigation_datei
 HINWEIS = (
     "Zum Aufzeichnen muss der Spot ein Fiducial sehen. Fahre ihn während der "
     "Aufnahme mit dem TABLET durch den Raum — spotlab zeichnet nur mit und "
-    "übernimmt die Steuerung nicht."
+    "übernimmt die Steuerung nicht. Fahre Runden und komm an bekannten Stellen "
+    "vorbei: beim Speichern sucht spotlab die Schleifen und verbindet sie, sonst "
+    "bleibt die Karte eine Kette und Spot fährt nur die aufgezeichnete Strecke ab."
 )
 
 

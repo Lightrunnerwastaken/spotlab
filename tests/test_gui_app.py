@@ -933,15 +933,23 @@ def test_navigation_ohne_gewaehlte_karte_sagt_es(qapp, tmp_path, monkeypatch):
     assert fenster._navigation_erwartet is False
 
 
-def test_die_navigation_laeuft_wirklich_ueber_knopf_prozess_und_watcher(qapp, tmp_path, monkeypatch):
-    """Die ganze Kette mit dem Trockenlauf an Stelle des Roboters: Knopf im Tab,
-    echter Prozess, der Watcher meldet den Lauf, der Tab bekommt das Verzeichnis
-    und den Stand aus `navigation.json`. Der Trockenlauf hat kein GraphNav -- der
-    Lauf scheitert beim Laden der Karte, und GENAU DAS steht dann im Tab."""
+def test_die_navigation_laeuft_wirklich_als_prozess_und_hinterlaesst_ihren_stand(
+        qapp, tmp_path, monkeypatch):
+    """Die Kette bis zum Lauf, mit dem Trockenlauf an Stelle des Roboters: Knopf im
+    Tab, echter Prozess, die gewaehlte Karte, und der Lauf hinterlaesst seinen
+    Stand. Der Trockenlauf hat kein GraphNav -- der Lauf scheitert beim Laden der
+    Karte, und GENAU DAS steht dann in `navigation.json`.
+
+    OHNE den Watcher, anders als beim Tab „Fahren": dieser Lauf ist nach
+    Millisekunden tot, und ein toter Lauf wird nicht mehr als aktiv gemeldet
+    (`ist_aktiv`, Fenster von 2 s). Unter Volllast rutschte der Watcher-Takt
+    darueber hinweg, und der Test behauptete einen Fehler, wo keiner war
+    (09.09.2026). Dass der Watcher einen Stand meldet, haelt
+    `test_watcher_navigation.py` fest; dass er im Tab ankommt, der Test darunter.
+    """
     import json
     import time
     from dataclasses import replace
-    from pathlib import Path
 
     from spotlab.config import Config, Limits
     from spotlab.gui import app as app_modul
@@ -957,28 +965,47 @@ def test_die_navigation_laeuft_wirklich_ueber_knopf_prozess_und_watcher(qapp, tm
     fenster._wechsle("karten")
     tab = fenster.ansichten["karten"]
     tab.liste.setCurrentRow(0)
-    begonnen, staende = [], []
-    original_beginnt, original_stand = tab.lauf_beginnt, tab.zeige_navigation
-    monkeypatch.setattr(tab, "lauf_beginnt", lambda *a, **k: (begonnen.append(a), original_beginnt(*a, **k)))
-    monkeypatch.setattr(tab, "zeige_navigation", lambda s: (staende.append(s), original_stand(s)))
     tab.navigation_gewuenscht.emit()
     assert fenster.ansichten["code"].laeuft(), fenster.statuszeile.text()
     prozess = fenster.ansichten["code"]._prozess
     try:
-        frist = time.monotonic() + TEST_TIMEOUT_S
-        while (prozess.poll() is None or not begonnen or fenster._aktiver_lauf is not None) \
-                and time.monotonic() < frist:
-            qapp.processEvents()
-            time.sleep(0.05)
+        prozess.wait(timeout=TEST_TIMEOUT_S)
     finally:
         if prozess.poll() is None:
             prozess.kill()
-    assert begonnen, "der Watcher hat dem Tab nie das Lauf-Verzeichnis gemeldet"
-    lauf = Path(begonnen[0][0])
+
+    laeufe = list((tmp_path / "Beispiele" / "runs").glob("*/lauf.json"))
+    assert len(laeufe) == 1, laeufe
+    lauf = laeufe[0].parent
+    assert json.loads(laeufe[0].read_text(encoding="utf-8"))["backend"] == "dryrun"
     stand = navigation.lies_stand(lauf)
     assert stand is not None and stand["status"] == "gescheitert", stand
     assert "GraphNav" in stand["text"] or "navigieren" in stand["text"].lower(), stand["text"]
-    assert any(s["status"] == "gescheitert" for s in staende), "der Stand kam nie im Tab an"
-    meta = json.loads((lauf / "lauf.json").read_text(encoding="utf-8"))
-    assert meta["backend"] == "dryrun"
+    assert stand["karte"] == "turnhalle", "die im Tab gewaehlte Karte ging mit"
+
+    # Der Lauf starb, bevor ein Verzeichnis gemeldet werden konnte: der Tab darf
+    # dann nicht scharf bleiben, sonst gaelte ein spaeterer fremder Lauf als Fahrt.
+    fenster.ansichten["code"].pruefe_lauf_lebt()
+    for _ in range(5):
+        qapp.processEvents()
+        time.sleep(0.01)
     assert not tab.laeuft() and fenster._navigation_erwartet is False
+
+
+def test_der_navigationsstand_erreicht_den_tab_nur_waehrend_eines_laufs(qapp, tmp_path):
+    """Die andere Haelfte der Kette: was der Watcher meldet, reicht die App weiter."""
+    _karte_im_arbeitsordner(tmp_path)
+    fenster = MainWindow()
+    fenster._setze_arbeitsordner(str(tmp_path))
+    tab = fenster.ansichten["karten"]
+    tab.liste.setCurrentRow(0)
+    stand = {"status": "unterwegs", "text": "", "karte": "turnhalle", "ziel": "wp1",
+             "standort": "wp0", "versatz": [0.5, 0.0, 0.0]}
+
+    fenster._navigation(stand)
+    assert tab.plot.ziel is None, "ohne Lauf zeigt der Tab keinen Stand"
+
+    tab.lauf_beginnt(tmp_path, "navigieren.py")
+    fenster._navigation(stand)
+    assert tab.plot.ziel == "wp1" and "kueche" in tab.navigation_status.text()
+

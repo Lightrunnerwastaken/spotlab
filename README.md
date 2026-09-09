@@ -131,6 +131,14 @@ Zwei Voraussetzungen, die nicht verhandelbar sind: **der Spot muss beim Start ei
 sehen** (die AprilTag-Markierung), und **gefahren wird mit dem Tablet**. spotlab zeichnet nur
 mit und übernimmt die Steuerung nicht — es braucht dafür kein Lease.
 
+**Fahre Runden.** Beim Speichern sucht spotlab die Schleifen in der Aufnahme und schliesst
+sie, dann optimiert es die Anker; die Statuszeile sagt, was dabei herauskam. Ohne diesen
+Schritt ist eine Aufnahme eine **Kette**: der Dienst weiss nicht, dass der Gang, durch den
+Spot zum zweiten Mal fährt, derselbe ist, und legt einen zweiten Strang daneben. Spot fährt
+dann wie auf Schienen die aufgezeichnete Strecke ab, statt den kurzen Weg zu nehmen, und die
+Draufsicht schliesst sich sichtbar nicht. Beides passiert auf dem Roboter, ohne Lease, und
+scheitert es, wird die Karte trotzdem gespeichert — mit dem Grund in der Meldung.
+
 **Ansehen und auswählen** — `spotlab maps` listet auf, die Ansicht „Karten" zeigt eine
 Draufsicht. *Als aktive Karte setzen* merkt die Wahl, danach reicht im Skript `load_map()`
 ohne Argument.
