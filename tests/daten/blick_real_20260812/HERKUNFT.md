@@ -18,3 +18,9 @@ erbeten), Intrinsik `pinhole`, Sensorrahmen `frontleft_fisheye` bzw.
 Aus der Kalibrierung: die rechte Kamera blickt 34 Grad nach LINKS, die linke
 34 Grad nach rechts (ueber Kreuz), beide rund 20 Grad nach unten, 7 cm
 auseinander, 38 cm vor der Koerpermitte.
+
+- `takt50_*`: eine Person geht dicht am Roboter vorbei; im Bild sind nur die
+  Beine, das Gesicht liegt ueber dem Blickfeld. YuNet setzt hier einen Kasten
+  mit Punktzahl 0.66 auf ein SCHIENBEIN. Der Fall fuer die Gegenprobe aus der
+  Geometrie (`backends/real/gesicht.py`): auf einem Meter Abstand liegt der
+  Kasten rund einen halben Meter ueber dem Boden und ist damit kein Gesicht.

@@ -434,6 +434,35 @@ folgen.folge(spot, folgen.tag_finder(), lauf_dir=spot.recorder.dir)   # AprilTag
 folgen.folge(spot, folgen.personen_finder(), lauf_dir=spot.recorder.dir)  # Spots Tracker
 ```
 
+**Gesichter, und wo sie aufhören.** `gesicht_finder` sucht mit YuNet aus OpenCV Gesichter
+im zusammengesetzten Kamerabild. Das braucht das Extra `pip install "spotlab[gesicht]"` und
+die Modelldatei unter `~/.spotlab/modelle/` (oder `SPOTLAB_GESICHTSMODELL`). Zwei Dinge sind
+daran gemessen und nicht behauptet:
+
+| Abstand | höchster sichtbarer Punkt |
+|---|---|
+| 1.5 m | 1.20 m |
+| 2.0 m | 1.45 m |
+| 3.0 m | 1.94 m |
+
+Spots Frontkameras schauen nach unten. Ein stehender Mensch hat deshalb **erst ab gut
+zweieinhalb Metern** ein Gesicht im Bild; näher sieht Spot Beine. Und ein Kasten mit hoher
+Punktzahl ist noch kein Gesicht: über eine Aufzeichnung vom 12.08.2026 fand der Erkenner
+vier Kästen, davon war der beste eine Stuhllehne und der zweitbeste ein Schienbein. Deshalb
+prüft spotlab jeden Kasten gegen die Geometrie nach — aus Höhenwinkel und **gemessener**
+Entfernung aus der Tiefenkamera folgt die Höhe über dem Boden, und was nicht auf Kopfhöhe
+liegt, fällt heraus. Die Entfernung wird nie aus der Kastengrösse geschätzt: an ihr hängt
+der Mindestabstand.
+
+Weil die Gesichtssuche unterhalb von zweieinhalb Metern nichts findet, staffelt man sie:
+
+```python
+folgen.folge(spot, folgen.zuerst(folgen.gesicht_finder(), folgen.tag_finder()), lauf_dir=…)
+```
+
+`zuerst` nimmt den ersten Finder, der etwas findet. Fällt einer aus, weil OpenCV oder das
+Modell fehlt, tragen die übrigen weiter, und der Grund steht im Protokoll.
+
 `personen_finder` nutzt Spots eigenen Personen-Tracker über `spot.people()`. Kein eigenes
 Modell: der Tracker steckt in der Firmware und liefert Nummer, Position, Geschwindigkeit und
 eine Sicherheit. Ob dein Roboter ihn hat, zeigt erst das Gerät — findet er niemanden, bleibt

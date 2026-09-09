@@ -848,6 +848,22 @@ kein Fehler: dann kann diese Software es nicht, und der Tag-Finder bleibt der We
 - (5) „Stopp" beendet den Lauf geordnet; Spot setzt sich.
 - (6) Das Tempo bleibt unter `max_speed` aus der Konfiguration.
 
+**Teil 3 — Gesichter.** Nur mit `pip install "spotlab[gesicht]"` und abgelegtem Modell.
+Das Beispiel staffelt von sich aus Gesicht vor Tag. Eine Person stellt sich in drei Metern
+Abstand vor den Roboter und schaut ihn an, dann kommt sie langsam näher.
+
+**Erwartung Teil 3**
+- (7) In drei Metern folgt Spot dem Gesicht; die Meldung nennt die Höhe über dem Boden, und
+  die passt zur Person (1.5 bis 1.8 m).
+- (8) Beim Näherkommen verliert er das Gesicht — gemessen ist es unterhalb von etwa
+  zweieinhalb Metern nicht mehr im Bild. Das Tag übernimmt, ohne dass Spot stehen bleibt.
+  **Notieren, bei welchem Abstand der Wechsel wirklich passiert**: das ist die Zahl, die
+  die Geometrie vorhersagt.
+- (9) Kein Fehlalarm auf Stuhllehnen, Beine oder Taschen: die Gegenprobe verwirft alles,
+  was nicht auf Kopfhöhe liegt. Notieren, ob trotzdem etwas durchkommt.
+- (10) Ohne Modell oder ohne OpenCV läuft das Beispiel weiter, das Tag trägt allein, und im
+  Protokoll steht der Grund.
+
 **Beobachten statt annehmen** Wie ruhig der Kurs bei einer gehenden Person ist. Wenn Spot
 pendelt, sind `LENKUNG` und `SCHWENK_GRAD` die Stellschrauben; die Werte hier sind gesetzt,
 nicht gemessen. Ebenso notieren, ab welcher Gehgeschwindigkeit er nicht mehr mitkommt.

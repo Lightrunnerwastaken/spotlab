@@ -302,3 +302,62 @@ def test_das_programm_liegt_im_projekt_beispiele(tmp_path):
 
     bereitstellen(tmp_path)
     assert folgen.skript_in(tmp_path).is_file()
+
+
+# ------------------------------------------------------- Gesicht und Staffel
+
+
+def test_zuerst_nimmt_den_ersten_der_etwas_findet():
+    """Damit lassen sich Strategien staffeln statt zu waehlen: das Gesicht,
+    solange es sichtbar ist, und darunter das Tag."""
+    keiner = lambda spot: None                                    # noqa: E731
+    eines = lambda spot: Ziel(1.0, 3.0, "A")                      # noqa: E731
+    anderes = lambda spot: Ziel(2.0, 4.0, "B")                    # noqa: E731
+
+    assert folgen.zuerst(keiner, eines, anderes)(None).name == "A"
+    assert folgen.zuerst(keiner, keiner)(None) is None
+    assert folgen.zuerst()(None) is None
+
+
+def test_der_gesichtsfinder_findet_nichts_ohne_die_noetigen_kameras():
+    """Fehlt eine Quelle, gibt es kein Panorama und keine Entfernung -- und
+    damit kein Ziel. Kein geratener Abstand: daran haengt der Mindestabstand."""
+    class _OhneKameras(_Spot):
+        def __init__(self):
+            super().__init__()
+            self.backend = SimpleNamespace(images=lambda quellen: [])
+
+    assert folgen.gesicht_finder()(_OhneKameras()) is None
+
+
+def test_ein_werfender_gesichtsfinder_beendet_den_lauf_nicht():
+    class _Kaputt(_Spot):
+        def __init__(self):
+            super().__init__()
+
+            def wirft(quellen):
+                raise RuntimeError("Kamera weg")
+
+            self.backend = SimpleNamespace(images=wirft)
+
+    spot = _Kaputt()
+    folgen.folge(spot, folgen.gesicht_finder(), melde=lambda _t: None,
+                 schlaf=lambda _s: None, laeuft=_laeuft_takte(2))
+    assert spot.kommandos == ["stop"]
+
+
+def test_ein_ausfallender_finder_haelt_die_staffel_nicht_auf(monkeypatch):
+    """Fehlt OpenCV oder das Gesichtsmodell, soll das Tag weiter funktionieren."""
+    from spotlab import protokoll
+
+    notizen = []
+    monkeypatch.setattr(protokoll, "notiere", notizen.append)
+
+    def wirft(spot):
+        raise RuntimeError("OpenCV fehlt")
+
+    staffel = folgen.zuerst(wirft, lambda spot: Ziel(0.0, 3.0, "Tag 3"))
+    assert staffel(None).name == "Tag 3"
+    assert staffel(None).name == "Tag 3"
+    assert len(notizen) == 1, "der Grund steht einmal im Protokoll, nicht bei jedem Takt"
+    assert "OpenCV fehlt" in notizen[0]

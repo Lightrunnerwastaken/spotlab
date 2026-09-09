@@ -49,6 +49,13 @@ EBENE_M = 1.5
 BRENNWEITE_PX = 400.0
 SEITEN = (16, 9)                # Seitenverhältnis des Ausschnitts, wie das Tablet
 HORIZONT = 0.35                 # Horizont bei 35 % der Höhe: vorn liegt der Boden
+# Gemessene Standhöhe der Körpermitte über dem Boden (Tiefenaufnahme 12.08.2026:
+# der Boden liegt bei −0.51 m). Daraus die Höhe der virtuellen Kamera.
+STANDHOEHE_M = 0.51
+
+# Zwei Zuschnitte, zwei Zwecke: fahren und erkennen.
+RECHTECK = "rechteck"           # grösstes voll gedecktes Rechteck, 16:9 — die Fahransicht
+ALLES = "alles"                 # alles Gesehene samt schwarzen Ecken — für Erkenner
 AUSGLEICH_GRENZE = (0.6, 1.7)   # Helligkeitsausgleich, geklemmt: kein Bild wird schwarz
 
 
@@ -112,17 +119,39 @@ class Panorama:
     """Die virtuelle Kamera samt vorgerechneten Karten. `zusammensetzen` je Bild."""
 
     def __init__(self, kameras, ebene_m=EBENE_M, brennweite_px=BRENNWEITE_PX,
-                 seiten=SEITEN, ausgleich=True):
+                 seiten=SEITEN, ausgleich=True, zuschnitt=RECHTECK):
         if len(kameras) < 2:
             raise SpotlabError("Ein Panorama braucht zwei Kameras.")
         self.kameras = list(kameras)
         self.ebene_m = ebene_m
         self.ausgleich = ausgleich
+        self.brennweite = float(brennweite_px)
         position, drehung = self._virtuelle_kamera(self.kameras)
         karten = self._karten(self.kameras, position, drehung, brennweite_px, ebene_m)
-        oben, unten, links, rechts = self._ausschnitt(karten, seiten)
+        self._voll_hoehe, self._voll_breite = karten[0][2].shape
+        if zuschnitt == ALLES:
+            oben, unten, links, rechts = self._alles_gesehene(karten)
+        else:
+            oben, unten, links, rechts = self._ausschnitt(karten, seiten)
+        self._oben, self._links = oben, links
         self.breite, self.hoehe = rechts - links, unten - oben
         self._vorbereiten(karten, oben, unten, links, rechts)
+
+    def winkel(self, spalte, zeile):
+        """(Peilung, Höhenwinkel) in Grad für ein Pixel des fertigen Bildes.
+
+        Peilung wie überall links positiv, Höhenwinkel nach oben positiv. Das
+        ist der ganze Zweck der Zylinderprojektion: eine Bildspalte IST ein
+        Azimut, eine Zeile ein Höhenwinkel — kein Rückrechnen durch ein Modell.
+        """
+        azimut = (self._links + spalte - self._voll_breite / 2.0) / self.brennweite
+        tangens = (self._oben + zeile - HORIZONT * self._voll_hoehe) / self.brennweite
+        return -math.degrees(azimut), -math.degrees(math.atan(tangens))
+
+    def kamerahoehe(self, standhoehe_m=STANDHOEHE_M):
+        """Wie hoch die virtuelle Kamera über dem Boden sitzt, in Metern."""
+        z = float(sum(k.lage[2, 3] for k in self.kameras) / len(self.kameras))
+        return standhoehe_m + z
 
     # ------------------------------------------------------------ Aufbau
 
@@ -168,11 +197,33 @@ class Panorama:
         return karten
 
     @staticmethod
-    def _ausschnitt(karten, seiten):
-        """Das grösste voll gedeckte Rechteck, dann auf `seiten` beschnitten."""
+    def _deckung(karten):
         deckung = np.zeros(karten[0][2].shape, dtype=bool)
         for _, _, gewicht in karten:
             deckung |= gewicht > 0
+        return deckung
+
+    @classmethod
+    def _alles_gesehene(cls, karten):
+        """Alles, was mindestens eine Kamera sieht — mit schwarzen Ecken.
+
+        Für einen Erkenner ist eine schwarze Ecke kein Problem, ein fehlendes
+        Blickfeld schon: das volle Feld reicht 26° nach oben, das gedeckte
+        Rechteck nur 7°. Gemessen an der Aufzeichnung vom 12.08.2026 — und
+        genau diese 19° entscheiden, ob ein stehender Mensch ein Gesicht hat
+        oder nur Beine.
+        """
+        deckung = cls._deckung(karten)
+        zeilen = np.flatnonzero(deckung.any(axis=1))
+        spalten = np.flatnonzero(deckung.any(axis=0))
+        if not zeilen.size or not spalten.size:
+            raise SpotlabError("Die Kameras sehen nichts.")
+        return int(zeilen[0]), int(zeilen[-1]) + 1, int(spalten[0]), int(spalten[-1]) + 1
+
+    @classmethod
+    def _ausschnitt(cls, karten, seiten):
+        """Das grösste voll gedeckte Rechteck, dann auf `seiten` beschnitten."""
+        deckung = cls._deckung(karten)
         hoehe, breite = deckung.shape
         oben, unten, links, rechts = 0, hoehe, 0, breite
         while not deckung[oben:unten, links:rechts].all():

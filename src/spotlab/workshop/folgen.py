@@ -53,6 +53,10 @@ FREIRAUM_M = 0.8                 # so viel muss voraus frei sein
 KOPFRAUM_M = 1.0                 # so weit voraus darf nichts über dem Weg hängen
 KOPFRAUM_TAKT_S = 1.0
 ZONE_VORAUS_M = 1.0
+# Quellen der Gesichtssuche: die zwei Frontkameras fuer das Bild, die zwei
+# Tiefenkameras fuer die Entfernung -- in EINEM Abruf, nicht in zweien.
+GESICHT_QUELLEN = ("frontright_fisheye_image", "frontleft_fisheye_image")
+TIEFE_QUELLEN = ("frontleft_depth", "frontright_depth")
 TAKT_S = 0.2
 VERLOREN_S = 5.0                 # danach sagt er es einmal
 
@@ -104,6 +108,91 @@ def personen_finder(mindestsicherheit=None):
             return None
         person = leute[0]
         return Ziel(person.bearing, person.distance, f"Person {person.entity_id}")
+
+    return finde
+
+
+def gesicht_finder(modell=None, mindestscore=None, quellen=GESICHT_QUELLEN,
+                   tiefe_quellen=TIEFE_QUELLEN):
+    """Folgt einem Gesicht — mit Gegenprobe aus der Tiefenkamera.
+
+    Die Kameras schauen nach unten: ein stehender Mensch hat erst ab gut
+    zweieinhalb Metern ein Gesicht im Bild, näher sieht Spot Beine (gemessen,
+    `backends/real/gesicht.py`). Deshalb gehört dieser Finder mit einem zweiten
+    zusammengeschaltet — `zuerst(gesicht_finder(), tag_finder())` nimmt das
+    Gesicht, solange es eines gibt, und sonst das Tag.
+
+    Ein Kasten mit hoher Punktzahl ist noch kein Gesicht: über dieselbe
+    Aufzeichnung fand der Erkenner eine Stuhllehne und ein Schienbein. Was
+    nicht auf Kopfhöhe liegt, fällt hier heraus.
+
+    Teuer: vier Bilder je Takt. Der Regler läuft dadurch langsamer, und das ist
+    in Ordnung — jedes Kommando trägt eine Endzeit, Spot fährt nicht blind
+    weiter, wenn der Takt einmal hängt.
+    """
+    gemerkt = {}
+
+    def finde(spot):
+        import numpy as np
+
+        from spotlab.backends.real import gesicht as gesichtsmodul
+        from spotlab.backends.real import panorama, tiefe
+
+        antworten = spot.backend.images(list(quellen) + list(tiefe_quellen))
+        nach_name = {a.source.name: a for a in antworten}
+        grau = [nach_name[q] for q in quellen if q in nach_name]
+        tiefen = [nach_name[q] for q in tiefe_quellen if q in nach_name]
+        if len(grau) < 2 or not tiefen:
+            return None
+        if "pano" not in gemerkt:
+            gemerkt["pano"] = panorama.Panorama(
+                panorama.kalibrierung_aus(grau), zuschnitt=panorama.ALLES
+            )
+            gemerkt["erkenner"] = gesichtsmodul.erkenner(
+                gemerkt["pano"].breite, gemerkt["pano"].hoehe, modell,
+                mindestscore or gesichtsmodul.MINDESTSCORE,
+            )
+            gemerkt["hoehe"] = gemerkt["pano"].kamerahoehe()
+        feld = gemerkt["pano"].zusammensetzen(panorama.bilder_aus(grau))
+        punkte = np.vstack([tiefe.punkte_aus_bild(a) for a in tiefen])
+        gefunden = gesichtsmodul.gesichter(
+            feld, gemerkt["pano"], gemerkt["erkenner"], punkte, gemerkt["hoehe"]
+        )
+        if not gefunden:
+            return None
+        kopf = gefunden[0]
+        return Ziel(kopf.bearing, kopf.distance, f"Gesicht auf {kopf.height:.2f} m")
+
+    return finde
+
+
+def zuerst(*finder):
+    """Der erste Finder, der etwas findet, gewinnt.
+
+    Damit lassen sich Strategien staffeln statt zu wählen: das Gesicht, solange
+    es sichtbar ist, und darunter das Tag — genau die Lücke, die die Geometrie
+    der Frontkameras aufmacht.
+
+    Ein Finder, der WIRFT, hält die Staffel nicht auf: fehlt OpenCV oder das
+    Gesichtsmodell, soll das Tag weiter funktionieren. Der Grund steht einmal
+    im Protokoll — still übergehen wäre schlimmer als gar nicht staffeln.
+    """
+    gemeldet = set()
+
+    def finde(spot):
+        for nummer, einer in enumerate(finder):
+            try:
+                ziel = einer(spot)
+            except Exception as fehler:
+                if nummer not in gemeldet:
+                    from spotlab import protokoll
+
+                    gemeldet.add(nummer)
+                    protokoll.notiere(f"Finder {nummer} faellt aus: {fehler}")
+                continue
+            if ziel is not None:
+                return ziel
+        return None
 
     return finde
 

@@ -144,3 +144,57 @@ def test_farbe_bleibt_farbe_und_grau_bleibt_grau(pano):
 def test_eine_fremde_bildgroesse_wird_abgewiesen(pano):
     with pytest.raises(SpotlabError, match="Karte gilt"):
         pano.zusammensetzen([np.zeros((240, 320), np.uint8), np.zeros((480, 640), np.uint8)])
+
+
+# ============ Zweiter Zuschnitt: alles Gesehene, fuer Erkenner
+#
+# Die Fahransicht ist das groesste voll gedeckte Rechteck -- und reicht damit nur
+# 7 Grad nach oben. Ein stehender Mensch hat darin nie ein Gesicht. Das volle
+# Feld reicht 26 Grad hinauf; genau diese 19 Grad entscheiden.
+
+
+def test_das_volle_feld_schaut_viel_weiter_hinauf(kameras):
+    fahren = panorama.Panorama(kameras)
+    alles = panorama.Panorama(kameras, zuschnitt=panorama.ALLES)
+    assert alles.hoehe > fahren.hoehe and alles.breite > fahren.breite
+
+    oben_fahren = fahren.winkel(fahren.breite / 2, 0)[1]
+    oben_alles = alles.winkel(alles.breite / 2, 0)[1]
+    assert oben_fahren == pytest.approx(6.7, abs=0.5)
+    assert oben_alles == pytest.approx(26.2, abs=0.5)
+
+
+def test_eine_spalte_ist_ein_azimut_und_eine_zeile_ein_hoehenwinkel(kameras):
+    pano = panorama.Panorama(kameras, zuschnitt=panorama.ALLES)
+    mitte_peilung, _ = pano.winkel(pano.breite / 2, pano.hoehe / 2)
+    assert mitte_peilung == pytest.approx(0.0, abs=1.5), "die Mitte schaut nach vorn"
+
+    links, _ = pano.winkel(0, pano.hoehe / 2)
+    rechts, _ = pano.winkel(pano.breite - 1, pano.hoehe / 2)
+    assert links > 0 > rechts, "Peilung links positiv, wie ueberall"
+    assert abs(links) == pytest.approx(abs(rechts), abs=2.0)
+
+    _, oben = pano.winkel(pano.breite / 2, 0)
+    _, unten = pano.winkel(pano.breite / 2, pano.hoehe - 1)
+    assert oben > 0 > unten, "Hoehenwinkel nach oben positiv"
+
+
+def test_die_kamerahoehe_kommt_aus_der_kalibrierung(kameras):
+    pano = panorama.Panorama(kameras, zuschnitt=panorama.ALLES)
+    # Koerpermitte 0.51 m ueber dem Boden, die Kameras sitzen knapp darunter.
+    assert pano.kamerahoehe() == pytest.approx(0.46, abs=0.02)
+
+
+def test_ein_stehender_mensch_hat_erst_ab_zweieinhalb_metern_ein_gesicht(kameras):
+    """Die Messung, die den Gesichts-Finder begrenzt -- keine Behauptung."""
+    import math
+
+    pano = panorama.Panorama(kameras, zuschnitt=panorama.ALLES)
+    _, oben = pano.winkel(pano.breite / 2, 0)
+    hoehe = pano.kamerahoehe()
+
+    def sichtbar_bis(abstand):
+        return hoehe + abstand * math.tan(math.radians(oben))
+
+    assert sichtbar_bis(1.5) < 1.3, "auf anderthalb Metern sieht Spot Beine"
+    assert sichtbar_bis(3.0) > 1.7, "ab drei Metern ist ein Kopf im Bild"

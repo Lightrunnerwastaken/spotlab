@@ -51,6 +51,21 @@ versionsgepinntes Extra `spotlab[sim]`.
   ob aus einem AprilTag oder aus Spots eigenem Personen-Tracker. Nur so lassen sich
   Strategien VERGLEICHEN statt behaupten — und nur so bleibt der sicherheitsrelevante Teil
   an einer Stelle.
+- **Ein Kasten des Gesichtserkenners ist noch kein Gesicht — die Geometrie entscheidet.**
+  Über die Aufzeichnung vom 12.08.2026 fand YuNet in 4 von 107 Takten etwas; der beste
+  Treffer war eine Stuhllehne, der zweitbeste ein SCHIENBEIN (`tests/daten/…/takt50_*`).
+  `backends/real/gesicht.py` rechnet deshalb aus Höhenwinkel und GEMESSENER Entfernung die
+  Höhe über dem Boden und verwirft, was nicht auf Kopfhöhe liegt. Die Entfernung kommt aus
+  den Tiefenkameras, nie aus der Kastengrösse: an ihr hängt der Mindestabstand des
+  Folgemodus, und eine geschätzte Entfernung wäre dort erfundene Sicherheit. Ein Kasten ohne
+  Tiefenpunkte zählt gar nicht — ohne Gegenprobe ist ein Schienbein ein Gesicht.
+- **Die Frontkameras schauen nach unten, und das begrenzt jede Bildstrategie.** Gemessen:
+  bei 1.5 m reicht das Bild bis 1.20 m Höhe, bei 3.0 m bis 1.94 m. Ein stehender Mensch hat
+  erst ab gut zweieinhalb Metern ein Gesicht im Bild — der Folgemodus will aber 1.6 m
+  halten. Deshalb gibt es `zuerst(...)`: Strategien werden GESTAFFELT, nicht gewählt. Und
+  deshalb hat `Panorama` zwei Zuschnitte — `RECHTECK` (voll gedeckt, 16:9, zum Fahren,
+  reicht 7° hinauf) und `ALLES` (alles Gesehene samt schwarzen Ecken, reicht 26° hinauf).
+  Für einen Erkenner ist eine schwarze Ecke kein Problem, ein fehlendes Blickfeld schon.
 - **Jede Schranke im Folgemodus ist fail-closed, und sie gelten alle gleichzeitig.** Wer
   ihre Daten nicht lesen kann, verbietet die Fahrt: ein unlesbares Hindernisgitter und ein
   unlesbares Tiefenbild heissen „stehen bleiben", nicht „weiterfahren". Dazu: näher als
@@ -753,6 +768,14 @@ versionsgepinntes Extra `spotlab[sim]`.
   steht an genau EINER Stelle: `src/spotlab/__init__.py`.
 
 ## Umsetzungsstand
+
+**Stufe 20 (10.09.2026): Gesichter als vierter Finder** — `backends/real/gesicht.py`
+(YuNet über das optionale Extra `[gesicht]`, Modell aus `~/.spotlab/modelle/` oder
+`SPOTLAB_GESICHTSMODELL`), Panorama-Zuschnitt `ALLES` samt `winkel()` (Spalte = Azimut,
+Zeile = Höhenwinkel) und `kamerahoehe()`, dazu `folgen.gesicht_finder()` und
+`folgen.zuerst()` zum Staffeln. Die Grenzen sind gemessen, nicht behauptet: Gesicht erst ab
+2.5 m, und zwei von zwei nachgesehenen Treffern des Erkenners waren Fehltreffer. Am Gerät:
+A34, erweitert um Teil 3.
 
 **Stufe 19 (09.09.2026): Folgen** — `workshop/folgen.py` mit austauschbarem Ziel-Finder
 (`tag_finder` heute nachweisbar, `personen_finder` über Spots eigenen Tracker), Regler mit

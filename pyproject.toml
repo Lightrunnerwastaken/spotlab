@@ -38,6 +38,11 @@ gui = [
     "PySide6>=6.6,<7", "pygments>=2.17,<3", "jedi>=0.19,<1",
     "send2trash>=1.8,<2", "PyOpenGL>=3.1,<4",
 ]
+# Gesichtssuche im Folgemodus (`workshop/folgen.py::gesicht_finder`): YuNet aus
+# OpenCV, verzoegert importiert. Ohne das Paket sagt der Finder, was fehlt --
+# die Schueler-Ausgabe bleibt schlank. <5, weil OpenCV 5 die alten Kaskaden
+# entfernt hat; YuNet laeuft dort zwar, ist aber ungeprueft.
+gesicht = ["opencv-python>=4.8,<5"]
 # >=2.0: dort heisst der Server MCPServer, in 1.x hiess er FastMCP und lag
 # unter mcp.server.fastmcp. Ein Kompatibilitaetspfad waere hier ungeprueft.
 mcp = ["mcp>=2.0,<3"]
