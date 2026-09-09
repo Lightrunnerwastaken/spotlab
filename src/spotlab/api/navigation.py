@@ -12,6 +12,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from spotlab.api import motion
 from spotlab.backends.base import Capability, require
 from spotlab.errors import NavigationError, SpotlabError
 from spotlab.maps.store import finde, karten, lade_graph
@@ -95,11 +96,14 @@ def navigate_to(
     timeout=120.0,
     schlaf=time.sleep,
     jetzt=time.monotonic,
+    abbruch=None,
 ):
-    """Autonom zu einem Wegpunkt fahren.
+    """Autonom zu einem Wegpunkt fahren. True: angekommen; False: abgebrochen.
 
     Navigationskommandos verfallen wie Geschwindigkeitskommandos, deshalb die
-    Schleife: nachsenden, Rückmeldung prüfen, wiederholen.
+    Schleife: nachsenden, Rückmeldung prüfen, wiederholen. `abbruch()` wird in
+    jedem Takt gefragt; sagt es wahr, hält Spot an (`stop`) und die Fahrt ist
+    zu Ende -- so bricht der Karten-Tab eine Fahrt für ein neues Ziel ab.
     """
     require(backend, Capability.GRAPH_NAV, "auf einer Karte navigieren")
     waypoint_id = karte.id_fuer(ziel)
@@ -129,7 +133,12 @@ def navigate_to(
         if zustand.gescheitert:
             raise NavigationError(zustand.status)
         if zustand.fertig:
-            return
+            return True
+        if abbruch is not None and abbruch():
+            motion.stop(backend, recorder)
+            if recorder is not None:
+                recorder.event("rückmeldung", name="navigate_to", status="abgebrochen")
+            return False
         if jetzt() >= ende:
             raise NavigationError(
                 f"Der Spot hat '{ziel}' nicht innerhalb von {timeout:.0f} s erreicht "

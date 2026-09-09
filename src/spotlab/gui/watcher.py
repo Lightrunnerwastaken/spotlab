@@ -34,6 +34,7 @@ class _Lauf:
         # (mtime_ns, Groesse) von ansicht.jpg beim letzten Takt -- das
         # MuJoCo-Backend ERSETZT die Datei, es legt keine neuen an.
         self.ansicht_stand = None
+        self.navigation_stand = None            # dasselbe fuer navigation.json
 
 
 class RunScanner:
@@ -56,6 +57,7 @@ class RunScanner:
         for lauf in self._offen.values():
             ereignisse.extend(("zustand", satz) for satz in lauf.zustand.neue_saetze())
             ereignisse.extend(self._neue_ansicht(lauf))
+            ereignisse.extend(self._neuer_navigationsstand(lauf))
         return ereignisse
 
     # ------------------------------------------------------------------ intern
@@ -81,6 +83,10 @@ class RunScanner:
             ereignisse.append(("ereignis", satz))
         ereignisse.extend(self._neue_bilder(lauf))
         ereignisse.extend(self._neue_ansicht(lauf))
+        # Auch hier, nicht nur im Live-Takt: ein Lauf, der schon tot ist, wenn der
+        # Watcher ihn findet, meldet seinen letzten Stand sonst nie -- Beginn und
+        # Ende kaemen im selben Takt, und dazwischen laege kein Live-Takt mehr.
+        ereignisse.extend(self._neuer_navigationsstand(lauf))
         if not ist_aktiv(lauf.dir):
             del self._offen[name]
             ereignisse.append(("lauf_beendet", str(lauf.dir)))
@@ -105,6 +111,29 @@ class RunScanner:
         return [("ansicht", str(pfad))]
 
     @staticmethod
+    def _neuer_navigationsstand(lauf):
+        """`navigation.json` des Navigationslaufs, wenn sie sich geaendert hat.
+
+        Ein halb geschriebener Stand liest sich als None; dann bleibt die
+        Marke stehen, und der naechste Takt liest ihn fertig.
+        """
+        from spotlab.record import navigation
+
+        pfad = lauf.dir / navigation.STAND_DATEI
+        try:
+            st = pfad.stat()
+        except OSError:
+            return []
+        stand = (st.st_mtime_ns, st.st_size)
+        if stand == lauf.navigation_stand:
+            return []
+        daten = navigation.lies_stand(lauf.dir)
+        if daten is None:
+            return []
+        lauf.navigation_stand = stand
+        return [("navigation", daten)]
+
+    @staticmethod
     def _neue_bilder(lauf):
         gefunden = []
         try:
@@ -124,6 +153,7 @@ class RunWatcher(QObject):
     ereignis = Signal(dict)
     bild = Signal(str)
     ansicht = Signal(str)
+    navigation = Signal(dict)
     lauf_beendet = Signal(str)
     fehler = Signal(str)
 
@@ -167,6 +197,7 @@ class RunWatcher(QObject):
             "ereignis": self.ereignis,
             "bild": self.bild,
             "ansicht": self.ansicht,
+            "navigation": self.navigation,
             "lauf_beendet": self.lauf_beendet,
         }
         for art, nutzlast in ereignisse:

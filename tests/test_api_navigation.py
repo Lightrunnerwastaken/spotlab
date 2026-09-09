@@ -186,3 +186,27 @@ def test_ereignisse_werden_aufgezeichnet(tmp_path):
     rec.finish("ok")
     text = (rec.dir / "ereignisse.jsonl").read_text(encoding="utf-8")
     assert "load_map" in text and "navigate_to" in text
+
+
+def test_abbruch_haelt_an_und_meldet_nicht_angekommen(tmp_path):
+    """Der Karten-Tab wechselt das Ziel waehrend der Fahrt: `abbruch()` wird je
+    Takt gefragt, sagt es ja, haelt Spot an und die Fahrt gilt nicht als Ankunft."""
+    unterwegs = NavStatus(fertig=False, status="Unterwegs.", gescheitert=False)
+    backend = FakeBackend(folge=[unterwegs] * 5)
+    karte = Map("turnhalle", _karte_auf_platte(tmp_path), _graph())
+    fragen = []
+
+    def abbruch():
+        fragen.append(1)
+        return len(fragen) >= 2
+
+    angekommen = navigate_to(backend, None, karte, "kueche", Limits(),
+                             schlaf=lambda _s: None, abbruch=abbruch)
+    assert angekommen is False and len(fragen) == 2
+    assert backend.protokoll.count("nav:wp1") == 2, "nach dem Abbruch wird nicht nachgesendet"
+
+
+def test_ohne_abbruch_gilt_die_ankunft(tmp_path):
+    backend = FakeBackend()
+    karte = Map("turnhalle", _karte_auf_platte(tmp_path), _graph())
+    assert navigate_to(backend, None, karte, "kueche", Limits(), schlaf=lambda _s: None) is True

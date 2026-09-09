@@ -751,6 +751,41 @@ Davon hängt ab, ob `ZONE_RAND_M` (0.15 m) reicht.
 
 ---
 
+## A32 — Wegpunkte im Tab „Karten" anklicken und hinfahren
+
+**Voraussetzung** A1 bestanden (der Lauf fährt den Roboter autonom), A13 (eine Karte mit
+mindestens drei Wegpunkten, die Kanten schliessen einen Weg zwischen ihnen ein) und ein
+AprilTag dieser Karte in Sicht des Startplatzes.
+
+**Vorgehen** Freifläche, Aufsicht, Tablet mit Not-Aus in der Hand einer zweiten Person. In
+der Ansicht „Karten" die Karte wählen, „🧭 Zu Wegpunkten fahren". Warten, bis die Zeile
+„Verortet bei …" steht und ein Wegpunkt gefüllt gezeichnet ist. Dann nacheinander: einen
+entfernten Wegpunkt anklicken; während der Fahrt einen anderen anklicken; nach der Ankunft
+denselben noch einmal anklicken; Spot mit dem Tablet so drehen, dass kein Tag im Bild ist,
+einen Lauf neu starten und beobachten; zuletzt während einer Fahrt „■ Stopp".
+
+**Erwartung**
+- (1) Nach dem ersten Klick fährt Spot los, die Zeile sagt „Unterwegs nach …", der Pfeil in
+  der Zeichnung wandert mit (Lage und Blickrichtung plausibel gegen den Raum); bei der
+  Ankunft steht „Angekommen bei …", der Ring verschwindet.
+- (2) Der Klick während der Fahrt lässt Spot kurz anhalten und das neue Ziel fahren; das
+  alte wird nicht mehr angefahren.
+- (3) Derselbe Wegpunkt noch einmal: Spot fährt (oder bestätigt sofort die Ankunft), die
+  Aufzeichnung enthält ein zweites `navigate_to`.
+- (4) Ohne Tag im Bild bleibt die Zeile bei „Spot verortet sich — …" und wiederholt alle zwei
+  Sekunden; sobald ein Tag im Bild ist, geht es ohne Neustart weiter.
+- (5) „■ Stopp" hält Spot binnen einer Sekunde an, der Lauf endet geordnet (Spot setzt sich,
+  `lauf.json` trägt `abgebrochen`), die Zeichnung ist leer, die Liste wieder wählbar.
+- (6) Die autonome Fahrt ist nie schneller als `max_speed` aus `config.toml`.
+
+**Beobachten statt annehmen** Ob der Pfeil bei einer Karte OHNE Anker (Quelle „kette")
+ebenso gut passt — die Lage kommt relativ zum eigenen Wegpunkt, nicht aus dem Seed-Rahmen;
+notieren, wie gross der sichtbare Versatz auf einer solchen Karte ist.
+
+**Ergebnis** _(offen)_
+
+---
+
 ## Nach der Abnahme
 
 Ergebnisse hier eintragen, Abweichungen als Befund in die Spec zurückspielen, und erst

@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from spotlab import ENV_RAUM, ENV_RAUM_START
+from spotlab import ENV_KARTE, ENV_RAUM, ENV_RAUM_START
 from spotlab.config import load_config, save_config
 from spotlab.errors import SpotlabError
 from spotlab.gui.editor.view import EditorView, verfuegbare_backends
@@ -59,6 +59,7 @@ def system_ist_dunkel(app=None):
 # Der Tab „Fahren" erzwingt den echten Spot -- er erbt NICHT die Wahl im Editor.
 # Der Kettentest tauscht die Konstante gegen den Trockenlauf.
 FAHREN_BACKEND = "real"
+NAVIGATION_BACKEND = "real"     # der Tab „Karten" faehrt Wegpunkte am echten Spot ab
 
 
 class MainWindow(QWidget):
@@ -166,6 +167,12 @@ class MainWindow(QWidget):
         self.ansichten["fahren"].meldung.connect(self._melde)
         self.ansichten["code"].laeuft_geaendert.connect(self._code_laeuft_geaendert)
         self._fahrt_erwartet = False
+        # Name der Karte, solange ein Navigationslauf aus „Karten" erwartet wird, sonst False.
+        self._navigation_erwartet = False
+        self.ansichten["karten"].navigation_gewuenscht.connect(self._starte_navigation)
+        self.ansichten["karten"].stopp_gewuenscht.connect(
+            lambda: self.ansichten["live"].stoppe()
+        )
         # Der Knopf im Raumeditor spiegelt den Laufzustand des Editors, statt
         # ihn ein zweites Mal zu fuehren. Die Methode gab es schon; sie war
         # nirgends verbunden und der Knopf blieb deshalb auf „Starten" stehen.
@@ -232,6 +239,7 @@ class MainWindow(QWidget):
         self._watcher.ereignis.connect(self._ereignis)
         self._watcher.bild.connect(self.ansichten["live"].zeige_bild)
         self._watcher.ansicht.connect(self._ansicht)
+        self._watcher.navigation.connect(self._navigation)
         self._watcher.lauf_beendet.connect(self._lauf_beendet)
         self._watcher.fehler.connect(self._melde)
         self._watcher.start()
@@ -331,13 +339,17 @@ class MainWindow(QWidget):
         die Waende. Ein `SpotlabError` hier verweigert den Start; der Editor
         faengt ihn wie einen Startfehler und zeigt den Grund.
         """
+        umgebung = {}
+        if self._navigation_erwartet:
+            # Die Karte aus dem Tab „Karten" -- als Name, das Skript laedt sie selbst.
+            umgebung[ENV_KARTE] = str(self._navigation_erwartet)
         if self.ansichten["code"].gewaehltes_backend() not in ("sim", "mujoco", "physics"):
-            return {}
+            return umgebung
         ansicht = self.ansichten["raumeditor"]
         grund = ansicht.bereit_fuer_lauf()
         if grund:
             raise SpotlabError(grund)
-        umgebung = {ENV_RAUM: ansicht.raumname()}
+        umgebung[ENV_RAUM] = ansicht.raumname()
         pose = ansicht.startpose()
         if pose:
             umgebung[ENV_RAUM_START] = f"{pose[0]:.2f},{pose[1]:.2f},{pose[2]:.1f}"
@@ -365,7 +377,9 @@ class MainWindow(QWidget):
         # fremder Lauf als Fahrt gelten, und der Tab gibt die Tastatur frei.
         if not laeuft:
             self._fahrt_erwartet = False
+            self._navigation_erwartet = False
             self.ansichten["fahren"].lauf_beendet()
+            self.ansichten["karten"].lauf_beendet()
 
     def _starte_fahrt(self, backend=None):
         """Der Fahrmodus: das mitgelieferte `fahren.py`, W A S D Q E. Ohne `backend`
@@ -397,6 +411,37 @@ class MainWindow(QWidget):
             self.ansichten["code"].setze_backend("mujoco" if "mujoco" in namen else "sim")
             self._fahrt_erwartet = True
         self.ansichten["code"].starte_skript(fahren.skript_in(arbeitsordner))
+
+    def _starte_navigation(self):
+        """Der Tab „Karten": das mitgelieferte `navigieren.py` am echten Spot, mit der
+        gewaehlten Karte. Derselbe eine Startweg wie „Starten" und wie „Fahren"."""
+        from spotlab.workshop import navigieren
+        from spotlab.workshop.beispiele import bereitstellen
+
+        if self.ansichten["code"].laeuft():
+            self.ansichten["code"].starte_aktuelles()        # heisst dann Stopp
+            return
+        arbeitsordner = self._config.workspace if self._config else None
+        if not arbeitsordner:
+            self._melde("Zum Navigieren zuerst einen Arbeitsordner wählen — das Programm "
+                        "liegt im Projekt Beispiele dort.")
+            return
+        karte = self.ansichten["karten"].karte_fuer_navigation()
+        if not karte:
+            self._melde("Wähle zuerst eine Karte in der Liste — auf ihr fährt Spot.")
+            return
+        try:
+            bereitstellen(arbeitsordner)
+        except OSError as fehler:
+            self._melde(f"Beispiele konnten nicht angelegt werden: {fehler}")
+            return
+        self.ansichten["code"].setze_backend(NAVIGATION_BACKEND)
+        self._navigation_erwartet = karte        # der Lauf gehoert in den Tab „Karten"
+        self.ansichten["code"].starte_skript(navigieren.skript_in(arbeitsordner))
+
+    def _navigation(self, stand):
+        if self.ansichten["karten"].laeuft():
+            self.ansichten["karten"].zeige_navigation(stand)
 
     def _oeffne_uebungsfenster(self, titel=""):
         if self.uebungsfenster is None:
@@ -540,6 +585,13 @@ class MainWindow(QWidget):
             self._wechsle("fahren")
             self.leiste.waehle("fahren")
             return
+        if self._navigation_erwartet:
+            # Der Tab „Karten" bekommt das Verzeichnis: dort werden die Ziele geklickt.
+            self._navigation_erwartet = False
+            self.ansichten["karten"].lauf_beginnt(verzeichnis, name)
+            self._wechsle("karten")
+            self.leiste.waehle("karten")
+            return
         # Auch bei einem von aussen gestarteten Lauf (F5 in VS Code) hinschalten —
         # sonst sieht der Schüler nicht, dass sein Programm läuft. Wer aber
         # gerade selbst aus „Code" gestartet hat, wird nicht aus seiner Ansicht
@@ -581,6 +633,7 @@ class MainWindow(QWidget):
         if self.uebungsfenster is not None:
             self.uebungsfenster.beendet(lauf=verzeichnis)
         self.ansichten["fahren"].lauf_beendet()
+        self.ansichten["karten"].lauf_beendet()
         self.ansichten["anbindungen"].lauf_laeuft(False)
         self.ansichten["anbindungen"].aktualisiere()
         self.ansichten["laeufe"].aktualisiere()

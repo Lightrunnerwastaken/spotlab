@@ -7,6 +7,7 @@ anker   Positionen direkt aus anchoring. Genauer, weil global optimiert.
 kette   Ab einem Wurzel-Wegpunkt edge.from_tform_to aufmultiplizieren.
 """
 
+import math
 from dataclasses import dataclass
 
 from bosdyn.client.math_helpers import SE3Pose
@@ -29,6 +30,7 @@ class Punkt:
     name: str
     x: float
     y: float
+    yaw: float = 0.0        # Blickrichtung des Wegpunktrahmens im Grundriss, Grad
 
 
 @dataclass(frozen=True)
@@ -48,14 +50,16 @@ def _namen(graph):
 
 
 def _aus_ankern(graph):
-    anker = {a.id: a.seed_tform_waypoint.position for a in graph.anchoring.anchors}
+    anker = {a.id: SE3Pose.from_proto(a.seed_tform_waypoint) for a in graph.anchoring.anchors}
     if not anker or any(wp.id not in anker for wp in graph.waypoints):
         return None  # unvollständig ⇒ die Kette ist ehrlicher
     namen = _namen(graph)
-    return [
-        Punkt(wp.id, namen[wp.id], float(anker[wp.id].x), float(anker[wp.id].y))
-        for wp in graph.waypoints
-    ]
+    return [_punkt(wp.id, namen[wp.id], anker[wp.id]) for wp in graph.waypoints]
+
+
+def _punkt(kennung, name, pose):
+    return Punkt(kennung, name, float(pose.x), float(pose.y),
+                 math.degrees(pose.rot.to_yaw()) % 360.0)
 
 
 def _aus_kette(graph):
@@ -84,10 +88,27 @@ def _aus_kette(graph):
     if len(posen) < len(graph.waypoints):
         return None  # nicht alles erreichbar
     namen = _namen(graph)
-    return [
-        Punkt(wp.id, namen[wp.id], float(posen[wp.id].x), float(posen[wp.id].y))
-        for wp in graph.waypoints
-    ]
+    return [_punkt(wp.id, namen[wp.id], posen[wp.id]) for wp in graph.waypoints]
+
+
+def lage_im_grundriss(grundriss, standort, versatz):
+    """(x, y, grad) des Roboters im Grundriss -- oder None, wenn der Wegpunkt fehlt.
+
+    `standort` ist der Wegpunkt, an dem GraphNav den Roboter verortet hat,
+    `versatz` (dx, dy, grad) die Lage des Körpers in DESSEN Rahmen. So passt
+    die Lage zu jedem Grundriss, ob aus Ankern oder aus der Kette gezeichnet:
+    der Seed-Rahmen des Roboters ist nicht immer der Rahmen der Zeichnung.
+    """
+    punkt = next((p for p in grundriss.punkte if p.id == standort), None)
+    if punkt is None or versatz is None:
+        return None
+    dx, dy, dgrad = versatz
+    w = math.radians(punkt.yaw)
+    return (
+        punkt.x + math.cos(w) * dx - math.sin(w) * dy,
+        punkt.y + math.sin(w) * dx + math.cos(w) * dy,
+        (punkt.yaw + dgrad) % 360.0,
+    )
 
 
 def grundriss(graph):

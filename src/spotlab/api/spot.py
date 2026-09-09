@@ -214,16 +214,22 @@ class Spot:
         """
         return navigation.map_pose(self.backend, self.recorder)
 
-    def navigate_to(self, ziel, timeout=120.0):
-        """Fährt autonom zum genannten Wegpunkt der geladenen Karte."""
+    def navigate_to(self, ziel, timeout=120.0, abbruch=None):
+        """Fährt autonom zum genannten Wegpunkt der geladenen Karte.
+
+        True, wenn Spot angekommen ist. `abbruch` ist eine Funktion ohne
+        Argumente, die unterwegs immer wieder gefragt wird; sagt sie wahr,
+        hält Spot an, und die Antwort ist False.
+        """
         if self._karte is None:
             from spotlab.errors import SpotlabError
 
             raise SpotlabError(
                 "Es ist keine Karte geladen — rufe zuerst spot.load_map() auf."
             )
-        navigation.navigate_to(
-            self.backend, self.recorder, self._karte, ziel, self.limits, timeout=timeout
+        return navigation.navigate_to(
+            self.backend, self.recorder, self._karte, ziel, self.limits,
+            timeout=timeout, abbruch=abbruch,
         )
 
     def waypoints(self):

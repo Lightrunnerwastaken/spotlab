@@ -155,6 +155,26 @@ def localization_pose(robot):
     return (float(pose.x), float(pose.y), math.degrees(pose.rot.to_yaw()) % 360.0)
 
 
+def localization(robot):
+    """(Wegpunkt-ID, (dx, dy, grad)) -- wo der Körper relativ zu SEINEM Wegpunkt steht.
+
+    Für die Zeichnung im Karten-Tab: die GUI setzt den Versatz an den Wegpunkt
+    ihres Grundrisses (`maps/geometry.py::lage_im_grundriss`). Relativ zum
+    Wegpunkt, nicht im Seed-Rahmen, denn ein Grundriss ohne Anker ist im Rahmen
+    des ersten Wegpunkts gezeichnet. None, solange nicht verortet.
+    """
+    import math
+
+    from bosdyn.client.math_helpers import SE3Pose
+
+    ortung = _versuche(_client(robot).get_localization_state).localization
+    if not ortung.waypoint_id:
+        return None
+    pose = SE3Pose.from_proto(ortung.waypoint_tform_body)
+    return ortung.waypoint_id, (
+        float(pose.x), float(pose.y), math.degrees(pose.rot.to_yaw()) % 360.0)
+
+
 def travel_params(limits, max_distance=0.4, max_yaw=0.15):
     """TravelParams mit unserem Geschwindigkeitsdeckel.
 

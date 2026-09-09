@@ -307,6 +307,11 @@ class RealSpot:
 
         return graphnav.localization_pose(self._robot)
 
+    def localization(self):
+        from spotlab.backends.real import graphnav
+
+        return graphnav.localization(self._robot)
+
     def travel_params(self, limits):
         from spotlab.backends.real import graphnav
 

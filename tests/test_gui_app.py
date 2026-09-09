@@ -822,3 +822,122 @@ def test_fahren_faehrt_wirklich_ueber_knopf_watcher_und_tasten(qapp, tmp_path, m
               if z.strip()]
     xs = [z["daten"]["pose"][0] for z in zeilen if "pose" in (z.get("daten") or {})]
     assert xs and max(xs) - min(xs) > 0.2, (min(xs) if xs else None, max(xs) if xs else None)
+
+
+# ------------------------------------------------------- Navigation (Tab Karten)
+
+
+def _karte_im_arbeitsordner(tmp_path, name="turnhalle"):
+    from bosdyn.api.graph_nav import map_pb2
+
+    from spotlab.maps.store import karten_wurzel, speichere_metadaten
+
+    graph = map_pb2.Graph()
+    for kennung, wegname, x in (("wp0", "start", 0.0), ("wp1", "kueche", 2.0)):
+        wp = graph.waypoints.add()
+        wp.id = kennung
+        wp.annotations.name = wegname
+        anker = graph.anchoring.anchors.add()
+        anker.id = kennung
+        anker.seed_tform_waypoint.rotation.w = 1.0
+        anker.seed_tform_waypoint.position.x = x
+    kante = graph.edges.add()
+    kante.id.from_waypoint, kante.id.to_waypoint = "wp0", "wp1"
+    ordner = karten_wurzel(tmp_path) / name
+    ordner.mkdir(parents=True)
+    (ordner / "graph").write_bytes(graph.SerializeToString())
+    speichere_metadaten(ordner, name, "SN-1", graph)
+    return ordner
+
+
+def test_der_karten_tab_startet_navigieren_am_echten_spot_ueber_den_einen_startweg(qapp, tmp_path, monkeypatch):
+    """Wie beim Tab „Fahren": das mitgelieferte Programm aus Beispiele, Backend
+    „real" erzwungen, die gewaehlte Karte geht als SPOTLAB_KARTE mit."""
+    from dataclasses import replace
+
+    from spotlab import ENV_KARTE
+    from spotlab.config import Config, Limits
+
+    _karte_im_arbeitsordner(tmp_path)
+    fenster = MainWindow()
+    fenster._config = replace(fenster._config or Config(ip="", username="", limits=Limits()),
+                              workspace=str(tmp_path))
+    fenster._setze_arbeitsordner(str(tmp_path))
+    fenster.ansichten["code"].setze_backend("sim")
+    fenster.ansichten["karten"].liste.setCurrentRow(0)
+    gestartet = []
+    monkeypatch.setattr(fenster.ansichten["code"], "starte_skript", lambda pfad: gestartet.append(pfad))
+    fenster.ansichten["karten"].navigation_gewuenscht.emit()
+    assert gestartet == [tmp_path / "Beispiele" / "navigieren.py"]
+    assert (tmp_path / "Beispiele" / "navigieren.py").is_file()
+    assert fenster.ansichten["code"].gewaehltes_backend() == "real"
+    assert fenster._navigation_erwartet == "turnhalle"
+    assert fenster._umgebung_fuer_lauf() == {ENV_KARTE: "turnhalle"}
+
+
+def test_navigation_ohne_gewaehlte_karte_sagt_es(qapp, tmp_path, monkeypatch):
+    from dataclasses import replace
+
+    from spotlab.config import Config, Limits
+
+    fenster = MainWindow()
+    fenster._config = replace(fenster._config or Config(ip="", username="", limits=Limits()),
+                              workspace=str(tmp_path))
+    fenster._setze_arbeitsordner(str(tmp_path))
+    gestartet, meldungen = [], []
+    monkeypatch.setattr(fenster.ansichten["code"], "starte_skript", lambda pfad: gestartet.append(pfad))
+    monkeypatch.setattr(fenster, "_melde", meldungen.append)
+    fenster.ansichten["karten"].navigation_gewuenscht.emit()
+    assert gestartet == [] and meldungen and "Karte" in meldungen[0]
+    assert fenster._navigation_erwartet is False
+
+
+def test_die_navigation_laeuft_wirklich_ueber_knopf_prozess_und_watcher(qapp, tmp_path, monkeypatch):
+    """Die ganze Kette mit dem Trockenlauf an Stelle des Roboters: Knopf im Tab,
+    echter Prozess, der Watcher meldet den Lauf, der Tab bekommt das Verzeichnis
+    und den Stand aus `navigation.json`. Der Trockenlauf hat kein GraphNav -- der
+    Lauf scheitert beim Laden der Karte, und GENAU DAS steht dann im Tab."""
+    import json
+    import time
+    from dataclasses import replace
+    from pathlib import Path
+
+    from spotlab.config import Config, Limits
+    from spotlab.gui import app as app_modul
+    from spotlab.record import navigation
+    from tests_zeitgrenzen import TEST_TIMEOUT_S
+
+    monkeypatch.setattr(app_modul, "NAVIGATION_BACKEND", "dryrun")
+    _karte_im_arbeitsordner(tmp_path)
+    fenster = MainWindow()
+    fenster._config = replace(fenster._config or Config(ip="", username="", limits=Limits()),
+                              workspace=str(tmp_path))
+    fenster._setze_arbeitsordner(str(tmp_path))
+    fenster._wechsle("karten")
+    tab = fenster.ansichten["karten"]
+    tab.liste.setCurrentRow(0)
+    begonnen, staende = [], []
+    original_beginnt, original_stand = tab.lauf_beginnt, tab.zeige_navigation
+    monkeypatch.setattr(tab, "lauf_beginnt", lambda *a, **k: (begonnen.append(a), original_beginnt(*a, **k)))
+    monkeypatch.setattr(tab, "zeige_navigation", lambda s: (staende.append(s), original_stand(s)))
+    tab.navigation_gewuenscht.emit()
+    assert fenster.ansichten["code"].laeuft(), fenster.statuszeile.text()
+    prozess = fenster.ansichten["code"]._prozess
+    try:
+        frist = time.monotonic() + TEST_TIMEOUT_S
+        while (prozess.poll() is None or not begonnen or fenster._aktiver_lauf is not None) \
+                and time.monotonic() < frist:
+            qapp.processEvents()
+            time.sleep(0.05)
+    finally:
+        if prozess.poll() is None:
+            prozess.kill()
+    assert begonnen, "der Watcher hat dem Tab nie das Lauf-Verzeichnis gemeldet"
+    lauf = Path(begonnen[0][0])
+    stand = navigation.lies_stand(lauf)
+    assert stand is not None and stand["status"] == "gescheitert", stand
+    assert "GraphNav" in stand["text"] or "navigieren" in stand["text"].lower(), stand["text"]
+    assert any(s["status"] == "gescheitert" for s in staende), "der Stand kam nie im Tab an"
+    meta = json.loads((lauf / "lauf.json").read_text(encoding="utf-8"))
+    assert meta["backend"] == "dryrun"
+    assert not tab.laeuft() and fenster._navigation_erwartet is False

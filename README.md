@@ -146,6 +146,18 @@ with spotlab.connect() as spot:
 > für freie Fläche und Aufsicht. Der Geschwindigkeitsdeckel aus `config.toml` gilt auch
 > hier — er wird als `velocity_limit` an GraphNav durchgereicht.
 
+**Ohne Skript, aus dem Tab.** In der Ansicht „Karten" eine Karte wählen, „🧭 Zu Wegpunkten
+fahren" drücken und in der Zeichnung einen Wegpunkt anklicken — Spot fährt hin. Die
+Zeichnung zeigt das Ziel als Ring, den Wegpunkt, an dem Spot sich verortet hat, gefüllt, und
+Spot selbst als Pfeil; die Zeile darunter sagt, was der Lauf tut. Ein Klick während der Fahrt
+wechselt das Ziel, derselbe Wegpunkt noch einmal geklickt heisst noch einmal fahren, „■ Stopp"
+hält an und beendet. Dahinter steckt kein zweiter Weg zum Roboter: der Knopf startet das
+Programm `navigieren.py` aus dem Projekt Beispiele am echten Spot, mit Lease, Not-Aus-Endpunkt,
+Aufzeichnung und dem Tempodeckel wie jeder Lauf; der Tab schreibt nur das Ziel in eine Datei
+des Lauf-Verzeichnisses und liest den Stand aus einer anderen. Zum Verorten muss ein AprilTag
+der Karte im Kamerabild sein — der Lauf versucht es alle zwei Sekunden neu und sagt, woran es
+hängt. Ein Ziel, das Spot nicht erreicht, beendet den Lauf nicht: der nächste Klick geht wieder.
+
 Karten liegen im **Format des SDK** unter `<arbeitsordner>/karten/<name>/`. Eine mit spotlab
 aufgezeichnete Karte lässt sich deshalb unverändert an `graph_nav_command_line.py` und
 `view_map.py` aus dem Spot-SDK verfüttern — und umgekehrt.

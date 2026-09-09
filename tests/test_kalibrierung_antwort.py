@@ -118,6 +118,9 @@ def test_ein_trockenlauf_zaehlt_nicht(tmp_path):
 @pytest.mark.skipif(not ECHTE_LAEUFE.is_dir(), reason="die echten Laeufe liegen nur auf dem Autorenlaptop")
 def test_die_echten_laeufe_vom_september_liefern_fahrt_und_drehung():
     punkte, _ = antwort.sammle(ECHTE_LAEUFE)
+    # Nur die Messfahrten: im selben Ordner landen seither auch die echten Laeufe des
+    # Alltags (Fahren, Navigation, 09.09.2026), und die sind keine Messung mit 1 m / 90 Grad.
+    punkte = [p for p in punkte if p.herkunft.get("gestartet", "") < "2026-09-09"]
     fahrten = [p for p in punkte if p.art == "fahrt"]
     drehungen = [p for p in punkte if p.art == "drehung"]
     # Zwei Fahrten, nicht drei: der erste Lauf des Tages hatte nur `stand`.

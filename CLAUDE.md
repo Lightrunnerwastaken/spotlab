@@ -337,6 +337,19 @@ versionsgepinntes Extra `spotlab[sim]`.
   ein gleichnamiges Release wird nicht überschrieben. Lizenz des Modells und SHA-256 der
   Sim-Quellen liegen im Wheel. **Runtime-Wheel und editierbare Forschungsinstallation nie in
   derselben Umgebung** — beide heissen `spotsim`.
+- **Die Navigation aus dem Tab „Karten" hat keinen eigenen Weg zum Roboter.** Der Knopf
+  startet `Beispiele/navigieren.py` über denselben einen Startweg wie „Starten" und „Fahren"
+  (`app.py::_starte_navigation`, Backend `NAVIGATION_BACKEND` erzwungen, die Karte als
+  `SPOTLAB_KARTE`); die Platte ist der Kanal in beide Richtungen (`record/navigation.py`:
+  `ziel.json` mit laufender NUMMER — derselbe Wegpunkt zweimal geklickt ist zweimal fahren —
+  und `navigation.json` als Stand, den der Watcher im Live-Takt meldet). **Die Lage des
+  Roboters kommt relativ zu SEINEM Wegpunkt** (`graphnav.localization`, `waypoint_tform_body`)
+  und wird erst in der GUI an den Grundriss gesetzt (`lage_im_grundriss`, `Punkt.yaw`): ein
+  Grundriss ohne Anker ist im Rahmen des ersten Wegpunkts gezeichnet, der Seed-Rahmen wäre
+  dort die falsche Ebene. Ein Klick unterwegs bricht die Fahrt über `navigate_to(abbruch=)`
+  ab (hält an, gibt False), ein gescheitertes Ziel beendet den Lauf NICHT, die Verortung wird
+  alle zwei Sekunden wiederholt, bis ein Tag im Bild ist oder Stopp kommt — ohne Roboter
+  gibt es kein GraphNav, und der Kettentest prüft, dass GENAU DAS dann im Tab steht.
 - **`einrichten.cmd` ist der eine Einstieg, und ohne `-Entwickler` installiert er nur aus
   dem ZIP.** Er ruft `einrichten.ps1`; ohne `-Entwickler` verlangt das Skript
   `schueler-requirements.txt` (liegt nur im Release) und installiert `--only-binary=:all:`
@@ -662,6 +675,14 @@ versionsgepinntes Extra `spotlab[sim]`.
   steht an genau EINER Stelle: `src/spotlab/__init__.py`.
 
 ## Umsetzungsstand
+
+**Stufe 16 (09.09.2026): Navigation aus dem Tab „Karten"** — Wegpunkte in der Zeichnung sind
+anklickbar (`gui/mapplot.py`: Treffer, Ring fürs Ziel, gefüllter Standort-Wegpunkt, Pfeil für
+den Roboter), „🧭 Zu Wegpunkten fahren" startet `Beispiele/navigieren.py` (Kern
+`workshop/navigieren.py::navigiere`: Karte laden, verorten mit Wiederholung, Ziele aus
+`ziel.json`, Stand nach `navigation.json`), `navigate_to(abbruch=)` in der API, die Ortung
+relativ zum Wegpunkt am Backend. Kette im Test mit dem Trockenlauf; am Gerät: A32. Davor
+(09.09.2026) der Blick im Fahren-Tab wie auf dem Tablet: `backends/real/panorama.py`.
 
 **Stufe 15 (07.–09.09.2026, Codex): Physikmodus, Wahrnehmungs-API, Schüler-Release** —
 Backend `physics` (`backends/physics.py`): Kontaktkräfte tragen den Körper, das Aufsetzen

@@ -113,3 +113,53 @@ def test_unvollstaendige_anker_fallen_auf_die_kette_zurueck():
     _anker(graph, "a", 0.0, 0.0)
 
     assert grundriss(graph).quelle == "kette"
+
+
+def _anker_gedreht(graph, kennung, x, y, grad):
+    import math
+
+    anker = graph.anchoring.anchors.add()
+    anker.id = kennung
+    anker.seed_tform_waypoint.rotation.w = math.cos(math.radians(grad) / 2)
+    anker.seed_tform_waypoint.rotation.z = math.sin(math.radians(grad) / 2)
+    anker.seed_tform_waypoint.position.x = x
+    anker.seed_tform_waypoint.position.y = y
+
+
+def test_punkte_tragen_die_blickrichtung_ihres_rahmens():
+    """Aus Ankern wie aus der Kette: der Wegpunktrahmen hat eine Richtung, und
+    die braucht, wer den Roboter relativ zum Wegpunkt einzeichnen will."""
+    from spotlab.maps.geometry import lage_im_grundriss
+
+    graph = map_pb2.Graph()
+    _wegpunkt(graph, "a")
+    _wegpunkt(graph, "b")
+    _kante(graph, "a", "b")
+    _anker_gedreht(graph, "a", 0.0, 0.0, 0.0)
+    _anker_gedreht(graph, "b", 3.0, 4.0, 90.0)
+    riss = grundriss(graph)
+    nach_id = {p.id: p for p in riss.punkte}
+    assert abs(nach_id["b"].yaw - 90.0) < 1e-6 and nach_id["a"].yaw == 0.0
+
+    # Ein Meter voraus im Rahmen von b (der nach +y zeigt) ist im Grundriss ein Meter +y.
+    x, y, grad = lage_im_grundriss(riss, "b", (1.0, 0.0, 0.0))
+    assert abs(x - 3.0) < 1e-6 and abs(y - 5.0) < 1e-6 and abs(grad - 90.0) < 1e-6
+    # Und links davon (+y im Wegpunktrahmen) ist -x im Grundriss, gedreht um weitere 45 Grad.
+    x, y, grad = lage_im_grundriss(riss, "b", (0.0, 1.0, 45.0))
+    assert abs(x - 2.0) < 1e-6 and abs(y - 4.0) < 1e-6 and abs(grad - 135.0) < 1e-6
+    assert lage_im_grundriss(riss, "gibtsnicht", (0.0, 0.0, 0.0)) is None
+    assert lage_im_grundriss(riss, "b", None) is None
+
+
+def test_die_kette_traegt_die_richtung_aus_den_kanten():
+    import math
+
+    graph = map_pb2.Graph()
+    _wegpunkt(graph, "a")
+    _wegpunkt(graph, "b")
+    kante = _kante(graph, "a", "b", dx=2.0)
+    kante.from_tform_to.rotation.w = math.cos(math.radians(90) / 2)
+    kante.from_tform_to.rotation.z = math.sin(math.radians(90) / 2)
+    riss = grundriss(graph)
+    nach_id = {p.id: p for p in riss.punkte}
+    assert riss.quelle == "kette" and abs(nach_id["b"].yaw - 90.0) < 1e-6

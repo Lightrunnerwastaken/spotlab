@@ -191,3 +191,31 @@ def test_netzfehler_beim_verorten_meldet_das_netz():
     robot = _KaputterRobot(RetryableUnavailableError(OSError("weg")))
     with pytest.raises(NotReachable):
         graphnav.localize(robot)
+
+
+def test_die_ortung_ist_relativ_zum_eigenen_wegpunkt():
+    """Fuer die Zeichnung im Karten-Tab: Wegpunkt plus Versatz des Koerpers in
+    dessen Rahmen -- nicht der Seed-Rahmen, der bei einem Grundriss ohne Anker
+    nicht der Rahmen der Zeichnung ist."""
+    import math
+
+    from spotlab.backends.real.graphnav import localization
+
+    class MitLage(FakeGraphNav):
+        def get_localization_state(self, **kw):
+            antwort = graph_nav_pb2.GetLocalizationStateResponse()
+            antwort.localization.waypoint_id = "wp-hier"
+            lage = antwort.localization.waypoint_tform_body
+            lage.position.x, lage.position.y = 1.5, -0.5
+            lage.rotation.w = math.cos(math.radians(90) / 2)
+            lage.rotation.z = math.sin(math.radians(90) / 2)
+            return antwort
+
+    kennung, (dx, dy, grad) = localization(FakeRobot(MitLage()))
+    assert kennung == "wp-hier" and (dx, dy) == (1.5, -0.5) and abs(grad - 90.0) < 1e-6
+
+    class Ohne(FakeGraphNav):
+        def get_localization_state(self, **kw):
+            return graph_nav_pb2.GetLocalizationStateResponse()
+
+    assert localization(FakeRobot(Ohne())) is None, "nicht verortet ist keine Lage"

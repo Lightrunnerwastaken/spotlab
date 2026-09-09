@@ -117,3 +117,68 @@ def test_das_fenster_gibt_beiden_diagrammen_seine_palette(qapp):
     fenster = MainWindow()
     assert fenster.ansichten["karten"].plot.palette_ is fenster._palette
     assert fenster.ansichten["laeufe"].kurve.palette_ is fenster._palette
+
+
+# ----------------------------------------------------------- Navigation
+
+
+def _mit_karte(tmp_path):
+    _karte(tmp_path)
+    ansicht = MapsView()
+    ansicht.setze_arbeitsordner(tmp_path)
+    ansicht.liste.setCurrentRow(0)
+    return ansicht
+
+
+def test_ein_klick_ohne_lauf_waehlt_nur(qapp, tmp_path):
+    from spotlab.record import navigation
+
+    ansicht = _mit_karte(tmp_path)
+    assert ansicht.karte_fuer_navigation() == "turnhalle" and not ansicht.laeuft()
+    ansicht.plot.wegpunkt_geklickt.emit("wp1")
+    assert ansicht.plot.ziel == "wp1"
+    assert "kueche" in ansicht.navigation_status.text() and "gewählt" in ansicht.navigation_status.text()
+    assert not list(tmp_path.rglob(navigation.ZIEL_DATEI))
+
+
+def test_im_lauf_schreibt_der_klick_das_ziel(qapp, tmp_path):
+    from spotlab.record import navigation
+
+    ansicht = _mit_karte(tmp_path)
+    lauf = tmp_path / "lauf"
+    lauf.mkdir()
+    ansicht.lauf_beginnt(lauf, "navigieren.py")
+    assert ansicht.laeuft() and not ansicht.liste.isEnabled()
+    assert "beenden" in ansicht.navigation_knopf.text() and ansicht.navigation_stopp.isEnabled()
+    ansicht.plot.wegpunkt_geklickt.emit("wp1")
+    assert navigation.lies_ziel(lauf) == ("wp1", 1)
+    ansicht.plot.wegpunkt_geklickt.emit("wp1")
+    assert navigation.lies_ziel(lauf) == ("wp1", 2), "noch einmal geklickt heisst noch einmal fahren"
+    ansicht.lauf_beendet()
+    assert not ansicht.laeuft() and ansicht.liste.isEnabled() and ansicht.plot.ziel is None
+    assert "fahren" in ansicht.navigation_knopf.text() and not ansicht.navigation_stopp.isEnabled()
+
+
+def test_der_stand_kommt_in_zeile_und_zeichnung(qapp, tmp_path):
+    ansicht = _mit_karte(tmp_path)
+    ansicht.lauf_beginnt(tmp_path, "navigieren.py")
+    ansicht.zeige_navigation({"status": "verorte", "text": "kein Tag im Bild", "karte": "turnhalle",
+                              "ziel": None, "standort": None, "versatz": None})
+    assert "AprilTag" in ansicht.navigation_status.text() and "kein Tag" in ansicht.navigation_status.text()
+    ansicht.zeige_navigation({"status": "bereit", "text": "", "karte": "turnhalle", "ziel": None,
+                              "standort": "wp0", "versatz": [1.0, 0.0, 0.0]})
+    assert "start" in ansicht.navigation_status.text()
+    assert ansicht.plot.standort == "wp0"
+    x, y, grad = ansicht.plot.roboter
+    assert abs(x - 1.0) < 1e-9 and abs(y) < 1e-9 and grad == 0.0
+    ansicht.zeige_navigation({"status": "unterwegs", "text": "", "karte": "turnhalle", "ziel": "wp1",
+                              "standort": "wp0", "versatz": [1.5, 0.0, 0.0]})
+    assert ansicht.plot.ziel == "wp1" and "kueche" in ansicht.navigation_status.text()
+    ansicht.zeige_navigation({"status": "angekommen", "text": "", "karte": "turnhalle", "ziel": "wp1",
+                              "standort": "wp1", "versatz": [0.0, 0.0, 0.0]})
+    assert ansicht.plot.ziel is None and ansicht.plot.standort == "wp1"
+    ansicht.zeige_navigation({"status": "gescheitert", "text": "verloren", "karte": "andere",
+                              "ziel": "wp1", "standort": None, "versatz": None})
+    text = ansicht.navigation_status.text()
+    assert "verloren" in text and "andere" in text, "eine fremde Karte im Lauf wird gesagt"
+    assert ansicht.plot.roboter is None

@@ -19,6 +19,7 @@ ENV_NUR_TROCKEN = "SPOTLAB_NUR_TROCKEN"
 # ohne eingerichteten Spot hat ueberhaupt keine Konfiguration.
 ENV_RAUM = "SPOTLAB_RAUM"
 ENV_RAUM_START = "SPOTLAB_RAUM_START"
+ENV_KARTE = "SPOTLAB_KARTE"          # die Karte fuer den Navigationslauf (Tab „Karten")
 
 # EINMAL beim Import eingefroren, nicht bei jedem Aufruf frisch gelesen.
 # `os.environ.pop("SPOTLAB_NUR_TROCKEN")` in Zeile eins eines Skripts hätte die

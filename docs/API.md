@@ -64,7 +64,7 @@ normalerweise weglassen.
 | `load_map(name=None)` | Lädt eine GraphNav-Karte; ohne Namen die aktive aus der Konfiguration. |
 | `localize()` | Bestimmt über ein Fiducial, wo Spot auf der geladenen Karte steht. |
 | `map_pose()` | Wo Spot auf der geladenen Karte steht: (x, y, grad) im Kartenrahmen. |
-| `navigate_to(ziel, timeout=120.0)` | Fährt autonom zum genannten Wegpunkt der geladenen Karte. |
+| `navigate_to(ziel, timeout=120.0, abbruch=None)` | Fährt autonom zum genannten Wegpunkt der geladenen Karte. True bei Ankunft; `abbruch()` wird unterwegs je Nachsende-Takt gefragt — sagt es wahr, hält Spot an und die Antwort ist False. |
 | `waypoints()` | Nennt die Wegpunkte der geladenen Karte. |
 | `robot` | Das rohe bosdyn-Robot-Objekt (None im Trockenlauf). |
 | `send(command, end_time_secs=None)` | Schickt ein rohes RobotCommand-Protobuf an den Roboter. |
@@ -74,8 +74,9 @@ normalerweise weglassen.
 ## Rückgaben und Ablauf
 
 - `power_on`, `power_off`, `stand`, `sit`, `move`, `walk`, `stop`, `pose`, `lights`,
-  `beep`, `navigate_to`, `close`: kein Nutzwert (`None`). `stand`, `sit`, `move`,
-  `pose` und `navigate_to` warten auf Rückmeldung bis zum Timeout.
+  `beep`, `close`: kein Nutzwert (`None`); `navigate_to` gibt True (angekommen) oder
+  False (über `abbruch` abgebrochen). `stand`, `sit`, `move`, `pose` und `navigate_to`
+  warten auf Rückmeldung bis zum Timeout.
 - `walk(stop=True)` wartet die Dauer und stoppt; `stop=False` kehrt sofort zurück,
   benötigt laufende neue Kommandos und begrenzt die Gültigkeit auf höchstens eine Sekunde.
 - `is_powered`: bool; `battery`: Prozent; `state`: neue State-Momentaufnahme;

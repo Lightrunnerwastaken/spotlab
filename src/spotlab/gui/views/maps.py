@@ -22,8 +22,9 @@ from PySide6.QtWidgets import (
 
 from spotlab.gui.mapplot import MapPlot
 from spotlab.gui.theme import DUNKEL
-from spotlab.maps.geometry import grundriss
+from spotlab.maps.geometry import grundriss, lage_im_grundriss
 from spotlab.maps.store import karten, karten_wurzel, lade_graph, loesche
+from spotlab.record import navigation as navigation_datei
 
 HINWEIS = (
     "Zum Aufzeichnen muss der Spot ein Fiducial sehen. Fahre ihn während der "
@@ -32,8 +33,30 @@ HINWEIS = (
 )
 
 
+KEINE_NAVIGATION = "Keine Navigation."
+HINWEIS_NAVIGATION = (
+    "Einen Wegpunkt in der Zeichnung anklicken — Spot fährt autonom hin, auf der Karte, die "
+    "in der Liste gewählt ist. Dazu muss er sich verorten: ein AprilTag dieser Karte muss im "
+    'Kamerabild sein. Der Lauf ist das Programm „navigieren.py" aus Beispiele am ECHTEN Spot, '
+    "mit Lease, Not-Aus-Endpunkt und dem Tempodeckel aus der Konfiguration, aufgezeichnet wie "
+    'jeder Lauf. Ein Klick während der Fahrt wechselt das Ziel; „■ Stopp" hält an und beendet. '
+    "Freifläche, Aufsicht, Tablet mit Not-Aus in Reichweite — vor dem ersten Mal A1 und A32."
+)
+STAND_TEXTE = {
+    "lade_karte": 'Karte „{karte}" wird auf den Spot geladen…',
+    "verorte": "Spot verortet sich — ein AprilTag der Karte muss im Kamerabild sein. {text}",
+    "bereit": "Verortet bei {standort}. Wegpunkt anklicken, Spot fährt hin. {text}",
+    "unterwegs": "Unterwegs nach {ziel}…",
+    "angekommen": "Angekommen bei {ziel}. Nächsten Wegpunkt anklicken.",
+    "gescheitert": "Nicht geschafft: {text}",
+    "beendet": "Navigation beendet.",
+}
+
+
 class MapsView(QWidget):
     aktive_karte_gewaehlt = Signal(str)
+    navigation_gewuenscht = Signal()   # beginnen oder beenden -- die App entscheidet (ein Lauf)
+    stopp_gewuenscht = Signal()
     meldung = Signal(str)
 
     def __init__(self, palette=DUNKEL, parent=None):
@@ -46,6 +69,8 @@ class MapsView(QWidget):
         self._config = None
         self._worker = None
         self._karten = []
+        self._lauf_dir = None              # das Verzeichnis des Navigationslaufs, wenn einer laeuft
+        self._ziel_nr = 0
 
         self.hinweis = QLabel(HINWEIS)
         self.hinweis.setObjectName("Gedaempft")
@@ -70,8 +95,25 @@ class MapsView(QWidget):
         self.loeschen_knopf = QPushButton("Löschen")
         self.loeschen_knopf.clicked.connect(self._loesche)
 
+        # Navigation: Wegpunkte anklicken, Spot faehrt hin -- ueber denselben einen
+        # Startweg wie „Fahren" (`app.py::_starte_navigation`). Das Ziel geht als
+        # `ziel.json` ins Lauf-Verzeichnis, der Stand kommt als `navigation.json`
+        # zurueck (`record/navigation.py`); die GUI haelt keinen Draht in den Lauf.
+        self.navigation_hinweis = QLabel(HINWEIS_NAVIGATION)
+        self.navigation_hinweis.setObjectName("Gedaempft")
+        self.navigation_hinweis.setWordWrap(True)
+        self.navigation_knopf = QPushButton("🧭 Zu Wegpunkten fahren")
+        self.navigation_knopf.clicked.connect(self._navigation_geklickt)
+        self.navigation_stopp = QPushButton("■ Stopp")
+        self.navigation_stopp.setEnabled(False)
+        self.navigation_stopp.clicked.connect(self._stopp_geklickt)
+        self.navigation_status = QLabel(KEINE_NAVIGATION)
+        self.navigation_status.setObjectName("Gedaempft")
+        self.navigation_status.setWordWrap(True)
+
         self.plot = MapPlot()
         self.plot.palette_ = self._palette
+        self.plot.wegpunkt_geklickt.connect(self._wegpunkt_geklickt)
         self.plot_hinweis = QLabel("")
         self.plot_hinweis.setObjectName("Gedaempft")
         self.plot_hinweis.setWordWrap(True)
@@ -88,6 +130,11 @@ class MapsView(QWidget):
         kartenknoepfe.addWidget(self.loeschen_knopf)
         kartenknoepfe.addStretch(1)
 
+        navigation = QHBoxLayout()
+        navigation.addWidget(self.navigation_knopf)
+        navigation.addWidget(self.navigation_stopp)
+        navigation.addStretch(1)
+
         anordnung = QVBoxLayout(self)
         anordnung.addWidget(QLabel("Aufnahme"))
         anordnung.addWidget(self.hinweis)
@@ -96,6 +143,10 @@ class MapsView(QWidget):
         anordnung.addWidget(QLabel("Karten"))
         anordnung.addWidget(self.liste, 1)
         anordnung.addLayout(kartenknoepfe)
+        anordnung.addWidget(QLabel("Navigation"))
+        anordnung.addWidget(self.navigation_hinweis)
+        anordnung.addLayout(navigation)
+        anordnung.addWidget(self.navigation_status)
         anordnung.addWidget(self.plot, 3)
         anordnung.addWidget(self.plot_hinweis)
 
@@ -158,6 +209,88 @@ class MapsView(QWidget):
             return
         loesche(eintrag.dir)
         self.aktualisiere()
+
+    # ----------------------------------------------------------- Navigation
+
+    def laeuft(self):
+        return self._lauf_dir is not None
+
+    def karte_fuer_navigation(self):
+        """Der Name der gewaehlten Karte -- die, auf der der Lauf faehrt."""
+        eintrag = self._gewaehlte()
+        return eintrag.name if eintrag is not None else None
+
+    def lauf_beginnt(self, lauf_dir, name="navigieren.py"):
+        """Der Watcher hat den Lauf gemeldet: ab jetzt schreiben Klicks Ziele."""
+        self._lauf_dir = Path(lauf_dir)
+        self._ziel_nr = 0
+        # Die Liste bleibt stehen: die Zeichnung muss die Karte des Laufs zeigen,
+        # sonst stuende der Roboter auf der falschen Karte.
+        for knopf in (self.liste, self.aktiv_knopf, self.loeschen_knopf):
+            knopf.setEnabled(False)
+        self.navigation_knopf.setText("■ Navigation beenden")
+        self.navigation_stopp.setEnabled(True)
+        self.navigation_status.setText(f"{name} läuft — Karte wird geladen…")
+
+    def lauf_beendet(self):
+        self._lauf_dir = None
+        for knopf in (self.liste, self.aktiv_knopf, self.loeschen_knopf):
+            knopf.setEnabled(True)
+        self.navigation_knopf.setText("🧭 Zu Wegpunkten fahren")
+        self.navigation_stopp.setEnabled(False)
+        self.navigation_status.setText(KEINE_NAVIGATION)
+        self.plot.leere_navigation()
+
+    def zeige_navigation(self, stand):
+        """`navigation.json` des Laufs: Text in die Statuszeile, Lage in die Zeichnung."""
+        status = stand.get("status")
+        vorlage = STAND_TEXTE.get(status)
+        if vorlage is None:
+            return
+        standort = stand.get("standort")
+        ziel = stand.get("ziel")
+        text = vorlage.format(
+            karte=stand.get("karte") or "?", text=stand.get("text") or "",
+            standort=self._name_von(standort), ziel=self._name_von(ziel),
+        ).strip()
+        gewaehlt = self._gewaehlte()
+        if stand.get("karte") and gewaehlt is not None and stand["karte"] != gewaehlt.name:
+            text += f' (Der Lauf fährt auf der Karte „{stand["karte"]}", gezeigt wird „{gewaehlt.name}".)'
+        self.navigation_status.setText(text)
+        self.plot.setze_standort(standort)
+        self.plot.setze_roboter(lage_im_grundriss(self.plot.grundriss, standort, stand.get("versatz")))
+        if status == "angekommen":
+            self.plot.setze_ziel(None)
+        elif ziel:
+            self.plot.setze_ziel(ziel)
+
+    def _name_von(self, kennung):
+        if not kennung:
+            return "?"
+        for punkt in self.plot.grundriss.punkte:
+            if punkt.id == kennung:
+                return punkt.name or kennung[:8]
+        return kennung[:8]
+
+    def _wegpunkt_geklickt(self, kennung):
+        self.plot.setze_ziel(kennung)
+        name = self._name_von(kennung)
+        if not self.laeuft():
+            self.navigation_status.setText(
+                f'Wegpunkt {name} gewählt — „🧭 Zu Wegpunkten fahren" startet die Navigation.')
+            return
+        self._ziel_nr += 1
+        if not navigation_datei.schreibe_ziel(self._lauf_dir, kennung, self._ziel_nr):
+            self.meldung.emit("Das Ziel liess sich nicht schreiben — noch einmal klicken.")
+            return
+        self.navigation_status.setText(f"Ziel gesetzt: {name}. Spot fährt los, sobald er verortet ist.")
+
+    def _navigation_geklickt(self):
+        # Am `clicked`-Signal: Qt reicht `checked` herein, deshalb kein Parameter.
+        self.navigation_gewuenscht.emit()
+
+    def _stopp_geklickt(self):
+        self.stopp_gewuenscht.emit()
 
     # ------------------------------------------------------------- Aufnahme
 
