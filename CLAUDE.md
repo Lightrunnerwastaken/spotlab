@@ -263,7 +263,90 @@ versionsgepinntes Extra `spotlab[sim]`.
   matura-spot beim Start stirbt. Die GUI bleibt frei von `mujoco` und `spotsim`; sie liest
   das gerenderte Zimmer als `ansicht.jpg` aus dem Lauf-Verzeichnis
   (`tests/test_naht_spotsim.py`). `MujocoBackend` ERBT von `SimBackend` — Kommandos,
-  Ziele, Gangphase, Antwort und Aufzeichnung gibt es genau einmal.
+  Ziele, Gangphase, Antwort und Aufzeichnung gibt es genau einmal. **Auch der Physikmodus
+  hält sich daran:** `backends/physics.py` bekommt Puppe, Sensorik, `SpotSdkSim` und
+  `TerrainSdkSim` aus `mujoco._physik_laden()` — bis zum 09.09.2026 importierte er selbst,
+  und die Naht-Prüfung war rot. Im Schüler-Release stellt das Wheel `spotlab-sim-runtime`
+  denselben Importnamen `spotsim` bereit: die eine Stelle ist auch die, an der das Release
+  andockt.
+- **Der Physikmodus (`backend="physics"`) ist ein ADAPTER, kein zweiter Simulator — und er
+  täuscht nichts vor.** Regler, Fussplaner und Kontaktmodell liegen in matura-spot
+  (`spotsim.sdk_sim`, `spotsim.terrain_sdk`); `backends/physics.py` adaptiert Sitzung, Uhr,
+  Abtastung und GUI. Was er nicht kann, weist er mit `UnsupportedCapability` ab, statt Erfolg
+  zu melden: `sit()`, `move()`-Ziele, Körperpose, `stairs()`, WorldObjects, GraphNav und jede
+  Treppe ausser den zwei validierten Szenen `physik_einzelstufe` (ein Podest bis 6 cm) und
+  `physik_treppe_3stufen` (3 × 4 cm) — beide über ein Geometrie-Orakel der statischen Szene,
+  nicht aus Wahrnehmung. `power_on()` schaltet nur die Kommandofreigabe, kein vorgetäuschtes
+  Aufstehen; ein Sturz beendet den Lauf mit Fehler; die Modellmasse steht im Bericht und
+  wird nie an reale Messwerte angepasst. 0.30 m/s und 0.50 rad/s sind Versuchsgrenzen dieses
+  Reglers, keine Eigenschaft des Spot. **Keine Realismusfreigabe** — im Editor heisst er
+  „Physik 3D (experimentell)", die Puppe „Übungsraum 3D (Wiedergabe)", damit niemand die
+  beiden verwechselt; er steht in `OHNE_ROBOTER` und in `config.BACKENDS`. Gemessen
+  (`docs/PHYSICS.md`): bis 17 mm Fusspenetration und rund 30 mm Stützfussversatz unter Last
+  — offene Modellprobleme, keine Toleranzen.
+- **Die Physik überspringt keine Schritte, um Echtzeit vorzutäuschen, und Fristen laufen
+  nach der WANDUHR.** Fester MuJoCo-Zeitschritt; ist der Rechner zu langsam, läuft die
+  Simulation langsamer. Eine Kommandofrist wird in Simulationszeit übersetzt UND gegen die
+  Wanduhr geprüft (`test_velocity_expiry_uses_wall_clock_even_when_sim_is_slow`): sonst
+  führe ein `walk(duration=1)` in einer langsamen Sim länger, als der Schüler es gemeint
+  hat. Nur der Worker fasst Regler und `MjData` an, der Renderer arbeitet auf Kopien, und je
+  Takt gibt es höchstens EINE Sensorarbeit — Last erzeugt keinen Nachhol-Burst, dieselbe
+  Regel wie beim Abtaster.
+- **Die Wahrnehmungs-API liefert Messwerte mit Maske, nie erfundene.** `depth()` gibt die
+  Kamera-z-Komponente in Metern (nicht den euklidischen Abstand); 0 und 65535 sind ungültig
+  — im Array NaN plus `valid`, in `distance_at()` `None`, nie 0 (die Regel aus
+  `api/state.py`). Die Skala kommt aus `depth_scale` der Aufnahme; ungültige Kalibrierung
+  oder ein komprimiertes Tiefenformat werden abgewiesen, statt still mit einer angenommenen
+  Skala zu rechnen. Transformationen stammen aus dem Rahmenbaum DIESER Aufnahme; ein
+  fehlender Rahmen ist ein Fehler, keine Identität. Gelände (`local_grid("terrain")`) gilt
+  nur zusammen mit `terrain_valid` aus derselben Aufnahme, sonst Fehler. `value_at(x, y)`
+  nimmt NATIVE Gitterkoordinaten ab der Ecke von Zelle 0/0 — `state.x/y` dort einzusetzen
+  ist der naheliegende Fehler. Trockenlauf und Sims liefern nur `obstacle_distance`;
+  `terrain`, `no_step`, `intensity` melden sie ausdrücklich als nicht unterstützt — die
+  idealen Höhen des Raumeditors werden nie als Sensormessung ausgegeben
+  (`test_dryrun_grid_only_no_fake_depth_or_terrain`). Geprüft gegen echte Aufnahmen und
+  gegen die Umrechnung des installierten SDK (`test_recorded_robot_depth_matches_sdk`).
+- **`depth()` und `local_grid()` sind Momentaufnahmen, keine Streaming-API.** Jeder Aufruf
+  schreibt eine NPZ nach `runs/<Lauf>/sensoren/` samt `kommando`-Ereignis. Ein Strom geht
+  über `kamera/` (Beobachter) oder `ansicht.jpg` (Blick) — wer die Komfortaufrufe in einer
+  Schleife ruft, füllt die Platte und bremst den Lauf.
+- **`supports()` fragt nach, es rät nicht.** `lights` und `beep` prüfen am Roboter den Dienst
+  `audio-visual`; ein Netzfehler bleibt ein Fehler, und im Sim wird kein Erfolg vorgetäuscht.
+  `pose()` gibt es am Roboter und im Trockenlauf; Sim und MuJoCo lehnen ab.
+- **`docs/API.md` ist die Referenz der Fassade, und ein Test hält sie vollständig.**
+  `test_reference_covers_public_facade` verlangt jede öffentliche Methode von `Spot` mit
+  Backtick-Namen in der Datei — wer eine Methode hinzufügt, schreibt die Zeile dazu, sonst
+  ist die Suite rot (so geschehen mit `map_pose()`). Neue Beispiele laufen im Test ohne
+  Roboter durch und müssen ein `lauf.json` hinterlassen (`test_new_examples_without_robot`).
+  An der Fassade sind Winkel GRAD — `move(turn=90)`, `pose(yaw=…)`, `state.heading`;
+  `state.pose[2]` bleibt Bogenmass, denn die Schlüssel in `zustand.jsonl` ändern sich nicht.
+- **Der Korrigierer arbeitet je Ebene.** Eine Lücke gibt es nur zwischen Wänden derselben
+  Ebene, die Weghöhe wird an Kreuzungen interpoliert, ein Weg im Obergeschoss löscht keine
+  Wand darunter und ist dort kein Türbeweis; parallele Gangseiten sind keine Lücke, und
+  überlappende Stücke ziehen nicht rückwärts (`tests/test_korrektur_ebenen.py`, 09.09.2026).
+- **Schüler bekommen das Release-ZIP, nie das Repository — und das Sim-Wheel wird aus einer
+  ERLAUBNISLISTE gebaut.** `tools/schueler_release.py` baut `spotlab` und
+  `spotlab-sim-runtime` mit derselben Version (die eine Stelle `src/spotlab/__init__.py`,
+  vor jedem Release erhöhen). In die Runtime kommen nur die Module aus `MODULES` (Puppe,
+  Sensorik, Wiedergabe, die verwendete Physik) und die Modelldateien, die `scene.xml`
+  referenziert — Arm-Assets bleiben draussen, ein Pfad darf den Modellordner nicht
+  verlassen; ein unbekannter statischer `spotsim`-Import bricht den Build ab
+  (`test_unknown_dependency_aborts`); Explorer, Gates, `sdk_real`, Messwerkzeuge, Notizen
+  und Aufzeichnungen sind ausgeschlossen (`test_research_modules_are_excluded`). Der Build
+  kopiert die Quellen zuerst in einen temporären Ordner und verändert das Arbeitsrepo nicht;
+  ein gleichnamiges Release wird nicht überschrieben. Lizenz des Modells und SHA-256 der
+  Sim-Quellen liegen im Wheel. **Runtime-Wheel und editierbare Forschungsinstallation nie in
+  derselben Umgebung** — beide heissen `spotsim`.
+- **`einrichten.cmd` ist der eine Einstieg, und ohne `-Entwickler` installiert er nur aus
+  dem ZIP.** Er ruft `einrichten.ps1`; ohne `-Entwickler` verlangt das Skript
+  `schueler-requirements.txt` (liegt nur im Release) und installiert `--only-binary=:all:`
+  — GitHubs „Source code"-Archiv ist ausdrücklich kein Release. Entwickler:
+  `.\einrichten.cmd -Entwickler [-MitSim -SimPfad ..\matura-spot]` installiert `dev`, `gui`
+  und `mcp` editierbar. Danach `pip check` und `tools/pruefe_schueler.py`, das Modell und
+  Puppe ohne Roboter und ohne Fenster lädt. Der Starter nutzt die eigene `.venv`
+  (`test_release_launcher_uses_own_environment`). Das ZIP ist kein Offline-Installer
+  (Drittanbieter-Wheels kommen aus dem Netz), und **ein Build ist keine Freigabe**: Abnahme
+  ist eine frische Installation ohne Repo-Pfade im `PYTHONPATH`, `pip check`, GUI und 3D.
 - **`unknown_cells` im LocalGrid ist ein BYTE je Zelle, x läuft am schnellsten.** Gemessen
   an einer echten `LocalGridResponse` vom 12.08.2026 (`tests/daten/gitter_real_20260812`);
   bis zum 06.09.2026 entpackte `gitter_aus` bitweise, und `is_free()` hielt am echten Spot
@@ -442,6 +525,9 @@ versionsgepinntes Extra `spotlab[sim]`.
 - Alle Meldungen an Nutzer sagen, **was zu tun ist**, nicht nur was kaputt ist. Und sie
   dürfen keine Ursache *behaupten*, die nicht geprüft ist — eine Meldung, die auf die
   falsche Fährte schickt, kostet mehr Zeit als gar keine.
+- Meldungen zu fehlender Simulation oder fehlendem Robotermodell richten sich zuerst an
+  den Schüler (`einrichten.cmd` erneut ausführen) und nennen den Entwicklerweg in Klammern.
+  Ein Schüler hat kein `matura-spot` und soll keines brauchen.
 - **Fehlende Messwerte sind `None`, nie 0.** Der Unterschied zwischen „gemessen und null"
   und „nicht gemessen" entscheidet, ob eine Kalibrierung gültig ist. Das gilt besonders für
   `ground_mu_est`: ein erfundener Reibwert 0.0 mittelt sich durch jede Auswertung.
@@ -506,6 +592,11 @@ versionsgepinntes Extra `spotlab[sim]`.
   etwas anfangen kann. Genau daran ging „In VS Code öffnen" durch die ganze Suite.
 - Was nur am Gerät prüfbar ist, gehört in `docs/ABNAHME.md`, nicht in einen Test, der
   Sicherheit bloss behauptet.
+- **Die Physikversuche sind die längsten Tests der Suite** — `test_physics_stairs.py` 194 s und
+  `test_physics_single_step.py` 157 s auf dem Entwicklungsrechner (09.09.2026); auf einem
+  GitHub-Runner ist das leicht das Doppelte, die Treppe liegt damit AN der Grenze. Die Suite dauert
+  damit rund 11 statt 7 Minuten. Die Grenze von `pytest-timeout` sind 300 s je Test; wer
+  einen Versuch verlängert (mehr Stufen, längere Wartephasen), prüft zuerst die Dauer.
 - Qt-Tests laufen mit `QT_QPA_PLATFORM=offscreen` (in `conftest.py` gesetzt) und werden
   ohne das Extra `[gui]` sauber übersprungen. **Im Offscreen-Modus gibt es keine
   Schriften** — gerenderte Bildschirmfotos zeigen Kästchen statt Text; das ist ein
@@ -571,6 +662,29 @@ versionsgepinntes Extra `spotlab[sim]`.
   steht an genau EINER Stelle: `src/spotlab/__init__.py`.
 
 ## Umsetzungsstand
+
+**Stufe 15 (07.–09.09.2026, Codex): Physikmodus, Wahrnehmungs-API, Schüler-Release** —
+Backend `physics` (`backends/physics.py`): Kontaktkräfte tragen den Körper, das Aufsetzen
+plant der TrotController aus matura-spot, ein `TerrainStepper` geht die Einzelstufe (6-cm-
+Podest, 56 Schritte hinauf und rückwärts herunter in 195 s Simulationszeit) und die
+Versuchstreppe 3 × 4 cm (120 Schritte, 411 s); Räume `welt/vorlagen/physik_*.toml`,
+Beispiele `physik_gehen.py`, `physik_einzelstufe.py`, `physik_treppe_3stufen.py`;
+Kontaktdiagnostik als `kontakt_diagnostik` in `lauf.json` (Eindringtiefe, Normalkraft,
+Tangentialgeschwindigkeit am Kontaktpunkt, getrennt nach Verlagern, Warten, Schwingen).
+Die Wahrnehmungs-API (`api/sensors.py`, `backends/sensor_access.py`, `sensor_data.py`):
+`depth()`, `point_cloud()` (PLY/NPZ, Rahmen sensor/body/vision/odom), `grid_types()`,
+`local_grid()` (RAW und RLE, `terrain` mit `terrain_valid`); dazu `supports()`, `look()`
+(benannte Richtungen mit `clear`/`blocked`/`unknown`), `lights()` und `beep()` (AV-Dienst,
+zeitlich begrenzt), `pose()` (Körper im Stand, Grad), `state.x/y/heading/speed`. Referenz
+`docs/API.md`, `docs/PERCEPTION.md`, `docs/EXAMPLE_COVERAGE.md` (was direkt geht, was
+SDK-only bleibt). Korrigierer je Ebene. Das Schüler-Release: `tools/schueler_release.py`
+baut das ZIP (App-Wheel, `spotlab-sim-runtime`, Installer, Startskripte, Symbol, Anleitung,
+Manifest), `einrichten.cmd` und `einrichten.ps1` neu, `tools/pruefe_schueler.py`,
+Anleitungen `docs/INSTALLATION_SCHULE.md` und `docs/SCHUELER_RELEASES.md`. Abnahme: die
+Abschnitte „Quantitative Wahrnehmung" und „Physikmodus (experimentell)" in ABNAHME.md.
+Zusammengeführt mit den Kamera-Commits und am 09.09.2026 als erster Push von `main` auf
+GitHub gebracht. Bekannte Lücke: `docs/PHYSICS.md` ist mit gemischter Kodierung
+angekommen (Mojibake in den älteren Abschnitten); wer sie anfasst, repariert zuerst das.
 
 **Stufe 14 (07.09.2026): Korrigierer und Gelände — alle drei Etappen gebaut**
 — Raumformat v4: `Raum.gelaende` (`welt/gelaende.py`, Höhenraster mit `None` für „kein
@@ -688,15 +802,19 @@ Nicht-Ziel. Der Autor hat das gekippt, wie zuvor beim Editor in Stufe 5. Gebaut 
 jetzt `backends/sim.py` — eine Interpolation der am 12.08.2026 gemessenen Gangarten,
 **keine Physik**. MuJoCo bleibt in `matura-spot`; die geplante Kopplung als optionales
 Extra `spotlab[sim]` bleibt der Weg für alles, was neue Bedingungen braucht (Treppe,
-Stoss, Traglast). Die Matura-Experimente gehören weiterhin dorthin, nicht hierher.
+Stoss, Traglast). Die Matura-Experimente gehören weiterhin dorthin, nicht hierher. Genau
+diesen Weg geht seit dem 09.09.2026 der Physikmodus (Stufe 15): Regler und Kontakte in
+matura-spot, in spotlab nur der Adapter `backends/physics.py`.
 
 Offen
 und bewusst nicht gebaut: NN-Anbindung, Mehrbenutzer-Dienst, Arm und Docking.
 Im Editor: Debugger mit Haltepunkten, git-Integration, Erweiterungen, projektweite Suche.
 In der Anbindung: MCP über Netz, Mehrbenutzer, Qt-Code aus fremden Projekten, eine
-Diagrammbibliothek jenseits der fünf Panel-Arten. In der Kalibrierung: **ein Simulator in
-spotlab** (MuJoCo bleibt in `matura-spot`), automatische Parameteranpassung, die Nutzung
-der lizenzpflichtigen 333-Hz-APIs.
+Diagrammbibliothek jenseits der fünf Panel-Arten. In der Kalibrierung: **ein eigener
+Physik-Simulator in spotlab** (die Physik bleibt in `matura-spot`, `backends/physics.py` ist
+nur der Adapter — Stufe 15), automatische Parameteranpassung, die Nutzung der
+lizenzpflichtigen 333-Hz-APIs. Im Physikmodus: Sitzen, `move()`-Ziele, Körperpose, normale
+Treppen, Fussplanung aus Wahrnehmung statt Geometrie-Orakel, jeder Sim-zu-Real-Nachweis.
 
 Specs unter `docs/superpowers/specs/`. Anleitungen: `docs/ANBINDUNG.md` (fremde Projekte
 und Messfahrt).
