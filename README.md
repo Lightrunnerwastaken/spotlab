@@ -176,6 +176,15 @@ des Lauf-Verzeichnisses und liest den Stand aus einer anderen. Zum Verorten muss
 der Karte im Kamerabild sein — der Lauf versucht es alle zwei Sekunden neu und sagt, woran es
 hängt. Ein Ziel, das Spot nicht erreicht, beendet den Lauf nicht: der nächste Klick geht wieder.
 
+**Eine alte Karte nachträglich verbessern.** Karten, die vor dieser Fassung aufgezeichnet
+wurden, sind Ketten. „✨ Karte verbessern…" im Tab „Karten" holt es nach: die Karte geht auf
+den Spot, dort werden Schleifen geschlossen und die Anker optimiert, und die verbesserte
+Karte kommt zurück. Spot bewegt sich dabei nicht, **braucht aber das Lease** — Hochladen
+gehört ihm. Deshalb ist es ein Programm (`Beispiele/karte_verbessern.py`) und keine Arbeit
+der Oberfläche; der Fortschritt steht in der Live-Ansicht. Geschrieben wird erst am Schluss
+und nur, wenn wirklich etwas gerechnet wurde: die gespeicherte Karte ist die einzige Kopie
+deiner Aufnahme.
+
 Karten liegen im **Format des SDK** unter `<arbeitsordner>/karten/<name>/`. Eine mit spotlab
 aufgezeichnete Karte lässt sich deshalb unverändert an `graph_nav_command_line.py` und
 `view_map.py` aus dem Spot-SDK verfüttern — und umgekehrt.

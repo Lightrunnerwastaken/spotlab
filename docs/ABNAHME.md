@@ -794,6 +794,36 @@ notieren, wie gross der sichtbare Versatz auf einer solchen Karte ist.
 
 ---
 
+## A33 — Eine alte Karte nachträglich verbessern
+
+**Voraussetzung** A1 bestanden, eine Karte, die noch ohne Schleifenschluss aufgezeichnet
+wurde (beim Autor: `flur`, 11 Wegpunkte als Kette), und das Tablet in Reichweite — der Lauf
+holt sich das Lease, obwohl Spot sich nicht bewegt.
+
+**Vorgehen** Im Tab „Karten" die Karte wählen, „✨ Karte verbessern…". Der Fortschritt steht
+in der Live-Ansicht. Vorher die Zahl der Wegpunkte und Kanten notieren.
+
+**Erwartung**
+- (1) Spot bewegt sich NICHT. Die Live-Ansicht zeigt: Karte geladen, Schleifen gesucht,
+  „n neue Verbindungen", „Anker optimiert (n Rechenschritte)", Karte gespeichert.
+- (2) Nach dem Lauf zeigt die Liste die neue Kantenzahl, und die Draufsicht sieht
+  aufgeräumter aus — eine gefahrene Runde schliesst sich.
+- (3) Der Ordner `karten/<name>/` enthält danach `graph` und die Schnappschüsse; es liegt
+  KEIN Rest `<name>.neu` oder `<name>.alt` daneben. `karte.json` trägt die neuen Zahlen und
+  ein `nachbearbeitet`-Datum, `aufgezeichnet` steht unverändert.
+- (4) Gegenprobe mit A32: zu einem Wegpunkt auf der anderen Seite der Runde fahren — Spot
+  nimmt jetzt den kurzen Weg.
+- (5) Bricht der Lauf mittendrin ab (Not-Aus am Laptop, Tablet zieht das Lease), ist die
+  gespeicherte Karte unverändert und weiter benutzbar.
+
+**Beobachten statt annehmen** Wie viele Verbindungen bei einer Karte entstehen, die nie eine
+Runde gefahren ist. Findet der Schleifenschluss dort nichts, ist das kein Fehler — dann gab
+es keine Schleife.
+
+**Ergebnis** _(offen)_
+
+---
+
 ## Nach der Abnahme
 
 Ergebnisse hier eintragen, Abweichungen als Befund in die Spec zurückspielen, und erst

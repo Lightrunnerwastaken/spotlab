@@ -220,3 +220,70 @@ def test_ein_doppelter_name_wird_abgewiesen(tmp_path):
         benenne_wegpunkt(ordner, "wp1", "kueche")
     assert wegpunkt_name(lade_graph(ordner), "wp1") == ""
     assert benenne_wegpunkt(ordner, "wp0", "kueche") == "kueche", "derselbe Name am selben Punkt geht"
+
+
+# ------------------------------------------- Nachtraeglich nachbearbeiten
+
+
+def test_die_zahlen_werden_nachgezogen_ohne_das_aufnahmedatum_zu_verlieren(tmp_path):
+    """Nach dem Schleifenschluss stimmen Wegpunkte und Kanten nicht mehr -- aber
+    gefahren wurde die Karte damals, nicht heute."""
+    from spotlab.maps.store import METADATEN, aktualisiere_zahlen
+
+    ordner = _karte_mit_graph(tmp_path, _graph(n=3))
+    vorher = json.loads((ordner / METADATEN).read_text(encoding="utf-8"))
+    meta = aktualisiere_zahlen(ordner, _graph(n=9))
+    assert (meta["wegpunkte"], meta["kanten"]) == (9, 8)
+    assert meta["aufgezeichnet"] == vorher["aufgezeichnet"]
+    assert meta["name"] == "flur" and meta["nachbearbeitet"] > ""
+    assert karten(tmp_path)[0].wegpunkte == 9
+
+
+def test_zahlen_nachziehen_ueberlebt_kaputte_metadaten(tmp_path):
+    from spotlab.maps.store import METADATEN, aktualisiere_zahlen
+
+    ordner = _karte_mit_graph(tmp_path, _graph())
+    (ordner / METADATEN).write_text("{kaputt", encoding="utf-8")
+    assert aktualisiere_zahlen(ordner, _graph(n=4))["wegpunkte"] == 4
+
+
+def test_ersetzen_tauscht_erst_am_schluss(tmp_path):
+    """Der Ordner ist die einzige Kopie der Aufnahme."""
+    from spotlab.maps.store import ersetze_inhalt
+
+    ziel = tmp_path / "flur"
+    ziel.mkdir()
+    (ziel / "graph").write_bytes(b"alt")
+    quelle = tmp_path / "flur.neu"
+    quelle.mkdir()
+    (quelle / "graph").write_bytes(b"neu")
+
+    ersetze_inhalt(ziel, quelle)
+    assert (ziel / "graph").read_bytes() == b"neu"
+    assert not quelle.exists() and not (tmp_path / "flur.alt").exists()
+
+
+def test_ersetzen_stellt_den_alten_stand_wieder_her(tmp_path, monkeypatch):
+    """Scheitert der Tausch, darf nicht beides weg sein."""
+    import pathlib
+
+    from spotlab.maps.store import ersetze_inhalt
+
+    ziel = tmp_path / "flur"
+    ziel.mkdir()
+    (ziel / "graph").write_bytes(b"alt")
+    quelle = tmp_path / "flur.neu"
+    quelle.mkdir()
+    (quelle / "graph").write_bytes(b"neu")
+
+    echt = pathlib.Path.rename
+
+    def kaputt(self, ziel_):
+        if self.name.endswith(".neu"):
+            raise OSError("Ordner belegt")
+        return echt(self, ziel_)
+
+    monkeypatch.setattr(pathlib.Path, "rename", kaputt)
+    with pytest.raises(OSError):
+        ersetze_inhalt(ziel, quelle)
+    assert (ziel / "graph").read_bytes() == b"alt"

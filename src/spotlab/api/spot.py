@@ -232,6 +232,23 @@ class Spot:
             timeout=timeout, abbruch=abbruch,
         )
 
+    def process_map(self, melde=print, fiducial=True, odometry=True):
+        """Bearbeitet die geladene Karte nach: Schleifen schliessen, Anker optimieren.
+
+        Danach wird sie zurückgeschrieben. Für Karten, die als Kette aufgezeichnet
+        wurden — ohne diesen Schritt fährt Spot nur die aufgezeichnete Strecke ab.
+        """
+        if self._karte is None:
+            from spotlab.errors import SpotlabError
+
+            raise SpotlabError(
+                "Es ist keine Karte geladen — rufe zuerst spot.load_map() auf."
+            )
+        return navigation.process_map(
+            self.backend, self.recorder, self._karte,
+            melde=melde, fiducial=fiducial, odometrie=odometry,
+        )
+
     def waypoints(self):
         """Nennt die Wegpunkte der geladenen Karte."""
         return self._karte.waypoints if self._karte else []

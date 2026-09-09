@@ -167,9 +167,12 @@ class MainWindow(QWidget):
         self.ansichten["fahren"].meldung.connect(self._melde)
         self.ansichten["code"].laeuft_geaendert.connect(self._code_laeuft_geaendert)
         self._fahrt_erwartet = False
-        # Name der Karte, solange ein Navigationslauf aus „Karten" erwartet wird, sonst False.
+        # Wahr, solange ein Navigationslauf aus „Karten" erwartet wird.
         self._navigation_erwartet = False
+        # Der Kartenname, den ein Lauf aus „Karten" als `SPOTLAB_KARTE` mitbekommt.
+        self._karte_fuer_lauf = None
         self.ansichten["karten"].navigation_gewuenscht.connect(self._starte_navigation)
+        self.ansichten["karten"].verbessern_gewuenscht.connect(self._starte_kartenarbeit)
         self.ansichten["karten"].stopp_gewuenscht.connect(
             lambda: self.ansichten["live"].stoppe()
         )
@@ -340,9 +343,9 @@ class MainWindow(QWidget):
         faengt ihn wie einen Startfehler und zeigt den Grund.
         """
         umgebung = {}
-        if self._navigation_erwartet:
+        if self._karte_fuer_lauf:
             # Die Karte aus dem Tab „Karten" -- als Name, das Skript laedt sie selbst.
-            umgebung[ENV_KARTE] = str(self._navigation_erwartet)
+            umgebung[ENV_KARTE] = str(self._karte_fuer_lauf)
         if self.ansichten["code"].gewaehltes_backend() not in ("sim", "mujoco", "physics"):
             return umgebung
         ansicht = self.ansichten["raumeditor"]
@@ -378,6 +381,7 @@ class MainWindow(QWidget):
         if not laeuft:
             self._fahrt_erwartet = False
             self._navigation_erwartet = False
+            self._karte_fuer_lauf = None
             self.ansichten["fahren"].lauf_beendet()
             self.ansichten["karten"].lauf_beendet()
 
@@ -436,8 +440,43 @@ class MainWindow(QWidget):
             self._melde(f"Beispiele konnten nicht angelegt werden: {fehler}")
             return
         self.ansichten["code"].setze_backend(NAVIGATION_BACKEND)
-        self._navigation_erwartet = karte        # der Lauf gehoert in den Tab „Karten"
+        self._navigation_erwartet = True         # der Lauf gehoert in den Tab „Karten"
+        self._karte_fuer_lauf = karte
         self.ansichten["code"].starte_skript(navigieren.skript_in(arbeitsordner))
+
+    def _starte_kartenarbeit(self):
+        """Eine gespeicherte Karte nachbearbeiten: Schleifen schliessen, Anker optimieren.
+
+        Ein LAUF wie jeder andere -- die Karte muss dafuer auf den Roboter, und
+        Hochladen braucht ein Lease, das die GUI nie haelt (H1). Der Fortschritt
+        steht deshalb in der Live-Ansicht, wo die Ausgabe jedes Laufs steht.
+        """
+        from spotlab.workshop import karte as kartenarbeit
+        from spotlab.workshop.beispiele import bereitstellen
+
+        if self.ansichten["code"].laeuft():
+            self._melde("Es läuft schon ein Programm — erst beenden.")
+            return
+        arbeitsordner = self._config.workspace if self._config else None
+        if not arbeitsordner:
+            self._melde("Zum Verbessern zuerst einen Arbeitsordner wählen — das Programm "
+                        "liegt im Projekt Beispiele dort.")
+            return
+        name = self.ansichten["karten"].karte_fuer_navigation()
+        if not name:
+            self._melde("Wähle zuerst eine Karte in der Liste.")
+            return
+        try:
+            bereitstellen(arbeitsordner)
+        except OSError as fehler:
+            self._melde(f"Beispiele konnten nicht angelegt werden: {fehler}")
+            return
+        self.ansichten["code"].setze_backend(NAVIGATION_BACKEND)
+        self._karte_fuer_lauf = name
+        self.ansichten["karten"].zeige_verbesserung(
+            f'„{name}" wird verbessert — der Fortschritt steht in der Live-Ansicht.'
+        )
+        self.ansichten["code"].starte_skript(kartenarbeit.skript_in(arbeitsordner))
 
     def _navigation(self, stand):
         if self.ansichten["karten"].laeuft():
@@ -634,6 +673,9 @@ class MainWindow(QWidget):
             self.uebungsfenster.beendet(lauf=verzeichnis)
         self.ansichten["fahren"].lauf_beendet()
         self.ansichten["karten"].lauf_beendet()
+        # Nach einer Kartenarbeit liegt eine andere Karte auf der Platte: Liste und
+        # Zeichnung neu holen, sonst zeigt der Tab die Zahlen von vorher.
+        self.ansichten["karten"].aktualisiere()
         self.ansichten["anbindungen"].lauf_laeuft(False)
         self.ansichten["anbindungen"].aktualisiere()
         self.ansichten["laeufe"].aktualisiere()

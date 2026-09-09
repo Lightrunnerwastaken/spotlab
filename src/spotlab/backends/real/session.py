@@ -312,6 +312,16 @@ class RealSpot:
 
         return graphnav.localization(self._robot)
 
+    def process_map(self, melde=None, fiducial=True, odometrie=True):
+        from spotlab.backends.real import graphnav
+
+        return graphnav.process_map(self._robot, melde, fiducial, odometrie)
+
+    def download_map(self, kartenordner):
+        from spotlab.backends.real import graphnav
+
+        return graphnav.download_map(self._robot, kartenordner)
+
     def travel_params(self, limits):
         from spotlab.backends.real import graphnav
 

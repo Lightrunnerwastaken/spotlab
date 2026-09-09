@@ -66,6 +66,7 @@ STAND_TEXTE = {
 class MapsView(QWidget):
     aktive_karte_gewaehlt = Signal(str)
     navigation_gewuenscht = Signal()   # beginnen oder beenden -- die App entscheidet (ein Lauf)
+    verbessern_gewuenscht = Signal()   # Schleifen und Anker einer alten Karte nachziehen
     stopp_gewuenscht = Signal()
     meldung = Signal(str)
 
@@ -110,6 +111,16 @@ class MapsView(QWidget):
         self.benennen_knopf = QPushButton("✎ Wegpunkt benennen…")
         self.benennen_knopf.setEnabled(False)
         self.benennen_knopf.clicked.connect(self._benenne)
+        # Fuer Karten, die vor dem 09.09.2026 aufgezeichnet wurden: damals lief
+        # der Schleifenschluss beim Speichern noch nicht mit. Ein LAUF, keine
+        # Arbeit der GUI -- die Karte muss dafuer auf den Roboter, und Hochladen
+        # braucht ein Lease (`workshop/karte.py`).
+        self.verbessern_knopf = QPushButton("✨ Karte verbessern…")
+        self.verbessern_knopf.setToolTip(
+            "Schleifen schliessen und Anker optimieren — für Karten, die noch als Kette "
+            "aufgezeichnet wurden. Spot bewegt sich dabei nicht, braucht aber das Lease."
+        )
+        self.verbessern_knopf.clicked.connect(self._verbessern_geklickt)
 
         # Navigation: Wegpunkte anklicken, Spot faehrt hin -- ueber denselben einen
         # Startweg wie „Fahren" (`app.py::_starte_navigation`). Das Ziel geht als
@@ -146,6 +157,7 @@ class MapsView(QWidget):
         kartenknoepfe.addWidget(self.aktiv_knopf)
         kartenknoepfe.addWidget(self.loeschen_knopf)
         kartenknoepfe.addWidget(self.benennen_knopf)
+        kartenknoepfe.addWidget(self.verbessern_knopf)
         kartenknoepfe.addStretch(1)
 
         navigation = QHBoxLayout()
@@ -245,7 +257,8 @@ class MapsView(QWidget):
         self._ziel_nr = 0
         # Die Liste bleibt stehen: die Zeichnung muss die Karte des Laufs zeigen,
         # sonst stuende der Roboter auf der falschen Karte.
-        for knopf in (self.liste, self.aktiv_knopf, self.loeschen_knopf, self.benennen_knopf):
+        for knopf in (self.liste, self.aktiv_knopf, self.loeschen_knopf,
+                      self.benennen_knopf, self.verbessern_knopf):
             knopf.setEnabled(False)
         self.navigation_knopf.setText("■ Navigation beenden")
         self.navigation_stopp.setEnabled(True)
@@ -253,7 +266,8 @@ class MapsView(QWidget):
 
     def lauf_beendet(self):
         self._lauf_dir = None
-        for knopf in (self.liste, self.aktiv_knopf, self.loeschen_knopf):
+        for knopf in (self.liste, self.aktiv_knopf, self.loeschen_knopf,
+                      self.verbessern_knopf):
             knopf.setEnabled(True)
         self.navigation_knopf.setText("🧭 Zu Wegpunkten fahren")
         self.navigation_stopp.setEnabled(False)
@@ -342,6 +356,12 @@ class MapsView(QWidget):
     def _navigation_geklickt(self):
         # Am `clicked`-Signal: Qt reicht `checked` herein, deshalb kein Parameter.
         self.navigation_gewuenscht.emit()
+
+    def _verbessern_geklickt(self):
+        self.verbessern_gewuenscht.emit()
+
+    def zeige_verbesserung(self, text):
+        self.navigation_status.setText(text)
 
     def _stopp_geklickt(self):
         self.stopp_gewuenscht.emit()

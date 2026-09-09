@@ -87,6 +87,33 @@ def map_pose(backend, recorder=None):
     return backend.map_pose()
 
 
+def process_map(backend, recorder, karte, melde=None, fiducial=True, odometrie=True,
+                speichern=True):
+    """Eine schon gespeicherte Karte nachbearbeiten und zurückschreiben.
+
+    Der Weg für eine Karte, die vor dieser Funktion aufgezeichnet wurde: sie ist
+    eine KETTE, und Spot fährt darauf nur die aufgezeichnete Strecke ab. `karte`
+    muss geladen sein — HOCHLADEN ist der Schritt, der ein Lease braucht, und
+    genau deshalb läuft das hier in einem Programm und nicht in der GUI.
+
+    Geschrieben wird nur, wenn wirklich etwas gerechnet wurde: eine gescheiterte
+    Nachbearbeitung soll die gespeicherte Karte nicht anfassen.
+    """
+    require(backend, Capability.GRAPH_NAV, "eine Karte nachbearbeiten")
+    _protokolliere(recorder, "process_map", karte=karte.name,
+                   fiducial=bool(fiducial), odometrie=bool(odometrie))
+    bericht = backend.process_map(melde=melde, fiducial=fiducial, odometrie=odometrie)
+    if recorder is not None:
+        recorder.event("rückmeldung", name="process_map",
+                       status=" ".join(bericht.meldungen))
+    if speichern and bericht.gelaufen:
+        graph = backend.download_map(karte.dir)
+        if melde is not None:
+            melde(f"Karte gespeichert: {len(graph.waypoints)} Wegpunkte, "
+                  f"{len(graph.edges)} Kanten.")
+    return bericht
+
+
 def navigate_to(
     backend,
     recorder,

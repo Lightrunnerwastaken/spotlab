@@ -912,7 +912,8 @@ def test_der_karten_tab_startet_navigieren_am_echten_spot_ueber_den_einen_startw
     assert gestartet == [tmp_path / "Beispiele" / "navigieren.py"]
     assert (tmp_path / "Beispiele" / "navigieren.py").is_file()
     assert fenster.ansichten["code"].gewaehltes_backend() == "real"
-    assert fenster._navigation_erwartet == "turnhalle"
+    assert fenster._navigation_erwartet is True, "der Lauf gehoert in den Tab Karten"
+    assert fenster._karte_fuer_lauf == "turnhalle"
     assert fenster._umgebung_fuer_lauf() == {ENV_KARTE: "turnhalle"}
 
 
@@ -1009,3 +1010,65 @@ def test_der_navigationsstand_erreicht_den_tab_nur_waehrend_eines_laufs(qapp, tm
     fenster._navigation(stand)
     assert tab.plot.ziel == "wp1" and "kueche" in tab.navigation_status.text()
 
+
+
+# ============ S1.14 Eine gespeicherte Karte nachtraeglich nachbearbeiten
+#
+# Karten, die vor dem 09.09.2026 aufgezeichnet wurden, sind KETTEN. Nachziehen
+# heisst hochladen -- und Hochladen braucht ein Lease (`UploadGraphRequest.lease`),
+# das die GUI nie haelt. Also ein Lauf, wie Fahren und Navigieren.
+
+
+def test_der_knopf_verbessern_startet_das_programm_mit_der_gewaehlten_karte(
+        qapp, tmp_path, monkeypatch):
+    from dataclasses import replace
+
+    from spotlab import ENV_KARTE
+    from spotlab.config import Config, Limits
+
+    _karte_im_arbeitsordner(tmp_path)
+    fenster = MainWindow()
+    fenster._config = replace(fenster._config or Config(ip="", username="", limits=Limits()),
+                              workspace=str(tmp_path))
+    fenster._setze_arbeitsordner(str(tmp_path))
+    fenster.ansichten["code"].setze_backend("sim")
+    tab = fenster.ansichten["karten"]
+    tab.liste.setCurrentRow(0)
+    gestartet = []
+    monkeypatch.setattr(fenster.ansichten["code"], "starte_skript", gestartet.append)
+    tab.verbessern_gewuenscht.emit()
+    assert gestartet == [tmp_path / "Beispiele" / "karte_verbessern.py"]
+    assert (tmp_path / "Beispiele" / "karte_verbessern.py").is_file()
+    assert fenster.ansichten["code"].gewaehltes_backend() == "real"
+    assert fenster._karte_fuer_lauf == "turnhalle"
+    assert fenster._umgebung_fuer_lauf() == {ENV_KARTE: "turnhalle"}
+    assert not fenster._navigation_erwartet, "kein Navigationslauf -- kein Zielklicken"
+    assert "turnhalle" in tab.navigation_status.text()
+
+
+def test_verbessern_ohne_gewaehlte_karte_sagt_es(qapp, tmp_path, monkeypatch):
+    from dataclasses import replace
+
+    from spotlab.config import Config, Limits
+
+    fenster = MainWindow()
+    fenster._config = replace(fenster._config or Config(ip="", username="", limits=Limits()),
+                              workspace=str(tmp_path))
+    fenster._setze_arbeitsordner(str(tmp_path))
+    gestartet, meldungen = [], []
+    monkeypatch.setattr(fenster.ansichten["code"], "starte_skript", gestartet.append)
+    monkeypatch.setattr(fenster, "_melde", meldungen.append)
+    fenster.ansichten["karten"].verbessern_gewuenscht.emit()
+    assert gestartet == [] and meldungen and "Karte" in meldungen[0]
+
+
+def test_nach_einem_lauf_wird_die_kartenliste_neu_geholt(qapp, tmp_path, lebendig):
+    """Nach der Verbesserung liegt eine ANDERE Karte auf der Platte -- der Tab
+    zeigte sonst die Zahlen von vorher."""
+    fenster = MainWindow()
+    fenster._setze_arbeitsordner(str(tmp_path))
+    tab = fenster.ansichten["karten"]
+    assert tab.liste.count() == 0
+    _karte_im_arbeitsordner(tmp_path)           # entsteht waehrend des Laufs
+    fenster._lauf_beendet(_zweit_lauf(tmp_path, "lauf_a"))
+    assert tab.liste.count() == 1

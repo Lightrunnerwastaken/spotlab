@@ -124,6 +124,47 @@ def finde(workspace, name):
     )
 
 
+def aktualisiere_zahlen(kartenordner, graph, jetzt=None):
+    """Wegpunkte und Kanten in `karte.json` nachziehen, ohne den Rest zu verlieren.
+
+    Nach dem Schleifenschluss stimmen die Zahlen nicht mehr — und `aufgezeichnet`
+    darf trotzdem nicht auf heute springen: die Karte wurde damals gefahren,
+    heute nur nachbearbeitet. Genau dafür kommt `nachbearbeitet` dazu.
+    """
+    pfad = Path(kartenordner) / METADATEN
+    try:
+        meta = json.loads(pfad.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        meta = {}
+    meta["wegpunkte"] = len(graph.waypoints)
+    meta["kanten"] = len(graph.edges)
+    meta["nachbearbeitet"] = (jetzt or datetime.now(UTC)).isoformat()
+    pfad.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+    return meta
+
+
+def ersetze_inhalt(ziel, quelle):
+    """`quelle` an die Stelle von `ziel` setzen — und `ziel` erst danach wegwerfen.
+
+    Eine heruntergeladene Karte überschreibt die einzige Kopie der Aufnahme. Ein
+    Abbruch mitten im Schreiben liesse den Schüler ohne beides zurück, deshalb
+    wird nebenan geschrieben und erst am Schluss getauscht.
+    """
+    ziel, quelle = Path(ziel), Path(quelle)
+    alt = ziel.with_name(ziel.name + ".alt")
+    shutil.rmtree(alt, ignore_errors=True)
+    if ziel.exists():
+        ziel.rename(alt)
+    try:
+        quelle.rename(ziel)
+    except OSError:
+        if not ziel.exists() and alt.exists():
+            alt.rename(ziel)            # zurueck auf den alten Stand
+        raise
+    shutil.rmtree(alt, ignore_errors=True)
+    return ziel
+
+
 def loesche(kartenordner):
     shutil.rmtree(Path(kartenordner), ignore_errors=True)
 

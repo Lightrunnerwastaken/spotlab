@@ -1,3 +1,5 @@
+import json
+
 import pytest
 from bosdyn.api.graph_nav import map_pb2
 
@@ -210,3 +212,81 @@ def test_ohne_abbruch_gilt_die_ankunft(tmp_path):
     backend = FakeBackend()
     karte = Map("turnhalle", _karte_auf_platte(tmp_path), _graph())
     assert navigate_to(backend, None, karte, "kueche", Limits(), schlaf=lambda _s: None) is True
+
+
+# ============ Eine gespeicherte Karte nachtraeglich nachbearbeiten
+
+
+class _BackendMitNachbearbeitung(FakeBackend):
+    def __init__(self, bericht=None, **kw):
+        super().__init__(**kw)
+        from spotlab.maps.nachbearbeitung import Nachbearbeitung
+
+        self.bericht = bericht if bericht is not None else Nachbearbeitung(2, 5, ("gemacht",))
+        self.heruntergeladen = []
+
+    def process_map(self, melde=None, fiducial=True, odometrie=True):
+        self.protokoll.append(f"process:{fiducial}:{odometrie}")
+        if melde is not None:
+            for text in self.bericht.meldungen:
+                melde(text)
+        return self.bericht
+
+    def download_map(self, kartenordner):
+        from bosdyn.api.graph_nav import map_pb2
+
+        self.heruntergeladen.append(kartenordner)
+        graph = map_pb2.Graph()
+        graph.waypoints.add().id = "wp0"
+        return graph
+
+
+def test_eine_karte_wird_nachbearbeitet_und_zurueckgeschrieben(tmp_path):
+    from spotlab.api.navigation import process_map
+
+    backend = _BackendMitNachbearbeitung()
+    karte = Map("turnhalle", _karte_auf_platte(tmp_path), _graph())
+    gemeldet = []
+    bericht = process_map(backend, None, karte, melde=gemeldet.append)
+    assert bericht.neue_kanten == 2
+    assert "process:True:True" in backend.protokoll
+    assert backend.heruntergeladen == [karte.dir]
+    assert "gemacht" in gemeldet and any("gespeichert" in m for m in gemeldet)
+
+
+def test_ohne_ergebnis_wird_die_gespeicherte_karte_nicht_angefasst(tmp_path):
+    """Eine gescheiterte Nachbearbeitung darf die Karte auf der Platte nicht kosten."""
+    from spotlab.api.navigation import process_map
+    from spotlab.maps.nachbearbeitung import Nachbearbeitung
+
+    backend = _BackendMitNachbearbeitung(bericht=Nachbearbeitung(None, None, ("nichts",)))
+    karte = Map("turnhalle", _karte_auf_platte(tmp_path), _graph())
+    assert not process_map(backend, None, karte).gelaufen
+    assert backend.heruntergeladen == []
+
+
+def test_das_nachbearbeiten_steht_in_der_aufzeichnung(tmp_path):
+    from spotlab.api.navigation import process_map
+    from spotlab.record.run import RunRecorder
+
+    rec = RunRecorder(tmp_path, None, backend="dryrun")
+    karte = Map("turnhalle", _karte_auf_platte(tmp_path), _graph())
+    process_map(_BackendMitNachbearbeitung(), rec, karte)
+    rec.finish("ok")
+    zeilen = (rec.dir / "ereignisse.jsonl").read_text(encoding="utf-8").splitlines()
+    arten = [json.loads(z)["daten"].get("name") for z in zeilen if z.strip()]
+    assert arten.count("process_map") == 2, "Kommando und Rueckmeldung"
+
+
+def test_ohne_graph_nav_wird_gar_nicht_erst_gerechnet(tmp_path):
+    from spotlab.api.navigation import process_map
+
+    class _Ohne(_BackendMitNachbearbeitung):
+        def capabilities(self):
+            return DryRunBackend.capabilities(self)
+
+    backend = _Ohne()
+    karte = Map("turnhalle", _karte_auf_platte(tmp_path), _graph())
+    with pytest.raises(UnsupportedCapability):
+        process_map(backend, None, karte)
+    assert not any(e.startswith("process:") for e in backend.protokoll)

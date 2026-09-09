@@ -46,6 +46,22 @@ versionsgepinntes Extra `spotlab[sim]`.
   Aufzeichnen ist leaselos; nur deshalb darf die GUI es. Ein Lease dort bräche H1. Dasselbe
   gilt für die Nachbearbeitung: `ProcessTopologyRequest` und `ProcessAnchoringRequest` haben
   gar kein Lease-Feld.
+- **Das Protokoll der Nachbearbeitung steht in `maps/nachbearbeitung.py`, an genau einer
+  Stelle** — und es kennt kein Lease: der Aufrufer bringt den Client mit. Zwei Wege führen
+  hin, und der Unterschied ist der Grund für die Trennung: die frische Aufnahme bearbeitet
+  leaselos nach (`maps/session.py`), eine schon gespeicherte Karte muss dafür zuerst auf den
+  Roboter — und **HOCHLADEN braucht ein Lease** (`UploadGraphRequest.lease`, „ownership of
+  graph-nav service"; das SDK-Beispiel `graph_nav_command_line.py` hält es entsprechend,
+  `recording_command_line.py` nicht). Deshalb läuft das Nachziehen einer alten Karte als
+  PROGRAMM (`workshop/karte.py`, Knopf im Tab startet es über den einen Startweg) und nicht
+  in der GUI, die nie ein Lease hält (H1).
+- **Eine heruntergeladene Karte wird NEBENAN geschrieben und erst am Schluss getauscht**
+  (`maps/store.py::ersetze_inhalt`, `graphnav.download_map`). Der Ordner ist die einzige
+  Kopie der Aufnahme; ein Abbruch mitten im Herunterladen liesse den Schüler ohne beides
+  zurück. Eine unlesbare oder leere Antwort lässt die gespeicherte Karte unangetastet, und
+  zurückgeschrieben wird überhaupt nur, wenn die Nachbearbeitung etwas gerechnet hat.
+  `karte.json` bekommt die neuen Zahlen und ein `nachbearbeitet`-Datum — `aufgezeichnet`
+  bleibt, denn gefahren wurde die Karte damals.
 - **Eine Aufnahme wird vor dem Herunterladen nachbearbeitet — sonst ist sie eine KETTE.**
   Der Aufzeichnungsdienst weiss nicht, dass der Gang, durch den Spot zum zweiten Mal fährt,
   derselbe ist; er legt einen zweiten Strang daneben. Erst `process_topology`
@@ -721,8 +737,12 @@ versionsgepinntes Extra `spotlab[sim]`.
 
 **Stufe 18 (09.09.2026): Schleifenschluss und Ankeroptimierung** — beim Speichern einer
 Aufnahme laufen `process_topology` und `process_anchoring` auf dem Roboter
-(`maps/session.py::nachbearbeiten`, leaselos, jeder Schritt gekapselt, Zwischenstand in der
-Statuszeile). Vorher war jede Karte eine Kette. Am Gerät: A13 (Abschnitt „Schleifen").
+(`maps/nachbearbeitung.py`, aufgerufen aus `maps/session.py`, leaselos, jeder Schritt
+gekapselt, Zwischenstand in der Statuszeile). Vorher war jede Karte eine Kette. Für die
+alten Karten das Nachziehen: `spot.process_map()`, Kern `workshop/karte.py`, Beispiel
+`karte_verbessern.py`, Knopf „✨ Karte verbessern…" im Tab — als Lauf, weil Hochladen ein
+Lease braucht; heruntergeladen wird nebenan und erst am Schluss getauscht. Am Gerät: A13
+(Abschnitt „Schleifen") und A33.
 
 **Stufe 17 (09.09.2026): Vorschläge im ganzen Editor** — bis dahin kehrte `anfordern` um,
 sobald die eigene Liste leer war; jedi kam nur über Strg+Leertaste zum Zug, und wer das

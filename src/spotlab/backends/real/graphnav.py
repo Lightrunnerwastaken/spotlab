@@ -8,10 +8,12 @@ Hier liegt auch nav_status(): die Abbildung eines Protobuf-Status auf den
 neutralen NavStatus ist Backend-Arbeit. In errors/ wäre sie ein Importzyklus.
 """
 
+import shutil
 from pathlib import Path
 
 from bosdyn.api.graph_nav import graph_nav_pb2, map_pb2, nav_pb2
 from bosdyn.client.graph_nav import GraphNavClient
+from google.protobuf.message import DecodeError
 
 from spotlab.backends import mobility
 from spotlab.backends.base import NavStatus
@@ -82,6 +84,60 @@ def upload_map(robot, kartenordner):
         schnappschuss.ParseFromString(pfad.read_bytes())
         client.upload_edge_snapshot(schnappschuss)
 
+    return graph
+
+
+def process_map(robot, melde=None, fiducial=True, odometrie=True):
+    """Die Karte AUF DEM ROBOTER nachbearbeiten. Gibt einen `Nachbearbeitung`-Bericht.
+
+    Das Protokoll steht in `maps/nachbearbeitung.py` — dieselbe Formulierung,
+    die auch die frische Aufnahme nachbearbeitet. Hier kommt nur der Client
+    dazu. Der Dienst selbst braucht kein Lease; das Lease hing schon am
+    Hochladen davor (`upload_map`).
+    """
+    from bosdyn.client.map_processing import MapProcessingServiceClient
+
+    from spotlab.maps import nachbearbeitung
+
+    try:
+        client = robot.ensure_client(MapProcessingServiceClient.default_service_name)
+    except Exception:
+        client = None                   # aeltere Software: `nachbearbeiten` sagt es
+    return nachbearbeitung.nachbearbeiten(client, melde, fiducial, odometrie)
+
+
+def download_map(robot, kartenordner):
+    """Die Karte vom Roboter in den Ordner holen. Gibt den neuen Graphen zurück.
+
+    Geschrieben wird NEBENAN und erst am Schluss getauscht
+    (`maps/store.py::ersetze_inhalt`): der Ordner ist die einzige Kopie der
+    Aufnahme, und ein Abbruch mitten im Herunterladen liesse den Schüler ohne
+    beides zurück.
+    """
+    from spotlab.maps.store import aktualisiere_zahlen, ersetze_inhalt
+
+    ordner = Path(kartenordner)
+    neben = ordner.with_name(ordner.name + ".neu")
+    shutil.rmtree(neben, ignore_errors=True)
+    neben.mkdir(parents=True)
+    _versuche(_client(robot).write_graph_and_snapshots, str(neben))
+    graph = map_pb2.Graph()
+    try:
+        graph.ParseFromString((neben / "graph").read_bytes())
+    except (OSError, DecodeError) as fehler:
+        shutil.rmtree(neben, ignore_errors=True)
+        raise MapError(
+            "Die heruntergeladene Karte ist unlesbar — die gespeicherte bleibt, "
+            "wie sie war."
+        ) from fehler
+    if not graph.waypoints:
+        shutil.rmtree(neben, ignore_errors=True)
+        raise MapError(
+            "Die heruntergeladene Karte hat keine Wegpunkte — die gespeicherte "
+            "bleibt, wie sie war."
+        )
+    ersetze_inhalt(ordner, neben)
+    aktualisiere_zahlen(ordner, graph)
     return graph
 
 
