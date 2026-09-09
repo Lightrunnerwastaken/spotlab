@@ -78,10 +78,17 @@ Spot gerade sieht), **Fahren** (den echten Spot über die Tastatur fahren), **Ra
 ### Der eingebaute Editor
 
 Die Ansicht **Code** ist eine Ergänzung, kein Ersatz — `spotlab open` und „In VS Code
-öffnen" bleiben. Sie kann: mehrere Reiter, Syntaxhervorhebung, Vervollständigung für
-`spot.` und `spotlab.` mit deutscher Erklärung, Syntaxfehler nach einer kurzen Ruhepause,
+öffnen" bleiben. Sie kann: mehrere Reiter, Syntaxhervorhebung, Vervollständigung im
+ganzen Code, Syntaxfehler nach einer kurzen Ruhepause,
 Suchen und Ersetzen, Starten und Stoppen ohne die Ansicht zu wechseln, und **anklickbare
 Dateinamen in Tracebacks** — ein Klick springt an die Zeile.
+
+**Die Vervollständigung gilt überall**, nicht nur nach `spot.`: nach jedem Punkt
+(`math.`, eine Liste, eine eigene Variable) und sobald ein angefangenes Wort zwei Zeichen
+hat. Nach `spot.` und `spotlab.` steht zuerst die eigene Liste mit deutscher Erklärung und
+Signatur, darunter ergänzt jedi den Rest. In Kommentaren und Zeichenketten kommt nichts —
+dort schlägt jedi sonst Verzeichnisse deines Laptops vor. **Strg+Leertaste** fragt trotzdem,
+an jeder Stelle.
 
 Zwei Dinge, die im Alltag zählen:
 

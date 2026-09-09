@@ -6,10 +6,24 @@ vorkommen" ist eine Aussage ueber unseren eigenen Code. Ob jedi durch
 fremder Inferenz durch einen @contextmanager. jedi deckt dafuer ab, was wir
 nicht wissen koennen: lokale Variablen, math., np., Importnamen.
 
+Und es wird UEBERALL gefragt, nicht nur nach `spot.` und `spotlab.`. Bis zum
+09.09.2026 kehrte `anfordern` um, sobald die eigene Liste leer war — jedi kam
+dann nur ueber Strg+Leertaste zum Zug, und wer das nicht wusste, sah im ganzen
+Editor Vorschlaege ausschliesslich nach `spot.`. Gefragt wird jetzt, wo etwas
+zu vervollstaendigen ist: nach einem Punkt, oder sobald ein angefangenes Wort
+lang genug ist (`editor/kontext.py`) — und NICHT in Zeichenketten und
+Kommentaren, wo jedi Verzeichnisse des Laptops und 158 globale Namen anbietet.
+
+jedi wird dabei NIE zweimal gleichzeitig gefragt (`JEDI_SPERRE`, dazu die
+Warteschlange in `_frage_jedi`). Der Grund steht unten an der Sperre und ist
+der Preis dafuer, dass jetzt jeder Tastendruck fragen darf.
+
 Fehlt jedi oder wirft es, bleibt es bei der eigenen Liste — ohne Hinweis und
 ohne Fehler. Ein Editor, der sich ueber eine fehlende Vervollstaendigung
 beschwert, ist laestiger als einer, der leise weniger kann.
 """
+
+import threading
 
 from PySide6.QtCore import (
     QAbstractListModel,
@@ -26,6 +40,7 @@ from PySide6.QtCore import (
 from PySide6.QtGui import QColor, QFontMetrics, QPainter, QTextCursor
 from PySide6.QtWidgets import QCompleter, QLabel, QStyle, QStyledItemDelegate
 
+from spotlab.editor.kontext import im_code, stelle_passt
 from spotlab.editor.verbs import (
     Vorschlag,
     praefix,
@@ -105,15 +120,30 @@ def eigene_vorschlaege(text_vor_cursor):
     return []
 
 
+# jedi spricht mit einem HILFSPROZESS ueber eine Pipe, und die teilen sich alle
+# Scripts. Zwei Anfragen gleichzeitig verwuerfeln den Pickle-Strom darin.
+# Gemessen am 09.09.2026 mit sechs Threads auf `math.sq`: `UnpicklingError:
+# invalid load key`, `'AccessPath' object has no attribute 'suffix'`, `'tuple'
+# object has no attribute 'accesses'` — und EIN Thread, der nach 60 s immer
+# noch nicht zurueck war. Dieselben sechs Anfragen mit dieser Sperre: sechsmal
+# das richtige Ergebnis in 160 ms.
+#
+# Modulweit, nicht je Vervollstaendiger: zwei offene Reiter haben zwei
+# Vervollstaendiger, und der Hilfsprozess ist trotzdem derselbe.
+JEDI_SPERRE = threading.Lock()
+
+
 def jedi_lesen(quelltext, zeile, spalte, pfad):
-    """Blockierend — laeuft nur im JediWorker oder im Test."""
+    """Blockierend — laeuft nur im JediWorker oder im Test. Immer allein."""
     if jedi is None:
         return []
     try:
-        skript = jedi.Script(code=quelltext, path=pfad)
+        with JEDI_SPERRE:
+            skript = jedi.Script(code=quelltext, path=pfad)
+            treffer = skript.complete(zeile, spalte)
         return [
-            Vorschlag(treffer.name, treffer.name, "", art_von(treffer.type))
-            for treffer in skript.complete(zeile, spalte)
+            Vorschlag(t.name, t.name, "", art_von(t.type))
+            for t in treffer
         ]
     except Exception:
         # Fremder Code: was hier schiefgeht, darf den Editor nicht mitreissen.
@@ -245,6 +275,10 @@ class Vervollstaendigung(QObject):
         self._eigene = []
         self._anzeige_zu_name = {}
         self._worker = None
+        # Hoechstens EIN wartender Auftrag, und der neueste verdraengt ihn.
+        # Zwischenstaende sind beim Tippen wertlos -- dieselbe Ueberlegung wie
+        # beim Abtaster, der nichts nachholt.
+        self._auftrag = None
         # Ab `schliesse()` wird nichts mehr angefordert und keine Antwort mehr
         # verarbeitet — das Widget darunter ist dann schon zur Zerstörung
         # vorgemerkt.
@@ -307,14 +341,31 @@ class Vervollstaendigung(QObject):
         self._pfad = str(pfad) if pfad else None
 
     def anfordern(self, erzwungen=False):
+        """Vorschlaege fuer die Stelle am Cursor. `erzwungen`: Strg+Leertaste.
+
+        Drei Stufen, absichtlich in dieser Reihenfolge: die eigene Liste (sofort
+        da, ohne Nachdenken), dann die billige Frage an die ZEILE, und erst
+        danach die teure an den ganzen Text. `toPlainText()` kopiert das
+        Dokument; das darf nicht bei jedem Tastendruck geschehen, an dem
+        ohnehin nichts vorzuschlagen ist.
+
+        Strg+Leertaste geht durch alle Stufen hindurch: wer ausdruecklich fragt,
+        bekommt die Antwort auch im Kommentar.
+        """
         vor = self._vor_dem_cursor()
         self._eigene = eigene_vorschlaege(vor)
+        quelltext = None
         if not self._eigene and not erzwungen:
-            self.completer.popup().hide()
-            return
+            if not stelle_passt(vor):
+                self.completer.popup().hide()
+                return
+            quelltext = self._editor.toPlainText()
+            if not im_code(quelltext[: self._editor.textCursor().position()]):
+                self.completer.popup().hide()
+                return
         self._nummer += 1
         self._zeige(self._eigene, teilwort(vor))
-        self._frage_jedi(self._nummer)
+        self._frage_jedi(self._nummer, quelltext)
 
     def _vor_dem_cursor(self):
         cursor = self._editor.textCursor()
@@ -357,6 +408,7 @@ class Vervollstaendigung(QObject):
         mehr anfassen, auch wenn sie eine Millisekunde zu spät kommt.
         """
         self._geschlossen = True
+        self._auftrag = None            # nach dem Schliessen faengt nichts mehr an
         self.hilfekasten.hide()
         arbeiter, self._worker = self._worker, None
         if arbeiter is None:
@@ -375,21 +427,50 @@ class Vervollstaendigung(QObject):
         except RuntimeError:
             pass
 
-    def _frage_jedi(self, nummer):
+    def _frage_jedi(self, nummer, quelltext=None):
         if self._geschlossen:
             return
         if jedi is None:
             return
         cursor = self._editor.textCursor()
-        self._worker = JediWorker(
+        self._auftrag = (
             nummer,
-            self._editor.toPlainText(),
+            self._editor.toPlainText() if quelltext is None else quelltext,
             cursor.blockNumber() + 1,
             cursor.positionInBlock(),
             self._pfad,
-            self,
         )
+        self._starte_auftrag()
+
+    def _laeuft_noch(self):
+        arbeiter = self._worker
+        if arbeiter is None:
+            return False
+        try:
+            return arbeiter.isRunning()
+        except RuntimeError:        # schon abgeraeumt
+            return False
+
+    def _starte_auftrag(self):
+        """Den wartenden Auftrag starten — wenn gerade keiner laeuft.
+
+        Ohne diese Schranke legte jeder Tastendruck einen weiteren Arbeiter an,
+        und mehrere jedi-Anfragen liefen gleichzeitig; was das anrichtet, steht
+        bei `JEDI_SPERRE`. Die Sperre allein genuegte zwar fuer die Richtigkeit,
+        aber die Arbeiter stauten sich dann vor ihr.
+        """
+        if self._geschlossen or self._auftrag is None or self._laeuft_noch():
+            return
+        auftrag, self._auftrag = self._auftrag, None
+        self._worker = JediWorker(*auftrag, self)
         self._worker.fertig.connect(self._jedi_fertig)
+        # `deleteLater` raeumt erst in der Ereignisschleife ab, also nie
+        # waehrend `_jedi_fertig` laeuft. Ohne das bliebe jeder Arbeiter als
+        # Kind haengen, bis der Reiter zugeht -- bei zwei Anfragen nach `spot.`
+        # unauffaellig, bei Vorschlaegen im ganzen Editor Hunderte je Sitzung.
+        self._worker.finished.connect(self._worker.deleteLater)
+        # Erst wenn der Faden wirklich zu Ende ist, darf der naechste los.
+        self._worker.finished.connect(self._starte_auftrag)
         self._worker.start()
 
     def _jedi_fertig(self, nummer, fremde):

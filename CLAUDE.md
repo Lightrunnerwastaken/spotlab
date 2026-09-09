@@ -67,6 +67,24 @@ versionsgepinntes Extra `spotlab[sim]`.
 - **Es gibt genau einen `OutputReader` pro Lauf.** Die Ausgabe-Pipe hat genau einen Leser;
   ein zweiter teilte sich die Zeilen zufällig mit dem ersten. Neue Ansichten hängen sich als
   weitere Senke an `app.py::_starte_leser`, nie mit einem eigenen Leser an den Prozess.
+- **jedi wird nie zweimal gleichzeitig gefragt.** jedi spricht mit einem HILFSPROZESS über
+  eine Pipe, und die teilen sich alle `Script`-Objekte — auch die zweier Reiter. Zwei
+  Anfragen zugleich verwürfeln den Pickle-Strom darin: sechs Threads auf `math.sq` ergaben
+  am 09.09.2026 fünfmal Müll (`UnpicklingError: invalid load key`, `'AccessPath' object has
+  no attribute 'suffix'`) und EINEN Thread, der nach 60 s nicht zurück war; mit Sperre
+  sechsmal das richtige Ergebnis in 160 ms. Deshalb `JEDI_SPERRE` modulweit in
+  `gui/editor/completer.py` — und davor eine Warteschlange mit genau EINEM Platz, in der der
+  neueste Auftrag den wartenden verdrängt: sonst stauen sich die Arbeiter vor der Sperre,
+  einer je Tastendruck. Zwischenstände sind beim Tippen wertlos, dieselbe Überlegung wie
+  beim Abtaster, der nichts nachholt.
+- **Vorschläge gibt es im Code, nicht in Zeichenketten und Kommentaren.** Im Kommentar
+  liefert jedi 158 globale Namen, in einer offenen Zeichenkette die Verzeichnisse des
+  Laptops — der Editor zeigte den Inhalt der Festplatte, weil jemand einen Pfad tippte.
+  `editor/kontext.py` entscheidet das mit einem Zustandsautomaten über den Text vor dem
+  Cursor (kein `tokenize`: das wirft auf halb geschriebenem Code, und genau der liegt beim
+  Tippen vor). Erst die billige Frage an die ZEILE (`stelle_passt`), dann die teure an den
+  ganzen Text — `toPlainText()` kopiert das Dokument und darf nicht bei jedem Tastendruck
+  laufen, an dem ohnehin nichts vorzuschlagen ist. Strg+Leertaste geht durch beide hindurch.
 - **Ein Widget wird nie zerstört, solange ein Thread darunter arbeitet.** Vor
   `deleteLater()` auf einem `CodeEdit` erst `Vervollstaendigung.schliesse()` — sonst wird
   ein laufender `JediWorker`-QThread destruiert und reisst das ganze Fenster mit, samt
@@ -685,6 +703,14 @@ versionsgepinntes Extra `spotlab[sim]`.
   steht an genau EINER Stelle: `src/spotlab/__init__.py`.
 
 ## Umsetzungsstand
+
+**Stufe 17 (09.09.2026): Vorschläge im ganzen Editor** — bis dahin kehrte `anfordern` um,
+sobald die eigene Liste leer war; jedi kam nur über Strg+Leertaste zum Zug, und wer das
+nicht wusste, sah Vorschläge ausschliesslich nach `spot.` und `spotlab.`. Jetzt fragt jeder
+Tastendruck, wo etwas zu vervollständigen ist (`editor/kontext.py`: nach einem Punkt oder ab
+zwei Zeichen, nie in Zeichenketten und Kommentaren) — `math.sq` → `sqrt`, eine Liste → ihre
+Methoden, eine eigene Variable, `import ma` → Modulnamen. Dazu die Serialisierung von jedi
+(`JEDI_SPERRE`, Warteschlange mit einem Platz) und Arbeiter, die sich selbst abräumen.
 
 **Stufe 16 (09.09.2026): Navigation aus dem Tab „Karten"** — Wegpunkte in der Zeichnung sind
 anklickbar (`gui/mapplot.py`: Treffer, Ring fürs Ziel, gefüllter Standort-Wegpunkt, Pfeil für
