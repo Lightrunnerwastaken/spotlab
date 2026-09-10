@@ -2,6 +2,10 @@
 
     python -m spotlab.experiment.nachtrag <Lauf-Verzeichnis>
 
+Im Fenster ist das der Reiter „Gehzeit" (`gui/views/gehzeit.py`) — dieselben
+Funktionen, nur mit den Bildern nebendran statt als Dateipfade. Wer lieber
+tippt, nimmt die Zeile oben.
+
 Der Teil, den ausdruecklich ein MENSCH macht. Spot liefert Zeiten und einen
 Vorschlag, wer gleichzeitig unterwegs war; ob drei Leute eine Gruppe waren oder
 drei Einzelne, sieht man auf den Bildern. Diese Aufteilung ist der Kern des
@@ -16,32 +20,30 @@ vorhandene Dateien zeigt, laedt nur dazu ein, sie irgendwo zu suchen.
 Reine Standardbibliothek: Dateien und Text, kein Roboter.
 """
 
+import bisect
 import json
 import sys
 from pathlib import Path
 
 from spotlab.errors import SpotlabError
-from spotlab.experiment import tabelle
+from spotlab.experiment import ablage, tabelle
 from spotlab.record.atomar import schreibe_atomar
-from spotlab.workshop.gehzeit import CSV_NAME, ORDNER_NAME
 
 # So viel vor und nach der gemessenen Zeit gehoert noch zum Abschnitt: der
 # Mensch soll sehen, wie die Leute ankommen und weggehen, nicht nur den
 # Ausschnitt zwischen den beiden Linien.
 RAND_S = 1.5
 
-INDEX = "kamera/kamera.jsonl"
-
 
 def csv_pfad(lauf):
-    return Path(lauf) / ORDNER_NAME / CSV_NAME
+    return ablage.csv_pfad(lauf)
 
 
 # ------------------------------------------------------------------ Bilder
 
 
 def _index(lauf):
-    pfad = Path(lauf) / INDEX
+    pfad = ablage.bildindex(lauf)
     if not pfad.is_file():
         return []
     saetze = []
@@ -63,7 +65,7 @@ def bilder_zu(lauf, t_start, t_ende, rand_s=RAND_S):
     Die Zeiten sind LAUFZEIT — dieselbe Basis wie `t` im Bildindex. Nur
     deshalb geht das ohne Umrechnung (`record/run.py::zeitmarke`).
     """
-    ordner = Path(lauf) / "kamera"
+    ordner = ablage.bilder_ordner(lauf)
     fenster = [
         satz for satz in _index(lauf)
         if t_start - rand_s <= float(satz.get("t", -1)) <= t_ende + rand_s
@@ -72,10 +74,28 @@ def bilder_zu(lauf, t_start, t_ende, rand_s=RAND_S):
     return [ordner / satz["datei"] for satz in fenster if (ordner / satz["datei"]).is_file()]
 
 
+def bildzeiten(lauf):
+    """Die Aufnahmezeiten des Bildmitschnitts, aufsteigend — EINMAL gelesen.
+
+    Wer die Bilderzahl je Durchgang braucht, liest damit den Index einmal und
+    zaehlt danach mit `zaehle_bilder`. Den Index je Zeile neu zu lesen waere bei
+    einer halben Stunde Aufnahme und dreissig Durchgaengen hunderttausend
+    JSON-Zeilen, jedes Mal, wenn jemand etwas eintraegt.
+    """
+    return sorted(float(satz.get("t", 0.0)) for satz in _index(lauf))
+
+
+def zaehle_bilder(zeiten, t_start, t_ende, rand_s=RAND_S):
+    """Wie viele Aufnahmen ins Zeitfenster eines Durchgangs fallen."""
+    links = bisect.bisect_left(zeiten, t_start - rand_s)
+    rechts = bisect.bisect_right(zeiten, t_ende + rand_s)
+    return rechts - links
+
+
 def _loesche(lauf, behalten):
     """`behalten(satz)` sagt, welche Indexzeilen bleiben. Gibt die Zahl der
     geloeschten Bilder zurueck."""
-    ordner = Path(lauf) / "kamera"
+    ordner = ablage.bilder_ordner(lauf)
     saetze = _index(lauf)
     bleiben, weg = [], 0
     for satz in saetze:
@@ -92,7 +112,7 @@ def _loesche(lauf, behalten):
             pass
     if weg:
         schreibe_atomar(
-            Path(lauf) / INDEX,
+            ablage.bildindex(lauf),
             "".join(json.dumps(s, ensure_ascii=False) + "\n" for s in bleiben),
         )
     return weg
@@ -116,6 +136,7 @@ def loesche_alle_bilder(lauf):
 
 
 def _zeile_text(zeile, bilder):
+    """`bilder` ist die ANZAHL, nicht die Liste — der Index wird einmal gelesen."""
     zeit = "—" if zeile["laufzeit_s"] is None else f"{zeile['laufzeit_s']:.2f} s"
     tempo = "" if zeile["tempo_m_s"] is None else f", {zeile['tempo_m_s']:.2f} m/s"
     leute = "1 Person" if zeile["personen"] == 1 else f"{zeile['personen']} Personen"
@@ -125,7 +146,7 @@ def _zeile_text(zeile, bilder):
         eintrag = (f"  [Klasse {zeile['klasse'] or '?'}, "
                    f"Gruppe {zeile['gruppengroesse'] or '?'}]")
     return (f"{zeile['nummer']:>3}  {zeile['uhrzeit']}  {leute}, {zeit}{tempo}"
-            f"  {len(bilder)} Bilder{stand}{eintrag}")
+            f"  {bilder} Bilder{stand}{eintrag}")
 
 
 def uebersicht(lauf):
@@ -136,8 +157,9 @@ def uebersicht(lauf):
             f"Keine Gehzeit-Tabelle in {lauf}. Erwartet: {pfad}. "
             "Erst den Versuch laufen lassen (Beispiele/gehzeit.py)."
         )
+    zeiten = bildzeiten(lauf)
     return [
-        _zeile_text(zeile, bilder_zu(lauf, zeile["t_start"], zeile["t_ende"]))
+        _zeile_text(zeile, zaehle_bilder(zeiten, zeile["t_start"], zeile["t_ende"]))
         for zeile in tabelle.lies(pfad)
     ]
 

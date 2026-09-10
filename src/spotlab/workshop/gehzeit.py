@@ -41,7 +41,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from spotlab.errors import SpotlabError
-from spotlab.experiment import tabelle
+from spotlab.experiment import ablage, tabelle
 from spotlab.experiment.durchgang import durchgaenge_aus
 from spotlab.experiment.strecke import (
     MAX_STREUUNG_M,
@@ -56,12 +56,12 @@ from spotlab.workshop.beispiele import ORDNER
 
 DATEINAME = "gehzeit.py"
 
-# Alles, was dieser Versuch schreibt, liegt in einem Unterordner des Laufs — die
-# Aufzeichnung daneben bleibt die gewohnte.
-ORDNER_NAME = "gehzeit"
-CSV_NAME = "gehzeit.csv"
-STRECKE_NAME = "strecke.json"
-QUERUNGEN_NAME = "querungen.jsonl"
+# Wo die Dateien liegen, sagt `experiment/ablage.py` — dieselbe Auskunft, die
+# der Nachtrag und die Ansicht im Fenster bekommen.
+ORDNER_NAME = ablage.ORDNER
+CSV_NAME = ablage.CSV
+STRECKE_NAME = ablage.STRECKE
+QUERUNGEN_NAME = ablage.QUERUNGEN
 
 TAKT_S = 0.2
 # So viele Abtastungen fuer die Strecke. Bei 0.2 s sind das gut zwei Sekunden —
@@ -372,4 +372,49 @@ def _schreibe_tabelle(pfad, querungen, strecke, versatz):
         for d in durchgaenge
     ])
     return durchgaenge
+
+
+# ------------------------------------------------------------ Hauptprogramm
+
+
+def _hauptprogramm(argv=None, drucke=print):
+    """Als Skript ueber `workshop/launcher.py` gestartet — schreibt einen Lauf.
+
+    Dieselbe Bauart wie bei der Sonde, und aus demselben Grund: der Knopf im
+    Fenster startet PAKETCODE, keine Datei im Arbeitsordner. Eine Datei dort
+    kann ein Schueler bearbeiten — und dann startete ein Knopf, der "misst nur
+    zu" verspricht, etwas, das faehrt. `Beispiele/gehzeit.py` bleibt daneben
+    genau dafuer: zum Lesen, Aendern und aus dem Editor Starten.
+
+    Das Lauf-Verzeichnis wird AUSDRUECKLICH gesetzt (`--runs`, sonst
+    `SPOTLAB_RUNS_DIR`, sonst `./runs`): dieses Skript liegt im installierten
+    Paket, und `start_script` setzt `cwd` auf den Skriptordner. Ohne die Angabe
+    schriebe der Versuch seine Laeufe zwischen den Quelltext.
+    """
+    import os
+    import sys
+    from pathlib import Path as _Path
+
+    import spotlab
+
+    argv = list(sys.argv[1:] if argv is None else argv)
+    runs = argv[argv.index("--runs") + 1] if "--runs" in argv else None
+    runs = runs or os.environ.get("SPOTLAB_RUNS_DIR") or (_Path.cwd() / "runs")
+    dauer = float(argv[argv.index("--dauer") + 1]) if "--dauer" in argv else DAUER_S
+
+    with spotlab.connect(runs_dir=runs, script=__file__, nur_lesen=True) as spot:
+        drucke("Gehzeit: Spot misst die Strecke und schaut dann zu. Stopp beendet.")
+        mitschnitt = bildmitschnitt(spot)
+        try:
+            if mitschnitt is not None:
+                mitschnitt.start()
+            gehzeit(spot, dauer_s=dauer, lauf_dir=spot.recorder.dir,
+                    mitschnitt=mitschnitt, melde=drucke)
+        finally:
+            if mitschnitt is not None:
+                mitschnitt.stop()
+
+
+if __name__ == "__main__":
+    _hauptprogramm()
 

@@ -906,8 +906,8 @@ darf jemand in der Hand behalten. Gebraucht werden zwei AprilTags für die Strec
 ein drittes zum Tragen und ein Gang von mindestens acht Metern.
 
 **Vorgehen** Die zwei Streckentags an die Enden hängen, flach und auf Kniehöhe. Spot
-seitlich so hinstellen, dass er beide gleichzeitig sieht. `Beispiele/gehzeit.py`
-starten. Zuerst die Strecke mit dem Massband nachmessen und den Wert notieren. Dann:
+seitlich so hinstellen, dass er beide gleichzeitig sieht. Im Reiter „Gehzeit" auf
+„▶ Versuch starten" drücken (oder `Beispiele/gehzeit.py` aus dem Editor). Zuerst die Strecke mit dem Massband nachmessen und den Wert notieren. Dann:
 eine Person mit Tag durchlaufen; danach zwei bis drei zusammen; danach eine, die auf
 halber Strecke stehen bleibt und redet; danach eine, die umkehrt.
 
@@ -932,7 +932,10 @@ Tags an den Personen. **Notieren, ob die Nummer einer Person über die ganze Str
 dieselbe bleibt** — wechselt sie, zerfällt ein Lauf in zwei halbe, und der Tag-Weg
 bleibt der richtige.
 
-**Teil 3 — der Nachtrag.** `python -m spotlab.experiment.nachtrag <Lauf>`.
+**Teil 3 — der Nachtrag.** Im Reiter „Gehzeit": den Lauf oben auswählen, links einen
+Durchgang anklicken, rechts die Bilder durchblättern. Dieselbe Arbeit auf der
+Kommandozeile: `python -m spotlab.experiment.nachtrag <Lauf>` — **beide Wege einmal
+gehen**, sie schreiben in dieselbe Tabelle.
 
 **Erwartung Teil 3**
 - (7) Zu jedem Durchgang gibt es Bilder aus seinem Zeitfenster, und darauf ist zu
@@ -943,6 +946,11 @@ bleibt der richtige.
   Spalte Text.
 - (10) Das Löschen entfernt die Bilder wirklich, und der Bildindex zeigt danach auf
   keine fehlende Datei mehr.
+- (11) Der Startknopf im Reiter schreibt seinen Lauf nach
+  `<Arbeitsordner>/Beispiele/runs/`, und „Live-Lauf" und „Läufe" finden ihn dort. Der
+  Stopp-Knopf beendet ihn geordnet.
+- (12) Auf den Bildern im Reiter ist zu erkennen, wer zusammengehörte — **notieren, ob die
+  Bildrate von 2 Hz dafür reicht** oder ob jemand nur als Streifen durchs Bild geht.
 
 **Warum am Gerät** Die Kette ist im Test durchgespielt (`tests/test_workshop_gehzeit.py`),
 aber drei Zahlen kann nur der Gang liefern: die Erkennungsreichweite der Tags, die

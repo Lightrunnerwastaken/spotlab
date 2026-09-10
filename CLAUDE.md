@@ -58,6 +58,14 @@ versionsgepinntes Extra `spotlab[sim]`.
   Aufzeichnen ist leaselos; nur deshalb darf die GUI es. Ein Lease dort bräche H1. Dasselbe
   gilt für die Nachbearbeitung: `ProcessTopologyRequest` und `ProcessAnchoringRequest` haben
   gar kein Lease-Feld.
+- **Der Knopf im Reiter „Gehzeit" startet PAKETCODE, nicht die Kopie im Arbeitsordner.**
+  `workshop/gehzeit.py` hat dafür ein Hauptprogramm wie die Sonde. `Beispiele/gehzeit.py`
+  kann ein Schüler bearbeiten — und dann startete ein Knopf, der „Spot schaut nur zu"
+  verspricht, etwas, das fährt. Der Lauf landet trotzdem unter
+  `<Arbeitsordner>/Beispiele/runs/`: dort sucht `laufsuche` (Läufe liegen in einem PROJEKT,
+  nicht lose im Arbeitsordner — anders als bei der Sonde, deren `--runs` daneben zielt), und
+  dort landet auch der Lauf aus dem Editor. Zwei Wege, ein Ablageort. Die Ansicht selbst
+  liest und schreibt nur Dateien (Tabelle, Bildindex, Bilder) — H1 bleibt unberührt.
 - **Im Gehzeit-Versuch misst Spot, was er messen kann, und behauptet den Rest nicht.**
   Er liefert Zeiten (mehrere gleichzeitig — das kann er besser als ein Mensch mit einer
   Stoppuhr) und einen VORSCHLAG, wer gleichzeitig unterwegs war. Ob drei Leute eine Gruppe
@@ -822,7 +830,7 @@ versionsgepinntes Extra `spotlab[sim]`.
 
 ## Umsetzungsstand
 
-**Stufe 23 (10.09.2026): Gehzeit — Spot misst einen Schulversuch mit** — `experiment/`
+**Stufe 23 (10.–11.09.2026): Gehzeit — Spot misst einen Schulversuch mit** — `experiment/`
 (Standardbibliothek: `strecke.py` misst die Strecke aus zwei AprilTags samt Streuung,
 `zeitnahme.py` hält je Person eine Uhr und kennt drei Verwerfungsregeln, `durchgang.py`
 gruppiert nach Zeit und schlägt eine Gruppengrösse vor, `tabelle.py` schreibt die CSV mit
@@ -831,7 +839,10 @@ Bilder), dazu `workshop/gehzeit.py` mit austauschbarer Quelle (`tag_quelle` heut
 nachweisbar, `personen_quelle` über Spots Tracker) und Bildmitschnitt, der nur dicht
 aufnimmt, solange jemand läuft. Beispiel `gehzeit.py`. Spot bewegt sich dabei nicht — das
 Programm verbindet über `nur_lesen=True`, deshalb steht es neben A21 und nicht hinter A1.
-Am Gerät: A35.
+Am Gerät: A35. Am 11.09.2026 dazu der Reiter „Gehzeit"
+(`gui/views/gehzeit.py`): Startknopf, Lauf-Auswahl, Tabelle der Durchgänge, die Bilder des
+gewählten daneben, Eingabe von Klasse und Gruppengrösse, Löschen der Bilder — derselbe
+Nachtrag wie auf der Kommandozeile, nur mit den Bildern statt der Dateipfade.
 
 **Stufe 22 (10.09.2026): Die leselose Sitzung** — `spotlab.connect(nur_lesen=True)` und
 `RealSpot.nur_lesen()`: angemeldet und zeitsynchron, aber ohne Lease, ohne

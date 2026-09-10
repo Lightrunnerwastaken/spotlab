@@ -54,6 +54,18 @@ def test_ohne_bildindex_gibt_es_eben_keine_bilder(tmp_path):
     assert nachtrag.bilder_zu(lauf, 0.0, 10.0) == []
 
 
+def test_die_bildzeiten_werden_einmal_gelesen_und_dann_gezaehlt(tmp_path):
+    """Die Ansicht zaehlt die Bilder je Durchgang. Den Index dafuer je Zeile neu
+    zu lesen waere bei einer halben Stunde Aufnahme und dreissig Durchgaengen
+    hunderttausend JSON-Zeilen — dieselbe Falle wie `huelle` je Bildpunkt."""
+    lauf = _lauf_mit_bildern(tmp_path)
+    zeiten = nachtrag.bildzeiten(lauf)
+    assert zeiten == sorted(zeiten)
+    assert nachtrag.zaehle_bilder(zeiten, 5.0, 9.0, rand_s=1.0) == 4
+    assert nachtrag.zaehle_bilder(zeiten, 100.0, 110.0) == 0
+    assert nachtrag.zaehle_bilder([], 0.0, 10.0) == 0
+
+
 def test_die_uebersicht_zeigt_was_der_mensch_zum_entscheiden_braucht(tmp_path):
     lauf = _lauf_mit_bildern(tmp_path)
     _tabelle_schreiben(lauf)

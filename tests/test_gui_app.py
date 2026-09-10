@@ -105,13 +105,13 @@ def test_gui_importiert_kein_bosdyn():
     assert verstoesse == []
 
 
-def test_fenster_hat_jetzt_zehn_ansichten(qapp):
+def test_fenster_hat_jetzt_elf_ansichten(qapp):
     fenster = MainWindow()
     assert set(fenster.ansichten) == {
-        "projekte", "code", "live", "laeufe", "karten", "umwelt", "fahren",
-        "raumeditor", "anbindungen", "spot",
+        "projekte", "code", "live", "laeufe", "karten", "umwelt", "gehzeit",
+        "fahren", "raumeditor", "anbindungen", "spot",
     }
-    assert fenster.stapel.count() == 10
+    assert fenster.stapel.count() == 11
 
 
 # --------------------------------------------------------------- Ansicht „Code"
@@ -191,6 +191,16 @@ def test_seitenleiste_hat_die_ansicht_anbindungen(qapp):
     assert ("anbindungen", "Anbindungen") in EINTRAEGE
     schluessel = [s for s, _ in EINTRAEGE]
     assert schluessel.index("anbindungen") < schluessel.index("spot")
+
+
+def test_jeder_eintrag_der_seitenleiste_hat_eine_ansicht(qapp):
+    """Ein Eintrag ohne Ansicht laesst `_wechsle` mit KeyError sterben — im
+    Fenster mit dem NOT-AUS-Knopf."""
+    from spotlab.gui.sidebar import EINTRAEGE
+
+    fenster = MainWindow()
+    fehlend = [s for s, _ in EINTRAEGE if s not in fenster.ansichten]
+    assert fehlend == []
 
 
 def test_lauf_aus_anbindungen_schaltet_nicht_um(qapp, tmp_path):

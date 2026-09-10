@@ -21,7 +21,9 @@ Der Lauf endet mit dem Stopp-Knopf oder nach der eingestellten Dauer:
     python gehzeit.py           # zehn Minuten
     python gehzeit.py 300       # fünf Minuten
 
-DANACH, und das ist der Teil für einen Menschen:
+DANACH, und das ist der Teil für einen Menschen: der Reiter **Gehzeit** im
+spotlab-Fenster. Dort steht auch der Knopf, mit dem sich der Versuch starten
+lässt, ohne dieses Programm zu öffnen. Wer lieber tippt:
 
     python -m spotlab.experiment.nachtrag <Lauf-Verzeichnis>
 

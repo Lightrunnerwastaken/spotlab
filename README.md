@@ -67,13 +67,14 @@ pip install -e .[gui]
 spotlab gui
 ```
 
-Zehn Ansichten in einer Seitenleiste: **Projekte** (anlegen, in VS Code öffnen, starten —
+Elf Ansichten in einer Seitenleiste: **Projekte** (anlegen, in VS Code öffnen, starten —
 mit Häkchen für Trockenlauf), **Code** (der eingebaute Editor), **Live-Lauf** (Ereignisse,
 Telemetrie, Kamerabild, Ausgabe), **Läufe** (vergangene Läufe mit der Kurve kommandiertes
 gegen gemessenes Tempo), **Karten** (GraphNav aufzeichnen und ansehen), **Umwelt** (was
-Spot gerade sieht), **Fahren** (den echten Spot über die Tastatur fahren), **Raumeditor**
-(Räume bauen und ohne Roboter fahren), **Anbindungen** (fremde Projekte) und **Spot**
-(Zugangsdaten und Prüfung). Hell und dunkel folgen der Windows-Einstellung.
+Spot gerade sieht), **Gehzeit** (den Schulversuch starten und nachtragen), **Fahren** (den
+echten Spot über die Tastatur fahren), **Raumeditor** (Räume bauen und ohne Roboter
+fahren), **Anbindungen** (fremde Projekte) und **Spot** (Zugangsdaten und Prüfung). Hell
+und dunkel folgen der Windows-Einstellung.
 
 ### Der eingebaute Editor
 
@@ -510,7 +511,9 @@ Gruppengrösse ab? Mit der Stoppuhr in der Hand misst man immer nur eine Gruppe.
 stellt sich seitlich in den Gang und stoppt für jeden gleichzeitig.
 
 Aufbau: zwei AprilTags an die Enden der Strecke, Spot so hinstellen, dass er beide sieht,
-jede Person trägt ein Tag am Rucksack. Dann `Beispiele/gehzeit.py` starten.
+jede Person trägt ein Tag am Rucksack. Dann im Reiter **Gehzeit** auf **„▶ Versuch
+starten"** drücken — oder `Beispiele/gehzeit.py` aus dem Editor starten, wenn du am
+Programm etwas ändern willst.
 
 ```
 Strecke 8.42 m zwischen Tag 1 und Tag 2 (Streuung 0.03 m, 12 Abtastungen).
@@ -532,14 +535,16 @@ Tabelle, nicht stillschweigend.
 
 **Die Gruppengrösse trägt ein Mensch nach.** Ob drei Leute eine Gruppe waren oder drei
 Einzelne, die zufällig gleichzeitig losgingen, kann Spot nicht wissen. Er schlägt vor, wer
-gleichzeitig unterwegs war, und hält Bilder des Abschnitts bereit:
+gleichzeitig unterwegs war, und hält Bilder des Abschnitts bereit. Derselbe Reiter zeigt
+sie: links die Durchgänge, rechts die Bilder zum ausgewählten, darunter Klasse und
+Gruppengrösse. Wer lieber tippt:
 
 ```bash
 python -m spotlab.experiment.nachtrag runs/20260910T094103Z_ab12cd34
 ```
 
-Dort sieht man die Durchgänge mit Uhrzeit, Zeit und Tempo, dazu die Bilder. Klasse und
-Gruppengrösse kommen in dieselbe Tabelle — `gehzeit/gehzeit.csv`, Semikolon und
+So oder so stehen dort die Durchgänge mit Uhrzeit, Zeit und Tempo, dazu die Bilder. Klasse
+und Gruppengrösse kommen in dieselbe Tabelle — `gehzeit/gehzeit.csv`, Semikolon und
 Dezimalkomma, öffnet sich mit einem Doppelklick. Am Schluss fragt das Programm, ob die
 Bilder gelöscht werden sollen: es sind Aufnahmen von Mitschülern, gemacht für genau eine
 Frage.
