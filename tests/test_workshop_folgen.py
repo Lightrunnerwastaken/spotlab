@@ -55,14 +55,16 @@ def test_die_drehrate_ist_gedeckelt():
 
 class _Spot:
     def __init__(self, tags=(), leute=(), frei=5.0, pose=(0.0, 0.0, 0.0),
-                 faehigkeiten=Capability.LOCOMOTION, kopfraum=None, kartenlage=None):
+                 faehigkeiten=Capability.LOCOMOTION, kopfraum=None, kartenlage=None,
+                 neigt=False, nick=0.0):
         self._tags, self._leute = list(tags), list(leute)
         self._frei, self._pose = frei, pose
-        self._kartenlage = kartenlage
+        self._kartenlage, self._nick = kartenlage, nick
         self.kommandos = []
         self.backend = SimpleNamespace(
             capabilities=lambda: faehigkeiten,
             images=lambda quellen: kopfraum,
+            neigt_beim_gehen=neigt,
         )
 
     def tags(self, id=None):
@@ -76,7 +78,7 @@ class _Spot:
 
     @property
     def state(self):
-        return SimpleNamespace(pose=self._pose)
+        return SimpleNamespace(pose=self._pose, pitch=self._nick)
 
     def map_pose(self):
         return self._kartenlage
@@ -361,3 +363,79 @@ def test_ein_ausfallender_finder_haelt_die_staffel_nicht_auf(monkeypatch):
     assert staffel(None).name == "Tag 3"
     assert len(notizen) == 1, "der Grund steht einmal im Protokoll, nicht bei jedem Takt"
     assert "OpenCV fehlt" in notizen[0]
+
+
+# ================== S1.15 Nickwinkel: hoeher schauen waehrend der Fahrt
+#
+# Ohne Neigung kommt ein stehendes Gesicht erst ab 2.31 m ins Bild, der
+# Folgemodus will aber 1.6 m halten. Zehn bis fuenfzehn Grad schliessen genau
+# diese Luecke -- und kosten den Boden dicht vor den Fuessen.
+
+
+def test_die_neigung_geht_mit_jedem_fahrbefehl_mit():
+    spot = _Spot(tags=[_tag(3, 0.0, 3.0)], neigt=True)
+    folgen.folge(spot, folgen.tag_finder(), melde=lambda _t: None,
+                 schlaf=lambda _s: None, laeuft=_laeuft_takte(2), blick_grad=12.0)
+    fahrten = [k for k in spot.kommandos if isinstance(k, dict)]
+    assert fahrten and all(k["nick_grad"] == -12.0 for k in fahrten), \
+        "Projektkonvention: Nase hoch ist NEGATIV"
+
+
+def test_ohne_neigung_bleibt_der_fahrbefehl_wie_bisher():
+    spot = _Spot(tags=[_tag(3, 0.0, 3.0)], neigt=True)
+    folgen.folge(spot, folgen.tag_finder(), melde=lambda _t: None,
+                 schlaf=lambda _s: None, laeuft=_laeuft_takte(2))
+    fahrten = [k for k in spot.kommandos if isinstance(k, dict)]
+    assert fahrten and all(k["nick_grad"] == 0.0 for k in fahrten)
+
+
+def test_im_wunschabstand_haelt_er_die_nase_oben():
+    """Sonst legt Spot sie ab, verliert das Gesicht und pendelt zwischen Suchen
+    und Fahren."""
+    spot = _Spot(tags=[_tag(3, 0.0, folgen.WUNSCH_ABSTAND_M)], neigt=True)
+    folgen.folge(spot, folgen.tag_finder(), melde=lambda _t: None,
+                 schlaf=lambda _s: None, laeuft=_laeuft_takte(2), blick_grad=12.0)
+    fahrten = [k for k in spot.kommandos if isinstance(k, dict)]
+    assert fahrten, "auch bei Tempo null geht ein Kommando raus"
+    assert all(k["vx"] == 0.0 and k["nick_grad"] == -12.0 for k in fahrten)
+
+
+def test_ohne_neigung_haelt_er_im_wunschabstand_wie_bisher_an():
+    spot = _Spot(tags=[_tag(3, 0.0, folgen.WUNSCH_ABSTAND_M)], neigt=True)
+    folgen.folge(spot, folgen.tag_finder(), melde=lambda _t: None,
+                 schlaf=lambda _s: None, laeuft=_laeuft_takte(2))
+    assert spot.kommandos == ["stop"], "kein Fahrbefehl, wenn nichts zu tun ist"
+
+
+def test_ein_backend_das_sich_nicht_neigt_sagt_es_und_faehrt_flach():
+    spot = _Spot(tags=[_tag(3, 0.0, 3.0)], neigt=False)
+    gemeldet = []
+    folgen.folge(spot, folgen.tag_finder(), melde=gemeldet.append,
+                 schlaf=lambda _s: None, laeuft=_laeuft_takte(2), blick_grad=12.0)
+    assert any("neigt sich beim Gehen nicht" in m for m in gemeldet)
+    assert all(k["nick_grad"] == 0.0 for k in spot.kommandos if isinstance(k, dict))
+
+
+@pytest.mark.parametrize("gewuenscht, erwartet", [(0.0, 0.0), (10.0, -10.0),
+                                                  (99.0, -folgen.MAX_BLICK_GRAD),
+                                                  (-5.0, 0.0)])
+def test_der_blickwinkel_wird_geklemmt(gewuenscht, erwartet):
+    """Nach unten gibt es nichts zu gewinnen, und nach oben ist bei 20 Grad Schluss."""
+    spot = _Spot(tags=[_tag(3, 0.0, 3.0)], neigt=True)
+    folgen.folge(spot, folgen.tag_finder(), melde=lambda _t: None,
+                 schlaf=lambda _s: None, laeuft=_laeuft_takte(2), blick_grad=gewuenscht)
+    fahrten = [k for k in spot.kommandos if isinstance(k, dict)]
+    assert fahrten and all(k["nick_grad"] == erwartet for k in fahrten)
+
+
+def test_der_gemessene_nick_kommt_aus_dem_zustand():
+    import math
+
+    assert folgen._nick(_Spot(nick=math.radians(-12.0))) == pytest.approx(math.radians(-12.0))
+
+    class _Ohne:
+        @property
+        def state(self):
+            raise RuntimeError("kein Zustand")
+
+    assert folgen._nick(_Ohne()) == 0.0

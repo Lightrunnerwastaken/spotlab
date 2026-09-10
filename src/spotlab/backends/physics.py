@@ -335,7 +335,7 @@ class PhysicsBackend:
 
         return self._call(lambda: gitter_aus(self.sim.local_grid()))
 
-    def mobility_params(self, limits):
+    def mobility_params(self, limits, nick_grad=0.0):
         return mobility.mit_grenze(limits)
 
     def safety_status(self):

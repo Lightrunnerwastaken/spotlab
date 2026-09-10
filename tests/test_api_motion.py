@@ -205,3 +205,47 @@ def test_walk_ohne_stopp_sendet_einmal_und_kehrt_sofort_zurueck():
     assert len(backend.gesendet) == 1, "genau ein Kommando, kein Stopp"
     kommando = backend.gesendet[-1]
     assert kommando.synchronized_command.mobility_command.HasField("se2_velocity_request")
+
+
+# ---------------------------------------------------- Nickwinkel beim Gehen
+
+
+class _MerktParams(DryRunBackend):
+    """Merkt sich, welche Mobility-Parameter beim Fahren mitgehen."""
+
+    def __init__(self):
+        super().__init__()
+        self.power_on()
+        self.gefragt = []
+
+    def mobility_params(self, limits, nick_grad=0.0):
+        self.gefragt.append(nick_grad)
+        return super().mobility_params(limits, nick_grad)
+
+
+def test_ohne_nick_geht_kein_zusaetzliches_feld_mit():
+    """Der Fahrbefehl bleibt Wort fuer Wort, wie er war."""
+    backend = _MerktParams()
+    walk(backend, None, Limits(), vx=0.3, stop=False)
+    assert backend.gefragt == [], "ohne Neigung wird gar nicht erst gefragt"
+
+
+def test_mit_nick_werden_die_parameter_geholt_und_mitgeschickt():
+    backend = _MerktParams()
+    walk(backend, None, Limits(), vx=0.3, stop=False, nick_grad=-12.0)
+    assert backend.gefragt == [-12.0]
+
+
+def test_der_nick_steht_in_der_aufzeichnung(tmp_path):
+    """Sonst weiss hinterher niemand, mit welcher Koerperlage gefahren wurde."""
+    import json
+
+    from spotlab.record.run import RunRecorder
+
+    rec = RunRecorder(tmp_path, None, backend="dryrun")
+    walk(_backend(), rec, Limits(), vx=0.2, stop=False, nick_grad=-8.0)
+    rec.finish("ok")
+    zeilen = (rec.dir / "ereignisse.jsonl").read_text(encoding="utf-8").splitlines()
+    kommandos = [json.loads(z)["daten"] for z in zeilen if z.strip()
+                 and json.loads(z)["daten"].get("name") == "walk"]
+    assert kommandos and kommandos[0]["nick_grad"] == -8.0

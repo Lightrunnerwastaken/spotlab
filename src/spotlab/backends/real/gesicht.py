@@ -135,16 +135,24 @@ def abstand_in_richtung(punkte, peilung, hoehenwinkel, fenster=FENSTER_GRAD,
 
 
 def gesichter(feld, pano, erkenner_, punkte, kamerahoehe,
-              unten=KOPF_UNTEN_M, oben=KOPF_OBEN_M):
+              unten=KOPF_UNTEN_M, oben=KOPF_OBEN_M, blick_grad=0.0):
     """Geprüfte Gesichter aus einem Panorama, das nächste zuerst.
 
     Geprüft heisst: der Kasten hat eine gemessene Entfernung UND liegt damit auf
     Kopfhöhe. Ein Kasten ohne Tiefenpunkte zählt nicht — ohne Entfernung gibt es
     keine Gegenprobe, und ohne Gegenprobe ist ein Schienbein ein Gesicht.
+
+    `blick_grad` ist die Neigung des Körpers nach OBEN. Der Höhenwinkel aus dem
+    Panorama ist KÖRPERFEST: hebt Spot die Nase, erscheint derselbe Punkt weiter
+    unten im Bild. Ohne diese Korrektur läge ein Gesicht auf drei Metern bei 15°
+    Neigung rund 80 cm zu tief und fiele durch die Prüfung. Die Tiefenpunkte sind
+    dagegen schon schwerkraftgerecht aufgerichtet (`tiefe.py`), deshalb wird auch
+    für sie der korrigierte Winkel genommen.
     """
     gefunden = []
     for x, y, breite, hoehe, score in kaesten(feld, erkenner_):
-        peilung, hoehenwinkel = pano.winkel(x + breite / 2.0, y + hoehe / 2.0)
+        peilung, im_bild = pano.winkel(x + breite / 2.0, y + hoehe / 2.0)
+        hoehenwinkel = im_bild + float(blick_grad)
         abstand = abstand_in_richtung(punkte, peilung, hoehenwinkel)
         if abstand is None:
             continue

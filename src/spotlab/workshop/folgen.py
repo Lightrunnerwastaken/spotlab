@@ -59,6 +59,13 @@ GESICHT_QUELLEN = ("frontright_fisheye_image", "frontleft_fisheye_image")
 TIEFE_QUELLEN = ("frontleft_depth", "frontright_depth")
 TAKT_S = 0.2
 VERLOREN_S = 5.0                 # danach sagt er es einmal
+# Wie weit Spot die Nase hebt, damit die Kameras hoeher schauen. 0 = gar nicht.
+# Gemessen (`backends/real/gesicht.py`): ohne Neigung kommt ein stehendes Gesicht
+# erst ab 2.31 m ins Bild, mit 10 Grad ab 1.46 m, mit 15 Grad ab 1.18 m. Der
+# Preis steht daneben: der Boden vor den Fuessen verschwindet, bei 15 Grad ist er
+# erst ab 0.66 m statt 0.32 m im Bild.
+BLICK_GRAD = 0.0
+MAX_BLICK_GRAD = 20.0
 
 
 @dataclass(frozen=True)
@@ -152,11 +159,15 @@ def gesicht_finder(modell=None, mindestscore=None, quellen=GESICHT_QUELLEN,
                 gemerkt["pano"].breite, gemerkt["pano"].hoehe, modell,
                 mindestscore or gesichtsmodul.MINDESTSCORE,
             )
-            gemerkt["hoehe"] = gemerkt["pano"].kamerahoehe()
         feld = gemerkt["pano"].zusammensetzen(panorama.bilder_aus(grau))
         punkte = np.vstack([tiefe.punkte_aus_bild(a) for a in tiefen])
+        # Der GEMESSENE Nick, nicht der befohlene: so stimmt die Rechnung auch,
+        # wenn Spot an einer Rampe steht oder unsere Neigung nicht ganz umsetzt.
+        # `state.pitch` ist im Bogenmass, Nase hoch NEGATIV (Projektkonvention).
+        blick = -math.degrees(_nick(spot))
         gefunden = gesichtsmodul.gesichter(
-            feld, gemerkt["pano"], gemerkt["erkenner"], punkte, gemerkt["hoehe"]
+            feld, gemerkt["pano"], gemerkt["erkenner"], punkte,
+            gemerkt["pano"].kamerahoehe(blick), blick_grad=blick,
         )
         if not gefunden:
             return None
@@ -164,6 +175,14 @@ def gesicht_finder(modell=None, mindestscore=None, quellen=GESICHT_QUELLEN,
         return Ziel(kopf.bearing, kopf.distance, f"Gesicht auf {kopf.height:.2f} m")
 
     return finde
+
+
+def _nick(spot):
+    """Der gemessene Nickwinkel des Körpers in RAD — 0.0, wenn nicht lesbar."""
+    try:
+        return float(spot.state.pitch)
+    except Exception:
+        return 0.0
 
 
 def zuerst(*finder):
@@ -283,12 +302,28 @@ def befehl(ziel, wunsch=WUNSCH_ABSTAND_M, mindest=MIN_ABSTAND_M, toleranz=TOLERA
 
 def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
           schlaf=time.sleep, takt_s=TAKT_S, laeuft=None, lauf_dir=None,
-          kopfraum_takt_s=KOPFRAUM_TAKT_S):
+          kopfraum_takt_s=KOPFRAUM_TAKT_S, blick_grad=BLICK_GRAD):
     """Die Schleife: Ziel suchen, Abstand halten, bei jeder Schranke stehen bleiben.
+
+    `blick_grad` hebt die Nase während der Fahrt, damit die Kameras höher
+    schauen — positiv, in Grad. Damit kommt ein stehendes Gesicht schon auf
+    Folgeabstand ins Bild statt erst ab zweieinhalb Metern. Der Preis: der Boden
+    dicht vor den Füssen fällt aus dem Blickfeld, und das ist genau der Bereich,
+    in dem die Hindernisschranke prüft. Deshalb ist die Vorgabe 0.
+
+    Auch im STEHEN bleibt die Neigung: sonst legt Spot die Nase ab, sobald er im
+    Wunschabstand ist, verliert das Gesicht und pendelt zwischen Suchen und
+    Fahren. Ein Kommando mit Tempo null hält die Lage; es verfällt wie jedes
+    andere nach rund einer Sekunde.
 
     Testbar ohne Roboter: `spot` braucht `walk` und `stop`, dazu was der Finder
     und die Schranken abfragen. Am Ende hält Spot immer.
     """
+    blick_grad = max(0.0, min(MAX_BLICK_GRAD, float(blick_grad)))
+    if blick_grad and not getattr(getattr(spot, "backend", None), "neigt_beim_gehen", False):
+        melde("Dieses Backend neigt sich beim Gehen nicht — der Blickwinkel bleibt flach.")
+        blick_grad = 0.0
+    nick = -blick_grad          # Projektkonvention: Nase hoch ist negativ
     finder = finder or tag_finder()
     if laeuft is None:
         if lauf_dir is None:
@@ -337,12 +372,13 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
                 else:
                     letzter_grund = ""
 
-            if (vx, wz) == (0.0, 0.0):
+            if (vx, wz) == (0.0, 0.0) and not blick_grad:
                 if faehrt:
                     spot.stop()
                     faehrt = False
             else:
-                spot.walk(vx=vx, vy=0.0, wz=wz, stop=False)
+                # Mit Neigung auch bei Tempo null: das haelt die Nase oben.
+                spot.walk(vx=vx, vy=0.0, wz=wz, stop=False, nick_grad=nick)
                 faehrt = True
             schlaf(takt_s)
     finally:

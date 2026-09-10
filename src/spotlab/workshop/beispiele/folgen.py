@@ -12,6 +12,13 @@ näher sieht Spot Beine. Das Tag übernimmt genau dort. Fehlt OpenCV oder das
 Gesichtsmodell, fällt der erste Finder aus und das Tag trägt allein; warum,
 steht im Protokoll.
 
+Mit `blick_grad` hebt Spot beim Gehen die Nase, damit die Kameras höher
+schauen — zwölf Grad holen das Gesicht von zweieinhalb Metern auf gut einen
+Meter herunter. Dafür sieht er den Boden dicht vor den Füssen nicht mehr, und
+genau dort prüft die Hindernisschranke. Deshalb ist die Vorgabe null:
+
+    folgen.folge(spot, finder, lauf_dir=…, blick_grad=12)
+
 Nur ein Weg, wenn du vergleichen willst:
 
     folgen.folge(spot, folgen.tag_finder(), lauf_dir=…)        # nur das Tag

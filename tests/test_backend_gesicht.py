@@ -162,3 +162,43 @@ def test_das_echte_schienbein_faellt_durch_die_gegenprobe():
     punkte = np.vstack([_wolke(1.0, p, h, anzahl=40)
                         for p in range(-60, 61, 5) for h in (-20, 0, 20)])
     assert gesicht.gesichter(feld, pano, erkenner_, punkte, pano.kamerahoehe()) == []
+
+
+# ============ Mit geneigtem Koerper
+#
+# Der Hoehenwinkel aus dem Panorama ist KOERPERFEST. Hebt Spot die Nase,
+# erscheint derselbe Punkt weiter unten im Bild -- ohne Korrektur laege ein
+# Gesicht auf drei Metern bei 15 Grad Neigung rund 80 cm zu tief.
+
+
+def test_ohne_korrektur_faellt_ein_gesicht_bei_geneigtem_koerper_durch(monkeypatch):
+    """Die Gegenprobe rechnet den Nick heraus -- sonst verwirft sie den Kopf."""
+    _mit_kaesten(monkeypatch, [(700.0, 100.0, 40.0, 50.0, 0.8)])
+    # Der Kopf steht 3 m voraus auf 1.55 m, der Koerper ist 15 Grad geneigt.
+    # Im Bild erscheint er deshalb bei 20 - 15 = 5 Grad.
+    punkte = _wolke(3.0, 0.0, 20.0)
+    pano = _Pano(0.0, 5.0)
+
+    ohne = gesicht.gesichter(None, pano, None, punkte, 0.46)
+    assert ohne == [], "ohne Korrektur passt weder Richtung noch Hoehe"
+
+    [kopf] = gesicht.gesichter(None, pano, None, punkte, 0.56, blick_grad=15.0)
+    assert kopf.elevation == pytest.approx(20.0)
+    assert kopf.height == pytest.approx(0.56 + 3.0 * math.tan(math.radians(20.0)), abs=0.01)
+
+
+def test_die_kamera_hebt_sich_mit_der_nase():
+    """Sie sitzt 38 cm vor der Koerpermitte -- bei 15 Grad steigt sie gut 10 cm."""
+    import sys
+    from pathlib import Path as _Path
+
+    sys.path.insert(0, str(_Path(__file__).parent))
+    from test_backend_panorama import _paar
+
+    from spotlab.backends.real import panorama
+
+    pano = panorama.Panorama(panorama.kalibrierung_aus(_paar(90)))
+    flach = pano.kamerahoehe()
+    geneigt = pano.kamerahoehe(15.0)
+    assert geneigt - flach == pytest.approx(0.10, abs=0.02)
+    assert pano.kamerahoehe(0.0) == pytest.approx(flach)

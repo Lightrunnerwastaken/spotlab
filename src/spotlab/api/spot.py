@@ -82,17 +82,20 @@ class Spot:
             timeout=timeout,
         )
 
-    def walk(self, vx=0.0, vy=0.0, wz=0.0, duration=1.0, stop=True):
+    def walk(self, vx=0.0, vy=0.0, wz=0.0, duration=1.0, stop=True, nick_grad=0.0):
         """Fährt duration Sekunden lang mit den angegebenen Geschwindigkeiten.
 
         vx, vy in m/s (vorwärts, links), wz in rad/s (links positiv). Mit
         `stop=False` kehrt der Aufruf sofort zurück und hält am Ende nicht an —
         für Schleifen, die laufend neu lenken; Spot fährt dann höchstens eine
         Sekunde weiter, bis das nächste Kommando kommt.
+
+        `nick_grad` neigt den Körper WÄHREND der Fahrt: negativ hebt die Nase,
+        und damit schauen die Kameras höher. Nur am echten Roboter.
         """
         motion.walk(
             self.backend, self.recorder, self.limits, vx=vx, vy=vy, wz=wz,
-            duration=duration, stop=stop,
+            duration=duration, stop=stop, nick_grad=nick_grad,
         )
 
     def stop(self):

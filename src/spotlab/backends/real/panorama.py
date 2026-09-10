@@ -148,10 +148,18 @@ class Panorama:
         tangens = (self._oben + zeile - HORIZONT * self._voll_hoehe) / self.brennweite
         return -math.degrees(azimut), -math.degrees(math.atan(tangens))
 
-    def kamerahoehe(self, standhoehe_m=STANDHOEHE_M):
-        """Wie hoch die virtuelle Kamera über dem Boden sitzt, in Metern."""
+    def kamerahoehe(self, blick_grad=0.0, standhoehe_m=STANDHOEHE_M):
+        """Wie hoch die virtuelle Kamera über dem Boden sitzt, in Metern.
+
+        `blick_grad` ist die Neigung des Körpers nach OBEN (positiv). Die Kamera
+        sitzt 38 cm vor der Körpermitte; hebt Spot die Nase, hebt sich die Kamera
+        mit — bei 15° um gut 10 cm. Das gehört in die Rechnung, sonst liegt die
+        geprüfte Kopfhöhe daneben.
+        """
+        x = float(sum(k.lage[0, 3] for k in self.kameras) / len(self.kameras))
         z = float(sum(k.lage[2, 3] for k in self.kameras) / len(self.kameras))
-        return standhoehe_m + z
+        bogen = math.radians(float(blick_grad))
+        return standhoehe_m + x * math.sin(bogen) + z * math.cos(bogen)
 
     # ------------------------------------------------------------ Aufbau
 

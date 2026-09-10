@@ -864,6 +864,22 @@ Abstand vor den Roboter und schaut ihn an, dann kommt sie langsam näher.
 - (10) Ohne Modell oder ohne OpenCV läuft das Beispiel weiter, das Tag trägt allein, und im
   Protokoll steht der Grund.
 
+**Teil 4 — Nickwinkel.** Das Beispiel mit `blick_grad=12` starten. Vorher jemanden mit
+einem Zollstock danebenstellen, um die Körperneigung grob abzulesen.
+
+**Erwartung Teil 4**
+- (11) Spot hebt beim Losgehen sichtbar die Nase und behält sie auch, wenn er im
+  Wunschabstand steht. **Notieren, wie viel Neigung er wirklich zeigt**: gefordert sind 12°,
+  und der Roboter darf begrenzen. Zum Vergleich `spot.state.pitch` aus der Aufzeichnung
+  lesen — der Wert steht auch in `ereignisse.jsonl` als `nick_grad` des Kommandos.
+- (12) Das Gesicht wird jetzt schon auf Folgeabstand gefunden, nicht erst ab zweieinhalb
+  Metern. Der Wechsel zum Tag aus Punkt (8) sollte ausbleiben oder viel später kommen.
+- (13) Gegenprobe zur Hindernisschranke: einen flachen Gegenstand (Kiste, Rucksack) in den
+  Weg legen. Spot muss trotzdem stehen bleiben. Bleibt er NICHT stehen, ist die Neigung zu
+  gross für das Hindernisgitter — dann `blick_grad` senken und den Wert hier notieren.
+- (14) Mit `blick_grad=20` wiederholen und prüfen, ob der Roboter das noch annimmt oder von
+  sich aus begrenzt.
+
 **Beobachten statt annehmen** Wie ruhig der Kurs bei einer gehenden Person ist. Wenn Spot
 pendelt, sind `LENKUNG` und `SCHWENK_GRAD` die Stellschrauben; die Werte hier sind gesetzt,
 nicht gemessen. Ebenso notieren, ab welcher Gehgeschwindigkeit er nicht mehr mitkommt.

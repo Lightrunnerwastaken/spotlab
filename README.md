@@ -479,6 +479,27 @@ verbietet die Fahrt statt sie zu erlauben:
 | Kopfraum | Vorwärts nur, wenn nichts über dem Weg hängt — das Gitter ist eine Bodenkarte und sieht keine Tischplatte. |
 | Sperrzonen | Nur mit Raum und Verortung; ohne beides sagt er es, statt Sicherheit vorzutäuschen. |
 
+**Höher schauen während der Fahrt.** Spots Frontkameras schauen nach unten, und deshalb
+kommt ein stehendes Gesicht erst spät ins Bild. Mit `blick_grad` hebt Spot beim Gehen die
+Nase, und die Kameras schauen mit:
+
+| Nickwinkel | Gesicht 1.60 m sichtbar ab | Boden erst ab |
+|---|---|---|
+| 0° | 2.31 m | 0.32 m |
+| 10° | 1.46 m | 0.52 m |
+| 15° | 1.18 m | 0.66 m |
+
+```python
+folgen.folge(spot, finder, lauf_dir=…, blick_grad=12)
+```
+
+Zehn bis fünfzehn Grad reichen, damit ein Gesicht schon auf Folgeabstand im Bild ist. Der
+Preis steht in der rechten Spalte: der Boden dicht vor den Füssen fällt aus dem Blick, und
+das ist der Bereich, in dem die Hindernisschranke prüft. Deshalb ist die Vorgabe null. Die
+Neigung bleibt auch im Stehen, sonst legt Spot die Nase ab, sobald er im Wunschabstand ist,
+verliert das Gesicht und pendelt. Wie viel Neigung der Roboter im Laufen wirklich zulässt,
+misst Abnahmepunkt A34.
+
 Der Tempodeckel aus `config.toml` gilt zusätzlich. **Spot bewegt sich dabei autonom**:
 Freifläche, Aufsicht, Tablet mit Not-Aus in Reichweite, und vor dem ersten Mal A1 und A34.
 

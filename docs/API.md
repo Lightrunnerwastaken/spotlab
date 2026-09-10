@@ -43,7 +43,7 @@ normalerweise weglassen.
 | `stand(height=0.0, timeout=10.0, schlaf=None)` | Steht auf. height hebt oder senkt den Körper in Metern. |
 | `sit(timeout=10.0, schlaf=None)` | Setzt sich hin. |
 | `move(forward=0.0, left=0.0, turn=0.0, timeout=30.0)` | Geht eine feste Strecke in Metern und dreht sich um turn in Grad. |
-| `walk(vx=0.0, vy=0.0, wz=0.0, duration=1.0, stop=True)` | Fährt duration Sekunden lang mit den angegebenen Geschwindigkeiten. |
+| `walk(vx=0.0, vy=0.0, wz=0.0, duration=1.0, stop=True, nick_grad=0.0)` | Fährt duration Sekunden lang mit den angegebenen Geschwindigkeiten. `nick_grad` neigt den Körper während der Fahrt (negativ hebt die Nase, die Kameras schauen dann höher); nur am echten Roboter. |
 | `stop()` | Hält sofort an. |
 | `supports(feature)` | Prueft look, camera, tags, stairs, navigate_to, pose, lights oder beep. |
 | `look(max_distance=1.8, margin=0.3, start=0.0)` | Umgebung relativ zu Spot: front/left/right/back mit status, distance und known. |

@@ -332,7 +332,7 @@ class SimBackend:
     def hinweis_zur_gueltigkeit():
         return HINWEIS
 
-    def mobility_params(self, limits):
+    def mobility_params(self, limits, nick_grad=0.0):
         return mobility.mit_grenze(limits)
 
     def image_sources(self):

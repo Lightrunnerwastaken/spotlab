@@ -59,6 +59,28 @@ versionsgepinntes Extra `spotlab[sim]`.
   den Tiefenkameras, nie aus der Kastengrösse: an ihr hängt der Mindestabstand des
   Folgemodus, und eine geschätzte Entfernung wäre dort erfundene Sicherheit. Ein Kasten ohne
   Tiefenpunkte zählt gar nicht — ohne Gegenprobe ist ein Schienbein ein Gesicht.
+- **Neigen beim GEHEN geht nur über `base_offset_rt_footprint`.** Das naheliegende
+  `body_pose` wirkt laut Protokoll ausdrücklich NUR zusammen mit einem Stehkommando — und
+  genau deshalb kann `spot.pose()` nur im Stand. Der Nickwinkel geht deshalb als
+  `BodyControlParams` in den Mobility-Parametern mit dem Geschwindigkeitskommando
+  (`backends/mobility.py::koerperneigung`). **Vorzeichen: Nase hoch ist NEGATIV**, wie
+  überall im Projekt; `tests/test_backend_mobility.py` prüft das an der gedrehten
+  Blickrichtung UND daran, dass `rpy_aus` denselben Wert zurückliest — an dieser Naht hängt
+  der Gesichts-Finder, der mit dem GEMESSENEN Nick rechnet. OHNE Neigung geht kein Feld mehr
+  mit als bisher: erst wer neigt, bekommt überhaupt Parameter, und dann auch Deckel und
+  Treppenmodus, weil sie in derselben Nachricht stehen.
+- **Wer neigt, verliert den Boden vor den Füssen.** Gemessen: bei 15° ist der Boden erst ab
+  0.66 m im Bild statt ab 0.32 m — genau der Bereich, in dem die Hindernisschranke des
+  Folgemodus prüft. Deshalb ist `BLICK_GRAD` null als Vorgabe, bei 20° ist Schluss, und ein
+  Backend ohne `neigt_beim_gehen` sagt es, statt still flach zu fahren. **Die Neigung bleibt
+  auch im Stehen** (ein Kommando mit Tempo null statt `stop()`): sonst legt Spot die Nase ab,
+  sobald er im Wunschabstand ist, verliert das Gesicht und pendelt zwischen Suchen und Fahren.
+- **Der Höhenwinkel aus dem Panorama ist KÖRPERFEST, die Tiefenpunkte sind es nicht.**
+  `tiefe.py` richtet seine Punktwolke an der Schwerkraft aus, das Panorama nicht. Bei
+  geneigtem Körper müssen beide auf denselben Bezug gebracht werden, sonst läge ein Gesicht
+  auf drei Metern bei 15° Neigung rund 80 cm zu tief und fiele durch die Gegenprobe. Gerechnet
+  wird mit dem GEMESSENEN Nick aus `state.pitch`, nicht mit dem befohlenen — so stimmt es auch
+  an einer Rampe und wenn der Roboter unsere Neigung nicht ganz umsetzt.
 - **Die Frontkameras schauen nach unten, und das begrenzt jede Bildstrategie.** Gemessen:
   bei 1.5 m reicht das Bild bis 1.20 m Höhe, bei 3.0 m bis 1.94 m. Ein stehender Mensch hat
   erst ab gut zweieinhalb Metern ein Gesicht im Bild — der Folgemodus will aber 1.6 m
@@ -768,6 +790,13 @@ versionsgepinntes Extra `spotlab[sim]`.
   steht an genau EINER Stelle: `src/spotlab/__init__.py`.
 
 ## Umsetzungsstand
+
+**Stufe 21 (10.09.2026): Nickwinkel beim Gehen** — `spot.walk(nick_grad=…)` neigt den
+Körper während der Fahrt (`mobility.koerperneigung`, `base_offset_rt_footprint`), der
+Folgemodus hat dafür die Option `blick_grad` samt Klemmung, Erlaubnisliste
+(`neigt_beim_gehen`) und Halten der Lage im Stehen. Die Gegenprobe des Gesichts-Finders
+rechnet den gemessenen Nick heraus, `Panorama.kamerahoehe()` hebt die Kamera mit. Am Gerät:
+A34 Teil 4 misst, wie viel Neigung der Roboter im Laufen wirklich zulässt.
 
 **Stufe 20 (10.09.2026): Gesichter als vierter Finder** — `backends/real/gesicht.py`
 (YuNet über das optionale Extra `[gesicht]`, Modell aus `~/.spotlab/modelle/` oder

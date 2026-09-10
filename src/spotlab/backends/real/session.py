@@ -61,6 +61,10 @@ class RealSpot:
     # vortäuscht und die Ansicht selbst rendert, bekommt sonst zwei Schreiber
     # auf `ansicht.jpg`.
     blick_aus_kameras = True
+    # Erlaubnis wie oben: nur hier wirkt eine Körperneigung beim Gehen. Die Sims
+    # bekämen die Parameter zwar, führten sie aber nicht aus -- und ein Schüler
+    # saehe im Uebungsraum nichts und hielte es fuer kaputt.
+    neigt_beim_gehen = True
 
     def __init__(
         self,
@@ -215,8 +219,8 @@ class RealSpot:
     def frame_tree_snapshot(self):
         return self._robot.get_frame_tree_snapshot()
 
-    def mobility_params(self, limits):
-        return mobility.mit_grenze(limits)
+    def mobility_params(self, limits, nick_grad=0.0):
+        return mobility.mit_grenze(limits, nick_grad)
 
     def image_sources(self):
         if self._quellen is None:

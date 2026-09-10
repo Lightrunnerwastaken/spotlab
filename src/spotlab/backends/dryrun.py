@@ -119,7 +119,7 @@ class DryRunBackend:
 
     # ------------------------------------------------------------- Kommandos
 
-    def mobility_params(self, limits):
+    def mobility_params(self, limits, nick_grad=0.0):
         return mobility.mit_grenze(limits)
 
     def send_command(self, command, end_time_secs=None):

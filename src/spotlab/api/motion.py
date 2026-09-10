@@ -56,6 +56,7 @@ def walk(
     wz=0.0,
     duration=1.0,
     stop=True,
+    nick_grad=0.0,
     schlaf=time.sleep,
     jetzt=time.monotonic,
     wanduhr=time.time,
@@ -80,20 +81,28 @@ def walk(
     vx, vy, wz = clamp(vx, vy, wz, limits)
     if recorder is not None:
         recorder.event("kommando", name="walk", vx=vx, vy=vy, wz=wz, duration=duration,
-                       stop=stop)
-    if not stop:
+                       stop=stop, nick_grad=float(nick_grad))
+    # OHNE Neigung geht kein Feld mehr mit als bisher. Erst wer neigt, bekommt
+    # ueberhaupt Parameter -- und dann auch Deckel und Treppenmodus, weil sie in
+    # derselben Nachricht stehen. Der Deckel ist dieselbe Formulierung wie beim
+    # Klemmen oben (`mobility.se2_grenze`), also kein zweiter Wert.
+    params = backend.mobility_params(limits, nick_grad) if nick_grad else None
+
+    def einmal():
         backend.send_command(
-            RobotCommandBuilder.synchro_velocity_command(v_x=vx, v_y=vy, v_rot=wz),
+            RobotCommandBuilder.synchro_velocity_command(
+                v_x=vx, v_y=vy, v_rot=wz, params=params
+            ),
             end_time_secs=wanduhr() + KOMMANDO_GUELTIGKEIT_S,
         )
+
+    if not stop:
+        einmal()
         return
 
     ende = jetzt() + float(duration)
     while jetzt() < ende:
-        backend.send_command(
-            RobotCommandBuilder.synchro_velocity_command(v_x=vx, v_y=vy, v_rot=wz),
-            end_time_secs=wanduhr() + KOMMANDO_GUELTIGKEIT_S,
-        )
+        einmal()
         schlaf(NACHSENDE_INTERVALL_S)
     _anhalten(backend, recorder)
 

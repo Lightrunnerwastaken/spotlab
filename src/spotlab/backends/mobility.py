@@ -14,8 +14,11 @@ desselben Grenzwerts wären zwei Gelegenheiten, ihn unterschiedlich falsch zu
 schreiben — und die eine, die stimmt, verdeckte die andere.
 """
 
-from bosdyn.api import geometry_pb2
+import math
+
+from bosdyn.api import geometry_pb2, trajectory_pb2
 from bosdyn.api.spot import robot_command_pb2 as spot_command_pb2
+from bosdyn.geometry import EulerZXY
 
 
 def se2_grenze(limits):
@@ -42,7 +45,33 @@ TREPPENMODUS = {
 }
 
 
-def mit_grenze(limits):
+def koerperneigung(nick_grad):
+    """`BodyControlParams`, die den Körper um `nick_grad` neigen — beim GEHEN.
+
+    Das Feld ist `base_offset_rt_footprint`: die Lage des Körpers über dem
+    Fussabdruck, und die wirkt während der Fahrt. Das naheliegende `body_pose`
+    wäre falsch — laut Protokoll wirkt es NUR zusammen mit einem Stehkommando,
+    und genau deshalb kann `spot.pose()` nur im Stand neigen.
+
+    Vorzeichen wie überall im Projekt: Drehung um y nach der Rechte-Hand-Regel,
+    **Nase hoch ist NEGATIV**. So liest `api/state.py::rpy_aus` den echten Spot,
+    so rechnet MuJoCo, so liefert `welt/hoehe.py::nick_grad`.
+
+    `rotation_setting` bleibt ungesetzt, also die Vorgabe: der Winkel gilt
+    ZUSÄTZLICH zur Geländeneigung. Die Alternative (schwerkraftfest) verschlechtert
+    laut Protokollkommentar die Leistung in schwierigem Gelände.
+    """
+    lage = geometry_pb2.SE3Pose(
+        position=geometry_pb2.Vec3(),
+        rotation=EulerZXY(pitch=math.radians(float(nick_grad))).to_quaternion(),
+    )
+    punkt = trajectory_pb2.SE3TrajectoryPoint(pose=lage)
+    return spot_command_pb2.BodyControlParams(
+        base_offset_rt_footprint=trajectory_pb2.SE3Trajectory(points=[punkt])
+    )
+
+
+def mit_grenze(limits, nick_grad=0.0):
     """MobilityParams, die NICHTS anderes tun als Deckel und Treppenmodus zu setzen.
 
     Bewusst ein nacktes Protobuf statt `RobotCommandBuilder.mobility_params()`:
@@ -53,7 +82,10 @@ def mit_grenze(limits):
     besser weiss. `treppen` kommt aus `config.toml [limits]`, geprüft beim
     Laden; der Sim liest denselben Wert (Treppen sind bei "aus" Klippen).
     """
-    return spot_command_pb2.MobilityParams(
+    params = spot_command_pb2.MobilityParams(
         vel_limit=se2_grenze(limits),
         stairs_mode=TREPPENMODUS[getattr(limits, "treppen", "auto")],
     )
+    if nick_grad:
+        params.body_control.CopyFrom(koerperneigung(nick_grad))
+    return params
