@@ -503,6 +503,52 @@ misst Abnahmepunkt A34.
 Der Tempodeckel aus `config.toml` gilt zusätzlich. **Spot bewegt sich dabei autonom**:
 Freifläche, Aufsicht, Tablet mit Not-Aus in Reichweite, und vor dem ersten Mal A1 und A34.
 
+## Gehzeit — Spot misst einen Schulversuch mit
+
+Ein Versuch aus der Verhaltensbiologie: wie schnell gehen Leute, und hängt das von der
+Gruppengrösse ab? Mit der Stoppuhr in der Hand misst man immer nur eine Gruppe. Spot
+stellt sich seitlich in den Gang und stoppt für jeden gleichzeitig.
+
+Aufbau: zwei AprilTags an die Enden der Strecke, Spot so hinstellen, dass er beide sieht,
+jede Person trägt ein Tag am Rucksack. Dann `Beispiele/gehzeit.py` starten.
+
+```
+Strecke 8.42 m zwischen Tag 1 und Tag 2 (Streuung 0.03 m, 12 Abtastungen).
+  tag7: 6.10 s für 8.42 m = 1.38 m/s
+  tag8: 6.35 s für 8.42 m = 1.33 m/s
+  tag9: verworfen (gestoppt)
+```
+
+**Die Strecke wird gemessen, nicht eingetippt.** Ein eingetippter Wert stimmt beim ersten
+Aufbau und bleibt stehen, wenn jemand die Tags am nächsten Tag zwei Meter weiter hängt —
+die Zeiten sähen weiter richtig aus, und jedes Tempo wäre um denselben Faktor falsch.
+Gerechnet wird über den Median mehrerer Blicke, und wie stark sie streuten, steht daneben.
+
+**Spot bewegt sich dabei nicht** und hält kein Lease (`connect(nur_lesen=True)`): die
+Aufsichtsperson behält das Tablet in der Hand.
+
+**Wer stehen bleibt, umkehrt oder verschwindet, wird verworfen** — mit Grund in der
+Tabelle, nicht stillschweigend.
+
+**Die Gruppengrösse trägt ein Mensch nach.** Ob drei Leute eine Gruppe waren oder drei
+Einzelne, die zufällig gleichzeitig losgingen, kann Spot nicht wissen. Er schlägt vor, wer
+gleichzeitig unterwegs war, und hält Bilder des Abschnitts bereit:
+
+```bash
+python -m spotlab.experiment.nachtrag runs/20260910T094103Z_ab12cd34
+```
+
+Dort sieht man die Durchgänge mit Uhrzeit, Zeit und Tempo, dazu die Bilder. Klasse und
+Gruppengrösse kommen in dieselbe Tabelle — `gehzeit/gehzeit.csv`, Semikolon und
+Dezimalkomma, öffnet sich mit einem Doppelklick. Am Schluss fragt das Programm, ob die
+Bilder gelöscht werden sollen: es sind Aufnahmen von Mitschülern, gemacht für genau eine
+Frage.
+
+Kein Alter aus dem Gesicht, und das ist Absicht: über die Aufzeichnung vom 12.08.2026
+fand der Gesichtserkenner in 4 von 107 Takten etwas, und die zwei nachgesehenen Treffer
+waren eine Stuhllehne und ein Schienbein. Eine Altersschätzung darauf stünde
+ununterscheidbar neben gemessenen Zeiten.
+
 ## Umwelt — was Spot gerade sieht
 
 Der Spot führt selbst eine Liste der Objekte, die er erkennt: AprilTags, Dockingstationen,

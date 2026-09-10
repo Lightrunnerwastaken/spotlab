@@ -898,6 +898,60 @@ nicht gemessen. Ebenso notieren, ab welcher Gehgeschwindigkeit er nicht mehr mit
 
 ---
 
+## A35 — Gehzeit: Spot misst einen Schulversuch mit
+
+**Voraussetzung** KEINE. Dieser Versuch bewegt den Roboter nicht und verbindet ohne
+Lease (`nur_lesen=True`) — er steht damit neben A21 und nicht hinter A1. Das Tablet
+darf jemand in der Hand behalten. Gebraucht werden zwei AprilTags für die Strecke,
+ein drittes zum Tragen und ein Gang von mindestens acht Metern.
+
+**Vorgehen** Die zwei Streckentags an die Enden hängen, flach und auf Kniehöhe. Spot
+seitlich so hinstellen, dass er beide gleichzeitig sieht. `Beispiele/gehzeit.py`
+starten. Zuerst die Strecke mit dem Massband nachmessen und den Wert notieren. Dann:
+eine Person mit Tag durchlaufen; danach zwei bis drei zusammen; danach eine, die auf
+halber Strecke stehen bleibt und redet; danach eine, die umkehrt.
+
+**Erwartung**
+- (1) Die gemeldete Länge liegt beim Massbandwert. **Die Abweichung und die gemeldete
+  Streuung notieren** — daran hängt jedes Tempo in der Tabelle. Erwartet werden
+  wenige Zentimeter; mehr als 0.5 m lehnt das Programm von sich aus ab.
+- (2) Das Tablet verliert sein Lease nicht, und der Spot bewegt sich während des
+  ganzen Versuchs um keinen Millimeter (dieselbe Gegenprobe wie A21).
+- (3) Der Einzelläufer erscheint als ein Durchgang mit einer Person; die Zeit stimmt
+  mit einer Handstoppuhr auf ein paar Zehntel. **Die Differenz notieren.**
+- (4) Die Gruppe erscheint als EIN Durchgang mit dem Vorschlag „so viele Personen".
+- (5) Wer stehen bleibt, wird verworfen, Grund „gestoppt"; wer umkehrt, Grund
+  „umgekehrt". Beide stehen mit Grund in der Tabelle, nicht bloss fehlend.
+- (6) Bis zu welcher Entfernung die Tags der Läufer überhaupt erkannt werden —
+  **notieren**, das ist die eigentliche Grenze des Aufbaus (vgl. A22). Ein Tag, das
+  auf halber Strecke aussetzt, erzeugt „verloren".
+
+**Teil 2 — der Personen-Tracker.** Nur, wenn A34 Teil 1 gezeigt hat, dass dieser Spot
+Menschen verfolgt. Denselben Ablauf mit `gehzeit.personen_quelle()` als `quelle`, ohne
+Tags an den Personen. **Notieren, ob die Nummer einer Person über die ganze Strecke
+dieselbe bleibt** — wechselt sie, zerfällt ein Lauf in zwei halbe, und der Tag-Weg
+bleibt der richtige.
+
+**Teil 3 — der Nachtrag.** `python -m spotlab.experiment.nachtrag <Lauf>`.
+
+**Erwartung Teil 3**
+- (7) Zu jedem Durchgang gibt es Bilder aus seinem Zeitfenster, und darauf ist zu
+  erkennen, wer zusammengehörte.
+- (8) Klasse und Gruppengrösse landen in `gehzeit/gehzeit.csv`; Spots Messwerte
+  bleiben unverändert.
+- (9) Die Tabelle öffnet sich mit einem Doppelklick als Tabelle, nicht als eine
+  Spalte Text.
+- (10) Das Löschen entfernt die Bilder wirklich, und der Bildindex zeigt danach auf
+  keine fehlende Datei mehr.
+
+**Warum am Gerät** Die Kette ist im Test durchgespielt (`tests/test_workshop_gehzeit.py`),
+aber drei Zahlen kann nur der Gang liefern: die Erkennungsreichweite der Tags, die
+Streuung der Streckenmessung und ob eine Person über acht Meter dieselbe Kennung behält.
+
+**Ergebnis** _(offen)_
+
+---
+
 ## Nach der Abnahme
 
 Ergebnisse hier eintragen, Abweichungen als Befund in die Spec zurückspielen, und erst

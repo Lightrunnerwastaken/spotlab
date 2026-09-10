@@ -183,6 +183,18 @@ class RunRecorder:
             self._meta["dauer_s"] = round(self._t(), 3)
         self._schreibe_meta()
 
+    def zeitmarke(self):
+        """Laufzeit in Sekunden seit dem Start dieser Aufzeichnung.
+
+        Dieselbe Zeitbasis wie `t` in JEDER Zeile dieses Laufs — Ereignisse,
+        Zustand, Bildindex. Wer eine eigene Zeitreihe neben die Aufzeichnung
+        legt (der Gehzeit-Versuch tut das), muss sie in derselben Basis
+        stempeln, sonst findet niemand die Bilder zu einer gemessenen Zeit.
+        Monoton, nicht Wanduhr: eine Uhrumstellung mitten im Lauf verschoebe
+        sonst alle Dauern.
+        """
+        return self._t()
+
     # ---------------------------------------------------------------- intern
 
     def _t(self):

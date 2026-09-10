@@ -58,6 +58,25 @@ versionsgepinntes Extra `spotlab[sim]`.
   Aufzeichnen ist leaselos; nur deshalb darf die GUI es. Ein Lease dort bräche H1. Dasselbe
   gilt für die Nachbearbeitung: `ProcessTopologyRequest` und `ProcessAnchoringRequest` haben
   gar kein Lease-Feld.
+- **Im Gehzeit-Versuch misst Spot, was er messen kann, und behauptet den Rest nicht.**
+  Er liefert Zeiten (mehrere gleichzeitig — das kann er besser als ein Mensch mit einer
+  Stoppuhr) und einen VORSCHLAG, wer gleichzeitig unterwegs war. Ob drei Leute eine Gruppe
+  waren, entscheidet ein Mensch nach den Bildern (`experiment/nachtrag.py`); `klasse` und
+  `gruppengroesse` bleiben leer, bis er sie einträgt — leer, nicht 0. **Die Strecke wird
+  gemessen, nicht eingetippt**: ein eingetippter Wert stimmt beim ersten Aufbau und bleibt
+  stehen, wenn jemand die Tags versetzt; dann sähen die Zeiten weiter richtig aus und jedes
+  Tempo wäre um denselben Faktor falsch. Gerechnet wird über den Median, und die Streuung
+  steht daneben — über `MAX_STREUUNG_M` lehnt das Programm ab, statt ein Tempo auf eine
+  wackelige Länge zu rechnen. **Verworfen heisst protokolliert**: stehen geblieben,
+  umgekehrt oder verloren steht mit Grund in der Tabelle, und `dauer_s`/`tempo_m_s` sind
+  dann None, nie 0. **Die Uhr startet AUF der Linie** (Übertritt interpoliert): bei 5 Hz
+  wären es sonst bis zu 0.2 s auf jede Messung, bei 8 s Laufzeit zweieinhalb Prozent — mehr
+  als der Unterschied, den der Versuch messen will. **Keine Gesichtsquelle und keine
+  Altersschätzung**: ein Gesicht trägt keine Kennung über die Zeit, die Zeitnahme braucht
+  aber eine, und die gemessene Trefferlage (zwei von zwei nachgesehenen Treffern daneben)
+  trägt kein Modell auf einem Modell. Die Zeitstempel sind LAUFZEIT
+  (`record/run.py::zeitmarke`) — dieselbe Basis wie `t` im Bildindex, sonst fände der
+  Nachtrag die Bilder zu einer gemessenen Zeit nicht.
 - **Beim Folgen entscheidet der FINDER, wo das Ziel ist, und der Regler, wie Spot fährt.**
   `workshop/folgen.py`: ein Finder liefert nur Peilung in Grad und Abstand in Metern, egal
   ob aus einem AprilTag oder aus Spots eigenem Personen-Tracker. Nur so lassen sich
@@ -802,6 +821,17 @@ versionsgepinntes Extra `spotlab[sim]`.
   steht an genau EINER Stelle: `src/spotlab/__init__.py`.
 
 ## Umsetzungsstand
+
+**Stufe 23 (10.09.2026): Gehzeit — Spot misst einen Schulversuch mit** — `experiment/`
+(Standardbibliothek: `strecke.py` misst die Strecke aus zwei AprilTags samt Streuung,
+`zeitnahme.py` hält je Person eine Uhr und kennt drei Verwerfungsregeln, `durchgang.py`
+gruppiert nach Zeit und schlägt eine Gruppengrösse vor, `tabelle.py` schreibt die CSV mit
+den Spalten der Handtabelle, `nachtrag.py` ist der Teil für den Menschen samt Löschen der
+Bilder), dazu `workshop/gehzeit.py` mit austauschbarer Quelle (`tag_quelle` heute
+nachweisbar, `personen_quelle` über Spots Tracker) und Bildmitschnitt, der nur dicht
+aufnimmt, solange jemand läuft. Beispiel `gehzeit.py`. Spot bewegt sich dabei nicht — das
+Programm verbindet über `nur_lesen=True`, deshalb steht es neben A21 und nicht hinter A1.
+Am Gerät: A35.
 
 **Stufe 22 (10.09.2026): Die leselose Sitzung** — `spotlab.connect(nur_lesen=True)` und
 `RealSpot.nur_lesen()`: angemeldet und zeitsynchron, aber ohne Lease, ohne
