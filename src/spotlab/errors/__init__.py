@@ -67,6 +67,10 @@ class UnsupportedCapability(SpotlabError):
     """Das aktive Backend kann das nicht."""
 
 
+class ReadOnlySession(SpotlabError):
+    """Die Sitzung liest nur — sie hält kein Lease und kann nichts bewegen."""
+
+
 from spotlab.errors.translate import translate  # noqa: E402
 
 __all__ = [
@@ -81,6 +85,7 @@ __all__ = [
     "BatteryEmpty",
     "CommandRejected",
     "NotPowered",
+    "ReadOnlySession",
     "UnsupportedCapability",
     "translate",
 ]

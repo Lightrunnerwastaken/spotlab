@@ -16,14 +16,23 @@ with connect(backend="dryrun") as spot:
 ```
 
 `connect(backend=None, runs_dir=None, script=None, take=False, config_path=None,
-nickname=None, raum=None)` ist ein Context Manager. Backend-Auswahl: Argument,
+nickname=None, raum=None, nur_lesen=False)` ist ein Context Manager. Backend-Auswahl: Argument,
 `SPOTLAB_BACKEND`, Konfiguration, sonst `dryrun`. Zulässige Betriebsarten sind
 `dryrun`, `sim`, `mujoco`, `real`. Für den echten Spot Konfiguration mit `spotlab login`
 einrichten. `connect()` schaltet die Motoren nicht ein.
 `runs_dir` setzt das Aufzeichnungsziel, `script` die zugehörige Skriptdatei,
 `config_path` eine andere Konfiguration, `nickname` den Namen im Lauf,
 `raum` den Sim-Raum. `take=True` fordert eine Lease-Übernahme an und gehört nur
-in bewusst gestartete Robotersitzungen. Der Context Manager beendet Abtastung,
+in bewusst gestartete Robotersitzungen.
+
+`nur_lesen=True` verbindet am echten Roboter **ohne Lease und ohne
+Not-Aus-Endpunkt** — fragen, während jemand anderes mit dem Tablet fährt. Ein
+solcher Lauf kann den Spot nicht bewegen: `walk()`, `stand()`, `power_on()` und
+die Navigation werden abgewiesen, weil die Fähigkeit fehlt, nicht weil das
+Programm sie unterlässt. Übrig bleiben die Lesedienste — `world_objects()`,
+`tags()`, `stairs()`, `obstacles()`, `camera()` und der Zustand. So arbeitet
+`workshop/sonde.py` hinter dem Knopf „Umgebung abfragen". In den Trockenläufen
+und Sims ändert die Angabe nichts; die halten ohnehin nie ein Lease. Der Context Manager beendet Abtastung,
 Roboterverbindung und Aufzeichnung auch bei Ausnahmen.
 
 ## Alle Befehle

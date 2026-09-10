@@ -20,10 +20,15 @@ from spotlab.backends.base import Capability, SafetyStatus
 from spotlab.backends.real.estop import EstopGuard
 from spotlab.backends.real.feedback import to_feedback
 from spotlab.backends.real.lease import LeaseGuard, holder_of
+from spotlab.backends.real.nur_lesen import MELDUNG as NUR_LESEN_MELDUNG
+from spotlab.backends.real.nur_lesen import NurLesen
 from spotlab.backends.real.verbindung import verbinde
 from spotlab.errors import NotPowered, translate
 
 AUFBAU_SCHRITTE = ("auth", "time_sync", "estop", "lease", "aufzeichnung")
+# Die NUR-LESEN-Sitzung laesst zwei Schritte weg, und das ist ihr ganzer Zweck.
+# Sie steht deshalb neben der vollen Liste, nicht als Fussnote darin.
+AUFBAU_SCHRITTE_NUR_LESEN = ("auth", "time_sync", "aufzeichnung")
 ABBAU_SCHRITTE = (
     "bewegung_stoppen",
     "sicher_ausschalten",
@@ -47,6 +52,28 @@ def _rollback(lease, wache):
             schritt.stop()
         except BaseException:
             pass
+
+
+def _melde_verbindung(recorder, robot, cfg, uebernommen=False, **zusatz):
+    """Kennung und `verbunden`-Ereignis -- fuer beide Einstiege dieselbe Stelle.
+
+    `nur_lesen=True` steht mit im Ereignis: wer den Lauf spaeter ansieht, muss
+    sehen, dass diese Sitzung gar nichts bewegen konnte. Ohne den Vermerk saehe
+    ein Lauf ohne Kommandos aus wie einer, bei dem der Schueler nichts getippt
+    hat.
+    """
+    if recorder is None:
+        return
+    kennung = robot.get_id()
+    recorder.set_robot_info(
+        roboter_seriennummer=getattr(kennung, "serial_number", None),
+        roboter_nickname=getattr(kennung, "nickname", None),
+        roboter_software=getattr(
+            getattr(kennung, "software_release", None), "version", None
+        ),
+        uebernommen=uebernommen,
+    )
+    recorder.event("verbunden", backend="real", ip=cfg.ip, **zusatz)
 
 
 # Zeitgrenze eines Bildabrufs: ein abgerissenes WLAN darf keinen Thread ewig halten.
@@ -75,6 +102,7 @@ class RealSpot:
         lease_guard,
         estop_guard,
         recorder=None,
+        nur_lesen=False,
     ):
         self._robot = robot
         self._commands = command_client
@@ -83,6 +111,11 @@ class RealSpot:
         self._lease = lease_guard
         self._estop = estop_guard
         self._recorder = recorder
+        self._nur_lesen = bool(nur_lesen)
+        # `require()` haengt den Hinweis an seine Meldung. Ohne ihn stuende dort
+        # nur "Dieses Backend beherrscht 'gehen' nicht" -- und der Schueler
+        # suchte den Fehler am Roboter statt an seiner eigenen Zeile.
+        self.faehigkeits_hinweis = NUR_LESEN_MELDUNG if nur_lesen else ""
         self._geschlossen = False
         self._quellen = None
         self._farbe_moeglich = None     # None: noch nicht gefragt
@@ -127,38 +160,88 @@ class RealSpot:
                 recorder=recorder,
             )
 
-            if recorder is not None:
-                kennung = robot.get_id()
-                recorder.set_robot_info(
-                    roboter_seriennummer=getattr(kennung, "serial_number", None),
-                    roboter_nickname=getattr(kennung, "nickname", None),
-                    roboter_software=getattr(
-                        getattr(kennung, "software_release", None), "version", None
-                    ),
-                    uebernommen=bool(take),
-                )
-                recorder.event("verbunden", backend="real", ip=cfg.ip)
+            _melde_verbindung(recorder, robot, cfg, uebernommen=bool(take))
             return backend
         except BaseException:
             _rollback(lease, wache)
             raise
 
+    @classmethod
+    def nur_lesen(cls, cfg, recorder=None, robot_bauen=None, passwort_lesen=None):
+        """Angemeldet und zeitsynchron -- ohne Lease, ohne Not-Aus-Endpunkt.
+
+        Der zweite Einstieg, nicht ein Zweig im ersten. `connect()` registriert
+        einen E-Stop-Endpunkt und holt danach das Lease mit `acquire`; beides
+        steht dort in einem Rollback-Block, weil beides etwas NIMMT. Hier gibt
+        es nichts zu nehmen und nichts zurueckzugeben -- und ein `if nur_lesen`
+        mitten im Aufbau haette den Lease-Erwerb einen Tastendruck entfernt
+        stehen lassen.
+
+        Genau dafuer gibt es diesen Weg: waehrend ein Mensch mit dem Tablet
+        fuehrt, darf der Laptop fragen, was Spot sieht. `WorldObjectClient`,
+        `LocalGridClient`, `RobotStateClient` und `ImageClient` sind reine
+        Lesedienste; sie funktionieren neben einem fremden Lease und nehmen dem
+        Tablet nichts weg (Abnahmepunkt A21). Dieselbe Begruendung wie beim
+        Beobachter-Modus und bei der Kartenaufzeichnung, die beide ebenfalls
+        ueber `verbinde()` gehen.
+
+        Ein KOMMANDOCLIENT wird gar nicht erst gebaut. Das ist keine Sparsamkeit:
+        `send_command` weist ohnehin vorher ab, und ein `None` an dieser Stelle
+        macht aus einem stillen Umweg einen lauten Fehler, falls jemand die
+        Abweisung spaeter herausnimmt.
+        """
+        robot = verbinde(cfg, robot_bauen=robot_bauen, passwort_lesen=passwort_lesen)
+
+        # EIN Objekt fuer Lease und Not-Aus: die Aussage ist dieselbe, und es
+        # gibt nichts abzubauen. Kein Rollback noetig -- scheitert unten etwas,
+        # bleibt nichts zurueck ausser einer offenen Verbindung.
+        wache = NurLesen()
+        backend = cls(
+            robot=robot,
+            command_client=None,
+            state_client=robot.ensure_client(RobotStateClient.default_service_name),
+            image_client=robot.ensure_client(ImageClient.default_service_name),
+            lease_guard=wache,
+            estop_guard=wache,
+            recorder=recorder,
+            nur_lesen=True,
+        )
+        _melde_verbindung(recorder, robot, cfg, nur_lesen=True)
+        return backend
+
     # ------------------------------------------------------------- Protokoll
 
+    # Was OHNE Lease funktioniert -- nicht die volle Liste minus Lease. Objekte,
+    # Gitter, Treppen und Bilder sind reine Lesedienste. GRAPH_NAV steht
+    # ausdruecklich NICHT dabei, obwohl `localization()` allein ginge: die
+    # Faehigkeit deckt auch `localize()` und `navigate_to()` ab, und eine
+    # Faehigkeit, die zur Haelfte gilt, ist keine.
+    NUR_LESEN_KANN = (
+        Capability.DEPTH_CAMERAS
+        | Capability.GRAY_CAMERAS
+        | Capability.WORLD_OBJECTS
+        | Capability.LOCAL_GRID
+        | Capability.STAIRS
+    )
+
+    # Die volle Sitzung. Nebeneinander als Konstanten, damit der Unterschied
+    # ABLESBAR ist statt aus zwei Zweigen erschlossen.
+    VOLL_KANN = (
+        Capability.LOCOMOTION
+        | Capability.POSTURE
+        | Capability.POWER
+        | Capability.DEPTH_CAMERAS
+        | Capability.GRAY_CAMERAS
+        | Capability.LEASE
+        | Capability.ESTOP
+        | Capability.STAIRS
+        | Capability.GRAPH_NAV
+        | Capability.WORLD_OBJECTS
+        | Capability.LOCAL_GRID
+    )
+
     def capabilities(self):
-        return (
-            Capability.LOCOMOTION
-            | Capability.POSTURE
-            | Capability.POWER
-            | Capability.DEPTH_CAMERAS
-            | Capability.GRAY_CAMERAS
-            | Capability.LEASE
-            | Capability.ESTOP
-            | Capability.STAIRS
-            | Capability.GRAPH_NAV
-            | Capability.WORLD_OBJECTS
-            | Capability.LOCAL_GRID
-        )
+        return self.NUR_LESEN_KANN if self._nur_lesen else self.VOLL_KANN
 
     # ----------------------------------------------------------- Wahrnehmung
     #
@@ -276,6 +359,15 @@ class RealSpot:
         return bool(self._robot.is_powered_on())
 
     def safety_status(self):
+        """Wer haelt das Lease, und wie steht der Not-Aus.
+
+        Den HALTER liest auch eine Nur-Lesen-Sitzung, und das ist Absicht:
+        `list_leases()` nimmt nichts, und "wer fuehrt gerade?" ist genau die
+        Frage, wegen der jemand neben dem Tablet nachsieht. Die Not-Aus-Stufe
+        bleibt dort `None` -- diese Sitzung hat keinen Endpunkt und weiss es
+        also nicht. `None` heisst "nicht gefragt", nie "frei" (Projektregel:
+        fehlende Messwerte sind None).
+        """
         halter = None
         stufe = None
         try:
@@ -364,12 +456,18 @@ class RealSpot:
             return
         self._geschlossen = True
         abbruch = None
-        for schritt in (
+        # Eine NUR-LESEN-Sitzung baut NICHTS ab. Anhalten und Ausschalten
+        # brauchen selbst ein Lease; der Versuch ginge an einen Roboter, den
+        # gerade jemand mit dem Tablet faehrt. Er scheiterte zwar, aber er waere
+        # genau der Zugriff, den diese Sitzung nicht haben darf -- und A21
+        # verlangt, dass der Spot sich um keinen Millimeter bewegt.
+        schritte = () if self._nur_lesen else (
             lambda: self._commands.robot_command(RobotCommandBuilder.stop_command()),
             lambda: self._robot.power_off(cut_immediately=False, timeout_sec=20),
             self._lease.stop,
             self._estop.stop,
-        ):
+        )
+        for schritt in schritte:
             abbruch = self._versuche(schritt) or abbruch
         if abbruch is not None:
             raise abbruch

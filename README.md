@@ -520,6 +520,11 @@ nicht bewegen, und sie funktioniert, während jemand anderes mit dem Tablet fäh
 dafür ist sie gedacht: nachsehen, ob Spot einen Tag überhaupt erkennt und aus welcher
 Entfernung — **bevor** ein Programm startet, das ihn bewegt.
 
+Im eigenen Programm ist das `connect(nur_lesen=True)`: die Sitzung meldet sich an und
+synchronisiert die Uhr, holt aber kein Lease und registriert keinen Not-Aus-Endpunkt.
+Sie kann den Spot nicht bewegen — nicht, weil das Programm es unterlässt, sondern weil
+die Fähigkeit fehlt.
+
 Im eigenen Programm sind es die Verben `spot.tags()`, `spot.world_objects()` und
 `spot.obstacles()` (siehe unten).
 

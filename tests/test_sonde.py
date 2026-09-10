@@ -101,3 +101,26 @@ def test_sonde_laeuft_wirklich_als_prozess(tmp_path):
     )
     assert ergebnis.returncode == 0, ergebnis.stdout + ergebnis.stderr
     assert "Objekte gesehen" in ergebnis.stdout
+
+
+def test_die_sonde_verbindet_ohne_lease():
+    """Das Gate VOR dem Gate.
+
+    `test_sonde_ruft_keine_bewegungsfunktion_auf` haelt fest, dass die Sonde
+    nichts bewegt — aber sie rief `spotlab.connect()` ohne `nur_lesen`, und das
+    holt ein Lease mit `acquire`. Neben einem fuehrenden Tablet lief die Sonde
+    damit gar nicht erst an; ihr eigener Docstring und Abnahmepunkt A21 sagten
+    das Gegenteil. Nichts zu bewegen genuegt nicht, man darf auch nichts NEHMEN.
+    """
+    baum = ast.parse(QUELLE.read_text(encoding="utf-8"))
+    aufrufe = [
+        knoten for knoten in ast.walk(baum)
+        if isinstance(knoten, ast.Call)
+        and isinstance(knoten.func, ast.Attribute)
+        and knoten.func.attr == "connect"
+    ]
+    assert aufrufe, "Vorbedingung: die Sonde verbindet ueberhaupt"
+    for aufruf in aufrufe:
+        wahr = [w for w in aufruf.keywords
+                if w.arg == "nur_lesen" and getattr(w.value, "value", None) is True]
+        assert wahr, "spotlab.connect(..., nur_lesen=True) fehlt in der Sonde"

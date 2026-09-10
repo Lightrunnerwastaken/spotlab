@@ -141,8 +141,10 @@ def test_rueckmeldung_wird_uebersetzt():
 def test_realspot_kann_graph_nav():
     from spotlab.backends.real.session import RealSpot
 
-    koennen = RealSpot.capabilities(None)
-    assert koennen & Capability.GRAPH_NAV
+    assert RealSpot.VOLL_KANN & Capability.GRAPH_NAV
+    # Die NUR-LESEN-Sitzung ausdruecklich nicht: `Capability.GRAPH_NAV` deckt
+    # auch `localize()` und `navigate_to()` ab, und die brauchen ein Lease.
+    assert not (RealSpot.NUR_LESEN_KANN & Capability.GRAPH_NAV)
 
 
 # ================================= S2.6 GraphNav-Fehler in deutschem Klartext

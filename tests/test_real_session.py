@@ -358,3 +358,177 @@ def test_gewoehnliche_fehler_bleiben_stumm():
     )
     spot.close()          # wirft nicht
     assert "estop_abmelden" in protokoll
+
+
+# --------------------------------------------- Die NUR-LESEN-Sitzung (A21)
+#
+# Der Anlass ist ein Widerspruch, den die Sonde bis zum 10.09.2026 in sich
+# trug: ihr Docstring versprach „haelt KEIN Lease", ihr Hauptprogramm rief
+# `spotlab.connect()` — und das holt ueber `RealSpot.connect` ein Lease mit
+# `acquire`. Neben einem fuehrenden Tablet ist das kein Schoenheitsfehler,
+# sondern ein Abbruch: `acquire` wirft, die Sonde laeuft gar nicht erst an,
+# und A21 („Mit dem Tablet das Lease nehmen, dann am Laptop Umgebung
+# abfragen") koennte nie bestehen.
+#
+# Geprueft wird beides: dass diese Sitzung nichts NIMMT (kein acquire, kein
+# take, kein Endpunkt) und dass sie nichts KANN (Bewegung wird strukturell
+# abgewiesen, nicht bloss unterlassen).
+
+
+class ProtokollierenderRobot(FakeRobot):
+    """Wie FakeRobot, merkt sich aber, WELCHE Dienste angefordert wurden."""
+
+    def __init__(self, protokoll):
+        super().__init__(protokoll)
+        self.dienste = []
+
+    def ensure_client(self, name):
+        self.dienste.append(name)
+        return FakeService(self.protokoll)
+
+
+def _nur_lesen(protokoll=None):
+    protokoll = [] if protokoll is None else protokoll
+    roboter = ProtokollierenderRobot(protokoll)
+    backend = RealSpot.nur_lesen(
+        _cfg(),
+        recorder=None,
+        robot_bauen=lambda cfg: roboter,
+        passwort_lesen=lambda user: "geheim",
+    )
+    return backend, protokoll, roboter
+
+
+def test_nur_lesen_holt_kein_lease():
+    """Der eigentliche Defekt. `acquire` neben dem Tablet wirft — und selbst
+    wenn es ginge, waere es genau die Uebernahme, die A21 ausschliesst."""
+    _backend, protokoll, _robot = _nur_lesen()
+    assert "lease_acquire" not in protokoll, str(protokoll)
+    assert "lease_take" not in protokoll, str(protokoll)
+
+
+def test_nur_lesen_baut_weder_lease_noch_estop_dienst_auf():
+    _backend, _protokoll, robot = _nur_lesen()
+    fremd = [n for n in robot.dienste if "lease" in n.lower() or "estop" in n.lower()]
+    assert fremd == [], f"Nur-Lesen fragte fremde Dienste an: {fremd}"
+
+
+def test_nur_lesen_meldet_sich_trotzdem_an_und_synchronisiert_die_uhr():
+    """Ohne Anmeldung und Zeitsynchronisierung antwortet kein Lesedienst."""
+    _backend, protokoll, _robot = _nur_lesen()
+    assert protokoll[:2] == ["auth", "time_sync"], str(protokoll)
+
+
+def test_nur_lesen_kann_nicht_fahren():
+    from spotlab.backends.base import Capability
+
+    backend, _protokoll, _robot = _nur_lesen()
+    koennen = backend.capabilities()
+    for verboten in (Capability.LOCOMOTION, Capability.POSTURE, Capability.POWER,
+                     Capability.LEASE, Capability.ESTOP):
+        assert not (koennen & verboten), f"{verboten.name} darf hier nicht dabei sein"
+
+
+def test_nur_lesen_kann_lesen():
+    from spotlab.backends.base import Capability
+
+    backend, _protokoll, _robot = _nur_lesen()
+    koennen = backend.capabilities()
+    for erlaubt in (Capability.WORLD_OBJECTS, Capability.LOCAL_GRID,
+                    Capability.STAIRS, Capability.DEPTH_CAMERAS,
+                    Capability.GRAY_CAMERAS):
+        assert koennen & erlaubt, f"{erlaubt.name} fehlt — die Sonde braucht es"
+
+
+def test_der_hinweis_sagt_was_zu_tun_ist():
+    """`require` meldet sonst nur „beherrscht 'gehen' nicht" — das schickt den
+    Schueler auf die Suche nach einem kaputten Backend."""
+    from spotlab.backends.base import Capability, require
+    from spotlab.errors import UnsupportedCapability
+
+    backend, _protokoll, _robot = _nur_lesen()
+    with pytest.raises(UnsupportedCapability, match="nur_lesen"):
+        require(backend, Capability.LOCOMOTION, "gehen")
+
+
+def test_ein_kommando_wird_abgewiesen_und_erreicht_den_roboter_nicht():
+    from spotlab.errors import ReadOnlySession
+
+    backend, protokoll, _robot = _nur_lesen()
+    with pytest.raises(ReadOnlySession):
+        backend.send_command(object())
+    assert "kommando" not in protokoll, str(protokoll)
+
+
+def test_power_on_wird_abgewiesen():
+    from spotlab.errors import ReadOnlySession
+
+    backend, protokoll, _robot = _nur_lesen()
+    with pytest.raises(ReadOnlySession):
+        backend.power_on()
+    assert "power_on" not in protokoll, str(protokoll)
+
+
+def test_navigieren_wird_abgewiesen():
+    from spotlab.errors import ReadOnlySession
+
+    backend, _protokoll, _robot = _nur_lesen()
+    with pytest.raises(ReadOnlySession):
+        backend.navigate_step("wegpunkt", 1.0, None)
+
+
+def test_der_abbau_stoppt_nichts_und_schaltet_nichts_aus():
+    """Anhalten und Ausschalten brauchen selbst ein Lease.
+
+    Der Versuch ginge an einen Roboter, den gerade jemand mit dem Tablet
+    faehrt. Er scheiterte zwar, aber er waere genau der Zugriff, den diese
+    Sitzung nicht haben darf — und A21 verlangt, dass der Spot sich um keinen
+    Millimeter bewegt.
+    """
+    backend, protokoll, _robot = _nur_lesen()
+    protokoll.clear()
+    backend.close()
+    assert protokoll == [], str(protokoll)
+
+
+def test_der_abbau_ist_idempotent_und_wirft_nicht():
+    backend, _protokoll, _robot = _nur_lesen()
+    backend.close()
+    backend.close()
+
+
+def test_connect_nimmt_die_nur_lesen_naht(tmp_path, monkeypatch):
+    """Die Naht von oben: `spotlab.connect(nur_lesen=True)` darf NICHT bei
+    `RealSpot.connect` landen — dort steht der Lease-Erwerb."""
+    import spotlab
+    import spotlab.backends.real as real
+    import spotlab.config as config
+    from spotlab.backends.dryrun import DryRunBackend
+
+    monkeypatch.delenv("SPOTLAB_BACKEND", raising=False)
+    monkeypatch.setattr(config, "load_config", lambda *a, **kw: _cfg())
+    gerufen = []
+
+    class Attrappe(DryRunBackend):
+        robot = None
+
+        @classmethod
+        def connect(cls, cfg, recorder=None, **kw):
+            gerufen.append("connect")
+            return cls(recorder)
+
+        @classmethod
+        def nur_lesen(cls, cfg, recorder=None, **kw):
+            gerufen.append("nur_lesen")
+            return cls(recorder)
+
+    monkeypatch.setattr(real, "RealSpot", Attrappe)
+
+    with spotlab.connect(backend="real", runs_dir=tmp_path, nur_lesen=True):
+        pass
+    assert gerufen == ["nur_lesen"]
+
+    gerufen.clear()
+    with spotlab.connect(backend="real", runs_dir=tmp_path):
+        pass
+    assert gerufen == ["connect"]

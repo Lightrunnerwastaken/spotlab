@@ -44,12 +44,18 @@ OHNE_ROBOTER = ("dryrun", "sim", "mujoco", "physics")
 @contextlib.contextmanager
 def connect(
     backend=None, runs_dir=None, script=None, take=False, config_path=None,
-    nickname=None, raum=None,
+    nickname=None, raum=None, nur_lesen=False,
 ):
     """Verbindet, zeichnet auf und baut am Ende garantiert sauber ab.
 
     Die Motoren gehen dabei NICHT an — `spot.power_on()` ist eine eigene Zeile,
     die jemand geschrieben haben muss.
+
+    `nur_lesen=True` verbindet OHNE Lease und ohne Not-Aus-Endpunkt: fragen,
+    während ein Mensch mit dem Tablet fährt. Ein solcher Lauf kann den Roboter
+    nicht bewegen — nicht, weil das Programm es unterlässt, sondern weil die
+    Fähigkeit fehlt. Das gilt nur am echten Roboter; die Trockenläufe und Sims
+    halten ohnehin nie ein Lease, dort ändert die Angabe nichts.
     """
     from spotlab import protokoll
     from spotlab.api.spot import Spot
@@ -154,7 +160,13 @@ def connect(
             recorder.finish("fehler", "Keine Konfiguration")
             raise ConfigMissing("Keine Konfiguration. Einrichten mit `spotlab login`.")
         try:
-            unten = RealSpot.connect(cfg, recorder=recorder, take=take)
+            # Zwei Einstiege, nicht ein Argument im selben Aufbau: der
+            # Lease-Erwerb steht in `connect`, und wer nur liest, kommt gar
+            # nicht erst daran vorbei (backends/real/session.py).
+            unten = (
+                RealSpot.nur_lesen(cfg, recorder=recorder) if nur_lesen
+                else RealSpot.connect(cfg, recorder=recorder, take=take)
+            )
         except BaseException as fehler:
             recorder.finish("fehler", f"{type(fehler).__name__}: {fehler}")
             raise

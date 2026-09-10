@@ -267,12 +267,21 @@ _EINZELN = (
 
 
 def require(backend, capability, wofuer):
-    """Prüft eine Fähigkeit. Beim Alias CAMERAS genügt eine der drei Kameraarten."""
+    """Prüft eine Fähigkeit. Beim Alias CAMERAS genügt eine der drei Kameraarten.
+
+    `faehigkeits_hinweis` darf ein Backend setzen, wenn die Aufzählung allein in
+    die Irre führte. Die Nur-Lesen-Sitzung am echten Roboter ist der Fall, für
+    den es gebaut ist: dort fehlt LOCOMOTION nicht, weil das Backend es nicht
+    könnte, sondern weil DIESE Sitzung kein Lease hält — und die Meldung muss
+    sagen, was zu tun ist, nicht nur, was fehlt (Projektregel).
+    """
     vorhanden = backend.capabilities()
     if vorhanden & capability:
         return
+    hinweis = getattr(backend, "faehigkeits_hinweis", "")
     raise UnsupportedCapability(
         f"Dieses Backend beherrscht '{wofuer}' nicht. Vorhanden: {_lesbar(vorhanden)}."
+        + (f" {hinweis}" if hinweis else "")
     )
 
 

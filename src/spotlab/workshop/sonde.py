@@ -8,8 +8,15 @@ Moment VOR einem Lauf: erkennt Spot den Tag ueberhaupt, und wie weit reicht das?
 Dieselbe Begruendung wie beim Beobachter-Modus — deshalb ist die Sonde vor
 Abnahmepunkt A1 benutzbar.
 
+Das steht seit dem 10.09.2026 auch im Code so. Vorher rief das Hauptprogramm
+`spotlab.connect()` ohne `nur_lesen`, und das holt ein Lease mit `acquire` —
+neben einem fuehrenden Tablet lief die Sonde damit gar nicht erst an. Der
+Docstring hatte recht, das Programm nicht.
+
 Dass hier nichts bewegt wird, ist nicht nur behauptet: `tests/test_sonde.py`
-haelt als Gate fest, dass dieses Modul keine Bewegungsfunktion aufruft.
+haelt als Gate fest, dass dieses Modul keine Bewegungsfunktion aufruft UND dass
+es ohne Lease verbindet. Nichts zu bewegen genuegt nicht, man darf auch nichts
+NEHMEN.
 """
 
 import time
@@ -86,7 +93,7 @@ def _hauptprogramm():
     if "--runs" in sys.argv:
         runs = sys.argv[sys.argv.index("--runs") + 1]
     runs = runs or os.environ.get("SPOTLAB_RUNS_DIR") or (Path.cwd() / "runs")
-    with spotlab.connect(runs_dir=runs, script=__file__) as spot:
+    with spotlab.connect(runs_dir=runs, script=__file__, nur_lesen=True) as spot:
         ergebnis = sonde(spot)
     _bericht(ergebnis)
 

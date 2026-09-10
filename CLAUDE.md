@@ -17,6 +17,18 @@ versionsgepinntes Extra `spotlab[sim]`.
   `backends/real/estop.py::register_coexisting`.
 - **Lease wird mit `acquire` geholt, nie implizit mit `take`.** Übernahme ist eine
   bewusste, protokollierte Handlung.
+- **Wer nur lesen will, nimmt den ZWEITEN Einstieg, nicht ein Argument im ersten.**
+  `RealSpot.nur_lesen()` verbindet ohne Lease und ohne Not-Aus-Endpunkt; `connect()` holt
+  beides. Ein `if nur_lesen:` mitten im Aufbau hätte den `acquire` einen Tastendruck
+  entfernt stehen lassen. Die Sitzung kann nicht bloss nichts bewegen — sie DARF es nicht:
+  `capabilities()` führt weder LOCOMOTION noch POSTURE, POWER, LEASE, ESTOP oder GRAPH_NAV
+  (die deckte auch `localize()` und `navigate_to()` ab, und eine Fähigkeit, die zur Hälfte
+  gilt, ist keine), es gibt gar keinen Kommandoclient, und `NurLesen.raise_if_lost()` weist
+  jeden verbleibenden Weg ab. **Auch der Abbau ist leer**: Anhalten und Ausschalten
+  brauchen selbst ein Lease, der Versuch ginge an einen Roboter, den gerade jemand mit dem
+  Tablet fährt. Bis zum 10.09.2026 war das ein Widerspruch im Code: der Docstring der
+  Sonde versprach „hält KEIN Lease", ihr Hauptprogramm rief `spotlab.connect()` — A21
+  hätte nie bestehen können.
 - **`connect()` schaltet die Motoren nicht ein.** `power_on()` bleibt eine eigene Zeile
   im Schülerprogramm.
 - **Kein `import bosdyn` und kein `import spotlab.backends` unterhalb von `src/spotlab/gui/`.**
@@ -790,6 +802,14 @@ versionsgepinntes Extra `spotlab[sim]`.
   steht an genau EINER Stelle: `src/spotlab/__init__.py`.
 
 ## Umsetzungsstand
+
+**Stufe 22 (10.09.2026): Die leselose Sitzung** — `spotlab.connect(nur_lesen=True)` und
+`RealSpot.nur_lesen()`: angemeldet und zeitsynchron, aber ohne Lease, ohne
+Not-Aus-Endpunkt und ohne Kommandoclient; `capabilities()` führt nur die Lesedienste, der
+Abbau ist leer. Die Sonde nimmt jetzt diesen Weg — bis dahin versprach ihr Docstring
+„hält KEIN Lease" und ihr Hauptprogramm holte über `spotlab.connect()` eines mit
+`acquire`. Neben einem führenden Tablet lief sie damit gar nicht erst an, und
+Abnahmepunkt A21 hätte nie bestehen können.
 
 **Stufe 21 (10.09.2026): Nickwinkel beim Gehen** — `spot.walk(nick_grad=…)` neigt den
 Körper während der Fahrt (`mobility.koerperneigung`, `base_offset_rt_footprint`), der

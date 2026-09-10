@@ -520,8 +520,18 @@ Laptop in der Ansicht „Umwelt" auf „Umgebung abfragen" drücken.
 ein reiner Lesedienst darf die Führung nicht beeinträchtigen.
 
 **Warum am Gerät** `tests/test_sonde.py` hält fest, dass das Modul keine
-Bewegungsfunktion aufruft. Dass `WorldObjectClient` und `LocalGridClient` neben
-einem FREMDEN Lease funktionieren, kann kein Test beantworten — nur der Roboter.
+Bewegungsfunktion aufruft **und ohne Lease verbindet**. Dass `WorldObjectClient`
+und `LocalGridClient` neben einem FREMDEN Lease funktionieren, kann kein Test
+beantworten — nur der Roboter.
+
+**Vorgeschichte** Bis zum 10.09.2026 hätte dieser Punkt nicht bestehen können:
+der Docstring der Sonde versprach „hält KEIN Lease", ihr Hauptprogramm rief aber
+`spotlab.connect()` ohne `nur_lesen` — und das holt über `RealSpot.connect` ein
+Lease mit `acquire`. Neben einem führenden Tablet wirft `acquire`, die Sonde wäre
+gar nicht erst angelaufen. Seither gibt es den zweiten Einstieg
+`RealSpot.nur_lesen` (kein Lease, kein Not-Aus-Endpunkt, kein Kommandoclient,
+Bewegung fehlt in `capabilities()`), und die Sonde nimmt ihn. Die Erwartung (2)
+ist damit erstmals überhaupt prüfbar.
 
 **Ergebnis** _(offen)_
 
