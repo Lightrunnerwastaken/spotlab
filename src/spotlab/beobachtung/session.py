@@ -16,6 +16,7 @@ from pathlib import Path
 
 from spotlab.beobachtung.bilder import Bildmitschnitt
 from spotlab.beobachtung.quelle import Zustandsquelle
+from spotlab.beobachtung.tags import Tagmitschnitt
 from spotlab.record.messfenster import Messfenster
 from spotlab.record.run import RunRecorder
 from spotlab.record.sampler import StateSampler
@@ -43,6 +44,12 @@ ABTASTRATE_HZ = 10.0        # ausserhalb der Messfenster, wie bei spotlab.connec
 REICH_AUSSERHALB = True
 
 BILDRATE_HZ = 1.0           # Vorgabe des Bildmitschnitts; 0 schaltet ihn ab
+# Tag-Beobachtungen: AUS als Vorgabe. Sie kosten Bandbreite und werden nur für
+# den Lehrer-Versuch gebraucht (`matura-spot/notes/VISION_umweltbezug.md`); eine
+# gewöhnliche Messfahrt soll davon nichts merken. 2 Hz, weil das die Bildrate
+# dieses Versuchs ist — jedes Bild soll eine Tag-Beobachtung daneben haben.
+TAGRATE_HZ = 0.0
+TAGRATE_LEHRER_HZ = 2.0
 
 # Zeitfenster der Live-Zahlen. Nach ZEIT ausgewählt, nicht nach Anzahl — damit
 # die Zahl unabhängig von der gerade eingestellten Abtastrate ist.
@@ -51,11 +58,13 @@ LIVE_MINDESTPUNKTE = 4
 
 
 class Beobachtung:
-    def __init__(self, quelle, recorder, sampler, mitschnitt=None, bild_hinweis=None):
+    def __init__(self, quelle, recorder, sampler, mitschnitt=None, bild_hinweis=None,
+                 tagmitschnitt=None):
         self.quelle = quelle
         self.recorder = recorder
         self.sampler = sampler
         self.mitschnitt = mitschnitt
+        self.tagmitschnitt = tagmitschnitt
         # Warum kein Bild aufgezeichnet wird, falls keins aufgezeichnet wird.
         # Muss nach oben sichtbar sein: eine Messfahrt, die still ohne Bilder
         # läuft, merkt niemand, bis der Roboter wieder weg ist.
@@ -68,7 +77,7 @@ class Beobachtung:
     @classmethod
     def connect(
         cls, cfg, runs_dir=None, verbinder=None, skript=None,
-        bilder_hz=BILDRATE_HZ, tiefe=False,
+        bilder_hz=BILDRATE_HZ, tiefe=False, tags_hz=TAGRATE_HZ,
     ):
         """Leaselos verbinden und aufzeichnen.
 
@@ -84,7 +93,24 @@ class Beobachtung:
             robot.ensure_client(RobotStateClient.default_service_name)
         )
         bildquelle, hinweis = cls._bildquelle(robot, bilder_hz, tiefe)
-        return cls._bauen(quelle, runs_dir, skript, bildquelle, bilder_hz, hinweis)
+        return cls._bauen(quelle, runs_dir, skript, bildquelle, bilder_hz, hinweis,
+                          tagquelle=cls._tagquelle(robot, tags_hz), tags_hz=tags_hz)
+
+    @staticmethod
+    def _tagquelle(robot, tags_hz):
+        """Tagquelle aufbauen — oder None, wenn keine gewünscht ist.
+
+        Anders als beim Bildmitschnitt gibt es hier keinen Hinweistext: die
+        Tags sind eine Zugabe für einen bestimmten Versuch, kein Teil der
+        Messfahrt. Wer sie anfordert und keine bekommt, sieht es am Zähler.
+        """
+        if tags_hz <= 0:
+            return None
+        from bosdyn.client.world_object import WorldObjectClient
+
+        from spotlab.beobachtung.tagquelle import Tagquelle
+
+        return Tagquelle(robot.ensure_client(WorldObjectClient.default_service_name))
 
     @staticmethod
     def _bildquelle(robot, bilder_hz, tiefe):
@@ -123,7 +149,8 @@ class Beobachtung:
         return Bildquelle(client, quellen), None
 
     @classmethod
-    def trocken(cls, runs_dir=None, skript=None, bilder_hz=BILDRATE_HZ, tiefe=False):
+    def trocken(cls, runs_dir=None, skript=None, bilder_hz=BILDRATE_HZ, tiefe=False,
+                tags_hz=TAGRATE_HZ):
         """Ohne Roboter. `DryRunBackend` hat `robot_state()` und plausible Werte.
 
         Damit lässt sich ein ganzes Drehbuch durchspielen, bevor jemand mit dem
@@ -139,14 +166,20 @@ class Beobachtung:
         if bilder_hz > 0:
             bildquelle = TrockeneBildquelle(FISHEYE + TIEFE if tiefe else FISHEYE)
             hinweis = None
+        tagquelle = None
+        if tags_hz > 0:
+            from spotlab.beobachtung.tagquelle import TrockeneTagquelle
+
+            tagquelle = TrockeneTagquelle()
         return cls._bauen(
             DryRunBackend(), runs_dir, skript, bildquelle, bilder_hz, hinweis,
-            backend=BACKEND_NAME_TROCKEN,
+            backend=BACKEND_NAME_TROCKEN, tagquelle=tagquelle, tags_hz=tags_hz,
         )
 
     @classmethod
     def _bauen(cls, quelle, runs_dir, skript, bildquelle=None,
-               bilder_hz=BILDRATE_HZ, bild_hinweis=None, backend=BACKEND_NAME):
+               bilder_hz=BILDRATE_HZ, bild_hinweis=None, backend=BACKEND_NAME,
+               tagquelle=None, tags_hz=TAGRATE_HZ):
         ziel = Path(runs_dir) if runs_dir else Path.cwd() / "runs"
         recorder = RunRecorder(ziel, skript, backend=backend)
         sampler = StateSampler(quelle, recorder, hz=ABTASTRATE_HZ)
@@ -154,16 +187,24 @@ class Beobachtung:
         mitschnitt = None
         if bildquelle is not None:
             mitschnitt = Bildmitschnitt(bildquelle, recorder, hz=bilder_hz)
-        sitzung = cls(quelle, recorder, sampler, mitschnitt, bild_hinweis)
+        tagmitschnitt = None
+        if tagquelle is not None and tags_hz > 0:
+            tagmitschnitt = Tagmitschnitt(tagquelle, recorder, hz=tags_hz)
+        sitzung = cls(quelle, recorder, sampler, mitschnitt, bild_hinweis, tagmitschnitt)
         recorder.event(
             "verbunden",
             backend=backend,
             reich=REICH_AUSSERHALB,
             bilder_hz=bilder_hz if mitschnitt is not None else 0.0,
+            # Muss mit: eine leere Datei und ein abgeschalteter Mitschnitt sehen
+            # sonst gleich aus.
+            tags_hz=tags_hz if tagmitschnitt is not None else 0.0,
         )
         sampler.start()
         if mitschnitt is not None:
             mitschnitt.start()
+        if tagmitschnitt is not None:
+            tagmitschnitt.start()
         return sitzung
 
     @property
@@ -179,6 +220,10 @@ class Beobachtung:
     def bildzaehler(self):
         """Zählerstand des Bildmitschnitts, oder None wenn keiner läuft."""
         return self.mitschnitt.zaehler() if self.mitschnitt is not None else None
+
+    def tagzaehler(self):
+        """Zählerstand des Tagmitschnitts, oder None wenn keiner läuft."""
+        return self.tagmitschnitt.zaehler() if self.tagmitschnitt is not None else None
 
     def setze_bildrate(self, hz):
         """Bildtakt ändern — wirkungslos, wenn kein Mitschnitt läuft."""
@@ -267,7 +312,11 @@ class Beobachtung:
                 if self.mitschnitt is not None:
                     self.mitschnitt.stop()
             finally:
-                self.recorder.finish(ergebnis, fehler)
+                try:
+                    if self.tagmitschnitt is not None:
+                        self.tagmitschnitt.stop()
+                finally:
+                    self.recorder.finish(ergebnis, fehler)
 
     def __enter__(self):
         return self

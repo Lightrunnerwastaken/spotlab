@@ -324,8 +324,17 @@ versionsgepinntes Extra `spotlab[sim]`.
   `Zustandsquelle` hat genau eine Methode — es gibt gar nichts zu missbrauchen.
   Ein Test hält zusätzlich fest, dass `StateSampler` nicht heimlich anfängt,
   mehr als `robot_state()` zu verlangen; sonst reichte die Nur-Lese-Quelle nicht
-  mehr und die Aussage wäre still falsch geworden. **`Bildquelle` steht unter
-  derselben Regel**: eine Methode, `ImageClient` liest nur.
+  mehr und die Aussage wäre still falsch geworden. **`Bildquelle` und `Tagquelle`
+  stehen unter derselben Regel**: je eine Methode, `ImageClient` und
+  `WorldObjectClient` lesen nur. Der Tagmitschnitt ist AUS als Vorgabe
+  (`TAGRATE_HZ = 0`) — er kostet Bandbreite und wird nur für den Lehrer-Versuch
+  gebraucht (`matura-spot/notes/VISION_umweltbezug.md`); eine gewöhnliche
+  Messfahrt soll davon nichts merken. Geschrieben wird der GANZE `WorldObject`
+  samt `transforms_snapshot`: die Labelerzeugung braucht die Tag-Pose im
+  Rahmenbaum, und was in einer Aufnahme fehlt, fehlt für immer. **Leere Takte
+  werden auch geschrieben** — „vier Sekunden lang keinen Tag gesehen" ist eine
+  Information, dieselbe Regel wie bei der erfolglosen Tag-Abfrage in
+  `api/world.py`.
 - **Der Bildmitschnitt geht NICHT über `RunRecorder.image()`.** Jenes schreibt
   `bilder.json` bei jedem Bild vollständig neu — quadratisch in der Bildzahl —
   und legt ein Ereignis an. Und `bilder/` ist das Verzeichnis, das
