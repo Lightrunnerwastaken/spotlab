@@ -93,6 +93,26 @@ versionsgepinntes Extra `spotlab[sim]`.
   Abfragen von `tracked_entity` über drei Läufe, null Treffer, während derselbe Dienst
   gleichzeitig AprilTags meldete (A34 Teil 1). `personen_finder()` bleibt im Code und ist
   richtig; er findet auf diesem Roboter nur nichts. Deshalb tragen Tag und Gesicht.
+- **Das Bild für den ERKENNER wird aufgehellt, die Fahransicht nicht.** Spots Frontbilder
+  sind im Gebäude dunkel: über 60 echte Panoramen vom 11.09.2026 lag die mittlere Helligkeit
+  bei 36 von 255, und YuNet kam auf 0.37 — unter der Schwelle 0.6, und der eine Kasten war
+  493×551 px gross, also ein halbes Bild statt eines Gesichts. Nach dem Histogrammausgleich
+  sitzt ein 123×137-Kasten mit 0.71 auf dem Gesicht. `gesicht.aufhellen` gleicht **nur über
+  die gedeckten Bildpunkte** aus: die schwarzen Ecken des Zuschnitts `ALLES` sind rund ein
+  Drittel der Fläche und kein Bildinhalt — nähme man sie mit, verschöbe schon die FORM des
+  Zuschnitts die Helligkeit. Verglichen an denselben Bildern bei Schwelle 0.6: roh 0,
+  Histogrammausgleich 2 (beide gesichtsgross), Perzentil-Streckung 0, CLAHE 0. **Zwei von
+  sechzig ist keine brauchbare Erkennung** — die Grenze bleibt die Geometrie; das Aufhellen
+  macht die Erkennung möglich, nicht zuverlässig. `ansicht.jpg` bleibt unberührt (eigener
+  Weg, Zuschnitt `RECHTECK`): ein aufgehelltes Livebild wäre eine Aussage über die
+  Belichtung, die niemand geprüft hat.
+- **Ein Nullergebnis ohne Begründung ist keine Messung.** `gesicht.beurteile` liefert JEDEN
+  Kasten mit Urteil — genommen, oder an welcher Schranke er scheiterte; `gesichter()` ist nur
+  die Auswahl daraus, damit Messprobe und Folgemodus dieselbe Rechnung fahren. Anlass: am
+  11.09.2026 meldete der Folgemodus in 73 von 73 Takten kein Gesicht, und die Aufzeichnung
+  konnte nicht sagen, ob YuNet gar nichts sah oder ob die Gegenprobe etwas verwarf. Die
+  Messprobe (`workshop/gesichtsprobe.py`, leaselos, Spot steht) schreibt es auf und behält
+  die Panoramen — ohne sie wäre die Aufhellung oben nie gefunden worden.
 - **Ein Kasten des Gesichtserkenners ist noch kein Gesicht — die Geometrie entscheidet.**
   Über die Aufzeichnung vom 12.08.2026 fand YuNet in 4 von 107 Takten etwas; der beste
   Treffer war eine Stuhllehne, der zweitbeste ein SCHIENBEIN (`tests/daten/…/takt50_*`).

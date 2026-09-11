@@ -140,34 +140,16 @@ def gesicht_finder(modell=None, mindestscore=None, quellen=GESICHT_QUELLEN,
     gemerkt = {}
 
     def finde(spot):
-        import numpy as np
-
         from spotlab.backends.real import gesicht as gesichtsmodul
-        from spotlab.backends.real import panorama, tiefe
 
-        antworten = spot.backend.images(list(quellen) + list(tiefe_quellen))
-        nach_name = {a.source.name: a for a in antworten}
-        grau = [nach_name[q] for q in quellen if q in nach_name]
-        tiefen = [nach_name[q] for q in tiefe_quellen if q in nach_name]
-        if len(grau) < 2 or not tiefen:
+        aufnahme = gesichtsaufnahme(spot, gemerkt, quellen, tiefe_quellen,
+                                    modell, mindestscore)
+        if aufnahme is None:
             return None
-        if "pano" not in gemerkt:
-            gemerkt["pano"] = panorama.Panorama(
-                panorama.kalibrierung_aus(grau), zuschnitt=panorama.ALLES
-            )
-            gemerkt["erkenner"] = gesichtsmodul.erkenner(
-                gemerkt["pano"].breite, gemerkt["pano"].hoehe, modell,
-                mindestscore or gesichtsmodul.MINDESTSCORE,
-            )
-        feld = gemerkt["pano"].zusammensetzen(panorama.bilder_aus(grau))
-        punkte = np.vstack([tiefe.punkte_aus_bild(a) for a in tiefen])
-        # Der GEMESSENE Nick, nicht der befohlene: so stimmt die Rechnung auch,
-        # wenn Spot an einer Rampe steht oder unsere Neigung nicht ganz umsetzt.
-        # `state.pitch` ist im Bogenmass, Nase hoch NEGATIV (Projektkonvention).
-        blick = -math.degrees(_nick(spot))
         gefunden = gesichtsmodul.gesichter(
-            feld, gemerkt["pano"], gemerkt["erkenner"], punkte,
-            gemerkt["pano"].kamerahoehe(blick), blick_grad=blick,
+            aufnahme.feld, aufnahme.pano, aufnahme.erkenner, aufnahme.punkte,
+            aufnahme.pano.kamerahoehe(aufnahme.blick_grad),
+            blick_grad=aufnahme.blick_grad,
         )
         if not gefunden:
             return None
@@ -175,6 +157,57 @@ def gesicht_finder(modell=None, mindestscore=None, quellen=GESICHT_QUELLEN,
         return Ziel(kopf.bearing, kopf.distance, f"Gesicht auf {kopf.height:.2f} m")
 
     return finde
+
+
+@dataclass(frozen=True)
+class Gesichtsaufnahme:
+    """Alles, was eine Gesichtsprüfung in EINEM Takt braucht."""
+
+    feld: object              # das zusammengesetzte Panorama (Graustufen)
+    pano: object              # die virtuelle Kamera dazu — rechnet Spalte/Zeile in Winkel
+    erkenner: object          # YuNet, einmal gebaut
+    punkte: object            # Nx3 Tiefenpunkte im aufgerichteten Körperrahmen
+    blick_grad: float         # der GEMESSENE Nick, nach oben positiv
+
+
+def gesichtsaufnahme(spot, gemerkt, quellen=GESICHT_QUELLEN,
+                     tiefe_quellen=TIEFE_QUELLEN, modell=None, mindestscore=None):
+    """Vier Bilder holen und daraus Panorama, Erkenner und Punktwolke — oder None.
+
+    Die gemeinsame Vorbereitung von `gesicht_finder` und der Messprobe
+    (`workshop/gesichtsprobe.py`). EINE Formulierung: sonst misst die Probe
+    etwas anderes, als der Folgemodus tut, und das fiele erst am Gerät auf.
+
+    `gemerkt` ist ein Wörterbuch, das der Aufrufer hält — Panorama und Erkenner
+    werden einmal gebaut und dann wiederverwendet; YuNet je Takt neu zu bauen
+    kostete mehr als der Abruf.
+    """
+    import numpy as np
+
+    from spotlab.backends.real import gesicht as gesichtsmodul
+    from spotlab.backends.real import panorama, tiefe
+
+    antworten = spot.backend.images(list(quellen) + list(tiefe_quellen))
+    nach_name = {a.source.name: a for a in antworten}
+    grau = [nach_name[q] for q in quellen if q in nach_name]
+    tiefen = [nach_name[q] for q in tiefe_quellen if q in nach_name]
+    if len(grau) < 2 or not tiefen:
+        return None
+    if "pano" not in gemerkt:
+        gemerkt["pano"] = panorama.Panorama(
+            panorama.kalibrierung_aus(grau), zuschnitt=panorama.ALLES
+        )
+        gemerkt["erkenner"] = gesichtsmodul.erkenner(
+            gemerkt["pano"].breite, gemerkt["pano"].hoehe, modell,
+            mindestscore or gesichtsmodul.MINDESTSCORE,
+        )
+    feld = gemerkt["pano"].zusammensetzen(panorama.bilder_aus(grau))
+    punkte = np.vstack([tiefe.punkte_aus_bild(a) for a in tiefen])
+    # Der GEMESSENE Nick, nicht der befohlene: so stimmt die Rechnung auch,
+    # wenn Spot an einer Rampe steht oder unsere Neigung nicht ganz umsetzt.
+    # `state.pitch` ist im Bogenmass, Nase hoch NEGATIV (Projektkonvention).
+    return Gesichtsaufnahme(feld, gemerkt["pano"], gemerkt["erkenner"], punkte,
+                            -math.degrees(_nick(spot)))
 
 
 def _nick(spot):

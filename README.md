@@ -452,6 +452,12 @@ Zwei Dinge sind daran gemessen und nicht behauptet:
 | 2.0 m | 1.45 m |
 | 3.0 m | 1.94 m |
 
+Das Bild, das zum Erkenner geht, wird vorher **aufgehellt** — die Frontbilder sind im
+Gebäude dunkel (gemessen: mittlere Helligkeit 36 von 255), und YuNet blieb darauf mit 0.37
+unter der Schwelle. Nach dem Histogrammausgleich findet es dasselbe Gesicht mit 0.71. Die
+Fahransicht bleibt unberührt. Ehrlich dazu: auch danach fand der Erkenner das Gesicht nur in
+2 von 60 Takten — die Grenze ist die Geometrie, nicht die Helligkeit.
+
 Spots Frontkameras schauen nach unten. Ein stehender Mensch hat deshalb **erst ab gut
 zweieinhalb Metern** ein Gesicht im Bild; näher sieht Spot Beine. Und ein Kasten mit hoher
 Punktzahl ist noch kein Gesicht: über eine Aufzeichnung vom 12.08.2026 fand der Erkenner

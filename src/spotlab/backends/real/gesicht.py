@@ -65,6 +65,38 @@ class Gesicht:
     box: tuple               # (x, y, breite, hoehe) im Panorama, für die Anzeige
 
 
+# Warum ein Kasten NICHT durchkam. Die Zeichenketten stehen so im Protokoll der
+# Messprobe und sind damit Teil der Schnittstelle nach aussen.
+OHNE_TIEFE = "keine tiefenpunkte"
+ZU_TIEF = "zu tief"
+ZU_HOCH = "zu hoch"
+
+
+@dataclass(frozen=True)
+class Befund:
+    """Ein Kasten des Erkenners MIT seinem Urteil — auch wenn er verworfen wurde.
+
+    `gesichter()` gibt nur die genommenen zurück, und das ist für den Regler
+    richtig. Am Gerät hiess das Ergebnis damit aber immer „nichts gefunden",
+    ohne zu sagen, ob YuNet gar nichts sah oder ob die Gegenprobe etwas verwarf
+    — und an welcher der beiden Schranken. Für Abnahmepunkt A34 Teil 3
+    („notieren, ob trotzdem etwas durchkommt") reicht das nicht.
+
+    Dieselbe Regel wie im Gehzeit-Versuch: verworfen heisst PROTOKOLLIERT, nicht
+    verschwiegen. Und fehlende Messwerte sind None, nie 0 — ein Kasten ohne
+    Tiefenpunkte hat keinen Abstand und keine Höhe, nicht Abstand null.
+    """
+
+    bearing: float
+    elevation: float
+    score: float
+    box: tuple
+    distance: float = None
+    height: float = None
+    genommen: bool = False
+    grund: str = None
+
+
 def modellpfad(pfad=None, umgebung=None):
     """Wo die Modelldatei liegt — oder ein Fehler, der sagt, woher man sie bekommt.
 
@@ -97,10 +129,64 @@ def erkenner(breite, hoehe, pfad=None, mindestscore=MINDESTSCORE):
     )
 
 
-def kaesten(feld, erkenner_):
-    """Die Kästen, die der Erkenner findet: (x, y, breite, hoehe, score)."""
+# So viele gedeckte Bildpunkte braucht es, bevor eine Kennlinie daraus etwas
+# taugt. Darunter bleibt das Bild, wie es ist — ein abgerissener Bildabruf soll
+# nicht in eine Division durch null laufen.
+MINDESTPUNKTE_AUFHELLEN = 100
+
+
+def aufhellen(feld):
+    """Histogrammausgleich über die GEDECKTEN Bildpunkte — für den Erkenner.
+
+    Die Frontbilder des Spot sind im Gebäude dunkel: über 60 echte Panoramen vom
+    11.09.2026 lag die mittlere Helligkeit bei 36 von 255. YuNet kam damit auf
+    Punktzahlen um 0.37, und der eine Kasten, den es setzte, war 493×551 px
+    gross — ein halbes Bild, kein Gesicht. Nach dem Ausgleich sitzt ein
+    123×137-Kasten mit 0.71 auf dem Gesicht, also über der Schwelle von 0.6.
+
+    NUR ÜBER DIE GEDECKTEN PUNKTE. Die schwarzen Ecken des Zuschnitts `ALLES`
+    sind rund ein Drittel der Fläche und kein Bildinhalt; nähme man sie mit,
+    verschöbe schon die FORM des Zuschnitts die Helligkeit. Sie bleiben schwarz.
+
+    Verglichen wurde an denselben 60 Bildern bei der Produktionsschwelle 0.6:
+    roh 0 Treffer, Histogrammausgleich 2 (beide gesichtsgross),
+    Perzentil-Streckung 0, CLAHE 0, Streckung mit CLAHE 1. **Zwei von sechzig
+    ist keine brauchbare Erkennung** — die Grenze bleibt die Geometrie (das
+    Gesicht liegt am oberen Rand der Deckung und wird von der Naht beschnitten).
+    Das Aufhellen macht die Erkennung möglich, nicht zuverlässig.
+
+    Die FAHRANSICHT bleibt unberührt: `ansicht.jpg` geht über einen eigenen Weg
+    (`workshop/blick.py`, Zuschnitt `RECHTECK`). Ein aufgehelltes Livebild wäre
+    eine Aussage über die Belichtung, die niemand geprüft hat.
+    """
     import cv2
 
+    gedeckt = feld > 0
+    if int(gedeckt.sum()) < MINDESTPUNKTE_AUFHELLEN:
+        return feld
+    hist = cv2.calcHist([feld], [0], gedeckt.astype(np.uint8), [256], [0, 256]).ravel()
+    summe = np.cumsum(hist)
+    if summe[-1] <= 0:
+        return feld
+    # Monoton steigende Kennlinie: was dunkler war, bleibt dunkler. Sonst
+    # verschöbe das Aufhellen Kanten, statt sie sichtbar zu machen.
+    kennlinie = np.clip(summe / summe[-1] * 255.0, 0, 255).astype(np.uint8)
+    hell = kennlinie[feld]
+    hell[~gedeckt] = 0
+    return hell
+
+
+def kaesten(feld, erkenner_, mit_ausgleich=True):
+    """Die Kästen, die der Erkenner findet: (x, y, breite, hoehe, score).
+
+    `mit_ausgleich=False` füttert das ROHE Bild — für den Vergleich in der
+    Messprobe und für den Schienbein-Test, der die Gegenprobe prüft und dafür
+    einen Fehltreffer braucht. Im Betrieb wird immer ausgeglichen.
+    """
+    import cv2
+
+    if mit_ausgleich and feld.ndim == 2:
+        feld = aufhellen(feld)
     bild = feld if feld.ndim == 3 else cv2.cvtColor(feld, cv2.COLOR_GRAY2BGR)
     erkenner_.setInputSize((bild.shape[1], bild.shape[0]))
     _, gefunden = erkenner_.detect(bild)
@@ -149,16 +235,43 @@ def gesichter(feld, pano, erkenner_, punkte, kamerahoehe,
     dagegen schon schwerkraftgerecht aufgerichtet (`tiefe.py`), deshalb wird auch
     für sie der korrigierte Winkel genommen.
     """
-    gefunden = []
-    for x, y, breite, hoehe, score in kaesten(feld, erkenner_):
+    gefunden = [
+        Gesicht(b.bearing, b.elevation, b.distance, b.height, b.score, b.box)
+        for b in beurteile(feld, pano, erkenner_, punkte, kamerahoehe,
+                           unten=unten, oben=oben, blick_grad=blick_grad)
+        if b.genommen
+    ]
+    return sorted(gefunden, key=lambda g: g.distance)
+
+
+def beurteile(feld, pano, erkenner_, punkte, kamerahoehe,
+              unten=KOPF_UNTEN_M, oben=KOPF_OBEN_M, blick_grad=0.0,
+              kaesten_holen=None):
+    """JEDER Kasten des Erkenners mit seinem Urteil — genommen oder warum nicht.
+
+    Die eine Formulierung der Gegenprobe; `gesichter()` ist die Auswahl daraus.
+    Zwei Formulierungen hiessen, dass die Messprobe etwas anderes misst, als der
+    Folgemodus tut — und das fiele erst am Gerät auf, wo niemand es nachrechnet.
+
+    `kaesten_holen` ist die Testtür: ohne sie fragt sie den echten Erkenner.
+    """
+    hole = kaesten_holen or kaesten
+    befunde = []
+    for x, y, breite, hoehe, score in hole(feld, erkenner_):
         peilung, im_bild = pano.winkel(x + breite / 2.0, y + hoehe / 2.0)
         hoehenwinkel = im_bild + float(blick_grad)
+        kasten = (x, y, breite, hoehe)
         abstand = abstand_in_richtung(punkte, peilung, hoehenwinkel)
         if abstand is None:
+            befunde.append(Befund(peilung, hoehenwinkel, score, kasten, grund=OHNE_TIEFE))
             continue
         ueber_boden = kamerahoehe + abstand * math.tan(math.radians(hoehenwinkel))
-        if not unten <= ueber_boden <= oben:
-            continue
-        gefunden.append(Gesicht(peilung, hoehenwinkel, abstand, ueber_boden, score,
-                                (x, y, breite, hoehe)))
-    return sorted(gefunden, key=lambda g: g.distance)
+        grund = None
+        if ueber_boden < unten:
+            grund = ZU_TIEF
+        elif ueber_boden > oben:
+            grund = ZU_HOCH
+        befunde.append(Befund(peilung, hoehenwinkel, score, kasten,
+                              distance=abstand, height=ueber_boden,
+                              genommen=grund is None, grund=grund))
+    return befunde

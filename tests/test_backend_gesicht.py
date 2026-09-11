@@ -162,7 +162,15 @@ def _modell_da():
 def test_das_echte_schienbein_faellt_durch_die_gegenprobe():
     """Takt 50 der Aufzeichnung: YuNet setzt einen Kasten mit 0.66 auf ein Bein.
     Mit Tiefenpunkten auf einem Meter ist der Kasten rund einen halben Meter
-    ueber dem Boden -- und damit kein Gesicht."""
+    ueber dem Boden -- und damit kein Gesicht.
+
+    Gefuettert wird hier das ROHE Bild (`mit_ausgleich=False`). Das ist kein
+    Umgehen des neuen Verhaltens, sondern sein Gegenteil: geprueft wird die
+    GEOMETRIE, und dafuer braucht der Test einen Fehltreffer. Mit Ausgleich
+    setzt YuNet auf diesem Takt gar keinen Kasten mehr (gemessen 11.09.2026) --
+    ein kleiner Nebenbeleg fuer den Ausgleich, aber dann prueft dieser Test
+    nichts mehr.
+    """
     pytest.importorskip("cv2")
     import sys
     from pathlib import Path as _Path
@@ -177,13 +185,20 @@ def test_das_echte_schienbein_faellt_durch_die_gegenprobe():
     feld = pano.zusammensetzen(panorama.bilder_aus(_paar(50)))
     erkenner_ = gesicht.erkenner(pano.breite, pano.hoehe, mindestscore=0.5)
 
-    roh = gesicht.kaesten(feld, erkenner_)
+    roh = gesicht.kaesten(feld, erkenner_, mit_ausgleich=False)
     assert roh, "der Erkenner findet hier etwas -- genau das ist der Fehltreffer"
 
     # Die Person ging dicht vorbei: Tiefenpunkte auf einem Meter, rundum.
     punkte = np.vstack([_wolke(1.0, p, h, anzahl=40)
                         for p in range(-60, 61, 5) for h in (-20, 0, 20)])
-    assert gesicht.gesichter(feld, pano, erkenner_, punkte, pano.kamerahoehe()) == []
+    befunde = gesicht.beurteile(feld, pano, erkenner_, punkte, pano.kamerahoehe(),
+                                kaesten_holen=lambda f, e: roh)
+    assert befunde, "der Kasten steht im Bericht"
+    assert not any(b.genommen for b in befunde), "aber keiner wird genommen"
+    # WELCHE Schranke greift, haengt an der synthetischen Punktwolke dieses
+    # Tests; festgehalten wird, dass ein GRUND dasteht -- der Kasten
+    # verschwindet nicht stillschweigend.
+    assert all(b.grund for b in befunde)
 
 
 # ============ Mit geneigtem Koerper
@@ -224,3 +239,157 @@ def test_die_kamera_hebt_sich_mit_der_nase():
     geneigt = pano.kamerahoehe(15.0)
     assert geneigt - flach == pytest.approx(0.10, abs=0.02)
     assert pano.kamerahoehe(0.0) == pytest.approx(flach)
+
+
+# ============ Das Urteil je Kasten
+#
+# Bis zum 11.09.2026 gab `gesichter()` nur die genommenen Kaesten zurueck. Am
+# Geraet hiess das Ergebnis damit immer "nichts gefunden" -- ohne zu sagen, ob
+# YuNet gar keinen Kasten setzte oder ob die Gegenprobe ihn verwarf, und wenn ja
+# an welcher Schranke. Fuer A34 Teil 3 ("notieren, ob trotzdem etwas durchkommt")
+# reicht das nicht: verworfen heisst protokolliert, nicht verschwiegen.
+
+
+class _PanoZeile:
+    """Hoehenwinkel aus der Bildzeile -- fuer zwei Kaesten in einem Bild."""
+
+    def winkel(self, spalte, zeile):
+        return 0.0, (200.0 - zeile) / 5.0
+
+
+def test_ein_genommener_kasten_traegt_seine_zahlen(monkeypatch):
+    _mit_kaesten(monkeypatch, [(700.0, 100.0, 40.0, 50.0, 0.9)])
+    befunde = gesicht.beurteile(None, _Pano(0.0, 20.0), None, _wolke(3.0, 0.0, 20.0), 0.46)
+    assert len(befunde) == 1
+    b = befunde[0]
+    assert b.genommen and b.grund is None
+    assert b.score == pytest.approx(0.9)
+    assert b.distance == pytest.approx(3.0, abs=0.01)
+    assert b.height == pytest.approx(1.55, abs=0.02)
+
+
+def test_ein_kasten_ohne_tiefenpunkte_nennt_genau_das(monkeypatch):
+    """Der haeufigste Fall am Geraet -- und der, der bisher wie 'kein Gesicht'
+    aussah. Ohne Abstand gibt es keine Gegenprobe, also zaehlt der Kasten nicht;
+    aber man muss erfahren, DASS einer da war."""
+    _mit_kaesten(monkeypatch, [(700.0, 100.0, 40.0, 50.0, 0.8)])
+    befunde = gesicht.beurteile(None, _Pano(0.0, 20.0), None, np.zeros((0, 3)), 0.46)
+    assert len(befunde) == 1
+    b = befunde[0]
+    assert not b.genommen and b.grund == gesicht.OHNE_TIEFE
+    assert b.distance is None and b.height is None, "kein Messwert, also None"
+    assert b.score == pytest.approx(0.8), "die Punktzahl steht trotzdem da"
+
+
+def test_ein_kasten_zu_tief_nennt_die_hoehe_und_die_schranke(monkeypatch):
+    """Das Schienbein vom 12.08.2026 -- und derselbe Zweig, der am 11.09.2026
+    einen HOCKENDEN Menschen verwerfen wuerde: die untere Schranke steht bei
+    1.0 m, und ein hockender Kopf liegt genau dort."""
+    _mit_kaesten(monkeypatch, [(320.0, 181.0, 104.0, 210.0, 0.66)])
+    befunde = gesicht.beurteile(None, _Pano(0.0, 0.0), None, _wolke(1.0, 0.0, 0.0), 0.46)
+    assert len(befunde) == 1
+    b = befunde[0]
+    assert not b.genommen and b.grund == gesicht.ZU_TIEF
+    assert b.height == pytest.approx(0.46, abs=0.02), "gemessen, nur zu tief"
+    assert b.distance == pytest.approx(1.0, abs=0.01)
+
+
+def test_gesichter_ist_die_auswahl_aus_den_befunden(monkeypatch):
+    """Eine Formulierung, nicht zwei. Sonst misst die Messprobe etwas anderes,
+    als der Folgemodus tut -- und das faellt erst am Geraet auf, wo niemand es
+    nachrechnet."""
+    # Die MITTE des Kastens bestimmt den Winkel: Zeile 100 -> 20 Grad hinauf,
+    # Zeile 200 -> waagrecht.
+    _mit_kaesten(monkeypatch, [(700.0, 80.0, 40.0, 40.0, 0.9),
+                               (320.0, 180.0, 40.0, 40.0, 0.66)])
+    pano = _PanoZeile()
+    punkte = np.vstack([_wolke(3.0, 0.0, 20.0), _wolke(1.0, 0.0, 0.0)])
+
+    befunde = gesicht.beurteile(None, pano, None, punkte, 0.46)
+    assert len(befunde) == 2, "beide Kaesten stehen im Bericht"
+    assert [b.genommen for b in befunde] == [True, False]
+    assert befunde[1].grund == gesicht.ZU_TIEF
+
+    gefunden = gesicht.gesichter(None, pano, None, punkte, 0.46)
+    assert [round(g.distance, 2) for g in gefunden] == [
+        round(b.distance, 2) for b in befunde if b.genommen
+    ]
+
+
+# ============ Aufhellen vor dem Erkennen
+#
+# Gemessen an 60 echten Panoramen vom 11.09.2026 (Person vor dem Roboter,
+# Median-Helligkeit 36 von 255). Bei der Produktionsschwelle 0.6 fand YuNet:
+#
+#     roh                      0 von 60 Takten
+#     Histogrammausgleich      2 von 60, beide gesichtsgross, beste 0.71
+#     Perzentil-Streckung      0 von 60
+#     CLAHE                    0 von 60
+#
+# Der eine Kasten, den das ROHE Bild bei 0.37 hergab, war 493x551 px gross --
+# ein halbes Bild, kein Gesicht. Der Unterschied ist also nicht die Anzahl,
+# sondern die ART: einmal Unsinn unter der Schwelle, einmal ein richtiges
+# Gesicht darueber.
+
+
+def test_aufhellen_macht_ein_dunkles_bild_hell():
+    dunkel = np.full((100, 200), 30, dtype=np.uint8)
+    dunkel[40:60, 80:120] = 60
+    hell = gesicht.aufhellen(dunkel)
+    assert hell.max() > dunkel.max(), "der Kontrast wird gespreizt"
+    assert hell.dtype == np.uint8 and hell.shape == dunkel.shape
+
+
+def test_aufhellen_laesst_die_schwarzen_ecken_schwarz():
+    """Der Zuschnitt ALLES hat schwarze Ecken -- rund ein Drittel der Flaeche.
+
+    Sie sind kein Bildinhalt: waeren sie in der Kennlinie, verschoebe schon die
+    Form des Zuschnitts die Helligkeit des Bildes.
+    """
+    feld = np.full((100, 200), 40, dtype=np.uint8)
+    feld[:, :60] = 0                     # die Ecke
+    hell = gesicht.aufhellen(feld)
+    assert (hell[:, :60] == 0).all(), "schwarz bleibt schwarz"
+    assert hell[:, 60:].min() > 0
+
+
+def test_aufhellen_haelt_die_reihenfolge_der_helligkeiten():
+    """Eine monotone Kennlinie: was dunkler war, bleibt dunkler. Sonst
+    verschoebe das Aufhellen Kanten, statt sie sichtbar zu machen."""
+    feld = np.array([[10, 20, 30, 40, 50]] * 4, dtype=np.uint8)
+    hell = gesicht.aufhellen(feld)
+    zeile = [int(v) for v in hell[0]]
+    assert zeile == sorted(zeile)
+
+
+def test_aufhellen_ueberlebt_ein_ganz_schwarzes_bild():
+    """Ein abgerissener Bildabruf darf nicht in eine Division durch null laufen."""
+    leer = np.zeros((50, 50), dtype=np.uint8)
+    assert gesicht.aufhellen(leer).shape == leer.shape
+
+
+def test_kaesten_fuettert_den_erkenner_mit_dem_aufgehellten_bild():
+    """Die Naht: das Aufhellen sitzt genau dort, wo das Bild den Erkenner
+    trifft -- nicht in der Fahransicht, die ein Mensch anschaut."""
+
+    class Erkenner:
+        def __init__(self):
+            self.bekommen = None
+
+        def setInputSize(self, groesse):
+            pass
+
+        def detect(self, bild):
+            self.bekommen = bild
+            return 1, None
+
+    feld = np.full((80, 120), 25, dtype=np.uint8)
+    feld[30:50, 40:70] = 70
+
+    erkenner_ = Erkenner()
+    gesicht.kaesten(feld, erkenner_)
+    assert erkenner_.bekommen.max() > feld.max(), "aufgehellt angekommen"
+
+    roh = Erkenner()
+    gesicht.kaesten(feld, roh, mit_ausgleich=False)
+    assert roh.bekommen.max() == feld.max(), "abschaltbar, fuer den Vergleich"

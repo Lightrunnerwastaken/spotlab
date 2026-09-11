@@ -878,7 +878,29 @@ kein Fehler: dann kann diese Software es nicht, und der Tag-Finder bleibt der We
 - (5) „Stopp" beendet den Lauf geordnet; Spot setzt sich.
 - (6) Das Tempo bleibt unter `max_speed` aus der Konfiguration.
 
-**Teil 3 — Gesichter.** Nur mit `pip install "spotlab[gesicht]"` und abgelegtem Modell.
+**Teil 3 — Gesichter. ZUERST die Messprobe, dann der Folgelauf.**
+
+    python -m spotlab.workshop.gesichtsprobe --runs <arbeitsordner>/runs --dauer 60
+
+Spot STEHT dabei (kein Lease, das Tablet bleibt in der Hand). Eine Person stellt
+sich nacheinander auf 1.5, 2, 2.5 und 3 m und bleibt je 15 s stehen. Die Probe
+schreibt je Kasten des Erkenners Punktzahl, gemessenen Abstand, Höhe über dem
+Boden und das URTEIL — genommen, oder an welcher Schranke er gescheitert ist.
+
+**Warum zuerst die Probe.** Am 11.09.2026 meldete der Folgemodus in 73 von 73
+Takten kein Gesicht, und die Aufzeichnung konnte nicht sagen, woran es lag: kein
+Kasten, oder ein verworfener? Ein Nullergebnis ohne Begründung ist keine
+Messung. Die Probe beantwortet genau das — und behält die Panoramen, aus denen
+das erste Testbild MIT einem Gesicht werden soll (die Aufzeichnung vom
+12.08.2026 hat keines: leerer Gang, Tischreihe, und eine Person, von der nur die
+Beine im Bild sind).
+
+**Notieren je Abstand:** wie viele Takte einen Kasten hatten, die Punktzahlen,
+und die Verteilung der Gründe. Besonders `zu tief` — die untere Schranke steht
+bei 1.0 m und ist für einen SITZENDEN Menschen gewählt; ein hockender Kopf liegt
+darunter, und dann verwirft die Gegenprobe ein richtiges Gesicht.
+
+Danach erst der Folgelauf. Nur mit `pip install "spotlab[gesicht]"` und abgelegtem Modell.
 
 > **Vorbedingung, am 11.09.2026 hergestellt.** Der erste Versuch am Gerät lief ohne
 > Modell: `gesicht_finder` fiel beim ersten Aufruf aus, die Staffel trug mit dem Tag
