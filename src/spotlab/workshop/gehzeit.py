@@ -10,9 +10,12 @@ DREI TEILE, getrennt lesbar und getrennt austauschbar — dieselbe Aufteilung wi
 beim Folgen:
 
     QUELLE      sagt, WO die Leute sind: je Person `(Kennung, Peilung, Abstand)`.
-                Ein AprilTag am Rucksack (`tag_quelle`, heute nachweisbar) oder
-                Spots eigener Personen-Tracker (`personen_quelle`). Welche taugt,
-                entscheidet Abnahmepunkt A34 Teil 1 am Geraet.
+                Ein AprilTag am Rucksack (`tag_quelle`) oder Spots eigener
+                Personen-Tracker (`personen_quelle`). **Am 11.09.2026 gemessen:
+                dieser Spot verfolgt keine Menschen** (560 Abfragen, null
+                Treffer, A34 Teil 1) -- also tragen die Laeufer Tags.
+                `personen_quelle` bleibt fuer den Tag, an dem die
+                Robotersoftware es kann.
     STRECKE     `experiment/strecke.py` — gemessen aus zwei AprilTags an den
                 Enden, nicht eingetippt.
     ZEITNAHME   `experiment/zeitnahme.py` — eine Uhr je Person, drei

@@ -845,6 +845,26 @@ bewegt. Notieren, ob die Liste Einträge hat, welche `entity_type` und welche `l
 darin stehen und ob die Nummer über mehrere Sekunden dieselbe bleibt. Eine leere Liste ist
 kein Fehler: dann kann diese Software es nicht, und der Tag-Finder bleibt der Weg.
 
+> **Ergebnis Teil 1 (11.09.2026): NEIN — dieser Spot verfolgt keine Menschen.**
+>
+> Gemessen über drei Läufe im Arbeitsordner: `20260911T151637Z_998a2f68` (Folgelauf mit
+> `personen_finder`, **527** Abfragen), `20260911T151846Z_ae12d536` (20) und
+> `20260911T151927Z_ae12d536` (13). **560 Abfragen, null verfolgte Objekte.**
+>
+> Es liegt nicht an einer Schwelle und nicht am Filter: gefragt wurde
+> `spot.world_objects(kinds=["tracked_entity"])`, also ohne die
+> `MINDESTSICHERHEIT` von `spot.people()` und ohne Typfilter. Es liegt auch nicht am
+> Auslesen — `tests/test_backend_wahrnehmung.py` baut echte
+> `tracked_entity_properties`-Protos und prüft, dass sie als `kind="tracked_entity"`
+> ankommen. Und der Dienst selbst antwortete: im Lauf `20260911T151153Z_51b8887e`
+> meldete derselbe `WorldObjectClient` in 166 von 196 Takten zwei AprilTags.
+>
+> **Folgen daraus:** der Folgemodus bleibt bei Tag und Gesicht; `personen_finder()`
+> bleibt im Code, findet auf DIESEM Roboter aber nichts. Im Gehzeit-Versuch (A35)
+> entfällt `personen_quelle()` — die Läufer brauchen Tags. Sollte die Robotersoftware
+> einmal aktualisiert werden, ist der Test drei Zeilen lang und die Zahl hier zu
+> ersetzen.
+
 **Teil 2 — folgen mit dem Tag.** `Beispiele/folgen.py` starten, Tag zeigen, langsam gehen.
 
 **Erwartung**
@@ -859,6 +879,17 @@ kein Fehler: dann kann diese Software es nicht, und der Tag-Finder bleibt der We
 - (6) Das Tempo bleibt unter `max_speed` aus der Konfiguration.
 
 **Teil 3 — Gesichter.** Nur mit `pip install "spotlab[gesicht]"` und abgelegtem Modell.
+
+> **Vorbedingung, am 11.09.2026 hergestellt.** Der erste Versuch am Gerät lief ohne
+> Modell: `gesicht_finder` fiel beim ersten Aufruf aus, die Staffel trug mit dem Tag
+> weiter, und der Grund stand genau einmal in `runs/…/diagnose.log` — „Das
+> Gesichtsmodell fehlt". Genau so ist es gebaut, aber beim Messen sieht es aus wie
+> „der Erkenner erkennt mich nicht". **Vor Teil 3 zuerst `diagnose.log` ansehen.**
+> Das Modell liegt jetzt unter `~/.spotlab/modelle/`
+> (`face_detection_yunet_2023mar.onnx`, 232 589 Bytes, SHA-256
+> `8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4`; aus dem
+> OpenCV-Zoo, das die Datei über git-lfs führt — der gewöhnliche `raw`-Pfad liefert
+> einen 131 Byte grossen Zeiger statt des Modells).
 Das Beispiel staffelt von sich aus Gesicht vor Tag. Eine Person stellt sich in drei Metern
 Abstand vor den Roboter und schaut ihn an, dann kommt sie langsam näher.
 

@@ -89,7 +89,10 @@ versionsgepinntes Extra `spotlab[sim]`.
   `workshop/folgen.py`: ein Finder liefert nur Peilung in Grad und Abstand in Metern, egal
   ob aus einem AprilTag oder aus Spots eigenem Personen-Tracker. Nur so lassen sich
   Strategien VERGLEICHEN statt behaupten — und nur so bleibt der sicherheitsrelevante Teil
-  an einer Stelle.
+  an einer Stelle. **Gemessen am 11.09.2026: dieser Spot verfolgt keine Menschen** — 560
+  Abfragen von `tracked_entity` über drei Läufe, null Treffer, während derselbe Dienst
+  gleichzeitig AprilTags meldete (A34 Teil 1). `personen_finder()` bleibt im Code und ist
+  richtig; er findet auf diesem Roboter nur nichts. Deshalb tragen Tag und Gesicht.
 - **Ein Kasten des Gesichtserkenners ist noch kein Gesicht — die Geometrie entscheidet.**
   Über die Aufzeichnung vom 12.08.2026 fand YuNet in 4 von 107 Takten etwas; der beste
   Treffer war eine Stuhllehne, der zweitbeste ein SCHIENBEIN (`tests/daten/…/takt50_*`).

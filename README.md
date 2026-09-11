@@ -437,8 +437,14 @@ folgen.folge(spot, folgen.personen_finder(), lauf_dir=spot.recorder.dir)  # Spot
 
 **Gesichter, und wo sie aufhören.** `gesicht_finder` sucht mit YuNet aus OpenCV Gesichter
 im zusammengesetzten Kamerabild. Das braucht das Extra `pip install "spotlab[gesicht]"` und
-die Modelldatei unter `~/.spotlab/modelle/` (oder `SPOTLAB_GESICHTSMODELL`). Zwei Dinge sind
-daran gemessen und nicht behauptet:
+die Modelldatei `face_detection_yunet_2023mar.onnx` unter `~/.spotlab/modelle/` (oder
+`SPOTLAB_GESICHTSMODELL`). Sie liegt im [OpenCV-Zoo](https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet)
+— **über git-lfs**, der gewöhnliche `raw`-Link liefert also einen 131 Byte grossen Zeiger
+statt der 232 589 Bytes des Modells. Fehlt sie, fällt der Finder beim ersten Aufruf aus, das
+Tag trägt allein weiter, und der Grund steht genau einmal in `runs/<lauf>/diagnose.log`.
+**Wer meint, der Erkenner erkenne ihn nicht, schaut zuerst dort nach.**
+
+Zwei Dinge sind daran gemessen und nicht behauptet:
 
 | Abstand | höchster sichtbarer Punkt |
 |---|---|
@@ -467,7 +473,12 @@ Modell fehlt, tragen die übrigen weiter, und der Grund steht im Protokoll.
 `personen_finder` nutzt Spots eigenen Personen-Tracker über `spot.people()`. Kein eigenes
 Modell: der Tracker steckt in der Firmware und liefert Nummer, Position, Geschwindigkeit und
 eine Sicherheit. Ob dein Roboter ihn hat, zeigt erst das Gerät — findet er niemanden, bleibt
-Spot stehen. Abnahmepunkt A34 klärt es.
+Spot stehen.
+
+**Am Schul-Spot gemessen (11.09.2026): dieser Roboter verfolgt keine Menschen.** 560
+Abfragen über drei Läufe, kein einziges verfolgtes Objekt — und das ohne jeden Filter,
+während derselbe Dienst gleichzeitig AprilTags meldete. Der Finder ist trotzdem richtig und
+bleibt; er findet hier nur nichts. Die Zahlen stehen bei Abnahmepunkt A34 Teil 1.
 
 **Die Schranken gelten alle gleichzeitig**, und jede, die ihre Daten nicht lesen kann,
 verbietet die Fahrt statt sie zu erlauben:

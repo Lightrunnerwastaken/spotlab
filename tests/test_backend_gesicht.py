@@ -103,9 +103,31 @@ def test_das_naechste_gesicht_steht_vorne(monkeypatch):
 # --------------------------------------------------------------- Modell
 
 
-def test_ein_fehlendes_modell_sagt_wo_es_herkommt(tmp_path):
+def test_ein_fehlendes_modell_sagt_wo_es_herkommt(tmp_path, monkeypatch):
+    """Unabhaengig davon, ob auf DIESEM Rechner ein Modell liegt.
+
+    Bis zum 11.09.2026 stand hier kein `monkeypatch`, und der Test bestand nur,
+    solange niemand das Modell abgelegt hatte: geprueft wird der Fall "nirgends
+    gefunden", und der Standardordner ist der dritte der drei Orte, an denen
+    gesucht wird. Sobald das Modell wirklich da war, fiel er -- ein Test, der am
+    Zustand des Entwicklungsrechners haengt, prueft die falsche Sache
+    (CLAUDE.md, Abschnitt Tests).
+    """
+    monkeypatch.setattr(gesicht, "MODELL_ORDNER", tmp_path / "leer")
     with pytest.raises(SpotlabError, match="OpenCV-Zoo"):
         gesicht.modellpfad(tmp_path / "gibtsnicht.onnx", umgebung={})
+
+
+def test_der_standardordner_zaehlt_als_letzter(tmp_path, monkeypatch):
+    """Der Ort, an den die Anleitung das Modell legen laesst.
+
+    Die Gegenprobe zum Test darueber: ohne sie prueft niemand mehr, dass der
+    Standardordner ueberhaupt durchsucht wird.
+    """
+    monkeypatch.setattr(gesicht, "MODELL_ORDNER", tmp_path)
+    pfad = tmp_path / gesicht.MODELL_DATEI
+    pfad.write_bytes(b"x")
+    assert gesicht.modellpfad(umgebung={}) == pfad
 
 
 def test_ein_vorhandenes_modell_wird_genommen(tmp_path):
