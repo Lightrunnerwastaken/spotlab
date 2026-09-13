@@ -39,3 +39,18 @@ def test_alle_spotlab_fehler_haben_deutschen_text():
     assert issubclass(BadCredentials, SpotlabError)
     with pytest.raises(SpotlabError):
         raise BadCredentials("Benutzername oder Passwort stimmt nicht.")
+
+
+def test_verhaltensfehler_sagt_was_zu_tun_ist():
+    """Lauf 20260911T162238Z: `stand()` scheiterte, spotlab meldete 'vom naechsten
+    Kommando ueberschrieben' -- die wahre Ursache stand nur in diagnose.log:
+    `BehaviorFaultError`. Ein Verhaltensfehler loescht sich nicht von selbst, und
+    der Roboter nimmt bis dahin KEIN Kommando an. Das muss die Meldung sagen."""
+    from bosdyn.client.robot_command import BehaviorFaultError
+
+    from spotlab.errors import CommandRejected
+
+    fehler = translate(BehaviorFaultError(response=None))
+    assert isinstance(fehler, CommandRejected)
+    assert "Verhaltensfehler" in str(fehler)
+    assert "Tablet" in str(fehler)

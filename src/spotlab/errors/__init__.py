@@ -59,6 +59,19 @@ class CommandRejected(SpotlabError):
     """Der Roboter hat ein Kommando abgelehnt."""
 
 
+# Der eine Satz, der bei einem Verhaltensfehler zu sagen ist — an EINER Stelle,
+# weil er auf zwei Wegen gebraucht wird: wenn der Kommandodienst die Annahme
+# verweigert (`translate`) und wenn ein angenommenes Kommando daran scheitert
+# (`api/posture.py`). Gelöscht wird der Fehler AM TABLET, absichtlich nicht von
+# spotlab: nach einem Sturz soll ein Mensch zuerst hinsehen, bevor der Roboter
+# wieder Kommandos annimmt.
+VERHALTENSFEHLER_HINWEIS = (
+    "Spot nimmt kein Kommando an, bis der Fehler gelöscht ist. Auf dem Tablet "
+    "quittieren (nach einem Sturz ist das die Abfrage 'Fehler löschen?'), dann das "
+    "Programm erneut starten."
+)
+
+
 class NotPowered(SpotlabError):
     """Die Motoren sind aus."""
 

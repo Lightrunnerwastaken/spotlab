@@ -106,6 +106,16 @@ versionsgepinntes Extra `spotlab[sim]`.
   macht die Erkennung möglich, nicht zuverlässig. `ansicht.jpg` bleibt unberührt (eigener
   Weg, Zuschnitt `RECHTECK`): ein aufgehelltes Livebild wäre eine Aussage über die
   Belichtung, die niemand geprüft hat.
+- **Ein abgelehntes Kommando fragt nach dem Verhaltensfehler — und behauptet keinen, den es
+  nicht gefunden hat.** Lauf `20260911T162238Z`: `stand()` wurde abgelehnt, spotlab sagte „vom
+  nächsten Kommando überschrieben", und die wahre Ursache (`BehaviorFaultError`, ein Sturz)
+  stand nur in `diagnose.log`, weil erst der Abbau daran scheiterte. Der Roboter meldet den
+  Fehler in JEDEM `RobotState`; `api/posture.py::_ablehnung` liest ihn über
+  `api/state.py::verhaltensfehler` (wirft nie — die Nachfrage darf die Ablehnung nicht
+  verdecken) und nennt die Ursache in Worten. Ohne Befund bleibt die alte Meldung. Der
+  Hinweis, was zu tun ist, steht EINMAL (`errors.VERHALTENSFEHLER_HINWEIS`) und gilt auch,
+  wenn der Kommandodienst die Annahme gleich verweigert (`translate`). **Gelöscht wird am
+  Tablet, absichtlich nicht von spotlab** — nach einem Sturz soll ein Mensch zuerst hinsehen.
 - **Ein Nullergebnis ohne Begründung ist keine Messung.** `gesicht.beurteile` liefert JEDEN
   Kasten mit Urteil — genommen, oder an welcher Schranke er scheiterte; `gesichter()` ist nur
   die Auswahl daraus, damit Messprobe und Folgemodus dieselbe Rechnung fahren. Anlass: am

@@ -122,6 +122,20 @@ def _fehler(zustand):
     }
 
 
+def verhaltensfehler(backend):
+    """Die offenen Verhaltensfehler des Roboters — als Liste von Dicts, oder [].
+
+    Für die Meldung eines abgelehnten Kommandos (`api/posture.py`). WIRFT NIE:
+    die Nachfrage darf den ursprünglichen Fehler nicht verdecken — dieselbe Regel
+    wie beim Rollback in `RealSpot.connect()`. Eine leere Liste heisst dann
+    „keiner bekannt", und die Meldung nennt keine Ursache, die nicht geprüft ist.
+    """
+    try:
+        return list(_fehler(backend.robot_state())["behavior"])
+    except Exception:
+        return []
+
+
 def _sekunden(zeitstempel):
     return zeitstempel.seconds + zeitstempel.nanos * 1e-9
 

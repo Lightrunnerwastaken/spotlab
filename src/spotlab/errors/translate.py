@@ -16,7 +16,12 @@ from bosdyn.client.exceptions import (
     UnknownDnsNameError,
 )
 from bosdyn.client.lease import DisplacedLeaseError, ResourceAlreadyClaimedError
-from bosdyn.client.robot_command import ExpiredError, NoTimeSyncError, TooDistantError
+from bosdyn.client.robot_command import (
+    BehaviorFaultError,
+    ExpiredError,
+    NoTimeSyncError,
+    TooDistantError,
+)
 
 
 def _mit_ursache(fehler, ursprung):
@@ -104,6 +109,18 @@ def translate(exc, *, ip=None):
             E.CommandRejected(
                 "Die Gültigkeit des Kommandos reicht dem Roboter zu weit in die "
                 "Zukunft. Fehler in spotlab, nicht in deinem Programm — bitte melden."
+            ),
+            exc,
+        )
+
+    # Lauf 20260911T162238Z: der Roboter verweigerte jedes Kommando, und der
+    # Grund stand nur in diagnose.log. Ein Verhaltensfehler löscht sich nicht
+    # von selbst — die Meldung muss sagen, wo er gelöscht wird.
+    if isinstance(exc, BehaviorFaultError):
+        return _mit_ursache(
+            E.CommandRejected(
+                "Spot hat einen Verhaltensfehler (Sturz, Hardware oder abgelaufenes "
+                "Lease). " + E.VERHALTENSFEHLER_HINWEIS
             ),
             exc,
         )

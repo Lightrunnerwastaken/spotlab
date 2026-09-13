@@ -8,10 +8,40 @@ import time
 
 from bosdyn.client.robot_command import RobotCommandBuilder
 
+from spotlab.api.state import verhaltensfehler
 from spotlab.backends.base import Capability, require
-from spotlab.errors import CommandRejected, SpotlabError
+from spotlab.errors import VERHALTENSFEHLER_HINWEIS, CommandRejected, SpotlabError
 
 POLL_S = 0.25
+
+# Die Ursachen, wie der Roboter sie nennt — in Worten, die ein Schüler versteht.
+URSACHEN = {
+    "CAUSE_FALL": "nach einem Sturz",
+    "CAUSE_HARDWARE": "wegen eines Hardwarefehlers",
+    "CAUSE_LEASE_TIMEOUT": "weil das Lease ausgelaufen ist",
+}
+
+
+def _ablehnung(backend, was, status):
+    """Die Meldung zu einem abgelehnten Kommando — mit Ursache, wenn es eine gibt.
+
+    Lauf 20260911T162238Z am Schul-Spot: `stand()` wurde abgelehnt, und die
+    Meldung lautete „vom nächsten Kommando überschrieben". Die wahre Ursache —
+    ein Verhaltensfehler nach einem Sturz — stand nur in diagnose.log, weil erst
+    der Abbau daran scheiterte. Der Roboter meldet den Fehler aber in JEDEM
+    RobotState. Hier wird nachgefragt; ohne Befund bleibt es bei der bisherigen
+    Meldung, denn eine Ursache, die nicht geprüft ist, wird nicht behauptet.
+    """
+    fehler = verhaltensfehler(backend)
+    if not fehler:
+        return f"Der Roboter hat das Kommando '{was}' abgelehnt: {status}"
+    ursachen = ", ".join(
+        URSACHEN.get(f.get("ursache"), str(f.get("ursache"))) for f in fehler
+    )
+    return (
+        f"Der Roboter hat das Kommando '{was}' abgelehnt, weil er einen "
+        f"Verhaltensfehler hat ({ursachen}). " + VERHALTENSFEHLER_HINWEIS
+    )
 
 
 def warte_auf(backend, kennung, timeout, was, schlaf=time.sleep, jetzt=time.monotonic):
@@ -19,9 +49,7 @@ def warte_auf(backend, kennung, timeout, was, schlaf=time.sleep, jetzt=time.mono
     while True:
         rueck = backend.command_feedback(kennung)
         if rueck.rejected:
-            raise CommandRejected(
-                f"Der Roboter hat das Kommando '{was}' abgelehnt: {rueck.status}"
-            )
+            raise CommandRejected(_ablehnung(backend, was, rueck.status))
         if rueck.done:
             return
         if jetzt() >= ende:
