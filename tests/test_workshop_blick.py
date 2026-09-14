@@ -251,3 +251,185 @@ def test_ohne_blick_faehrt_es_auch(tmp_path):
     spot = _NurFahren()          # kein `backend` -- wie die Attrappen der alten Tests
     fahre(spot, tmp_path, schlaf=lambda _s: None, laeuft=lambda: False)
     assert spot.kommandos == ["stop"]
+
+
+# ------------------------------------------------------ Gesichter im Fahrblick
+
+
+def _an(lauf_dir, gesicht=True):
+    from spotlab.record import ansicht
+
+    ansicht.schreibe(lauf_dir, gesicht=gesicht)
+
+
+def _gruen(bild):
+    """Bildpunkte, die deutlich gruener sind als rot und blau -- der Kastenrand.
+
+    Ueber eine Schwelle und nicht ueber die genaue Farbe: JPEG ist verlustbehaftet,
+    und eine duenne Linie auf grauem Grund verliert dabei Saettigung.
+    """
+    if bild.ndim != 3:
+        return 0
+    r, g, b = (bild[:, :, k].astype(int) for k in range(3))
+    return int(((g > r + 40) & (g > b + 40)).sum())
+
+
+def _rot(bild):
+    if bild.ndim != 3:
+        return 0
+    r, g, b = (bild[:, :, k].astype(int) for k in range(3))
+    return int(((r > g + 40) & (r > b + 40)).sum())
+
+
+def test_ohne_schalter_wird_der_erkenner_nicht_einmal_gerufen(tmp_path):
+    """Die Vorgabe. Ein Lauf ohne Schalter darf keine Rechenzeit fuer YuNet kosten --
+    der Blick schreibt bis zu dreissig Bilder je Sekunde."""
+    gerufen = []
+    b = blick.Blick(_Spot(), tmp_path, gesichter_holen=lambda feld: gerufen.append(feld) or [])
+    assert b.einmal()
+    assert gerufen == []
+    assert _gelesen(tmp_path / blick.DATEI).ndim == 2, "grau bleibt grau"
+
+
+def test_mit_schalter_stehen_die_kaesten_im_bild(tmp_path):
+    """Der ganze Zweck: was der Erkenner setzt, sieht man beim Fahren."""
+    _an(tmp_path)
+    b = blick.Blick(_Spot(), tmp_path,
+                    gesichter_holen=lambda _feld: [(120.0, 90.0, 80.0, 80.0, 0.78)])
+    assert b.einmal()
+    bild = _gelesen(tmp_path / blick.DATEI)
+    assert bild.ndim == 3, "fuer gruene Kaesten auf grauem Bild braucht es Farbe"
+    assert _gruen(bild) > 50, "der Kastenrand steht im Bild"
+    assert b.gesichter == 1
+
+
+def test_der_erkenner_bekommt_das_bild_das_man_sieht(tmp_path):
+    """Kein zweiter Bildweg: erkannt wird auf demselben Feld, das gleich JPEG wird.
+    Sonst zeigte der Kasten auf eine Stelle, die es im gezeigten Bild nicht gibt."""
+    _an(tmp_path)
+    gesehen = []
+    b = blick.Blick(_Spot(), tmp_path,
+                    gesichter_holen=lambda feld: gesehen.append(feld) or [])
+    assert b.einmal()
+    [feld] = gesehen
+    bild = _gelesen(tmp_path / blick.DATEI)
+    assert feld.shape[:2] == bild.shape[:2]
+
+
+def test_ein_fehlendes_modell_steht_im_BILD_und_wird_nicht_dauernd_neu_versucht(tmp_path):
+    """Die Lehre vom 11.09.2026: ein Ausfall, der einmal ins Protokoll geht, ist
+    beim Messen unsichtbar. Hier steht er dort, wo der Mensch ohnehin hinschaut."""
+    from spotlab.errors import SpotlabError
+
+    versuche = {"n": 0}
+
+    def kaputt(_feld):
+        versuche["n"] += 1
+        raise SpotlabError("Das Gesichtsmodell fehlt (gesucht: irgendwo).")
+
+    _an(tmp_path)
+    spot = _Spot()
+    b = blick.Blick(spot, tmp_path, gesichter_holen=kaputt)
+    assert b.einmal()
+    bild = _gelesen(tmp_path / blick.DATEI)
+    assert _rot(bild) > 50, "die Meldung steht in rot im Bild"
+
+    for _ in range(3):
+        spot.backend.naechstes_bild()
+        assert b.einmal()
+    assert versuche["n"] == 1, "einmal gescheitert heisst nicht dreissigmal je Sekunde"
+    assert _rot(_gelesen(tmp_path / blick.DATEI)) > 50, "die Meldung bleibt stehen"
+
+
+def test_ein_fehler_im_erkenner_beendet_den_blick_nicht(tmp_path):
+    """Ohne Kaesten faehrt man weiter. Ein Erkenner, der stolpert, darf weder den
+    Blick noch den Lauf anhalten -- und er zaehlt NICHT als Bildfehler, sonst
+    gaebe der Blick nach drei Takten auf, obwohl die Kamera tadellos liefert."""
+    def stolpert(_feld):
+        raise RuntimeError("YuNet hat schlechte Laune")
+
+    _an(tmp_path)
+    b = blick.Blick(_Spot(), tmp_path, gesichter_holen=stolpert)
+    assert b.einmal()
+    assert (tmp_path / blick.DATEI).is_file(), "das Bild kommt trotzdem"
+    assert b.fehler == 0 and not b.aufgegeben
+    assert b.gesicht_fehler == 1
+
+
+def test_der_schalter_wirkt_waehrend_der_fahrt(tmp_path):
+    """Umlegen mitten im Lauf, ohne Neustart -- das ist der Sinn eines Schalters."""
+    b = blick.Blick(_Spot(), tmp_path,
+                    gesichter_holen=lambda _feld: [(120.0, 90.0, 80.0, 80.0, 0.9)])
+    assert b.einmal()
+    assert _gelesen(tmp_path / blick.DATEI).ndim == 2
+
+    _an(tmp_path)
+    b._spot.backend.naechstes_bild()
+    assert b.einmal()
+    assert _gruen(_gelesen(tmp_path / blick.DATEI)) > 50
+
+    _an(tmp_path, gesicht=False)
+    b._spot.backend.naechstes_bild()
+    assert b.einmal()
+    assert _gelesen(tmp_path / blick.DATEI).ndim == 2, "und wieder aus"
+
+
+def test_der_vorgabeweg_fuehrt_zum_echten_erkenner(monkeypatch, tmp_path):
+    """Ohne Naht gebaut: die Kaesten kommen aus `gesicht.kaesten` mit einem
+    YuNet-Erkenner -- also mit derselben Aufhellung wie Folgemodus und Messprobe."""
+    from spotlab.backends.real import gesicht as gesichtsmodul
+
+    gebaut, gefragt = [], []
+    monkeypatch.setattr(gesichtsmodul, "erkenner",
+                        lambda breite, hoehe, **kw: gebaut.append((breite, hoehe)) or "ERKENNER")
+    monkeypatch.setattr(gesichtsmodul, "kaesten",
+                        lambda feld, erk: gefragt.append(erk) or [])
+
+    _an(tmp_path)
+    b = blick.Blick(_Spot(), tmp_path)
+    assert b.einmal()
+    assert gefragt == ["ERKENNER"], "der echte Weg, nicht die Testnaht"
+    assert len(gebaut) == 1, "ein Erkenner fuer den ganzen Lauf, nicht je Bild"
+
+
+def _aus_bytes(daten):
+    return np.asarray(PILImage.open(io.BytesIO(daten)))
+
+
+def test_die_meldung_ist_gross_genug_zum_lesen():
+    """Der Standardzeichensatz von PIL ist elf Bildpunkte hoch. Auf einem Panorama
+    von tausend Punkten Breite liest das niemand -- und ausgerechnet „das Modell
+    fehlt" ist die Zeile, wegen der dieser Weg ueberhaupt existiert."""
+    bild = _aus_bytes(blick.zeichne_jpeg(np.zeros((200, 800), dtype=np.uint8),
+                                         meldung="Modell fehlt"))
+    r, g = (bild[:, :, k].astype(int) for k in range(2))
+    zeilen = np.where((r > g + 40).any(axis=1))[0]
+    assert zeilen.size, "die Meldung steht im Bild"
+    assert zeilen.max() - zeilen.min() + 1 >= 12, "hoeher als der 11-px-Standard"
+
+
+def test_ein_aelteres_pillow_ohne_groessenangabe_bricht_nicht(monkeypatch):
+    """`load_default(size=)` gibt es erst ab Pillow 10.1, erlaubt ist ab 10.0.
+    Eine fehlende Schriftgroesse darf den Blick nicht anhalten -- lieber klein."""
+    from PIL import ImageFont
+
+    echt = ImageFont.load_default
+    monkeypatch.setattr(ImageFont, "load_default",
+                        lambda *a, **kw: (_ for _ in ()).throw(TypeError("keine Groesse"))
+                        if (a or kw) else echt())
+    bild = _aus_bytes(blick.zeichne_jpeg(np.zeros((200, 800), dtype=np.uint8),
+                                         meldung="Modell fehlt"))
+    assert _rot(bild) > 20, "kleiner, aber da"
+
+
+def test_eine_lange_meldung_zeigt_dass_sie_gekuerzt_ist():
+    """Die Meldung „Modell fehlt" ist 304 Zeichen lang und passt nicht ins Bild.
+    Vier Zeilen reichen fuer das Wesentliche -- aber ein Text, der mitten im Wort
+    aufhoert, sieht aus wie ein Fehler statt wie eine Kuerzung. Der ganze Satz
+    steht in `diagnose.log`."""
+    kurz = blick._meldungszeilen("Das Gesichtsmodell fehlt.")
+    assert kurz == ["Das Gesichtsmodell fehlt."], "was passt, bleibt unberuehrt"
+
+    lang = blick._meldungszeilen("wort " * 200)
+    assert len(lang) == blick.MELDUNG_ZEILEN
+    assert lang[-1].endswith("…"), "die Kuerzung ist sichtbar"

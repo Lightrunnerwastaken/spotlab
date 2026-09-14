@@ -770,6 +770,21 @@ versionsgepinntes Extra `spotlab[sim]`.
   vollständig neu. Ein Fehler beendet den Blick, nie den Lauf: ohne Bild fährt man weiter,
   ohne Fahrbefehle nicht. Die GUI liest die Datei über `read_bytes` + `loadFromData`, nie
   `QPixmap(pfad)`: gleicher Name, neue Bytes — Qts Dateicache zeigte sonst das alte Bild.
+- **Der Schalter „Gesichtserkennung" im Fahren-Tab geht über `ansicht.json`, und
+  gezeichnet wird im LAUFPROZESS** (`record/ansicht.py`, `workshop/blick.py::zeichne_jpeg`).
+  Der Gegenweg zu `ansicht.jpg`: die GUI schreibt den Schalterstand, der Blick liest ihn bei
+  jedem Bild und legt die Kästen von `gesicht.kaesten` ins Panorama, bevor es JPEG wird.
+  Damit ändert sich an `watcher.py` und `app.py` **nichts** — die GUI zeigt weiterhin nur
+  eine Datei, und YuNet läuft nie im Fenster-Thread. **Kein Totmann**, anders als
+  `fahrt.json`: ein Fahrbefehl muss verfallen, ein Schalter darf das nicht, deshalb trägt
+  die Datei gar keine Zeitmarke. Gezeichnet wird mit **PIL, nicht mit cv2** — die häufigste
+  Meldung hier ist „für die Gesichtssuche fehlt OpenCV", und sie mit OpenCV zu malen wäre
+  der eine Fall, in dem niemand sie sähe. Ein fehlendes Modell steht **in rot im Bild** und
+  wird danach nicht je Bild neu versucht (die Lehre vom 11.09.2026: ein Ausfall in
+  `diagnose.log` ist beim Messen unsichtbar); ein stolpernder Erkenner zählt **nicht** als
+  Bildfehler, sonst gäbe der Blick nach drei Takten wegen der Beigabe auf. **Ohne
+  Tiefen-Gegenprobe** — der Fahrblick holt keine Tiefenbilder, ein Fehltreffer bekommt hier
+  also genauso einen Kasten wie ein Gesicht, und genau das steht unter dem Bild.
 - **Das Fenstersymbol ist FREIGESTELLT und liegt im Paket** (`gui/spotlab.png`, runde
   Ecken mit Transparenz aussen, dazu `package-data`). Ein Symbol mit eigenem
   Hintergrund sitzt in der Taskleiste in einem grauen Kasten, und ohne den

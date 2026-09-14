@@ -169,3 +169,64 @@ def test_die_app_reicht_die_ansicht_in_den_tab(qapp, tmp_path):
     tab.lauf_beginnt(tmp_path, "fahren.py")
     fenster._ansicht(pfad)
     assert tab.bild.hat_bild()
+
+
+# ------------------------------------------------- Der Schalter „Gesichtserkennung"
+
+
+def test_ohne_lauf_ist_der_schalter_grau(qapp):
+    """Er schreibt in ein Lauf-Verzeichnis. Ohne Lauf gibt es keines."""
+    ansicht = FahrenView()
+    assert not ansicht.gesicht.isEnabled()
+    assert not ansicht.gesicht.isChecked()
+
+
+def test_umlegen_schreibt_den_schalter_ins_lauf_verzeichnis(qapp, tmp_path):
+    """Der ganze Kanal: die GUI schreibt, `blick.py` im Laufprozess liest."""
+    from spotlab.record import ansicht as schalter
+
+    ansicht = FahrenView()
+    ansicht.lauf_beginnt(tmp_path, "fahren.py")
+    assert ansicht.gesicht.isEnabled()
+    assert schalter.lies(tmp_path) is False, "ohne Zutun aus"
+
+    ansicht.gesicht.setChecked(True)
+    assert schalter.lies(tmp_path) is True
+    ansicht.gesicht.setChecked(False)
+    assert schalter.lies(tmp_path) is False
+
+
+def test_ein_neuer_lauf_bekommt_den_schalterstand_mit(qapp, tmp_path):
+    """Sonst steht das Haekchen, und der naechste Lauf erkennt trotzdem nichts --
+    ein Schalter, der luegt, ist schlimmer als keiner."""
+    from spotlab.record import ansicht as schalter
+
+    erster, zweiter = tmp_path / "a", tmp_path / "b"
+    erster.mkdir()
+    zweiter.mkdir()
+
+    ansicht = FahrenView()
+    ansicht.lauf_beginnt(erster, "fahren.py")
+    ansicht.gesicht.setChecked(True)
+    ansicht.lauf_beendet()
+
+    ansicht.lauf_beginnt(zweiter, "fahren.py")
+    assert ansicht.gesicht.isChecked(), "die Wahl des Menschen bleibt stehen"
+    assert schalter.lies(zweiter) is True, "und sie gilt auch fuer den neuen Lauf"
+
+
+def test_nach_dem_lauf_ist_der_schalter_wieder_grau(qapp, tmp_path):
+    ansicht = FahrenView()
+    ansicht.lauf_beginnt(tmp_path, "fahren.py")
+    ansicht.gesicht.setChecked(True)
+    ansicht.lauf_beendet()
+    assert not ansicht.gesicht.isEnabled()
+
+
+def test_der_schalter_sagt_dass_die_tiefenpruefung_fehlt(qapp):
+    """Was man sieht, sind die Kaesten des Erkenners -- Fehltreffer eingeschlossen.
+    Das muss dort stehen, wo der Schalter ist, nicht nur in der Dokumentation."""
+    ansicht = FahrenView()
+    text = (ansicht.gesicht.toolTip() + " " + ansicht.gesicht_hinweis.text()).lower()
+    assert "tiefe" in text or "gegenprobe" in text
+    assert "fehltreffer" in text

@@ -27,6 +27,7 @@ from PySide6.QtCore import QRect, Qt, Signal
 from PySide6.QtGui import QPainter, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
+    QCheckBox,
     QComboBox,
     QHBoxLayout,
     QLabel,
@@ -37,6 +38,7 @@ from PySide6.QtWidgets import (
 )
 
 from spotlab.gui.tastenfahrt import Tastenfahrt
+from spotlab.record import ansicht as ansichtsschalter
 from spotlab.record import fahrt
 
 VORGABE_STUFE = "langsam"             # am echten Roboter gemächlich anfangen
@@ -52,6 +54,16 @@ HINWEIS = (
 )
 BELEGUNG = "W A S D Q E  ·  1 2 3 Tempo  ·  Leertaste hält"
 KEIN_BILD = "Kein Bild — der Blick kommt, sobald der Lauf steht."
+
+GESICHT_HINWEIS = (
+    "Die Kästen sind das, was der Erkenner setzt — OHNE die Tiefen-Gegenprobe des "
+    "Folgemodus. Ein Fehltreffer (eine Stuhllehne, ein Schienbein) bekommt hier "
+    "genauso einen Kasten wie ein Gesicht. Die Zahl ist die Punktzahl."
+)
+GESICHT_WERKZEUG = (
+    "Zeichnet die Kästen des Gesichtserkenners in den Blick — im Laufprozess, nicht "
+    "im Fenster. Ohne Tiefenmessung: was hier steht, ist der rohe Befund von YuNet."
+)
 
 
 class Bildfeld(QWidget):
@@ -102,6 +114,7 @@ class FahrenView(QWidget):
         super().__init__(parent)
         self.setFocusPolicy(Qt.StrongFocus)
         self._laeuft = False
+        self._lauf_dir = None
 
         titel = QLabel("Den echten Spot über die Tastatur fahren")
         titel.setObjectName("Titel")
@@ -121,11 +134,21 @@ class FahrenView(QWidget):
         self.stopp.setEnabled(False)
         self.stopp.clicked.connect(self._stopp_geklickt)
 
+        # Der Schalter reist als `ansicht.json` ins Lauf-Verzeichnis; gelesen und
+        # gezeichnet wird im Laufprozess (`workshop/blick.py`). Die GUI bekommt
+        # davon nur ein Bild, in dem Kästen stehen -- sie rechnet selbst nichts,
+        # und YuNet läuft nie im Fenster-Thread.
+        self.gesicht = QCheckBox("👤 Gesichtserkennung")
+        self.gesicht.setEnabled(False)
+        self.gesicht.setToolTip(GESICHT_WERKZEUG)
+        self.gesicht.toggled.connect(self._gesicht_umgelegt)
+
         knoepfe = QHBoxLayout()
         knoepfe.addWidget(self.start)
         knoepfe.addWidget(self.stopp)
         knoepfe.addWidget(QLabel("Tempo"))
         knoepfe.addWidget(self.stufe)
+        knoepfe.addWidget(self.gesicht)
         knoepfe.addStretch(1)
 
         # Der Blick nach vorn: `workshop/blick.py` schreibt `ansicht.jpg` (beide
@@ -141,6 +164,10 @@ class FahrenView(QWidget):
         self.bildrate.setObjectName("Gedaempft")
         self._bilder_seit = 0
         self._rate_beginn = None
+        self.gesicht_hinweis = QLabel(GESICHT_HINWEIS)
+        self.gesicht_hinweis.setObjectName("Gedaempft")
+        self.gesicht_hinweis.setWordWrap(True)
+        self.gesicht_hinweis.hide()
 
         self.belegung = QLabel(BELEGUNG)
         self.belegung.setObjectName("Kachelname")
@@ -157,6 +184,7 @@ class FahrenView(QWidget):
         anordnung.addWidget(self.hinweis_bild)
         anordnung.addWidget(self.bild, 1)
         anordnung.addWidget(self.bildrate)
+        anordnung.addWidget(self.gesicht_hinweis)
         anordnung.addWidget(self.belegung)
         anordnung.addWidget(self.gedrueckt)
         anordnung.addWidget(self.befehl_zeile)
@@ -179,18 +207,28 @@ class FahrenView(QWidget):
     def lauf_beginnt(self, lauf_dir, name="fahren.py"):
         """Der Watcher hat den Lauf gemeldet: ab jetzt fahren die Tasten."""
         self._laeuft = True
+        self._lauf_dir = Path(lauf_dir)
         self.tastenfahrt.beginne(lauf_dir)
         self.start.setText("■ Fahrt beenden")
         self.stopp.setEnabled(True)
+        self.gesicht.setEnabled(True)
+        # Das Häkchen bleibt über Läufe hinweg stehen, die Datei aber nicht: sie
+        # gehört dem Lauf. Ohne diese Zeile stünde das Häkchen und der neue Lauf
+        # erkennte nichts -- ein Schalter, der lügt.
+        self._schreibe_gesicht()
         self.zustand.setText(f"{name} läuft — Tasten sind scharf.")
         self._tastatur_greifen()
 
     def lauf_beendet(self):
         self.tastenfahrt.beende()
         self._laeuft = False
+        self._lauf_dir = None
         self._tastatur_loslassen()
         self.start.setText("🎮 Fahrt beginnen")
         self.stopp.setEnabled(False)
+        # Grau, aber nicht abgehakt: die Wahl des Menschen gilt für den nächsten Lauf.
+        self.gesicht.setEnabled(False)
+        self.gesicht_hinweis.hide()
         self.gedrueckt.setText("—")
         self.befehl_zeile.setText("Spot steht.")
         self.zustand.setText("Kein Lauf.")
@@ -247,6 +285,20 @@ class FahrenView(QWidget):
     def _stopp_geklickt(self):
         self.tastenfahrt.alle_los()
         self.stopp_gewuenscht.emit()
+
+    def _gesicht_umgelegt(self, an):
+        self.gesicht_hinweis.setVisible(bool(an) and self._laeuft)
+        self._schreibe_gesicht()
+
+    def _schreibe_gesicht(self):
+        """Den Schalterstand in den laufenden Lauf schreiben — mehr tut die GUI nicht.
+
+        Ohne Lauf gibt es kein Verzeichnis; dann bleibt das Häkchen eine Absicht,
+        bis der nächste Lauf beginnt.
+        """
+        if self._lauf_dir is None:
+            return
+        ansichtsschalter.schreibe(self._lauf_dir, gesicht=self.gesicht.isChecked())
 
     def _stufe_gewaehlt(self, _index):
         name = self.stufe.currentData()

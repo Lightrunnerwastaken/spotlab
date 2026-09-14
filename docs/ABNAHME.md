@@ -900,6 +900,15 @@ und die Verteilung der Gründe. Besonders `zu tief` — die untere Schranke steh
 bei 1.0 m und ist für einen SITZENDEN Menschen gewählt; ein hockender Kopf liegt
 darunter, und dann verwirft die Gegenprobe ein richtiges Gesicht.
 
+**Zum Hinschauen, nicht zum Messen: der Schalter im Fahren-Tab.** „👤
+Gesichtserkennung" legt die Kästen des Erkenners live in den Fahrblick, während
+man mit W A S D Q E fährt. Er beantwortet schnell „sieht er mich überhaupt?",
+ersetzt die Probe aber NICHT: er fährt **ohne die Tiefen-Gegenprobe**, also
+bekommt eine Stuhllehne genauso einen Kasten wie ein Gesicht, und er schreibt
+keine Zahlen mit. Wer wissen will, ob ein Kasten ein Gesicht WAR, braucht die
+Probe. Fehlt das Modell, steht der Grund in rot im Bild statt nur in
+`diagnose.log`.
+
 Danach erst der Folgelauf. Nur mit `pip install "spotlab[gesicht]"` und abgelegtem Modell.
 
 > **Vorbedingung, am 11.09.2026 hergestellt.** Der erste Versuch am Gerät lief ohne

@@ -63,8 +63,9 @@ def jpeg_bytes(feld, guete=GUETE):
     return puffer.getvalue()
 
 
-def bild_aus(antworten, drehungen=None, guete=GUETE):
-    """Rückfall: die Kamerabilder aufrecht gedreht und nebeneinander, als JPEG-Bytes."""
+def feld_aus(antworten, drehungen=None):
+    """Rückfall: die Kamerabilder aufrecht gedreht und nebeneinander, als Feld."""
+    import numpy as np
     from PIL import Image as PILImage
 
     from spotlab.api.perception import Image
@@ -84,8 +85,89 @@ def bild_aus(antworten, drehungen=None, guete=GUETE):
     for teil in teile:
         zusammen.paste(teil.convert(modus), (x, 0))
         x += teil.width
+    return np.asarray(zusammen)
+
+
+def bild_aus(antworten, drehungen=None, guete=GUETE):
+    """Rückfall: die Kamerabilder aufrecht gedreht und nebeneinander, als JPEG-Bytes."""
+    return jpeg_bytes(feld_aus(antworten, drehungen), guete)
+
+
+# Grün wie am Tablet, und dick genug, dass die Linie ein JPEG überlebt.
+KASTEN_FARBE = (0, 255, 0)
+KASTEN_DICKE = 3
+MELDUNG_FARBE = (255, 40, 40)
+MELDUNG_BREITE = 72              # Zeichen je Zeile, bevor umgebrochen wird
+MELDUNG_ZEILEN = 4               # mehr verdeckt den Blick, den man beim Fahren braucht
+# Der Standardzeichensatz von PIL ist 11 px hoch; auf einem Panorama von rund
+# tausend Bildpunkten Breite liest das niemand.
+SCHRIFT_KASTEN = 16
+SCHRIFT_MELDUNG = 18
+
+
+def _meldungszeilen(meldung, breite=MELDUNG_BREITE, hoechstens=MELDUNG_ZEILEN):
+    """Die Meldung umgebrochen — und sichtbar gekürzt, wenn sie nicht hineinpasst.
+
+    Ein Text, der mitten im Wort aufhört, sieht aus wie ein Fehler statt wie
+    eine Kürzung. Der ganze Satz steht ohnehin in `diagnose.log`.
+    """
+    import textwrap
+
+    zeilen = textwrap.wrap(meldung, breite)
+    if len(zeilen) <= hoechstens:
+        return zeilen
+    gekuerzt = zeilen[:hoechstens]
+    gekuerzt[-1] += " …"
+    return gekuerzt
+
+
+def _schrift(groesse):
+    """Der Standardzeichensatz in lesbarer Grösse — notfalls in seiner alten.
+
+    `load_default(size=)` gibt es erst ab Pillow 10.1, das Projekt erlaubt ab
+    10.0. Eine fehlende Schriftgrösse darf den Blick nicht anhalten.
+    """
+    from PIL import ImageFont
+
+    try:
+        return ImageFont.load_default(size=groesse)
+    except TypeError:
+        return ImageFont.load_default()
+
+
+def zeichne_jpeg(feld, kaesten=(), meldung="", guete=GUETE):
+    """Das Feld mit Kästen und einer etwaigen Meldung, als JPEG-Bytes.
+
+    Gezeichnet wird mit PIL und NICHT mit cv2: die häufigste Meldung, die hier
+    landet, ist „für die Gesichtssuche fehlt OpenCV" — sie mit OpenCV zu malen
+    wäre der eine Fall, in dem sie niemand zu sehen bekäme.
+
+    Das Bild wird dafür nach RGB gewandelt. Ein graues Panorama mit grünen
+    Kästen geht nicht anders, und es passiert nur, wenn der Schalter an ist:
+    ohne ihn bleibt `ansicht.jpg` genau das Bild, das es immer war.
+    """
+    from PIL import Image as PILImage
+    from PIL import ImageDraw
+
+    bild = PILImage.fromarray(feld).convert("RGB")
+    maler = ImageDraw.Draw(bild)
+    if len(kaesten):
+        schrift = _schrift(SCHRIFT_KASTEN)
+        for x, y, breite, hoehe, score in kaesten:
+            maler.rectangle([x, y, x + breite, y + hoehe],
+                            outline=KASTEN_FARBE, width=KASTEN_DICKE)
+            # Über den Kasten, solange oben Platz ist — sonst hinein, denn ein
+            # Gesicht am oberen Bildrand ist hier der Normalfall.
+            oben = y - SCHRIFT_KASTEN - 2
+            maler.text((x, oben if oben >= 0 else y + 2), f"{score:.2f}",
+                       fill=KASTEN_FARBE, font=schrift)
+    if meldung:
+        schrift = _schrift(SCHRIFT_MELDUNG)
+        for nummer, zeile in enumerate(_meldungszeilen(meldung)):
+            maler.text((8, 8 + nummer * (SCHRIFT_MELDUNG + 4)), zeile,
+                       fill=MELDUNG_FARBE, font=schrift)
     puffer = io.BytesIO()
-    zusammen.save(puffer, format="JPEG", quality=guete)
+    bild.save(puffer, format="JPEG", quality=guete)
     return puffer.getvalue()
 
 
@@ -98,10 +180,11 @@ class Blick(threading.Thread):
     """
 
     def __init__(self, spot, lauf_dir, takt_s=TAKT_S, kameras=KAMERAS,
-                 schlaf=time.sleep, jetzt=time.monotonic):
+                 schlaf=time.sleep, jetzt=time.monotonic, gesichter_holen=None):
         super().__init__(name="spotlab-blick", daemon=True)
         self._spot = spot
-        self._ziel = Path(lauf_dir) / DATEI
+        self._lauf_dir = Path(lauf_dir)
+        self._ziel = self._lauf_dir / DATEI
         self._takt_s = takt_s
         self._quellen = list(kameras)
         self._schlaf, self._jetzt = schlaf, jetzt
@@ -116,6 +199,13 @@ class Blick(threading.Thread):
         self.fehler = 0
         self.letzter_fehler = ""
         self.aufgegeben = False
+        # Gesichter: die Testnaht, der Erkenner (einer je Lauf) und die Zähler.
+        self._gesichter_holen = gesichter_holen or self._vom_erkenner
+        self._erkenner = None
+        self._gesicht_meldung = ""
+        self.gesichter = 0
+        self.gesicht_fehler = 0
+        self.letzter_gesichtsfehler = ""
 
     # -------------------------------------------------------------- Schritte
 
@@ -137,19 +227,71 @@ class Blick(threading.Thread):
         return True
 
     def _bild_bytes(self, antworten):
+        feld = self._feld(antworten)
+        kaesten, meldung = self._erkennung(feld)
+        if kaesten or meldung:
+            return zeichne_jpeg(feld, kaesten, meldung)
+        return jpeg_bytes(feld)
+
+    def _feld(self, antworten):
         from spotlab.backends.real import panorama
 
         if not self._rueckfall:
             try:
                 if self._panorama is None:
                     self._panorama = panorama.Panorama(panorama.kalibrierung_aus(antworten))
-                return jpeg_bytes(self._panorama.zusammensetzen(panorama.bilder_aus(antworten)))
+                return self._panorama.zusammensetzen(panorama.bilder_aus(antworten))
             except SpotlabError as fehler:
                 from spotlab import protokoll
 
                 self._rueckfall = True
                 protokoll.notiere(f"Blick ohne Panorama (gedreht nebeneinander): {fehler}")
-        return bild_aus(antworten)
+        return feld_aus(antworten)
+
+    # ------------------------------------------------------------- Gesichter
+
+    def _erkennung(self, feld):
+        """(Kästen, Meldung) für dieses Bild. Beides leer heisst: unberührt durch.
+
+        Der Schalter kommt aus `ansicht.json`, geschrieben von der Ansicht
+        „Fahren" (`record/ansicht.py`). Er wird bei JEDEM Bild gelesen -- eine
+        Datei von zwanzig Byte, und dafür wirkt das Umlegen mitten in der Fahrt,
+        ohne den Lauf neu zu starten.
+        """
+        from spotlab.record import ansicht
+
+        if not ansicht.lies(self._lauf_dir):
+            return [], ""
+        if self._gesicht_meldung:
+            # Einmal gescheitert (Modell fehlt, OpenCV fehlt) heisst nicht
+            # dreissigmal je Sekunde neu scheitern. Die Meldung bleibt stehen.
+            return [], self._gesicht_meldung
+        try:
+            gefunden = list(self._gesichter_holen(feld))
+        except SpotlabError as fehler:
+            from spotlab import protokoll
+
+            self._gesicht_meldung = str(fehler)
+            protokoll.notiere(f"Gesichtserkennung im Blick aus: {fehler}")
+            return [], self._gesicht_meldung
+        except Exception as fehler:
+            # Kein Bildfehler: die Kamera liefert ja. Zählte es als solcher, gäbe
+            # der Blick nach drei Takten auf und das Bild wäre weg -- wegen der
+            # Beigabe, nicht wegen der Sache.
+            self.gesicht_fehler += 1
+            self.letzter_gesichtsfehler = f"{type(fehler).__name__}: {fehler}"
+            return [], ""
+        self.gesichter += len(gefunden)
+        return gefunden, ""
+
+    def _vom_erkenner(self, feld):
+        """Der Vorgabeweg: YuNet über `gesicht.kaesten` -- mit der Aufhellung,
+        die auch Folgemodus und Messprobe fahren. Eine Formulierung, nicht zwei."""
+        from spotlab.backends.real import gesicht
+
+        if self._erkenner is None:
+            self._erkenner = gesicht.erkenner(feld.shape[1], feld.shape[0])
+        return gesicht.kaesten(feld, self._erkenner)
 
     def einmal(self):
         """Ein Bild holen und schreiben, in diesem Thread. True, wenn es geklappt hat."""
