@@ -22,6 +22,19 @@ URSACHEN = {
 }
 
 
+def _ursache(fehler):
+    """„wegen eines Hardwarefehlers — spot.fl.kna.mc.fault: Current error".
+
+    Das Teil dahinter kommt aus `verhaltensfehler()`; ohne Treffer bleibt es bei
+    der Ursache, wie der Roboter sie nennt.
+    """
+    text = URSACHEN.get(fehler.get("ursache"), str(fehler.get("ursache")))
+    hardware = fehler.get("hardware") or []
+    if hardware:
+        text += " — " + "; ".join(hardware)
+    return text
+
+
 def _ablehnung(backend, was, status):
     """Die Meldung zu einem abgelehnten Kommando — mit Ursache, wenn es eine gibt.
 
@@ -35,9 +48,7 @@ def _ablehnung(backend, was, status):
     fehler = verhaltensfehler(backend)
     if not fehler:
         return f"Der Roboter hat das Kommando '{was}' abgelehnt: {status}"
-    ursachen = ", ".join(
-        URSACHEN.get(f.get("ursache"), str(f.get("ursache"))) for f in fehler
-    )
+    ursachen = ", ".join(_ursache(f) for f in fehler)
     return (
         f"Der Roboter hat das Kommando '{was}' abgelehnt, weil er einen "
         f"Verhaltensfehler hat ({ursachen}). " + VERHALTENSFEHLER_HINWEIS

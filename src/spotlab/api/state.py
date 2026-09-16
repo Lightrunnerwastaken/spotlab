@@ -122,6 +122,41 @@ def _fehler(zustand):
     }
 
 
+# Wie weit darf der Beginn eines Systemfehlers vom Beginn des Verhaltensfehlers
+# entfernt liegen, damit er als dessen Auslöser gilt. Beide Zeiten stammen von der
+# Roboteruhr — der Versatz zur Laptop-Uhr (am 16.09.2026: 15 Minuten) spielt
+# hier keine Rolle.
+HARDWARE_FENSTER_S = 10.0
+
+
+def _hardware_zu(fehler, zustand):
+    """Die kritischen Systemfehler, die zeitlich zu diesem Verhaltensfehler passen.
+
+    Lauf 20260916T144908Z: `stand()` wurde „wegen eines Hardwarefehlers"
+    abgelehnt. Welche Hardware, stand nur in `historical_faults` — der
+    Motorregler des linken vorderen Knies hatte seinen Stromfehler nach null
+    Sekunden schon wieder abgelegt, den Verhaltensfehler aber hinterlassen.
+    Deshalb zählen aktuelle UND historische Fehler, und nur kritische: eine
+    Warnung (die Akku-Firmware stand wochenlang an) lehnt kein Kommando ab.
+    """
+    from bosdyn.api import robot_state_pb2 as rs
+
+    bezug = (
+        fehler.onset_timestamp if fehler.HasField("onset_timestamp")
+        else zustand.kinematic_state.acquisition_timestamp
+    )
+    bezug_s = _sekunden(bezug)
+    kandidaten = list(zustand.system_fault_state.faults) + list(
+        zustand.system_fault_state.historical_faults
+    )
+    return [
+        f"{s.name}: {s.error_message}" if s.error_message else s.name
+        for s in kandidaten
+        if s.severity == rs.SystemFault.SEVERITY_CRITICAL
+        and abs(_sekunden(s.onset_timestamp) - bezug_s) <= HARDWARE_FENSTER_S
+    ]
+
+
 def verhaltensfehler(backend):
     """Die offenen Verhaltensfehler des Roboters — als Liste von Dicts, oder [].
 
@@ -129,9 +164,16 @@ def verhaltensfehler(backend):
     die Nachfrage darf den ursprünglichen Fehler nicht verdecken — dieselbe Regel
     wie beim Rollback in `RealSpot.connect()`. Eine leere Liste heisst dann
     „keiner bekannt", und die Meldung nennt keine Ursache, die nicht geprüft ist.
+
+    Jeder Eintrag trägt unter `hardware` die kritischen Systemfehler, die zu
+    seinem Beginn passen (`_hardware_zu`) — leer, wenn keiner passt.
     """
     try:
-        return list(_fehler(backend.robot_state())["behavior"])
+        zustand = backend.robot_state()
+        eintraege = list(_fehler(zustand)["behavior"])
+        for eintrag, roh in zip(eintraege, zustand.behavior_fault_state.faults):
+            eintrag["hardware"] = _hardware_zu(roh, zustand)
+        return eintraege
     except Exception:
         return []
 

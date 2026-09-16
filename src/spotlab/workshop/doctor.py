@@ -31,6 +31,42 @@ STROM_DIENST = "robot-state-streaming"
 WARNFRIST_TAGE = 30
 
 
+# Ab diesem Versatz bekommt die Zeile einen Rat: darunter merkt niemand etwas,
+# darüber liegen Fehlerzeiten aus dem RobotState sichtbar neben den Läufen.
+VERSATZ_WARNUNG_S = 60.0
+
+
+def _uhrenversatz(time_sync):
+    """Die Zeile „Zeitsync" nach gelungenem `wait_for_sync()`: wie weit geht die
+    Roboteruhr vor oder nach?
+
+    Am 16.09.2026 ging sie 15 Minuten vor, und „Uhren laufen synchron" stand
+    grün darüber — wahr für das SDK, das umrechnet, aber jede Fehlerzeit aus dem
+    RobotState (Fehlerhistorie, `t_robot` in der Aufzeichnung) lag damit eine
+    Viertelstunde neben den Läufen. Kein Defekt, also ok=True; der Betrag steht
+    in der Zeile, damit man ihn beim Abgleich abziehen kann.
+    """
+    try:
+        dauer = time_sync.get_robot_clock_skew()
+        versatz = dauer.seconds + dauer.nanos * 1e-9
+    except Exception as fehler:
+        return Check(
+            "Zeitsync", True,
+            f"synchronisiert, Versatz nicht ermittelbar ({type(fehler).__name__})",
+        )
+    richtung = "vor" if versatz >= 0 else "nach"
+    detail = f"synchronisiert — Roboteruhr geht {abs(versatz):.1f} s {richtung}"
+    if abs(versatz) < VERSATZ_WARNUNG_S:
+        return Check("Zeitsync", True, detail)
+    return Check(
+        "Zeitsync", True, detail,
+        "Kommandos gehen, das SDK rechnet um. Aber Zeitstempel aus dem RobotState "
+        "(Fehlerhistorie, `t_robot` in zustand.jsonl) sind Roboterzeit: beim "
+        f"Abgleich mit Läufen {versatz:+.0f} s abziehen. Ursache ist meist ein "
+        "Netz ohne Zeitserver für den Roboter.",
+    )
+
+
 def _zustandsstrom(robot):
     """Gibt es den 333-Hz-Zustandsstrom auf diesem Roboter?
 
@@ -152,7 +188,7 @@ def diagnose(cfg=None, robot_bauen=None, passwort_lesen=None,
             Check("Zeitsync", False, str(fehler),
                   "Windows-Uhrzeit automatisch stellen lassen.")
         ]
-    pruefungen.append(Check("Zeitsync", True, "Uhren laufen synchron"))
+    pruefungen.append(_uhrenversatz(robot.time_sync))
     pruefungen.append(_zustandsstrom(robot))
 
     try:

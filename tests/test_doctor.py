@@ -413,3 +413,43 @@ def test_zertifikat_nicht_erreichbar_ist_kein_defekt():
                            holen=holen)
     assert pruefung.ok is True
     assert "nicht ermittelbar" in pruefung.detail
+
+
+# ------------------------------------------------------- Uhrenversatz (16.09.2026)
+# Die Roboteruhr ging 15 Minuten vor, und "Zeitsync: Uhren laufen synchron"
+# stand gruen darueber. Wahr fuer das SDK, das umrechnet -- aber jede Fehlerzeit
+# aus dem RobotState lag damit eine Viertelstunde neben den Laeufen, und die
+# Zuordnung eines Kniefehlers zu einem Lauf wurde zur Rechenaufgabe.
+
+
+class RobotMitVersatz(GesunderRobot):
+    def __init__(self, sekunden):
+        super().__init__()
+        self._sekunden = sekunden
+
+    def get_robot_clock_skew(self):
+        from google.protobuf.duration_pb2 import Duration
+
+        dauer = Duration()
+        dauer.FromNanoseconds(int(self._sekunden * 1e9))
+        return dauer
+
+
+def test_zeitsync_nennt_den_uhrenversatz():
+    pruefung = _stufe(RobotMitVersatz(898.7), "Zeitsync")
+    assert pruefung.ok is True, "das SDK rechnet um -- kein Defekt"
+    assert "898.7 s" in pruefung.detail and "vor" in pruefung.detail
+    assert "Roboterzeit" in pruefung.rat
+
+
+def test_kleiner_versatz_braucht_keinen_rat():
+    pruefung = _stufe(RobotMitVersatz(-0.3), "Zeitsync")
+    assert pruefung.ok is True
+    assert "0.3 s" in pruefung.detail and "nach" in pruefung.detail
+    assert pruefung.rat == ""
+
+
+def test_versatz_nicht_ermittelbar_bleibt_gruen():
+    pruefung = _stufe(GesunderRobot(), "Zeitsync")
+    assert pruefung.ok is True
+    assert "nicht ermittelbar" in pruefung.detail
