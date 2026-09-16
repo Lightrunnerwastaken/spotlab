@@ -62,12 +62,27 @@ def test_fahren_faehrt_wirklich_als_prozess(tmp_path):
     """Ein Prozess, der wirklich startet: fahren.py im 2D-Sim, Befehle ueber fahrt.json,
     Bewegung in der Aufzeichnung, freundlicher Stopp beendet ihn."""
     import json
-    import time
 
     from spotlab.workshop.beispiele import bereitstellen
     from spotlab.workshop.control import stoppe_freundlich
     from spotlab.workshop.launcher import start_script
-    from tests_zeitgrenzen import TEST_TIMEOUT_S
+    from tests_zeitgrenzen import TEST_TIMEOUT_S, warte_bis
+
+    def x_spanne():
+        """Wie weit Spot laut zustand.jsonl in x gekommen ist -- waehrend der Lauf schreibt."""
+        xs = []
+        try:
+            zeilen = (lauf / "zustand.jsonl").read_text(encoding="utf-8").splitlines()
+        except FileNotFoundError:
+            return 0.0
+        for zeile in zeilen:
+            try:
+                daten = json.loads(zeile).get("daten") or {}
+            except ValueError:                  # die letzte Zeile ist noch halb geschrieben
+                continue
+            if "pose" in daten:
+                xs.append(daten["pose"][0])
+        return max(xs) - min(xs) if xs else 0.0
 
     bereitstellen(tmp_path)
     skript = fahren.skript_in(tmp_path)
@@ -77,16 +92,14 @@ def test_fahren_faehrt_wirklich_als_prozess(tmp_path):
     try:
         from spotlab.laufsuche import lauf_verzeichnisse
 
-        frist = time.monotonic() + TEST_TIMEOUT_S
-        while lauf is None and time.monotonic() < frist:
-            laeufe = lauf_verzeichnisse(tmp_path)          # so sucht auch der Watcher
-            lauf = laeufe[0] if laeufe else None
-            time.sleep(0.1)
-        assert lauf is not None, "kein Lauf-Verzeichnis"
-        ende = time.monotonic() + 4.0                 # aufstehen dauert; dann rollt es
-        while time.monotonic() < ende:
-            fahrt.schreibe(lauf, 0.4, 0.0, 0.0)
-            time.sleep(0.1)
+        lauf = warte_bis(lambda: (lauf_verzeichnisse(tmp_path) or [None])[0],  # wie der Watcher
+                         "ein Lauf-Verzeichnis im Arbeitsordner", takt_s=0.1)
+        # Den Befehl laufend schreiben (Totmann 0.5 s), BIS die Aufzeichnung die
+        # Strecke zeigt -- nicht 4 s Wanduhr: aufstehen dauert, unter Last laenger,
+        # und dann rollte es keine 0.2 m weit (test_gui_app, 15.09.2026).
+        warte_bis(lambda: x_spanne() > 0.2,
+                  lambda: f"Spot faehrt 0.2 m weit (x-Spanne bisher {x_spanne():.3f} m)",
+                  zwischendurch=lambda: fahrt.schreibe(lauf, 0.4, 0.0, 0.0), takt_s=0.1)
         stoppe_freundlich(lauf)
         prozess.wait(timeout=TEST_TIMEOUT_S)
     finally:

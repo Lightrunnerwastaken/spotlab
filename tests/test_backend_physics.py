@@ -7,6 +7,7 @@ from bosdyn.client.robot_command import RobotCommandBuilder as B
 
 from spotlab.backends.physics import PhysicsBackend
 from spotlab.errors import CommandRejected, NotPowered, UnsupportedCapability
+from tests_zeitgrenzen import TEST_TIMEOUT_S
 
 spotsim = pytest.importorskip('spotsim')
 pytestmark = pytest.mark.skipif(not spotsim.spot_asset_available(), reason='Menagerie fehlt')
@@ -121,16 +122,26 @@ def test_connect_process_render_and_teardown(tmp_path):
     root = Path(__file__).resolve().parents[1]
     env = dict(os.environ, PYTHONPATH=str(root/'src'), SPOTLAB_NUR_TROCKEN='1',
                SPOTLAB_RAUM='', SPOTLAB_RAUM_START='', PYTHONDONTWRITEBYTECODE='1')
+    # Auf das erste Bild WARTEN statt 0.4 s zu schlafen: der Ansichtsthread baut
+    # erst seinen Renderer, und unter Last war der Lauf vorbei, bevor er das erste
+    # Bild schrieb -- `is_file()` war dann falsch (15.09.2026). Bleibt es aus, sagt
+    # es der Kindprozess selbst, statt dass die Pruefung hier ein Bild vermisst.
     code = '''import time
+from pathlib import Path
 from spotlab import connect
 with connect(backend="physics", runs_dir="runs", config_path="missing.toml") as spot:
     spot.power_on()
-    spot.stand(timeout=5)
+    spot.stand(timeout=60)
     print(spot.state.z)
-    time.sleep(.4)
+    bild = Path(spot.recorder.dir) / "ansicht.jpg"
+    ende = time.monotonic() + 60
+    while not bild.is_file() and time.monotonic() < ende:
+        time.sleep(.05)
+    if not bild.is_file():
+        raise SystemExit("ansicht.jpg wurde binnen 60 s nicht geschrieben")
 '''
     result = subprocess.run([sys.executable, '-c', code], cwd=tmp_path, env=env,
-                            capture_output=True, text=True, timeout=30)
+                            capture_output=True, text=True, timeout=TEST_TIMEOUT_S)
     assert result.returncode == 0, result.stdout + result.stderr
     runs = list((tmp_path/'runs').glob('*/lauf.json'))
     assert len(runs) == 1

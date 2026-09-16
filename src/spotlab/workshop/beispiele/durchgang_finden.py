@@ -18,7 +18,6 @@ Am echten Spot läuft dasselbe Programm (Tag 3 im Nachbarraum aufhängen).
 """
 
 import math
-import time
 
 import spotlab
 
@@ -30,15 +29,19 @@ DEUTLICH_M = 0.3                      # so viel freier muss eine neue Richtung s
 LUECKE_GRAD = 20                      # so weit sucht er um den besten Strahl die Mitte der Lücke
 LENKUNG = 1.5                         # Grad/s Drehrate je Grad Kursabweichung
 MAX_DREHRATE = 40.0                   # Grad/s
-HOECHSTENS_S = 60.0                   # danach gibt er auf
+# So weit sucht er höchstens, dann gibt er auf. Meter, nicht Sekunden: wie viele
+# Sekunden eine Suche braucht, hängt davon ab, wie schnell Spot seine Bilder
+# bekommt — ein Fahrbefehl gilt eine Sekunde, dazwischen steht er. Wie viele
+# Meter er dafür läuft, hängt davon nicht ab.
+HOECHSTENS_M = 25.0
 
 
 def umsehen(spot):
-    """(Blickrichtung in Grad, {Richtung relativ dazu: freie Meter dorthin})"""
+    """((x, y), Blickrichtung in Grad, {Richtung relativ dazu: freie Meter dorthin})"""
     gitter = spot.obstacles()
     x, y, yaw = spot.state.pose
     blick = math.degrees(yaw)
-    return blick, {d: gitter.free_distance(x, y, blick + d) for d in RICHTUNGEN}
+    return (x, y), blick, {d: gitter.free_distance(x, y, blick + d) for d in RICHTUNGEN}
 
 
 def relativ(kurs_welt, blick):
@@ -83,19 +86,22 @@ with spotlab.connect() as spot:
     spot.power_on()
     spot.stand()
 
-    start = time.monotonic()
     gefunden = False
     kurs_welt = None                  # der Kurs bleibt im Weltframe, Spot dreht sich ja
-    while time.monotonic() - start < HOECHSTENS_S:
+    gelaufen, vorher = 0.0, None      # der gelaufene Weg ist das Budget, nicht die Uhr
+    while gelaufen < HOECHSTENS_M:
         if spot.tags():
             gefunden = True
             break
 
-        blick, frei = umsehen(spot)
+        ort, blick, frei = umsehen(spot)
+        if vorher is not None:
+            gelaufen += math.dist(vorher, ort)
+        vorher = ort
         bisher = None if kurs_welt is None else relativ(kurs_welt, blick)
         richtung = kurs(frei, bisher)
         if richtung != bisher:
-            print(f"{time.monotonic() - start:4.1f} s: Kurs {richtung:+d}° ({frei[richtung]:.1f} m frei)")
+            print(f"{gelaufen:4.1f} m: Kurs {richtung:+d}° ({frei[richtung]:.1f} m frei)")
         kurs_welt = blick + richtung
         if frei[richtung] < ABSTAND_M:
             print("Überall zu eng — ich bleibe stehen.")

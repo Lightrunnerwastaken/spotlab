@@ -4,11 +4,10 @@ import pytest
 
 pytest.importorskip("PySide6.QtWidgets")
 
-from PySide6.QtCore import QEventLoop, QTimer  # noqa: E402
-
 from spotlab.gui.raumeditor.korrektur_dialog import KorrekturDialog  # noqa: E402
 from spotlab.welt.korrektur import finde_luecken  # noqa: E402
 from spotlab.welt.raum import Boden, Raum, Wand  # noqa: E402
+from tests_zeitgrenzen import warte_bis  # noqa: E402
 
 
 def _punkte_auf(x1, y1, x2, y2, n=40):
@@ -27,13 +26,14 @@ def _l_gang():
     return raum, weg, punkte
 
 
-def _warte_auf(signal, dialog, sekunden=30):
-    schleife = QEventLoop()
+def _warte_auf(signal, dialog, qapp):
+    """Anwenden klicken und auf das Signal warten: verbunden VOR dem Klick, gepollt,
+    bis es da ist -- statt einer QEventLoop, die nach fester Frist wortlos zurueckkam."""
     ergebnis = []
-    signal.connect(lambda k: (ergebnis.append(k), schleife.quit()))
-    QTimer.singleShot(int(sekunden * 1000), schleife.quit)
+    signal.connect(lambda k: ergebnis.append(k))
     dialog.anwenden.click()
-    schleife.exec()
+    warte_bis(lambda: ergebnis, "das Signal `angewendet` des Korrektur-Dialogs",
+              zwischendurch=qapp.processEvents)
     return ergebnis
 
 
@@ -76,7 +76,7 @@ def test_anwenden_ohne_gelaende_schliesst_die_waende_sofort(qapp):
     raum, weg, punkte = _l_gang()
     dialog = KorrekturDialog(None, raum, weg, punkte)
     dialog.gelaende_bauen.setChecked(False)
-    (korrektur,) = _warte_auf(dialog.angewendet, dialog, sekunden=5)
+    (korrektur,) = _warte_auf(dialog.angewendet, dialog, qapp)
     assert korrektur.bericht["gelaende"] is None
     assert korrektur.bericht["waende_verbunden"] >= 1 and korrektur.bericht["durchgaenge"] >= 1
     assert korrektur.raum.gelaende is None
@@ -89,7 +89,7 @@ def test_anwenden_ohne_gelaende_schliesst_die_waende_sofort(qapp):
 def test_anwenden_mit_gelaende_baut_es_im_arbeiter(qapp):
     raum, weg, punkte = _l_gang()
     dialog = KorrekturDialog(None, raum, weg, punkte)
-    (korrektur,) = _warte_auf(dialog.angewendet, dialog)
+    (korrektur,) = _warte_auf(dialog.angewendet, dialog, qapp)
     assert korrektur.raum.gelaende is not None
     assert korrektur.bericht["gelaende"]["knoten"] > 0
     assert korrektur.raum.boeden == ()                     # die Rampe ging im Gelaende auf

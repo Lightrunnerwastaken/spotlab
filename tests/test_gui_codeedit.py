@@ -7,8 +7,9 @@ from PySide6.QtGui import QTextCursor  # noqa: E402
 from PySide6.QtTest import QTest  # noqa: E402
 
 from spotlab.editor.syntax import pruefe  # noqa: E402
-from spotlab.gui.editor.codeedit import CodeEdit  # noqa: E402
+from spotlab.gui.editor.codeedit import RUHE_MS, CodeEdit  # noqa: E402
 from spotlab.gui.theme import DUNKEL  # noqa: E402
+from tests_zeitgrenzen import warte_bis  # noqa: E402
 
 
 def test_tab_schreibt_vier_leerzeichen(qapp):
@@ -88,7 +89,11 @@ def test_ruhe_kommt_erst_nach_der_pause(qapp):
     feld.ruhe.connect(lambda: ruhig.append(True))
     feld.setPlainText("x = 1")
     assert ruhig == []                     # noch nicht
-    QTest.qWait(400)
+    warte_bis(lambda: ruhig, "das Signal `ruhe` nach der Tipp-Pause",
+              zwischendurch=qapp.processEvents)
+    # Zeitverhalten, absichtlich fest: in der naechsten Pause darf KEIN zweites
+    # `ruhe` kommen -- der Zeitgeber ist einmalig (setSingleShot).
+    QTest.qWait(2 * RUHE_MS)
     assert ruhig == [True]                 # genau einmal
 
 

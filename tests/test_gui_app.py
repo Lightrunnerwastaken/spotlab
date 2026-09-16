@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -5,6 +6,7 @@ import pytest
 pytest.importorskip("PySide6.QtWidgets")
 
 from spotlab.gui.app import MainWindow  # noqa: E402
+from tests_zeitgrenzen import warte_bis  # noqa: E402
 
 
 def test_navigation_wechselt_die_ansicht(qapp):
@@ -755,15 +757,40 @@ def test_der_tab_fahren_startet_dasselbe_programm_am_echten_spot(qapp, tmp_path,
     assert fenster._fahrt_erwartet == "real"
 
 
+def _saetze_aus(lauf, datei):
+    """Die Zeilen einer Aufzeichnung, WAEHREND der Lauf noch schreibt: die Datei
+    kann noch fehlen, die letzte Zeile halb geschrieben sein."""
+    try:
+        zeilen = (Path(lauf) / datei).read_text(encoding="utf-8").splitlines()
+    except FileNotFoundError:
+        return []
+    saetze = []
+    for zeile in zeilen:
+        try:
+            saetze.append(json.loads(zeile))
+        except ValueError:
+            continue
+    return saetze
+
+
+def _x_spanne(lauf):
+    """Wie weit Spot laut `zustand.jsonl` in x gekommen ist."""
+    xs = [s["daten"]["pose"][0] for s in _saetze_aus(lauf, "zustand.jsonl")
+          if "pose" in (s.get("daten") or {})]
+    return max(xs) - min(xs) if xs else 0.0
+
+
+def _kommandos(lauf):
+    return [s["daten"].get("name") for s in _saetze_aus(lauf, "ereignisse.jsonl")
+            if s.get("art") == "kommando"]
+
+
 def test_der_tab_fahren_faehrt_wirklich_ueber_knopf_watcher_und_tasten(qapp, tmp_path, monkeypatch):
     """Die ganze Kette wie beim Fahrmodus, mit dem Trockenlauf-Backend an Stelle des
     Roboters: Knopf im Tab, echter Prozess, der Watcher meldet den Lauf, der Tab
     bekommt das Verzeichnis und die Tastatur, W wird ein walk-Kommando in der
     Aufzeichnung. Der Tab bleibt vorne -- dort kommen die Tasten an."""
-    import json
-    import time
     from dataclasses import replace
-    from pathlib import Path
 
     from PySide6.QtCore import Qt
     from PySide6.QtTest import QTest
@@ -785,27 +812,22 @@ def test_der_tab_fahren_faehrt_wirklich_ueber_knopf_watcher_und_tasten(qapp, tmp
     prozess = fenster.ansichten["code"]._prozess
     lauf = None
     try:
-        frist = time.monotonic() + TEST_TIMEOUT_S
-        while lauf is None and time.monotonic() < frist:
-            qapp.processEvents()
-            time.sleep(0.05)
-            lauf = tab.tastenfahrt.lauf_dir if tab.laeuft() else None
-        assert lauf is not None, "der Watcher hat dem Tab nie das Lauf-Verzeichnis gemeldet"
+        lauf = warte_bis(lambda: tab.tastenfahrt.lauf_dir if tab.laeuft() else None,
+                         "der Watcher meldet dem Tab das Lauf-Verzeichnis",
+                         zwischendurch=qapp.processEvents, takt_s=0.05)
         assert fenster.stapel.currentWidget() is tab
         QTest.keyPress(tab, Qt.Key_W)
-        ende = time.monotonic() + 2.0
-        while time.monotonic() < ende:
-            qapp.processEvents()
-            time.sleep(0.02)
+        # W halten, BIS das walk-Kommando in der Aufzeichnung steht -- nicht 2 s Wanduhr.
+        warte_bis(lambda: "walk" in _kommandos(lauf),
+                  lambda: f"ein walk-Kommando in der Aufzeichnung (bisher {_kommandos(lauf)})",
+                  zwischendurch=qapp.processEvents)
         QTest.keyRelease(tab, Qt.Key_W)
         stoppe_freundlich(lauf)
         prozess.wait(timeout=TEST_TIMEOUT_S)
     finally:
         if prozess.poll() is None:
             prozess.kill()
-    zeilen = (Path(lauf) / "ereignisse.jsonl").read_text(encoding="utf-8").splitlines()
-    kommandos = [json.loads(z)["daten"].get("name") for z in zeilen
-                 if z.strip() and json.loads(z)["art"] == "kommando"]
+    kommandos = _kommandos(lauf)
     assert "walk" in kommandos, kommandos
     meta = json.loads((Path(lauf) / "lauf.json").read_text(encoding="utf-8"))
     assert meta["backend"] == "dryrun"
@@ -825,8 +847,6 @@ def test_fahren_faehrt_wirklich_ueber_knopf_watcher_und_tasten(qapp, tmp_path, m
     """Die ganze Kette, wie sie beim Autor scheiterte (07.09.2026): Knopf im Raumeditor,
     echter Prozess, der Watcher meldet den Lauf, das Uebungsfenster erfaehrt das
     Verzeichnis, W schreibt fahrt.json, Spot bewegt sich in der Aufzeichnung."""
-    import json
-    import time
     from dataclasses import replace
 
     from PySide6.QtCore import Qt
@@ -848,19 +868,21 @@ def test_fahren_faehrt_wirklich_ueber_knopf_watcher_und_tasten(qapp, tmp_path, m
     prozess = fenster.ansichten["code"]._prozess
     lauf = None
     try:
-        frist = time.monotonic() + TEST_TIMEOUT_S
-        while lauf is None and time.monotonic() < frist:
-            qapp.processEvents()
-            time.sleep(0.05)
-            if fenster.uebungsfenster is not None:
-                lauf = fenster.uebungsfenster.tastenfahrt.lauf_dir
-        assert lauf is not None, "der Watcher hat dem Uebungsfenster nie das Lauf-Verzeichnis gemeldet"
+        lauf = warte_bis(
+            lambda: (fenster.uebungsfenster.tastenfahrt.lauf_dir
+                     if fenster.uebungsfenster is not None else None),
+            "der Watcher meldet dem Uebungsfenster das Lauf-Verzeichnis",
+            zwischendurch=qapp.processEvents, takt_s=0.05,
+        )
         assert fenster.uebungsfenster.tastenfahrt.aktiv and fenster.uebungsfenster.isVisible()
         QTest.keyPress(fenster.uebungsfenster, Qt.Key_W)
-        ende = time.monotonic() + 4.0                 # der 200-ms-Takt frischt den Befehl auf
-        while time.monotonic() < ende:
-            qapp.processEvents()
-            time.sleep(0.02)
+        # W halten, BIS die Aufzeichnung die Strecke zeigt -- nicht 4 s Wanduhr:
+        # der 200-ms-Takt frischt den Befehl auf, und unter Last kam er spaeter,
+        # als der Totmann (0.5 s) erlaubt. Spot fuhr in Schueben und kam in 4 s
+        # auf 0.185 m (15.09.2026).
+        warte_bis(lambda: _x_spanne(lauf) > 0.2,
+                  lambda: f"Spot faehrt 0.2 m weit (x-Spanne bisher {_x_spanne(lauf):.3f} m)",
+                  zwischendurch=qapp.processEvents)
         QTest.keyRelease(fenster.uebungsfenster, Qt.Key_W)
         stoppe_freundlich(lauf)
         prozess.wait(timeout=TEST_TIMEOUT_S)
@@ -869,9 +891,8 @@ def test_fahren_faehrt_wirklich_ueber_knopf_watcher_und_tasten(qapp, tmp_path, m
             prozess.kill()
         if fenster.uebungsfenster is not None:
             fenster.uebungsfenster.close()
-    zeilen = [json.loads(z) for z in (lauf / "zustand.jsonl").read_text(encoding="utf-8").splitlines()
-              if z.strip()]
-    xs = [z["daten"]["pose"][0] for z in zeilen if "pose" in (z.get("daten") or {})]
+    xs = [s["daten"]["pose"][0] for s in _saetze_aus(lauf, "zustand.jsonl")
+          if "pose" in (s.get("daten") or {})]
     assert xs and max(xs) - min(xs) > 0.2, (min(xs) if xs else None, max(xs) if xs else None)
 
 
@@ -958,8 +979,6 @@ def test_die_navigation_laeuft_wirklich_als_prozess_und_hinterlaesst_ihren_stand
     (09.09.2026). Dass der Watcher einen Stand meldet, haelt
     `test_watcher_navigation.py` fest; dass er im Tab ankommt, der Test darunter.
     """
-    import json
-    import time
     from dataclasses import replace
 
     from spotlab.config import Config, Limits
@@ -997,10 +1016,9 @@ def test_die_navigation_laeuft_wirklich_als_prozess_und_hinterlaesst_ihren_stand
     # Der Lauf starb, bevor ein Verzeichnis gemeldet werden konnte: der Tab darf
     # dann nicht scharf bleiben, sonst gaelte ein spaeterer fremder Lauf als Fahrt.
     fenster.ansichten["code"].pruefe_lauf_lebt()
-    for _ in range(5):
-        qapp.processEvents()
-        time.sleep(0.01)
-    assert not tab.laeuft() and fenster._navigation_erwartet is False
+    warte_bis(lambda: not tab.laeuft() and fenster._navigation_erwartet is False,
+              "der Tab Karten entschaerft sich nach dem Ende des Laufs",
+              zwischendurch=qapp.processEvents)
 
 
 def test_der_navigationsstand_erreicht_den_tab_nur_waehrend_eines_laufs(qapp, tmp_path):

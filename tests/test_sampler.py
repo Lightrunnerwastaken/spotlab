@@ -3,13 +3,14 @@ import threading
 from spotlab.backends.dryrun import DryRunBackend
 from spotlab.record.run import RunRecorder
 from spotlab.record.sampler import StateSampler
+from tests_zeitgrenzen import warte_bis
 
 
 def test_abtaster_schreibt_und_stoppt(tmp_path):
     rec = RunRecorder(tmp_path, None, backend="dryrun")
     abtaster = StateSampler(DryRunBackend(), rec, hz=200.0)
     abtaster.start()
-    threading.Event().wait(0.15)
+    warte_bis(lambda: len(_saetze(rec)) >= 2, "zwei Saetze des Abtasters in zustand.jsonl")
     abtaster.stop()
     rec.finish("ok")
 
@@ -82,13 +83,21 @@ def test_takt_umschalten_wirkt(tmp_path):
 
 
 def _saetze(rec):
+    """Auch WAEHREND der Abtaster schreibt: die Datei kann noch fehlen, die letzte
+    Zeile halb geschrieben sein."""
     import json
 
-    return [
-        json.loads(z)
-        for z in (rec.dir / "zustand.jsonl").read_text(encoding="utf-8").splitlines()
-        if z.strip()
-    ]
+    try:
+        zeilen = (rec.dir / "zustand.jsonl").read_text(encoding="utf-8").splitlines()
+    except FileNotFoundError:
+        return []
+    saetze = []
+    for zeile in zeilen:
+        try:
+            saetze.append(json.loads(zeile))
+        except ValueError:
+            continue
+    return saetze
 
 
 def test_reicher_takt_schreibt_reiche_saetze(tmp_path):
@@ -96,7 +105,7 @@ def test_reicher_takt_schreibt_reiche_saetze(tmp_path):
     abtaster = StateSampler(DryRunBackend(), rec, hz=200.0)
     abtaster.setze_takt(200.0, True)
     abtaster.start()
-    threading.Event().wait(0.15)
+    warte_bis(lambda: _saetze(rec), "einen Satz des Abtasters im reichen Takt")
     abtaster.stop()
     saetze = _saetze(rec)
     assert saetze and "feet_detail" in saetze[-1]["daten"]
@@ -106,7 +115,7 @@ def test_schlanker_takt_schreibt_schlanke_saetze(tmp_path):
     rec = RunRecorder(tmp_path, None, backend="dryrun")
     abtaster = StateSampler(DryRunBackend(), rec, hz=200.0)
     abtaster.start()
-    threading.Event().wait(0.15)
+    warte_bis(lambda: _saetze(rec), "einen Satz des Abtasters im schlanken Takt")
     abtaster.stop()
     saetze = _saetze(rec)
     assert saetze
@@ -126,10 +135,14 @@ def test_langsamer_backend_erzeugt_keine_bursts(tmp_path):
 
     rec = RunRecorder(tmp_path, None, backend="dryrun")
     abtaster = StateSampler(Langsam(), rec, hz=1000.0)      # Soll 1 ms, Ist ~20 ms
+    beginn = _time.monotonic()
     abtaster.start()
-    threading.Event().wait(0.3)
+    warte_bis(lambda: len(_saetze(rec)) >= 3, "drei Saetze des langsamen Backends")
     abtaster.stop()
-    assert 3 <= len(_saetze(rec)) <= 30, len(_saetze(rec))
+    dauer = _time.monotonic() - beginn
+    # Ohne Nachholen hoechstens ein Satz je 20 ms Backendzeit -- mit Luft nach oben
+    # (vorher: hoechstens 30 in 0.3 s, dieselbe Rate, aber an einer festen Frist).
+    assert 3 <= len(_saetze(rec)) <= dauer / 0.02 * 2 + 3, (len(_saetze(rec)), dauer)
 
 
 # ------------------------------------------- Ringpuffer fuer die Live-Anzeige

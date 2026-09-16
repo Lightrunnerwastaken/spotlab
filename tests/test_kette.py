@@ -62,7 +62,7 @@ def test_starten_beobachten_stoppen(tmp_path):
         assert _warte_bis(lambda: prozess.poll() is not None), \
             "Der freundliche Stopp hat den Lauf nicht beendet"
 
-        _warte_bis(lambda: not ist_aktiv(lauf))
+        assert _warte_bis(lambda: not ist_aktiv(lauf)), "der Lauf gilt nach dem Ende noch als aktiv"
         daten = json.loads((lauf / "lauf.json").read_text(encoding="utf-8"))
         assert daten["ergebnis"] == "abgebrochen"
     finally:

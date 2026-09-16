@@ -13,6 +13,7 @@ spotsim = pytest.importorskip("spotsim")
 
 from spotlab.backends.base import Capability  # noqa: E402
 from spotlab.welt.raum import raum_laden  # noqa: E402
+from tests_zeitgrenzen import warte_bis  # noqa: E402
 
 needs_asset = pytest.mark.skipif(
     not spotsim.spot_asset_available(),
@@ -438,27 +439,21 @@ def _bytes_mit_geduld(pfad, versuche=20):
 
 def test_die_ansicht_folgt_dem_kamerawunsch_auch_im_stand(uhr, tmp_path):
     """kamera.json im Lauf-Verzeichnis wechselt die Kamera -- auch wenn Spot stillsteht."""
-    import time
-
     from spotlab.record import kamera
 
     ziel = tmp_path / "ansicht.jpg"
     backend = _backend(uhr, (1.0, 2.0, 0.0), ansicht_ziel=ziel)
     try:
-        frist = time.monotonic() + 15.0
-        while not ziel.is_file() and time.monotonic() < frist:
-            time.sleep(0.05)
-        assert ziel.is_file(), "keine Ansicht geschrieben"
-        time.sleep(0.4)
+        warte_bis(ziel.is_file, "die erste Ansicht (ansicht.jpg)", takt_s=0.05)
         raumbild = _bytes_mit_geduld(ziel)
         stand = ziel.stat().st_mtime_ns
         kamera.schreibe(tmp_path, "verfolgen", 2.0)
-        frist = time.monotonic() + 15.0
-        while ziel.stat().st_mtime_ns == stand and time.monotonic() < frist:
-            time.sleep(0.05)
-        assert ziel.stat().st_mtime_ns != stand, "kein neues Bild nach dem Kamerawechsel"
-        time.sleep(0.4)
-        assert _bytes_mit_geduld(ziel) != raumbild, "die Kamera hat sich nicht geaendert"
+        warte_bis(lambda: ziel.stat().st_mtime_ns != stand,
+                  "ein neues Bild nach dem Kamerawechsel", takt_s=0.05)
+        # Das erste neue Bild kann noch aus der alten Kamera sein (kamera.json kam
+        # mitten im Rendern): BIS sich der Inhalt unterscheidet, nicht 0.4 s.
+        warte_bis(lambda: _bytes_mit_geduld(ziel) != raumbild,
+                  "ein Bild aus der anderen Kamera", takt_s=0.05)
     finally:
         backend.close()
 

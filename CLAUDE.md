@@ -942,6 +942,22 @@ versionsgepinntes Extra `spotlab[sim]`.
   HÄNGT ein Lauf, statt zu scheitern: ein kaputter Zwischenstand hat einen Testlauf
   drei Stunden laufen lassen. `pytest-timeout` (300 s je Test) ist das Netz darunter,
   nicht der Ersatz — es sagt nur, DASS etwas hing, nicht wo.
+- **Kein Test wartet eine feste Frist ab und macht dann ungeprüft weiter.** Sieben volle
+  Läufe vom 14. bis 16.09.2026: einzeln immer grün, in der ganzen Suite fielen wechselnd
+  dieselben fünf — eine QEventLoop mit `singleShot(5000)` auf `directoryLoaded`, 4 s
+  W-Taste (unter Last 0.185 statt 0.2 m), 0.4 s Schlaf vor `is_file()`, eine 120-s-Wanduhr
+  im Offline-Physiklauf (28 `advance(.001)` sind 28 ganze Beinschritte, 95 s Sim-Zeit),
+  ein 60-s-Budget im Beispiel. Aus einem Zeitproblem wurde jedes Mal eine falsche
+  inhaltliche Aussage. `tests_zeitgrenzen.warte_bis(bedingung, worauf, …)` pollt, BIS die
+  Bedingung eintritt (Datei sichtbar, Bild geschrieben, Strecke gefahren), mit
+  `TEST_TIMEOUT_S` als Netz gegen Hängen, und scheitert beim Ablauf mit dem Namen der
+  Bedingung; `zwischendurch=qapp.processEvents` bei Qt. Eine feste Pause bleibt nur, wo
+  Zeitverhalten selbst geprüft wird, und steht dann mit Begründung da. Ein Offline-Lauf
+  der Physik bekommt eine Uhr, die mit der Simulation läuft (`simuhr` in
+  `test_physics_single_step.py`, dazu eine eigene `timeout`-Marke); die Puppe in
+  `backends/mujoco.py` hat KEINE eigene Uhr (`jetzt=time.time`) — was dort unter Last
+  einbricht, ist der Wahrnehmungszyklus gegen die 1-s-Gültigkeit eines Fahrbefehls, und
+  ein lastunabhängiges Budget ist deshalb ein Weg in Metern, keine Zeit.
 - **Ein Test, der absichtlich `stop()` scheitern lässt, hält den Thread trotzdem
   an.** Die Attrappe merkt sich die getroffene Instanz, das Teardown ruft das echte
   `stop()` darauf (`tests/test_kette.py::klemmender_abtaster`). Ohne das lief der

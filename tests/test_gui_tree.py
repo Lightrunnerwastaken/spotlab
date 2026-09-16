@@ -2,17 +2,23 @@ import pytest
 
 pytest.importorskip("PySide6.QtWidgets")
 
-from PySide6.QtCore import QEventLoop, QTimer  # noqa: E402
-
 from spotlab.gui.editor.tree import Dateibaum  # noqa: E402
+from tests_zeitgrenzen import warte_bis  # noqa: E402
 
 
-def _warte_aufs_laden(baum, sekunden=5.0):
-    """QFileSystemModel laedt Verzeichnisse in einem eigenen Thread."""
-    schleife = QEventLoop()
-    baum.modell.directoryLoaded.connect(lambda _pfad: schleife.quit())
-    QTimer.singleShot(int(sekunden * 1000), schleife.quit)
-    schleife.exec()
+def _warte_bis_sichtbar(baum, qapp, name="hallo_spot.py"):
+    """QFileSystemModel laedt in einem eigenen Thread und meldet in die Ereignisschleife.
+
+    Bis zum 16.09.2026 wartete hier eine QEventLoop hoechstens 5 s auf
+    `directoryLoaded` und machte danach UNGEPRUEFT weiter: unter Last kam das
+    Signal spaeter, und die Pruefung sah eine leere Liste. Jetzt zaehlt die
+    Bedingung selbst -- `name` ist im Baum zu sehen. Wer Abwesenheit prueft,
+    wartet auf die Datei, die sicher da ist: erst dann ist die Liste angekommen.
+    """
+    warte_bis(lambda: name in _sichtbare_namen(baum),
+              lambda: f"{name!r} im Dateibaum "
+                      f"(sichtbar: {sorted(map(str, _sichtbare_namen(baum)))})",
+              zwischendurch=qapp.processEvents)
 
 
 def _projekt(tmp_path):
@@ -35,7 +41,7 @@ def _sichtbare_namen(baum):
 def test_zeigt_python_und_text_dateien(qapp, tmp_path):
     baum = Dateibaum()
     baum.setze_projekt(_projekt(tmp_path))
-    _warte_aufs_laden(baum)
+    _warte_bis_sichtbar(baum, qapp)
     namen = _sichtbare_namen(baum)
     assert "hallo_spot.py" in namen
     assert "notiz.md" in namen
@@ -46,14 +52,14 @@ def test_runs_wird_ausgeblendet(qapp, tmp_path):
     # 10 Hz schreibt — Aenderungssignale im Zehntelsekundentakt.
     baum = Dateibaum()
     baum.setze_projekt(_projekt(tmp_path))
-    _warte_aufs_laden(baum)
+    _warte_bis_sichtbar(baum, qapp)
     assert "runs" not in _sichtbare_namen(baum)
 
 
 def test_bilder_werden_nicht_gezeigt(qapp, tmp_path):
     baum = Dateibaum()
     baum.setze_projekt(_projekt(tmp_path))
-    _warte_aufs_laden(baum)
+    _warte_bis_sichtbar(baum, qapp)
     assert "bild.png" not in _sichtbare_namen(baum)
 
 
@@ -67,7 +73,7 @@ def test_doppelklick_meldet_die_datei(qapp, tmp_path):
     projekt = _projekt(tmp_path)
     baum = Dateibaum()
     baum.setze_projekt(projekt)
-    _warte_aufs_laden(baum)
+    _warte_bis_sichtbar(baum, qapp)
     gewaehlt = []
     baum.datei_gewaehlt.connect(gewaehlt.append)
     proxy = baum.ansicht.model()

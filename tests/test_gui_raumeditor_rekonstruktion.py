@@ -7,8 +7,6 @@ import pytest
 pytest.importorskip("PySide6.QtWidgets")
 pytest.importorskip("bosdyn.api")
 
-from PySide6.QtCore import QEventLoop, QTimer  # noqa: E402
-
 from spotlab.gui.raumeditor import RaumeditorView  # noqa: E402
 from spotlab.gui.raumeditor.rekonstruktion_dialog import (  # noqa: E402
     RekonstruktionsArbeiter,
@@ -22,17 +20,21 @@ from spotlab.welt.raum import raum_laden, raum_pfad  # noqa: E402
 sys.path.insert(0, str(Path(__file__).parent))
 from test_maps_rekonstruktion import synthetische_karte  # noqa: E402
 
-from tests_zeitgrenzen import TEST_TIMEOUT_S  # noqa: E402
+from tests_zeitgrenzen import TEST_TIMEOUT_S, warte_bis  # noqa: E402
 
 
-def _warte_auf(signal, qapp):
-    """Bis das Signal kommt, hoechstens TEST_TIMEOUT_S -- mit Zeitgrenze, nie haengend."""
-    schleife = QEventLoop()
-    ergebnis = []
-    signal.connect(lambda *a: (ergebnis.append(a), schleife.quit()))
-    QTimer.singleShot(int(TEST_TIMEOUT_S * 1000), schleife.quit)
-    schleife.exec()
-    return ergebnis
+def _sammle(signal):
+    """Verbinden VOR dem Start: ein Signal aus dem Arbeiter, das vor dem `connect`
+    kommt, ist verloren -- und die Frist liefe dann ins Leere."""
+    gekommen = []
+    signal.connect(lambda *a: gekommen.append(a))
+    return gekommen
+
+
+def _warte_auf(gekommen, worauf, qapp):
+    """Bis der Sammler etwas hat, hoechstens TEST_TIMEOUT_S -- dann mit Meldung scheitern."""
+    warte_bis(lambda: gekommen, worauf, zwischendurch=qapp.processEvents)
+    return gekommen
 
 
 def test_der_arbeiter_liefert_ein_ergebnis(qapp, tmp_path):
@@ -40,8 +42,9 @@ def test_der_arbeiter_liefert_ein_ergebnis(qapp, tmp_path):
     arbeiter = RekonstruktionsArbeiter(karte, Einstellungen())
     fortschritte = []
     arbeiter.fortschritt.connect(fortschritte.append)
+    gekommen = _sammle(arbeiter.fertig)
     arbeiter.start()
-    gekommen = _warte_auf(arbeiter.fertig, qapp)
+    _warte_auf(gekommen, "das Ergebnis des Rekonstruktions-Arbeiters", qapp)
     arbeiter.wait(int(TEST_TIMEOUT_S * 1000))
     assert gekommen and isinstance(gekommen[0][0], Ergebnis)
     assert gekommen[0][0].bericht["wegpunkte"] == 6
@@ -50,8 +53,9 @@ def test_der_arbeiter_liefert_ein_ergebnis(qapp, tmp_path):
 
 def test_der_arbeiter_meldet_einen_kaputten_ordner_als_fehler(qapp, tmp_path):
     arbeiter = RekonstruktionsArbeiter(tmp_path / "kein_ordner", Einstellungen())
+    gekommen = _sammle(arbeiter.fehler)
     arbeiter.start()
-    gekommen = _warte_auf(arbeiter.fehler, qapp)
+    _warte_auf(gekommen, "die Fehlermeldung des Rekonstruktions-Arbeiters", qapp)
     arbeiter.wait(int(TEST_TIMEOUT_S * 1000))
     assert gekommen and "graph" in gekommen[0][0]
 
@@ -62,8 +66,9 @@ def test_der_dialog_uebernimmt_das_ergebnis_in_den_tab(qapp, tmp_path):
     ansicht.setze_arbeitsordner(tmp_path)
     dialog = RekonstruktionsDialog(ansicht, tmp_path)
     dialog.ordner_feld.setText(str(karte))
+    gekommen = _sammle(dialog.ergebnis_da)
     dialog.vorschau()
-    gekommen = _warte_auf(dialog.ergebnis_da, qapp)
+    _warte_auf(gekommen, "das Signal `ergebnis_da` des Rekonstruktions-Dialogs", qapp)
     assert gekommen and dialog.ergebnis is not None
     assert "Wände" in dialog.bericht.toPlainText() or "waende" in dialog.bericht.toPlainText()
     assert "Treppen: 0" in dialog.bericht.toPlainText() and "Treppen" in dialog.status.text()
