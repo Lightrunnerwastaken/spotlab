@@ -187,3 +187,18 @@ def test_ohne_namenskollision_wird_der_status_nicht_gebraucht():
     client = OhneStatus(bestehende_namen=("Tablet",))
     register_coexisting(_endpoint(client))
     assert ENDPOINT_NAME in [ep.name for ep in client.config.endpoints]
+
+
+def test_rest_eines_geordnet_beendeten_laufs_wird_ersetzt_tablet_bleibt():
+    """Befund 16.09.2026 (Lauf 20260916T143307Z): nach close() stand 'spotlab'
+    noch in der Konfiguration, 157 s ohne gueltige Antwort, das Tablet daneben.
+    Der naechste Aufbau muss den Rest ersetzen -- und den Tablet-Endpunkt samt
+    seiner unique_id unveraendert in die neue Konfiguration uebernehmen."""
+    client = FakeEstopClient(
+        bestehende_namen=("Tablet", ENDPOINT_NAME),
+        frische={"Tablet": 0.2, ENDPOINT_NAME: 157.0},
+    )
+    register_coexisting(_endpoint(client))
+    gesetzt = client.gesetzte_configs[0]
+    assert [(ep.name, ep.unique_id) for ep in gesetzt.endpoints][0] == ("Tablet", "ep-Tablet")
+    assert [ep.name for ep in client.config.endpoints] == ["Tablet", ENDPOINT_NAME]

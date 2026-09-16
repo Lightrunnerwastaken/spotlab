@@ -85,6 +85,9 @@ def register_coexisting(endpoint):
     for ep in angewandt.endpoints:
         if ep.name == endpoint._name:
             endpoint.from_proto(ep)
+            # Auch ein Fehler im folgenden register/check-in braucht einen
+            # eindeutig zugeordneten Rollback der gerade gesetzten Konfiguration.
+            endpoint._config_id = angewandt.unique_id
             break
     endpoint.register(angewandt.unique_id)
     return angewandt.unique_id
@@ -99,38 +102,117 @@ class EstopGuard:
         self._timeout = timeout
         self._endpoint = None
         self._keepalive = None
+        self.cleanup_status = "nicht_gestartet"
 
     def start(self):
         self._endpoint = EstopEndpoint(
             client=self._client, name=self._name, estop_timeout=self._timeout
         )
-        register_coexisting(self._endpoint)
-        self._keepalive = EstopKeepAlive(self._endpoint)
-        self._keepalive.allow()
+        try:
+            register_coexisting(self._endpoint)
+            self._keepalive = EstopKeepAlive(self._endpoint)
+            self._keepalive.allow()
+        except BaseException:
+            try:
+                self.stop()
+            except BaseException as fehler:
+                protokoll.notiere("E-Stop-Aufbau rollback gescheitert", fehler)
+            raise
 
     def level(self):
         status = self._client.get_status()
         return LEVEL_NAMEN.get(status.stop_level, "unbekannt")
 
     def stop(self):
-        """Sauber abmelden: erst Keepalive beenden, dann Endpunkt deregistrieren.
+        """Eigenen Endpunkt nach Motor-Aus abgeben; niemals fremde Config ersetzen.
 
-        Ohne die Deregistrierung bliebe unser Endpunkt in der Konfiguration
-        stehen und der Roboter würde ihn beim nächsten Timeout als ausgelöst
-        werten — der nächste Schüler fände einen scheinbar defekten Spot.
+        Eine ausschliesslich eigene Config wird geleert (SDK >= 3.3). Bei
+        fremden Endpunkten nur deregistrieren: set_config wuerde deren
+        Registrierungen ebenfalls ungueltig machen. Der Server verweigert
+        beide Operationen bei eingeschalteten Motoren. Keine Freigabe/CUTs
+        senden. Keepalive bis zum Abmeldeversuch aufrechterhalten.
         """
-        if self._keepalive is not None:
-            try:
-                self._keepalive.shutdown()
-            finally:
-                self._keepalive = None
-        if self._endpoint is not None:
-            try:
-                self._endpoint.deregister()
-            except Exception as fehler:
-                # Abbau darf nie werfen — aber er darf auch nicht spurlos
-                # scheitern: ein zurueckgelassener Endpunkt laesst den naechsten
-                # Schueler einen scheinbar defekten Spot vorfinden.
-                protokoll.notiere("E-Stop-Endpunkt abmelden gescheitert", fehler)
-            finally:
-                self._endpoint = None
+        abbruch = None
+        try:
+            if self._endpoint is not None:
+                self._abmelden()
+        except Exception as fehler:
+            self.cleanup_status = "fehlgeschlagen"
+            protokoll.notiere("E-Stop-Abgabe fehlgeschlagen; diagnose/Tablet pruefen", fehler)
+        except BaseException as fehler:
+            self.cleanup_status = "abgebrochen"
+            abbruch = fehler
+        finally:
+            if self._keepalive is not None:
+                try:
+                    self._keepalive.shutdown()
+                except Exception as fehler:
+                    protokoll.notiere("E-Stop-Keepalive beenden gescheitert", fehler)
+                except BaseException as fehler:
+                    abbruch = abbruch or fehler
+                finally:
+                    self._keepalive = None
+            self._endpoint = None
+        if abbruch is not None:
+            raise abbruch
+
+    def _abmelden(self):
+        """Eigenen Endpunkt abgeben -- und JEDEN fruehen Ausstieg begruenden.
+
+        Lauf 20260916T143307Z (16.09.2026): close() lief regulaer durch, der
+        Endpunkt 'spotlab' stand danach weiter in der Konfiguration, und
+        diagnose.log hatte keine Zeile dazu. Welche der beiden Bedingungen unten
+        gegriffen hatte, war nicht nachlesbar. Deshalb nennt jeder Ausstieg die
+        Bedingung und die IDs, die er gesehen hat; der Abgleich selbst bleibt
+        streng -- nach Namen wird nie geloescht.
+        """
+        endpoint = self._endpoint
+        config_id = endpoint._config_id
+        if not config_id or not endpoint.unique_id:
+            # Zum Beispiel EstopBusy: keine eigene Registrierung erworben.
+            self.cleanup_status = "keine_eigene_registrierung"
+            protokoll.notiere(
+                "E-Stop-Abgabe uebersprungen: keine eigene Registrierung "
+                f"(Konfigurations-ID {config_id!r}, eigene Endpunkt-ID {endpoint.unique_id!r})."
+            )
+            return
+        aktiv = self._client.get_config(timeout=3)
+        eintraege = [(ep.name, ep.unique_id) for ep in aktiv.endpoints]
+        if aktiv.unique_id != config_id:
+            # Andere Sitzung/Tablet hat uebernommen; keinesfalls nach Namen loeschen.
+            self.cleanup_status = "bereits_abgegeben"
+            protokoll.notiere(
+                "E-Stop-Abgabe uebersprungen: Konfigurations-ID geaendert "
+                f"(registriert gegen {config_id!r}, aktiv {aktiv.unique_id!r}; aktive "
+                f"Endpunkte {eintraege}). Eine andere Sitzung oder das Tablet hat "
+                "uebernommen; spotlab loescht nie nach Namen."
+            )
+            return
+        eigen = [ep for ep in aktiv.endpoints if ep.unique_id == endpoint.unique_id
+                 and ep.name == endpoint._name]
+        if len(eigen) != 1:
+            self.cleanup_status = "bereits_abgegeben"
+            protokoll.notiere(
+                "E-Stop-Abgabe uebersprungen: eigener Endpunkt nicht eindeutig in der "
+                f"aktiven Konfiguration {aktiv.unique_id!r} ({len(eigen)} Treffer fuer Name "
+                f"{endpoint._name!r} mit eigener ID {endpoint.unique_id!r}; aktive Endpunkte "
+                f"{eintraege}). Spotlab loescht nie nach Namen."
+            )
+            return
+        if len(aktiv.endpoints) == 1:
+            # Kein Wiederherstellen eines alten Snapshots: nur unsere noch
+            # aktive, ausschliesslich eigene Config per Config-ID vergleichen.
+            result = self._client.set_config(estop_pb2.EstopConfig(), config_id, timeout=3)
+            if result.endpoints:
+                raise RuntimeError("E-Stop-Konfiguration wurde nicht geleert")
+            self.cleanup_status = "eigene_konfiguration_entfernt"
+        else:
+            # SDK Endpoint.deregister() reicht timeout nicht weiter; direkt
+            # ueber den Client ist auch dieser Abbau-RPC zeitlich begrenzt.
+            self._client.deregister(config_id, endpoint, timeout=3)
+            self.cleanup_status = "abgemeldet_fremde_konfiguration_erhalten"
+            protokoll.notiere(
+                "E-Stop: eigener Endpunkt abgemeldet, fremde Konfiguration erhalten. "
+                "Falls Spot weiter gesperrt ist, Konfiguration am Tablet pruefen; "
+                "Spotlab setzt fremde Registrierungen nicht zurueck.")
+        protokoll.notiere(f"E-Stop-Abgabe: {self.cleanup_status}")
