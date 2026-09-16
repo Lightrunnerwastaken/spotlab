@@ -1063,7 +1063,7 @@ darf jemand in der Hand behalten. Gebraucht werden zwei AprilTags für die Strec
 ein drittes zum Tragen und ein Gang von mindestens acht Metern.
 
 **Vorgehen** Die zwei Streckentags an die Enden hängen, flach und auf Kniehöhe. Spot
-seitlich so hinstellen, dass er beide gleichzeitig sieht. Im Reiter „Gehzeit" auf
+seitlich so hinstellen, dass er beide gleichzeitig sieht. Im Reiter „Experimente", Experiment „Gehzeit", auf
 „▶ Versuch starten" drücken (oder `Beispiele/gehzeit.py` aus dem Editor). Zuerst die Strecke mit dem Massband nachmessen und den Wert notieren. Dann:
 eine Person mit Tag durchlaufen; danach zwei bis drei zusammen; danach eine, die auf
 halber Strecke stehen bleibt und redet; danach eine, die umkehrt.
@@ -1089,7 +1089,7 @@ Tags an den Personen. **Notieren, ob die Nummer einer Person über die ganze Str
 dieselbe bleibt** — wechselt sie, zerfällt ein Lauf in zwei halbe, und der Tag-Weg
 bleibt der richtige.
 
-**Teil 3 — der Nachtrag.** Im Reiter „Gehzeit": den Lauf oben auswählen, links einen
+**Teil 3 — der Nachtrag.** Im Reiter „Experimente", Experiment „Gehzeit",: den Lauf oben auswählen, links einen
 Durchgang anklicken, rechts die Bilder durchblättern. Dieselbe Arbeit auf der
 Kommandozeile: `python -m spotlab.experiment.nachtrag <Lauf>` — **beide Wege einmal
 gehen**, sie schreiben in dieselbe Tabelle.

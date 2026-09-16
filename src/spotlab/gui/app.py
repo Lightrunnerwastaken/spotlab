@@ -33,8 +33,8 @@ from spotlab.gui.theme import palette_fuer, stylesheet
 from spotlab.gui.uebungsfenster import Uebungsfenster
 from spotlab.gui.views.anbindungen import AnbindungenView
 from spotlab.gui.views.checkup import CheckupView
+from spotlab.gui.views.experimente import ExperimenteView
 from spotlab.gui.views.fahren import FahrenView
-from spotlab.gui.views.gehzeit import GehzeitView
 from spotlab.gui.views.live import LiveView
 from spotlab.gui.views.maps import MapsView
 from spotlab.gui.views.projects import ProjectsView
@@ -104,7 +104,7 @@ class MainWindow(QWidget):
             "laeufe": RunsView(self._palette),
             "karten": MapsView(self._palette),
             "umwelt": UmweltView(),
-            "gehzeit": GehzeitView(),
+            "experimente": ExperimenteView(),
             "fahren": FahrenView(),
             "raumeditor": RaumeditorView(self._palette),
             "anbindungen": AnbindungenView(self._palette),
@@ -112,7 +112,7 @@ class MainWindow(QWidget):
         }
         self.stapel = QStackedWidget()
         for schluessel in (
-            "projekte", "code", "live", "laeufe", "karten", "umwelt", "gehzeit",
+            "projekte", "code", "live", "laeufe", "karten", "umwelt", "experimente",
             "fahren", "raumeditor", "anbindungen", "spot",
         ):
             self.stapel.addWidget(self.ansichten[schluessel])
@@ -167,7 +167,7 @@ class MainWindow(QWidget):
             lambda: self.ansichten["live"].stoppe()
         )
         self.ansichten["fahren"].meldung.connect(self._melde)
-        self.ansichten["gehzeit"].meldung.connect(self._melde)
+        self.ansichten["experimente"].meldung.connect(self._melde)
         self.ansichten["code"].laeuft_geaendert.connect(self._code_laeuft_geaendert)
         self._fahrt_erwartet = False
         # Wahr, solange ein Navigationslauf aus „Karten" erwartet wird.
@@ -231,7 +231,7 @@ class MainWindow(QWidget):
         self.ansichten["laeufe"].setze_arbeitsordner(pfad or None)
         self.ansichten["karten"].setze_arbeitsordner(pfad or None)
         self.ansichten["umwelt"].setze_arbeitsordner(pfad or None)
-        self.ansichten["gehzeit"].setze_arbeitsordner(pfad or None)
+        self.ansichten["experimente"].setze_arbeitsordner(pfad or None)
         self.ansichten["raumeditor"].setze_arbeitsordner(pfad or None)
         if self.uebungsfenster is not None:
             self.uebungsfenster.setze_arbeitsordner(pfad or None)

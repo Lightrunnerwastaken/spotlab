@@ -108,9 +108,10 @@ def test_gui_importiert_kein_bosdyn():
 
 
 def test_fenster_hat_jetzt_elf_ansichten(qapp):
+    """Seit 16.09.2026 heisst der Versuchs-Reiter „Experimente" -- die Gehzeit liegt darin."""
     fenster = MainWindow()
     assert set(fenster.ansichten) == {
-        "projekte", "code", "live", "laeufe", "karten", "umwelt", "gehzeit",
+        "projekte", "code", "live", "laeufe", "karten", "umwelt", "experimente",
         "fahren", "raumeditor", "anbindungen", "spot",
     }
     assert fenster.stapel.count() == 11

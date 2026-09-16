@@ -58,7 +58,15 @@ versionsgepinntes Extra `spotlab[sim]`.
   Aufzeichnen ist leaselos; nur deshalb darf die GUI es. Ein Lease dort bräche H1. Dasselbe
   gilt für die Nachbearbeitung: `ProcessTopologyRequest` und `ProcessAnchoringRequest` haben
   gar kein Lease-Feld.
-- **Der Knopf im Reiter „Gehzeit" startet PAKETCODE, nicht die Kopie im Arbeitsordner.**
+- **Alle Versuche der Maturaarbeit liegen im Reiter „Experimente"** (`gui/views/experimente.py`,
+  seit 16.09.2026): oben eine Auswahl, unten ein Stapel, die Gehzeit ist das erste und bisher
+  einzige Experiment — ihre Ansicht (`views/gehzeit.py`) ist unverändert. **Ein neues Experiment
+  ist eine Zeile in `EXPERIMENTE`** (Schlüssel, Name, Ansichtsklasse) plus seine Ansicht — kein
+  Eintrag in der Leiste, keine Verdrahtung in `app.py`. Der Rahmen reicht `setze_arbeitsordner`
+  und `meldung` an jedes Experiment durch, das sie kennt, und zwingt keines. **Anlegen aus der
+  Oberfläche gibt es bewusst nicht** — ein Test hält fest, dass der Rahmen keinen solchen Knopf
+  hat. Wer einen Reiter je Versuch anlegt, füllt die Leiste, die schon voll ist.
+- **Der Knopf im Experiment „Gehzeit" (Reiter „Experimente") startet PAKETCODE, nicht die Kopie im Arbeitsordner.**
   `workshop/gehzeit.py` hat dafür ein Hauptprogramm wie die Sonde. `Beispiele/gehzeit.py`
   kann ein Schüler bearbeiten — und dann startete ein Knopf, der „Spot schaut nur zu"
   verspricht, etwas, das fährt. Der Lauf landet trotzdem unter
@@ -1032,7 +1040,7 @@ Bilder), dazu `workshop/gehzeit.py` mit austauschbarer Quelle (`tag_quelle` heut
 nachweisbar, `personen_quelle` über Spots Tracker) und Bildmitschnitt, der nur dicht
 aufnimmt, solange jemand läuft. Beispiel `gehzeit.py`. Spot bewegt sich dabei nicht — das
 Programm verbindet über `nur_lesen=True`, deshalb steht es neben A21 und nicht hinter A1.
-Am Gerät: A35. Am 11.09.2026 dazu der Reiter „Gehzeit"
+Am Gerät: A35. Am 11.09.2026 dazu der Reiter „Gehzeit" (seit 16.09.2026 das Experiment „Gehzeit" im Reiter „Experimente")
 (`gui/views/gehzeit.py`): Startknopf, Lauf-Auswahl, Tabelle der Durchgänge, die Bilder des
 gewählten daneben, Eingabe von Klasse und Gruppengrösse, Löschen der Bilder — derselbe
 Nachtrag wie auf der Kommandozeile, nur mit den Bildern statt der Dateipfade.
