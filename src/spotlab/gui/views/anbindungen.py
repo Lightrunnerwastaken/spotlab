@@ -31,7 +31,7 @@ from PySide6.QtWidgets import (
 from spotlab.anbindung import panel as panelmodul
 from spotlab.anbindung import speicher
 from spotlab.errors import SpotlabError
-from spotlab.workshop.launcher import start_script
+from spotlab.gui.launcher import start_script
 
 KNOEPFE_JE_ZEILE = 3
 

@@ -21,8 +21,8 @@ from PySide6.QtWidgets import (
 )
 
 from spotlab.errors import SpotlabError
+from spotlab.gui.launcher import start_script
 from spotlab.workshop.editor import open_in_editor
-from spotlab.workshop.launcher import start_script
 from spotlab.workshop.project import create_project
 
 

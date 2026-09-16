@@ -247,10 +247,10 @@ def test_knopf_wird_zu_stopp_und_meldet_den_wunsch(qapp, tmp_path):
     ansicht.start_knopf.click()
     assert gewuenscht == [True]
 
-    ansicht.lauf_beendet()
-    assert "Starten" in ansicht.start_knopf.text()
     for prozess in prozesse:
         prozess.wait(timeout=TEST_TIMEOUT_S)
+    ansicht.lauf_beendet()
+    assert "Starten" in ansicht.start_knopf.text()
 
 
 def test_starten_ohne_offene_datei_meldet_es(qapp, tmp_path):

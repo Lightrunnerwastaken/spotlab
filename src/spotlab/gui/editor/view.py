@@ -35,8 +35,8 @@ from spotlab.gui.editor.codeedit import CodeEdit
 from spotlab.gui.editor.completer import Vervollstaendigung
 from spotlab.gui.editor.highlighter import Hervorheber
 from spotlab.gui.editor.tree import Dateibaum
+from spotlab.gui.launcher import start_script
 from spotlab.gui.views.projects import projekte_in
-from spotlab.workshop.launcher import start_script
 
 # Beschriftung -> Backend-Name. Drei Zustaende, nicht zwei: der Trockenlauf HAT
 # keine Position (Pose bleibt 0/0/0) und kann im Uebungsraum nichts zeigen.
@@ -571,5 +571,8 @@ class EditorView(QWidget):
             self.lauf_beendet()
 
     def lauf_beendet(self):
+        # Ein Watcher-Ende kann nur eine ausgebliebene Telemetrie sein.
+        if self._prozess is not None and self._prozess.poll() is None:
+            return
         self._prozess = None
         self._setze_laeuft(False)

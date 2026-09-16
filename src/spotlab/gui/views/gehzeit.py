@@ -440,7 +440,7 @@ class GehzeitView(QWidget):
             return
         starte = self._start
         if starte is None:
-            from spotlab.workshop.launcher import start_script
+            from spotlab.gui.launcher import start_script
 
             starte = start_script
         runs = self._arbeitsordner / BEISPIELORDNER / "runs"
