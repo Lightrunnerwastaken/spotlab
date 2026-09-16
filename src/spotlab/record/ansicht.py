@@ -22,22 +22,32 @@ from spotlab.record import atomar
 DATEI = "ansicht.json"
 
 
-def schreibe(lauf_dir, gesicht):
-    """Den Schalterstand ablegen. Atomar, weil der Blick im selben Augenblick liest."""
+SCHALTER = ("gesicht", "hand")
+
+
+def schreibe(lauf_dir, gesicht, hand=False):
+    """Beide Schalterstände ablegen. Atomar, weil der Blick im selben Augenblick liest."""
     atomar.schreibe_atomar(
-        Path(lauf_dir) / DATEI, json.dumps({"gesicht": bool(gesicht)})
+        Path(lauf_dir) / DATEI, json.dumps({"gesicht": bool(gesicht), "hand": bool(hand)})
     )
 
 
-def lies(lauf_dir):
-    """True, wenn die Gesichtserkennung an ist — sonst False.
+def schalter(lauf_dir):
+    """`{"gesicht": bool, "hand": bool}` — beides aus, wenn die Datei fehlt oder kaputt ist.
 
     Fehlt die Datei, ist sie halb geschrieben oder steht Unsinn darin, heisst es
     aus. Ein Blick, der an der Schalterdatei stirbt, wäre schlimmer als einer
-    ohne Kästen: ohne Bild fährt man weiter, ohne Fahrbefehle nicht.
+    ohne Kästen: ohne Bild fährt man weiter, ohne Fahrbefehle nicht. Eine ältere
+    Datei ohne `hand` heisst: Hand aus — nur ein echtes `true` zählt.
     """
+    aus = {name: False for name in SCHALTER}
     try:
         roh = json.loads((Path(lauf_dir) / DATEI).read_text(encoding="utf-8"))
-        return roh["gesicht"] is True
-    except (OSError, ValueError, TypeError, KeyError, IndexError):
-        return False
+        return {name: roh.get(name) is True for name in SCHALTER}
+    except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError):
+        return aus
+
+
+def lies(lauf_dir):
+    """True, wenn die Gesichtserkennung an ist — sonst False. Für die Hand: `schalter()`."""
+    return schalter(lauf_dir)["gesicht"]

@@ -277,6 +277,31 @@ def test_geste_der_hand_nimmt_die_sicherste():
     assert gesten.geste_der_haende([]) is None
 
 
+def test_haende_beim_koerper_liest_im_rumpf_ausschnitt():
+    """Die eine Formulierung fuer Folgemodus und Fahrblick: Koerper -> Ausschnitt -> Haende."""
+    gesehen = []
+
+    def handflaeche(bgr):
+        gesehen.append(bgr.shape)
+        return [_handflaeche_bei(50.0, 60.0)]
+
+    erkenner = gesten.Handerkenner(handflaeche=handflaeche, handpose=_handpose_vorgabe())
+    feld = np.zeros((782, 1239, 3), dtype=np.uint8)
+    haende = gesten.haende_beim_koerper(feld, _koerper(), erkenner)
+    assert gesehen == [(300, 300, 3)], "dreimal die Schulterbreite, nicht das ganze Bild"
+    assert len(haende) == 1 and haende[0].landmarken[0, 0] > 400.0, "in Feld-Koordinaten"
+    assert gesten.haende_beim_koerper(feld, _koerper(schulter=None), erkenner) == []
+    assert gesten.haende_beim_koerper(feld, None, erkenner) == []
+
+
+def test_die_beschriftung_nennt_das_zeichen_und_die_sicherheit():
+    assert gesten.beschriftung(gesten.Hand(_hand(), 0.97, (0, 0, 1, 1))) == "Halt 0.97"
+    daumen = gesten.Hand(_hand((False, False, False, False), daumen="hoch"), 0.8, (0, 0, 1, 1))
+    assert gesten.beschriftung(daumen) == "Weiter 0.80"
+    faust = gesten.Hand(_hand((False, False, False, False), daumen="angelegt"), 0.6, (0, 0, 1, 1))
+    assert gesten.beschriftung(faust) == "Hand 0.60"
+
+
 # ------------------------------------------------------ Der echte Erkenner
 
 

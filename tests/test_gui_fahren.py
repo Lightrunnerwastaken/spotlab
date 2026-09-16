@@ -223,6 +223,50 @@ def test_nach_dem_lauf_ist_der_schalter_wieder_grau(qapp, tmp_path):
     assert not ansicht.gesicht.isEnabled()
 
 
+def test_der_handschalter_schreibt_neben_dem_gesicht_in_dieselbe_datei(qapp, tmp_path):
+    from spotlab.record import ansicht as schalter
+
+    ansicht = FahrenView()
+    assert not ansicht.hand.isEnabled() and not ansicht.hand.isChecked()
+    ansicht.lauf_beginnt(tmp_path, "fahren.py")
+    assert ansicht.hand.isEnabled()
+    assert schalter.schalter(tmp_path) == {"gesicht": False, "hand": False}
+
+    ansicht.hand.setChecked(True)
+    assert schalter.schalter(tmp_path) == {"gesicht": False, "hand": True}
+    assert ansicht.hand_hinweis.isVisible() or not ansicht.isVisible()
+    ansicht.gesicht.setChecked(True)
+    assert schalter.schalter(tmp_path) == {"gesicht": True, "hand": True}
+    ansicht.hand.setChecked(False)
+    assert schalter.schalter(tmp_path) == {"gesicht": True, "hand": False}
+
+    ansicht.lauf_beendet()
+    assert not ansicht.hand.isEnabled() and ansicht.hand_hinweis.isHidden()
+
+
+def test_ein_neuer_lauf_bekommt_auch_den_handschalter_mit(qapp, tmp_path):
+    from spotlab.record import ansicht as schalter
+
+    erster, zweiter = tmp_path / "a", tmp_path / "b"
+    erster.mkdir()
+    zweiter.mkdir()
+    ansicht = FahrenView()
+    ansicht.lauf_beginnt(erster, "fahren.py")
+    ansicht.hand.setChecked(True)
+    ansicht.lauf_beendet()
+    ansicht.lauf_beginnt(zweiter, "fahren.py")
+    assert schalter.schalter(zweiter)["hand"] is True
+
+
+def test_der_handschalter_sagt_woher_der_kasten_kommt_und_was_er_kostet(qapp):
+    """Der Kasten kommt aus dem Rumpf-Ausschnitt des gefundenen Koerpers (wie im
+    Folgemodus), und ohne Mensch im Bild sucht der Erkenner jedes Bild neu."""
+    ansicht = FahrenView()
+    text = (ansicht.hand.toolTip() + " " + ansicht.hand_hinweis.text()).lower()
+    assert "körper" in text and "bildrate" in text
+    assert "halt" in text and "weiter" in text
+
+
 def test_der_schalter_sagt_dass_die_tiefenpruefung_fehlt(qapp):
     """Was man sieht, sind die Kaesten des Erkenners -- Fehltreffer eingeschlossen.
     Das muss dort stehen, wo der Schalter ist, nicht nur in der Dokumentation."""

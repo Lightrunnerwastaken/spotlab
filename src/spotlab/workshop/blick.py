@@ -95,6 +95,7 @@ def bild_aus(antworten, drehungen=None, guete=GUETE):
 
 # Grün wie am Tablet, und dick genug, dass die Linie ein JPEG überlebt.
 KASTEN_FARBE = (0, 255, 0)
+HAND_FARBE = (255, 220, 0)       # gelb: vom Gesichtskasten unterscheidbar
 KASTEN_DICKE = 3
 MELDUNG_FARBE = (255, 40, 40)
 MELDUNG_BREITE = 72              # Zeichen je Zeile, bevor umgebrochen wird
@@ -135,15 +136,19 @@ def _schrift(groesse):
         return ImageFont.load_default()
 
 
-def zeichne_jpeg(feld, kaesten=(), meldung="", guete=GUETE):
+def zeichne_jpeg(feld, kaesten=(), meldung="", guete=GUETE, haende=()):
     """Das Feld mit Kästen und einer etwaigen Meldung, als JPEG-Bytes.
+
+    `kaesten` sind Gesichter `(x, y, breite, hoehe, score)` in Grün, `haende`
+    Handkästen `(x, y, breite, hoehe, text)` in Gelb — der Text ist das Zeichen
+    („Halt", „Weiter" oder nur „Hand") samt Sicherheit.
 
     Gezeichnet wird mit PIL und NICHT mit cv2: die häufigste Meldung, die hier
     landet, ist „für die Gesichtssuche fehlt OpenCV" — sie mit OpenCV zu malen
     wäre der eine Fall, in dem sie niemand zu sehen bekäme.
 
     Das Bild wird dafür nach RGB gewandelt. Ein graues Panorama mit grünen
-    Kästen geht nicht anders, und es passiert nur, wenn der Schalter an ist:
+    Kästen geht nicht anders, und es passiert nur, wenn ein Schalter an ist:
     ohne ihn bleibt `ansicht.jpg` genau das Bild, das es immer war.
     """
     from PIL import Image as PILImage
@@ -151,16 +156,16 @@ def zeichne_jpeg(feld, kaesten=(), meldung="", guete=GUETE):
 
     bild = PILImage.fromarray(feld).convert("RGB")
     maler = ImageDraw.Draw(bild)
-    if len(kaesten):
+    if len(kaesten) or len(haende):
         schrift = _schrift(SCHRIFT_KASTEN)
-        for x, y, breite, hoehe, score in kaesten:
-            maler.rectangle([x, y, x + breite, y + hoehe],
-                            outline=KASTEN_FARBE, width=KASTEN_DICKE)
+        beschriftet = [(x, y, b, h, f"{score:.2f}", KASTEN_FARBE) for x, y, b, h, score in kaesten]
+        beschriftet += [(x, y, b, h, str(text), HAND_FARBE) for x, y, b, h, text in haende]
+        for x, y, breite, hoehe, text, farbe in beschriftet:
+            maler.rectangle([x, y, x + breite, y + hoehe], outline=farbe, width=KASTEN_DICKE)
             # Über den Kasten, solange oben Platz ist — sonst hinein, denn ein
             # Gesicht am oberen Bildrand ist hier der Normalfall.
             oben = y - SCHRIFT_KASTEN - 2
-            maler.text((x, oben if oben >= 0 else y + 2), f"{score:.2f}",
-                       fill=KASTEN_FARBE, font=schrift)
+            maler.text((x, oben if oben >= 0 else y + 2), text, fill=farbe, font=schrift)
     if meldung:
         schrift = _schrift(SCHRIFT_MELDUNG)
         for nummer, zeile in enumerate(_meldungszeilen(meldung)):
@@ -180,7 +185,8 @@ class Blick(threading.Thread):
     """
 
     def __init__(self, spot, lauf_dir, takt_s=TAKT_S, kameras=KAMERAS,
-                 schlaf=time.sleep, jetzt=time.monotonic, gesichter_holen=None):
+                 schlaf=time.sleep, jetzt=time.monotonic, gesichter_holen=None,
+                 haende_holen=None):
         super().__init__(name="spotlab-blick", daemon=True)
         self._spot = spot
         self._lauf_dir = Path(lauf_dir)
@@ -206,6 +212,16 @@ class Blick(threading.Thread):
         self.gesichter = 0
         self.gesicht_fehler = 0
         self.letzter_gesichtsfehler = ""
+        # Hände: dieselbe Kette wie im Folgemodus (Körper → Rumpf → Hand), eigene
+        # Naht, eigene Meldung und eigene Zähler -- ein fehlendes Handmodell darf
+        # den Gesichtsweg nicht mitreissen, und umgekehrt.
+        self._haende_holen = haende_holen or self._vom_handerkenner
+        self._koerpererkenner = None
+        self._handerkenner = None
+        self._hand_meldung = ""
+        self.haende = 0
+        self.hand_fehler = 0
+        self.letzter_handfehler = ""
 
     # -------------------------------------------------------------- Schritte
 
@@ -228,9 +244,9 @@ class Blick(threading.Thread):
 
     def _bild_bytes(self, antworten):
         feld = self._feld(antworten)
-        kaesten, meldung = self._erkennung(feld)
-        if kaesten or meldung:
-            return zeichne_jpeg(feld, kaesten, meldung)
+        kaesten, haende, meldung = self._erkennung(feld)
+        if kaesten or haende or meldung:
+            return zeichne_jpeg(feld, kaesten, meldung, haende=haende)
         return jpeg_bytes(feld)
 
     def _feld(self, antworten):
@@ -251,17 +267,30 @@ class Blick(threading.Thread):
     # ------------------------------------------------------------- Gesichter
 
     def _erkennung(self, feld):
-        """(Kästen, Meldung) für dieses Bild. Beides leer heisst: unberührt durch.
+        """(Gesichtskästen, Handkästen, Meldung) für dieses Bild. Alles leer heisst: unberührt durch.
 
-        Der Schalter kommt aus `ansicht.json`, geschrieben von der Ansicht
-        „Fahren" (`record/ansicht.py`). Er wird bei JEDEM Bild gelesen -- eine
-        Datei von zwanzig Byte, und dafür wirkt das Umlegen mitten in der Fahrt,
-        ohne den Lauf neu zu starten.
+        Die Schalter kommen aus `ansicht.json`, geschrieben von der Ansicht
+        „Fahren" (`record/ansicht.py`). Sie werden bei JEDEM Bild gelesen -- eine
+        Datei von dreissig Byte, und dafür wirkt das Umlegen mitten in der Fahrt,
+        ohne den Lauf neu zu starten. Jeder Schalter zahlt nur seinen eigenen
+        Weg: das Gesicht kostet YuNet, die Hand die Körpersuche.
         """
         from spotlab.record import ansicht
 
-        if not ansicht.lies(self._lauf_dir):
-            return [], ""
+        schalter = ansicht.schalter(self._lauf_dir)
+        kaesten, haende, meldungen = [], [], []
+        if schalter["gesicht"]:
+            kaesten, meldung = self._gesichter(feld)
+            if meldung:
+                meldungen.append(meldung)
+        if schalter["hand"]:
+            haende, meldung = self._haende(feld)
+            if meldung:
+                meldungen.append(meldung)
+        return kaesten, haende, " ".join(meldungen)
+
+    def _gesichter(self, feld):
+        """(Kästen, Meldung) des Gesichtswegs."""
         if self._gesicht_meldung:
             # Einmal gescheitert (Modell fehlt, OpenCV fehlt) heisst nicht
             # dreissigmal je Sekunde neu scheitern. Die Meldung bleibt stehen.
@@ -292,6 +321,62 @@ class Blick(threading.Thread):
         if self._erkenner is None:
             self._erkenner = gesicht.erkenner(feld.shape[1], feld.shape[0])
         return gesicht.kaesten(feld, self._erkenner)
+
+    # ----------------------------------------------------------------- Hände
+
+    def _haende(self, feld):
+        """(Handkästen, Meldung) des Handwegs -- dieselben Regeln wie beim Gesicht.
+
+        Ein fehlendes Modell steht einmal in rot im Bild und wird nicht je Bild
+        neu versucht; ein stolpernder Erkenner zählt nicht als Bildfehler.
+        """
+        from spotlab.backends.real import gesten
+
+        if self._hand_meldung:
+            return [], self._hand_meldung
+        try:
+            gefunden = list(self._haende_holen(feld))
+        except SpotlabError as fehler:
+            from spotlab import protokoll
+
+            self._hand_meldung = str(fehler)
+            protokoll.notiere(f"Handerkennung im Blick aus: {fehler}")
+            return [], self._hand_meldung
+        except Exception as fehler:
+            self.hand_fehler += 1
+            self.letzter_handfehler = f"{type(fehler).__name__}: {fehler}"
+            return [], ""
+        self.haende += len(gefunden)
+        kaesten = []
+        for hand in gefunden:
+            x1, y1, x2, y2 = hand.kasten
+            kaesten.append((x1, y1, x2 - x1, y2 - y1, gesten.beschriftung(hand)))
+        return kaesten, ""
+
+    def _vom_handerkenner(self, feld):
+        """Der Vorgabeweg: Körper (mit Spur) → Rumpf-Ausschnitt → Hände, wie `folgen.gesten_leser`.
+
+        Auf dem ganzen Bild fände die Handpose nichts (gemessen am 16.09.2026:
+        0 von 510 Panoramen, im Rumpf-Ausschnitt 31). Der Preis ist die
+        Körpersuche: ohne Spur 375 ms je Bild, mit Spur rund 60 ms, dazu 65 ms
+        für die Hand -- der Blick wird langsamer, nicht falsch. OpenCV fehlt hier
+        beim BAU der Zoo-Klassen, nicht beim Import: deshalb die Übersetzung in
+        die Meldung, die auch das Gesicht gibt.
+        """
+        from spotlab.backends.real import gesten, koerper
+
+        if self._koerpererkenner is None:
+            try:
+                self._koerpererkenner = koerper.Koerpererkenner()
+                self._handerkenner = gesten.Handerkenner()
+            except ImportError as fehler:
+                raise SpotlabError(
+                    "Für die Handsuche fehlt OpenCV. Installiere das Extra: "
+                    "pip install \"spotlab[gesicht]\" (OpenCV trägt Gesicht, Körper und Hand)."
+                ) from fehler
+        gefunden = self._koerpererkenner.finde(feld)
+        return gesten.haende_beim_koerper(feld, gefunden[0] if gefunden else None,
+                                          self._handerkenner)
 
     def einmal(self):
         """Ein Bild holen und schreiben, in diesem Thread. True, wenn es geklappt hat."""

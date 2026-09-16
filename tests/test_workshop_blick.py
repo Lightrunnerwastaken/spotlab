@@ -392,6 +392,161 @@ def test_der_vorgabeweg_fuehrt_zum_echten_erkenner(monkeypatch, tmp_path):
     assert len(gebaut) == 1, "ein Erkenner fuer den ganzen Lauf, nicht je Bild"
 
 
+# --------------------------------------------------------- Haende im Fahrblick
+
+
+def _hand_an(lauf_dir, gesicht=False, hand=True):
+    from spotlab.record import ansicht
+
+    ansicht.schreibe(lauf_dir, gesicht=gesicht, hand=hand)
+
+
+def _gelb(bild):
+    """Bildpunkte, die deutlich gelber sind als blau -- der Handkasten (HAND_FARBE)."""
+    if bild.ndim != 3:
+        return 0
+    r, g, b = (bild[:, :, k].astype(int) for k in range(3))
+    return int(((r > b + 60) & (g > b + 60) & (abs(r - g) < 80)).sum())
+
+
+def _eine_hand(x=200.0, y=150.0, geste="halt", conf=0.97):
+    from test_backend_gesten import _hand
+
+    from spotlab.backends.real import gesten
+
+    finger = (True, True, True, True) if geste == "halt" else (False, False, False, False)
+    lm = _hand(finger, daumen="hoch") + (x - 100.0, y - 200.0, 0.0)
+    return gesten.Hand(lm, conf, (x - 40.0, y - 100.0, x + 40.0, y + 10.0))
+
+
+def test_ohne_handschalter_wird_der_handerkenner_nicht_gerufen(tmp_path):
+    """Der Gesichtsschalter allein kostet keine Koerpersuche -- die ist mit 375 ms je
+    Bild ohne Spur der teuerste Schritt im ganzen Blick."""
+    _an(tmp_path)
+    gerufen = []
+    b = blick.Blick(_Spot(), tmp_path, gesichter_holen=lambda _feld: [],
+                    haende_holen=lambda feld: gerufen.append(feld) or [])
+    assert b.einmal()
+    assert gerufen == []
+
+
+def test_mit_handschalter_stehen_die_handkaesten_gelb_im_bild(tmp_path):
+    """Gelb, nicht gruen: man muss den Handkasten vom Gesichtskasten unterscheiden koennen."""
+    _hand_an(tmp_path)
+    b = blick.Blick(_Spot(), tmp_path, gesichter_holen=lambda _feld: [],
+                    haende_holen=lambda _feld: [_eine_hand()])
+    assert b.einmal()
+    bild = _gelesen(tmp_path / blick.DATEI)
+    assert bild.ndim == 3
+    assert _gelb(bild) > 50, "der Handkasten steht im Bild"
+    assert _gruen(bild) < 20, "und kein Gesichtskasten"
+    assert b.haende == 1
+
+
+def test_beide_schalter_zeichnen_beides(tmp_path):
+    _hand_an(tmp_path, gesicht=True, hand=True)
+    b = blick.Blick(_Spot(), tmp_path,
+                    gesichter_holen=lambda _feld: [(120.0, 90.0, 80.0, 80.0, 0.78)],
+                    haende_holen=lambda _feld: [_eine_hand(x=500.0, y=300.0)])
+    assert b.einmal()
+    bild = _gelesen(tmp_path / blick.DATEI)
+    assert _gruen(bild) > 50 and _gelb(bild) > 50
+
+
+def test_fehlende_handmodelle_stehen_im_bild_und_werden_nicht_neu_versucht(tmp_path):
+    from spotlab.errors import SpotlabError
+
+    versuche = {"n": 0}
+
+    def kaputt(_feld):
+        versuche["n"] += 1
+        raise SpotlabError("Die Handmodelle fehlen (gesucht in irgendwo).")
+
+    _hand_an(tmp_path)
+    spot = _Spot()
+    b = blick.Blick(spot, tmp_path, haende_holen=kaputt)
+    assert b.einmal()
+    assert _rot(_gelesen(tmp_path / blick.DATEI)) > 50, "die Meldung steht in rot im Bild"
+    for _ in range(3):
+        spot.backend.naechstes_bild()
+        assert b.einmal()
+    assert versuche["n"] == 1
+
+
+def test_ein_fehler_im_handerkenner_beendet_den_blick_nicht(tmp_path):
+    def stolpert(_feld):
+        raise RuntimeError("die Pose hat schlechte Laune")
+
+    _hand_an(tmp_path)
+    b = blick.Blick(_Spot(), tmp_path, haende_holen=stolpert)
+    assert b.einmal()
+    assert (tmp_path / blick.DATEI).is_file()
+    assert b.fehler == 0 and not b.aufgegeben
+    assert b.hand_fehler == 1 and "schlechte Laune" in b.letzter_handfehler
+
+
+def test_der_vorgabeweg_der_hand_geht_ueber_den_koerper(monkeypatch, tmp_path):
+    """Dieselbe Kette wie im Folgemodus: Koerper (mit Spur) -> Rumpf-Ausschnitt -> Haende.
+    Auf dem ganzen Bild faende die Handpose nichts (gemessen: 0 von 510)."""
+    from spotlab.backends.real import gesten, koerper
+
+    gebaut, gefragt = [], []
+    ein_koerper = koerper.Koerper(huefte=(400.0, 300.0), schulter=(400.0, 150.0), conf=0.9,
+                                  kasten=(300.0, 50.0, 500.0, 450.0), schulterbreite=100.0)
+
+    class _Koerpererkenner:
+        def __init__(self, **kw):
+            gebaut.append("koerper")
+
+        def finde(self, feld):
+            return [ein_koerper]
+
+    class _Handerkenner:
+        def __init__(self, **kw):
+            gebaut.append("hand")
+
+        def finde(self, feld, ausschnitt=None):
+            gefragt.append(ausschnitt)
+            return [_eine_hand()]
+
+    monkeypatch.setattr(koerper, "Koerpererkenner", _Koerpererkenner)
+    monkeypatch.setattr(gesten, "Handerkenner", _Handerkenner)
+    _hand_an(tmp_path)
+    spot = _Spot()
+    b = blick.Blick(spot, tmp_path)
+    assert b.einmal()
+    spot.backend.naechstes_bild()
+    assert b.einmal()
+    assert gebaut == ["koerper", "hand"], "je einer fuer den ganzen Lauf"
+    feld_hoehe, feld_breite = _gelesen(tmp_path / blick.DATEI).shape[:2]
+    assert gefragt == [gesten.rumpf_ausschnitt(ein_koerper, breite=feld_breite, hoehe=feld_hoehe)] * 2
+    assert b.haende == 2
+
+
+def test_ohne_opencv_sagt_der_handweg_es_wie_das_gesicht(monkeypatch, tmp_path):
+    """Die Zoo-Klassen importieren cv2 erst beim Bau; ein ImportError dort ist kein
+    Stolpern, sondern ein fehlendes Extra -- und steht deshalb in rot im Bild."""
+    from spotlab.backends.real import koerper
+
+    def ohne_cv2(**kw):
+        raise ImportError("No module named 'cv2'")
+
+    monkeypatch.setattr(koerper, "Koerpererkenner", ohne_cv2)
+    _hand_an(tmp_path)
+    b = blick.Blick(_Spot(), tmp_path)
+    assert b.einmal()
+    assert _rot(_gelesen(tmp_path / blick.DATEI)) > 50
+    assert "OpenCV" in b._hand_meldung and "gesicht" in b._hand_meldung, "das Extra ist genannt"
+
+
+def test_der_handkasten_traegt_das_zeichen():
+    """Nicht nur ein Kasten: der Text sagt, was die Regel daraus liest."""
+    from spotlab.backends.real import gesten
+
+    assert gesten.beschriftung(_eine_hand(geste="halt", conf=0.97)) == "Halt 0.97"
+    assert gesten.beschriftung(_eine_hand(geste="weiter", conf=0.8)) == "Weiter 0.80"
+
+
 def _aus_bytes(daten):
     return np.asarray(PILImage.open(io.BytesIO(daten)))
 

@@ -64,6 +64,16 @@ GESICHT_WERKZEUG = (
     "Zeichnet die Kästen des Gesichtserkenners in den Blick — im Laufprozess, nicht "
     "im Fenster. Ohne Tiefenmessung: was hier steht, ist der rohe Befund von YuNet."
 )
+HAND_HINWEIS = (
+    "Der Handkasten kommt aus dem Rumpf-Ausschnitt des gefundenen Körpers, wie im "
+    'Folgemodus: „Halt" ist die offene Hand aufrecht, „Weiter" der Daumen hoch, sonst '
+    'steht nur „Hand". Kostet Bildrate: ohne Mensch im Bild sucht der Körpererkenner '
+    "jedes Bild neu (rund 0.4 s), mit Mensch trägt die Spur."
+)
+HAND_WERKZEUG = (
+    "Zeichnet die Hände des gefundenen Körpers mit dem gelesenen Zeichen in den Blick — "
+    "im Laufprozess. Braucht die Körper- und Handmodelle; fehlen sie, steht es rot im Bild."
+)
 
 
 class Bildfeld(QWidget):
@@ -142,6 +152,12 @@ class FahrenView(QWidget):
         self.gesicht.setEnabled(False)
         self.gesicht.setToolTip(GESICHT_WERKZEUG)
         self.gesicht.toggled.connect(self._gesicht_umgelegt)
+        # Ein zweiter Schalter, nicht derselbe: die Hand kostet die Körpersuche,
+        # und wer nur Gesichter sehen will, soll die nicht mitbezahlen.
+        self.hand = QCheckBox("✋ Handzeichen")
+        self.hand.setEnabled(False)
+        self.hand.setToolTip(HAND_WERKZEUG)
+        self.hand.toggled.connect(self._hand_umgelegt)
 
         knoepfe = QHBoxLayout()
         knoepfe.addWidget(self.start)
@@ -149,6 +165,7 @@ class FahrenView(QWidget):
         knoepfe.addWidget(QLabel("Tempo"))
         knoepfe.addWidget(self.stufe)
         knoepfe.addWidget(self.gesicht)
+        knoepfe.addWidget(self.hand)
         knoepfe.addStretch(1)
 
         # Der Blick nach vorn: `workshop/blick.py` schreibt `ansicht.jpg` (beide
@@ -168,6 +185,10 @@ class FahrenView(QWidget):
         self.gesicht_hinweis.setObjectName("Gedaempft")
         self.gesicht_hinweis.setWordWrap(True)
         self.gesicht_hinweis.hide()
+        self.hand_hinweis = QLabel(HAND_HINWEIS)
+        self.hand_hinweis.setObjectName("Gedaempft")
+        self.hand_hinweis.setWordWrap(True)
+        self.hand_hinweis.hide()
 
         self.belegung = QLabel(BELEGUNG)
         self.belegung.setObjectName("Kachelname")
@@ -185,6 +206,7 @@ class FahrenView(QWidget):
         anordnung.addWidget(self.bild, 1)
         anordnung.addWidget(self.bildrate)
         anordnung.addWidget(self.gesicht_hinweis)
+        anordnung.addWidget(self.hand_hinweis)
         anordnung.addWidget(self.belegung)
         anordnung.addWidget(self.gedrueckt)
         anordnung.addWidget(self.befehl_zeile)
@@ -212,10 +234,11 @@ class FahrenView(QWidget):
         self.start.setText("■ Fahrt beenden")
         self.stopp.setEnabled(True)
         self.gesicht.setEnabled(True)
-        # Das Häkchen bleibt über Läufe hinweg stehen, die Datei aber nicht: sie
+        self.hand.setEnabled(True)
+        # Die Häkchen bleiben über Läufe hinweg stehen, die Datei aber nicht: sie
         # gehört dem Lauf. Ohne diese Zeile stünde das Häkchen und der neue Lauf
         # erkennte nichts -- ein Schalter, der lügt.
-        self._schreibe_gesicht()
+        self._schreibe_schalter()
         self.zustand.setText(f"{name} läuft — Tasten sind scharf.")
         self._tastatur_greifen()
 
@@ -229,6 +252,8 @@ class FahrenView(QWidget):
         # Grau, aber nicht abgehakt: die Wahl des Menschen gilt für den nächsten Lauf.
         self.gesicht.setEnabled(False)
         self.gesicht_hinweis.hide()
+        self.hand.setEnabled(False)
+        self.hand_hinweis.hide()
         self.gedrueckt.setText("—")
         self.befehl_zeile.setText("Spot steht.")
         self.zustand.setText("Kein Lauf.")
@@ -288,17 +313,22 @@ class FahrenView(QWidget):
 
     def _gesicht_umgelegt(self, an):
         self.gesicht_hinweis.setVisible(bool(an) and self._laeuft)
-        self._schreibe_gesicht()
+        self._schreibe_schalter()
 
-    def _schreibe_gesicht(self):
-        """Den Schalterstand in den laufenden Lauf schreiben — mehr tut die GUI nicht.
+    def _hand_umgelegt(self, an):
+        self.hand_hinweis.setVisible(bool(an) and self._laeuft)
+        self._schreibe_schalter()
+
+    def _schreibe_schalter(self):
+        """Beide Schalterstände in den laufenden Lauf schreiben — mehr tut die GUI nicht.
 
         Ohne Lauf gibt es kein Verzeichnis; dann bleibt das Häkchen eine Absicht,
         bis der nächste Lauf beginnt.
         """
         if self._lauf_dir is None:
             return
-        ansichtsschalter.schreibe(self._lauf_dir, gesicht=self.gesicht.isChecked())
+        ansichtsschalter.schreibe(self._lauf_dir, gesicht=self.gesicht.isChecked(),
+                                  hand=self.hand.isChecked())
 
     def _stufe_gewaehlt(self, _index):
         name = self.stufe.currentData()

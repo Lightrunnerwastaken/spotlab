@@ -36,6 +36,26 @@ def test_eine_kaputte_datei_heisst_aus(tmp_path):
     assert ansicht.lies(tmp_path) is False
 
 
+def test_zwei_schalter_in_einer_datei(tmp_path):
+    """Gesicht und Hand reisen zusammen: eine Datei, ein Lesen je Bild im Blick."""
+    ansicht.schreibe(tmp_path, gesicht=False, hand=True)
+    assert ansicht.schalter(tmp_path) == {"gesicht": False, "hand": True}
+    assert ansicht.lies(tmp_path) is False, "`lies` bleibt der Gesichtsschalter"
+    ansicht.schreibe(tmp_path, gesicht=True, hand=True)
+    assert ansicht.schalter(tmp_path) == {"gesicht": True, "hand": True}
+
+
+def test_eine_datei_ohne_handschalter_heisst_hand_aus(tmp_path):
+    """Aeltere Dateien tragen nur `gesicht`; kaputte gar nichts -- beides heisst aus, nie werfen."""
+    (tmp_path / ansicht.DATEI).write_text('{"gesicht": true}', encoding="utf-8")
+    assert ansicht.schalter(tmp_path) == {"gesicht": True, "hand": False}
+    (tmp_path / ansicht.DATEI).write_text("{kaputt", encoding="utf-8")
+    assert ansicht.schalter(tmp_path) == {"gesicht": False, "hand": False}
+    assert ansicht.schalter(tmp_path / "fehlt") == {"gesicht": False, "hand": False}
+    (tmp_path / ansicht.DATEI).write_text('{"gesicht": true, "hand": "ja"}', encoding="utf-8")
+    assert ansicht.schalter(tmp_path)["hand"] is False, "nur ein echtes true zaehlt"
+
+
 def test_der_schalter_verfaellt_nicht(tmp_path):
     """Der Unterschied zu `fahrt.json`, und der Grund, warum es eine eigene Datei ist.
 

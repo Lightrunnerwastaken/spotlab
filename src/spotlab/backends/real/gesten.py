@@ -151,6 +151,12 @@ def geste_der_haende(haende):
     return geste_aus_landmarken(max(haende, key=lambda h: h.conf).landmarken)
 
 
+def beschriftung(hand):
+    """Was an den Handkasten geschrieben wird: das Zeichen (oder „Hand") und die Sicherheit."""
+    name = {HALT: "Halt", WEITER: "Weiter"}.get(geste_aus_landmarken(hand.landmarken), "Hand")
+    return f"{name} {hand.conf:.2f}"
+
+
 class Entprellung:
     """Eine Geste zählt erst, wenn sie `takte` Lesungen hintereinander steht — und dann EINMAL.
 
@@ -205,6 +211,22 @@ def rumpf_ausschnitt(koerper, breite, hoehe, faktor=AUSSCHNITT_FAKTOR, mindest=M
     x0 = int(min(max(mx - seite / 2, 0), breite - seite))
     y0 = int(min(max(my - seite / 2, 0), hoehe - seite))
     return x0, y0, seite
+
+
+def haende_beim_koerper(feld, koerper, handerkenner):
+    """Die Hände im Rumpf-Ausschnitt DIESES Körpers — leer ohne Körper oder ohne Schultern.
+
+    Die Kette, die Folgemodus (`folgen.gesten_leser`) und Fahrblick
+    (`workshop/blick.py`) gemeinsam fahren: Körper → Ausschnitt → Hände. Auf dem
+    ganzen Bild fände die Handpose nichts (gemessen: 0 von 510 Panoramen).
+    """
+    if koerper is None:
+        return []
+    hoehe, breite = feld.shape[:2]
+    ausschnitt = rumpf_ausschnitt(koerper, breite=breite, hoehe=hoehe)
+    if ausschnitt is None:
+        return []
+    return handerkenner.finde(feld, ausschnitt=ausschnitt)
 
 
 # ----------------------------------------------------------- Der Erkenner

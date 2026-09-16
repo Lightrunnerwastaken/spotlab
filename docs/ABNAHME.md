@@ -922,7 +922,15 @@ ersetzt die Probe aber NICHT: er fährt **ohne die Tiefen-Gegenprobe**, also
 bekommt eine Stuhllehne genauso einen Kasten wie ein Gesicht, und er schreibt
 keine Zahlen mit. Wer wissen will, ob ein Kasten ein Gesicht WAR, braucht die
 Probe. Fehlt das Modell, steht der Grund in rot im Bild statt nur in
-`diagnose.log`.
+`diagnose.log`. **Daneben „✋ Handzeichen"** (seit 16.09.2026): dieselbe Kette wie der
+Gestenleser des Folgemodus — Körper mit Spur, Rumpf-Ausschnitt, Hand — legt die
+Handkästen GELB ins Bild, mit dem gelesenen Zeichen als Text („Halt 0.97", „Weiter 0.80",
+sonst „Hand"). Das ist der Weg, ein Zeichen auszuprobieren, BEVOR man sich beim Folgen
+darauf verlässt: steht „Halt" am Kasten, sobald die offene Hand aufrecht vor der Brust
+ist, kommt es auch beim Folgen an. Kostet Bildrate — ohne Mensch im Bild sucht der
+Körpererkenner jedes Bild neu (rund 0.4 s), mit Mensch trägt die Spur. **Am Gerät zu
+notieren:** die Bildrate mit beiden Schaltern, und ob der Kasten bei hängenden Armen
+„Hand" sagt und nie „Halt".
 
 Danach erst der Folgelauf. Nur mit `pip install "spotlab[gesicht]"` und abgelegtem Modell.
 

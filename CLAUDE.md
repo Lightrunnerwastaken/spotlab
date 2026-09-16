@@ -932,7 +932,15 @@ versionsgepinntes Extra `spotlab[sim]`.
   `diagnose.log` ist beim Messen unsichtbar); ein stolpernder Erkenner zählt **nicht** als
   Bildfehler, sonst gäbe der Blick nach drei Takten wegen der Beigabe auf. **Ohne
   Tiefen-Gegenprobe** — der Fahrblick holt keine Tiefenbilder, ein Fehltreffer bekommt hier
-  also genauso einen Kasten wie ein Gesicht, und genau das steht unter dem Bild.
+  also genauso einen Kasten wie ein Gesicht, und genau das steht unter dem Bild. **Die Hand
+  hat einen ZWEITEN Schalter** („✋ Handzeichen", `hand` in derselben Datei, `ansicht.schalter()`
+  liest beide mit einem Lesen): sie kostet die Körpersuche (375 ms je Bild ohne Spur), und wer
+  nur Gesichter sehen will, soll die nicht mitbezahlen. Der Handweg ist dieselbe Kette wie im
+  Folgemodus (`gesten.haende_beim_koerper`: Körper mit Spur → Rumpf-Ausschnitt → Hand), gelb
+  statt grün, mit dem gelesenen Zeichen als Text („Halt 0.97", „Weiter 0.80", sonst „Hand"),
+  eigene Meldung und eigene Zähler — ein fehlendes Handmodell reisst den Gesichtsweg nicht mit.
+  OpenCV fehlt dort erst beim BAU der Zoo-Klassen (ImportError), nicht beim Import des Moduls;
+  `_vom_handerkenner` übersetzt das in dieselbe rote Meldung wie beim Gesicht.
 - **Das Fenstersymbol ist FREIGESTELLT und liegt im Paket** (`gui/spotlab.png`, runde
   Ecken mit Transparenz aussen, dazu `package-data`). Ein Symbol mit eigenem
   Hintergrund sitzt in der Taskleiste in einem grauen Kasten, und ohne den
