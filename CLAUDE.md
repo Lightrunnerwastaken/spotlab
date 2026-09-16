@@ -211,7 +211,16 @@ versionsgepinntes Extra `spotlab[sim]`.
   YuNet 85 ms, Gegenprobe 107 ms, RPCs 50–150 ms — und schlief dann unbedingt noch 200 ms
   obendrauf. Die Tiefe (`punkte_aus_bild` ×2: 4 ms) war nie der Preis; „Tiefe nur jeden
   zweiten Takt" wäre eine Änderung ohne Wirkung gewesen und wurde nach der Messung
-  verworfen. Deshalb gibt es `zuerst(...)`: Strategien werden
+  verworfen. **Und die Nase FOLGT dem Gesicht** (`_neigung_nach`, `Ziel.bild_oben`): feste
+  Zahlen passen für EINEN Menschen — gemessen lag bei 15° und 1.6 m genau voraus ein 1.65 m
+  hohes Gesicht in der Naht-Kerbe (9° tief, ±15° breit, Kopfgrenze 1.46 m) und war
+  abgeschnitten, fotografiert. `folge()` hält die Oberkante des Kastens auf `SOLL_OBEN_GRAD`
+  (10°): zu hoch → Nase hoch, höchstens 3° je Takt bis `MAX_BLICK_GRAD`; zu tief → Nase
+  runter bis `NICK_MIN_GRAD` (10°, Boden für die Schranke, nie ganz flach); am Anschlag und
+  noch `ZU_HOCH_GRAD` über dem Soll → `vx = 0`, mitdrehen bleibt. Reihenfolge der Wünsche:
+  erst so nah wie möglich, dann so hoch wie möglich schauen. Geregelt wird nur auf ECHTE
+  Kästen (nicht im Nachlauf), ohne Ziel bleibt die zuletzt geregelte Neigung als
+  Suchhaltung, `blick_grad=0` regelt nicht. Deshalb gibt es `zuerst(...)`: Strategien werden
   GESTAFFELT, nicht gewählt. Und deshalb hat `Panorama` zwei Zuschnitte — `RECHTECK` (voll
   gedeckt, 16:9, zum Fahren, reicht 7° hinauf) und `ALLES` (alles Gesehene samt schwarzen
   Ecken, reicht 26° hinauf). Für einen Erkenner ist eine schwarze Ecke kein Problem, ein
@@ -352,6 +361,23 @@ versionsgepinntes Extra `spotlab[sim]`.
   instanzeigener Endpunktname („spotlab-4711") zerstört die Selbstheilung, und ein
   abgestürzter Schülerlaptop hielte den Roboter dauerhaft im CUT. Gemeinsamer Name plus
   Frischeprüfung behält beides.
+- **Ein früher Ausstieg aus `EstopGuard._abmelden` schreibt, woran er scheiterte — mit
+  beiden IDs.** Befund vom 16.09.2026 (Lauf `20260916T143307Z_6fdb5181`, Software 5.1.3):
+  `close()` lief regulär durch, danach stand `spotlab` weiterhin in der E-Stop-Konfiguration
+  (157 s ohne gültige Antwort), und `diagnose.log` hatte keine Zeile zur Abgabe. Der Rückblick
+  über alle 84 Läufe am echten Roboter seit dem neuen Abbau (09.09.2026) zeigte: **die Abgabe
+  kam nie zu Ende**, auch nicht nach normalen Enden — das Motor-Aus durch den Roboter war also
+  nicht die Ursache. Der alte `endpoint.deregister()` mit derselben Konfigurations-ID war bis
+  dahin stumm erfolgreich, die Konfigurations-ID stimmt am Ende also vermutlich noch; der
+  Verdacht liegt auf dem Endpunkt-Abgleich (`RegisterEstopEndpoint` liefert laut Proto eine
+  „vom Server vergebene" unique_id, `GetEstopConfig` zeigt womöglich weiter den
+  Konfigurationsplatz). Bestätigen kann das nur der nächste Lauf am Gerät — dafür nennt jede
+  Zeile `E-Stop-Abgabe uebersprungen: …` die Bedingung und die IDs
+  (`tests/test_estop_handoff.py`). Der Abgleich bleibt streng: **nie nach Namen löschen.** Ein
+  zurückgelassener Endpunkt wird beim nächsten `register_coexisting` über die Frischeprüfung
+  ersetzt (nur bei Motoren aus); bis dahin blockiert er laut E-Stop-Konzept das Einschalten
+  der Motoren. A3 gilt als nicht bestanden, solange die Zeile `E-Stop-Abgabe: …` am Gerät
+  fehlt.
 - **`RealSpot.connect()` macht den Aufbau rückgängig, wenn ein Schritt nach der
   E-Stop-Registrierung scheitert** — und fängt dafür `BaseException`, nicht `Exception`.
   Strg-C ist der häufigste Abbruch überhaupt; sonst bliebe genau dort ein Endpunkt samt

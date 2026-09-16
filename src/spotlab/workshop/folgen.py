@@ -91,6 +91,23 @@ NACHLAUF_S = 1.0
 # Wer den Boden braucht, sagt `blick_grad=0` -- der alte Weg bleibt.
 BLICK_GRAD = 15.0
 MAX_BLICK_GRAD = 20.0
+# DIE NASE FOLGT DEM GESICHT (16.09.2026). Feste Zahlen passen fuer EINEN
+# Menschen: bei 15 Grad und 1.6 m genau voraus lag ein 1.65 m hohes Gesicht in
+# der Naht-Kerbe (Grenze 1.46 m) und war abgeschnitten -- Takt 110 der
+# Reichweiten-Sonde, fotografiert. Deshalb haelt `folge()` die Oberkante des
+# Kastens auf SOLL_OBEN_GRAD: sicher unter der Kerbe (+17 Grad) und der Kante
+# (+26). Zu hoch -> Nase hoch, hoechstens NICK_SCHRITT_GRAD je Takt, bis
+# MAX_BLICK_GRAD; zu tief -> Nase runter bis NICK_MIN_GRAD, damit die
+# Hindernisschranke den Boden zurueckbekommt, wenn Spot Strecke macht -- aber
+# nie ganz flach, sonst ist das Gesicht beim Naeherkommen sofort wieder weg.
+# Reihenfolge der Wuensche (Mensch, 16.09.2026): erst so nah wie moeglich, dann
+# so hoch wie moeglich schauen; erst wenn die Nase am Anschlag ist und der
+# Kasten noch ZU_HOCH_GRAD ueber dem Soll liegt, kommt er nicht naeher.
+SOLL_OBEN_GRAD = 10.0
+NICK_MIN_GRAD = 10.0
+NICK_SCHRITT_GRAD = 3.0
+TOTBAND_GRAD = 2.0
+ZU_HOCH_GRAD = 4.0
 
 
 @dataclass(frozen=True)
@@ -98,6 +115,10 @@ class Ziel:
     bearing: float               # Grad, links positiv
     distance: float              # Meter
     name: str = "Ziel"
+    # Hoehenwinkel der OBERKANTE des Kastens, koerperfest (Grad, oben positiv) --
+    # nur beim Gesicht gesetzt. Das ist, was oben aus dem Bild laeuft, und
+    # danach regelt `folge()` die Nase. Ein Tag hat kein "im Bild"-Problem.
+    bild_oben: float = None
 
 
 def skript_in(arbeitsordner):
@@ -211,10 +232,23 @@ def gesicht_finder(modell=None, mindestscore=None, quellen=GESICHT_QUELLEN,
         if not genommen:
             return None
         kopf = genommen[0]
-        return Ziel(kopf.bearing, kopf.distance, f"Gesicht auf {kopf.height:.2f} m")
+        return _ziel_aus_befund(kopf, aufnahme.pano)
 
     finde.befund = lambda: zuletzt["text"]
     return finde
+
+
+def _ziel_aus_befund(kopf, pano):
+    """Ein genommener Befund als Ziel — samt der Oberkante des Kastens im Bild.
+
+    `pano.winkel` rechnet Spalte/Zeile in Peilung und Hoehenwinkel um, koerperfest.
+    Genommen wird die OBERKANTE (Zeile y), nicht die Mitte: sie laeuft zuerst aus
+    dem Bild, und auf sie regelt `folge()` die Nase.
+    """
+    x, y, breite, _hoehe = kopf.box
+    _, oben = pano.winkel(x + breite / 2.0, y)
+    return Ziel(kopf.bearing, kopf.distance, f"Gesicht auf {kopf.height:.2f} m",
+                bild_oben=float(oben))
 
 
 def _gesichtsbefund(befunde):
@@ -482,7 +516,8 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
     if blick_grad and not getattr(getattr(spot, "backend", None), "neigt_beim_gehen", False):
         melde("Dieses Backend neigt sich beim Gehen nicht — der Blickwinkel bleibt flach.")
         blick_grad = 0.0
-    nick = -blick_grad          # Projektkonvention: Nase hoch ist negativ
+    neigung = blick_grad        # geregelt, sobald ein Gesicht seine Oberkante meldet
+    nick = -neigung             # Projektkonvention: Nase hoch ist negativ
     finder = finder or tag_finder()
     if laeuft is None:
         if lauf_dir is None:
@@ -555,7 +590,18 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
                 zuletzt_gesehen, stille_gemeldet = jetzt(), None
                 je_gesehen = True
                 letztes_ziel = ziel
+                if blick_grad and ziel.bild_oben is not None:
+                    # Nur auf ECHTE Kaesten regeln: ein gehaltenes Ziel ist kein gesehenes.
+                    neigung = _neigung_nach(neigung, ziel.bild_oben)
+                    nick = -neigung
             vx, wz = befehl(ziel, takt_s=takt_dauer)
+            if (blick_grad and ziel.bild_oben is not None
+                    and neigung >= MAX_BLICK_GRAD - 1e-9
+                    and ziel.bild_oben > SOLL_OBEN_GRAD + ZU_HOCH_GRAD):
+                # Die Nase kann nicht hoeher, und das Gesicht laeuft trotzdem
+                # oben raus: so nah, wie er noch sehen kann -- nicht naeher.
+                # Mitdrehen darf er weiter.
+                vx = 0.0
 
             if vx > 0.0:
                 if kopfraum_geprueft is None or jetzt() - kopfraum_geprueft >= kopfraum_takt_s:
@@ -624,6 +670,21 @@ def _notiere_stille(spot, seit_s, je_gesehen, befund=""):
     except Exception as fehler:
         return f"{type(fehler).__name__}: {fehler}"
     return ""
+
+
+def _neigung_nach(neigung, bild_oben, soll=SOLL_OBEN_GRAD, totband=TOTBAND_GRAD,
+                  schritt=NICK_SCHRITT_GRAD, unten=NICK_MIN_GRAD, oben=MAX_BLICK_GRAD):
+    """Die Neigung des naechsten Takts aus der Oberkante des Kastens — rein rechenbar.
+
+    Liegt die Oberkante ueber dem Soll, hebt sich die Nase, sonst senkt sie sich —
+    hoechstens `schritt` je Takt (zwei Regelkreise, Drehen und Nicken, sollen
+    nicht gegeneinander schwingen), und innerhalb des Totbands gar nicht.
+    """
+    fehler = float(bild_oben) - soll
+    if abs(fehler) < totband:
+        return neigung
+    aenderung = max(-schritt, min(schritt, fehler))
+    return max(unten, min(oben, neigung + aenderung))
 
 
 def _rest(takt_s, takt_beginn, jetzt):

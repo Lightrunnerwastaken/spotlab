@@ -944,3 +944,118 @@ def test_bei_schneller_arbeit_bleibt_der_takt_das_mass():
     folgen.folge(_Spot(), schnell, melde=lambda _t: None, jetzt=jetzt,
                  schlaf=geschlafen.append, laeuft=_laeuft_takte(3), takt_s=0.2)
     assert geschlafen and all(0.1 <= s <= 0.2 for s in geschlafen), geschlafen
+
+
+# ------------------------------------ Die Nase folgt dem Gesicht (16.09.2026)
+#
+# Feste Zahlen (15 Grad, 1.6 m) passen fuer EINEN Menschen. Gemessen: bei 15
+# Grad und 1.6 m genau voraus liegt ein 1.65 m hohes Gesicht in der Naht-Kerbe
+# (Grenze 1.46 m) und ist abgeschnitten -- Takt 110 der Reichweiten-Sonde. Die
+# Regel: erst so nah wie moeglich, dann so hoch wie moeglich schauen, und nur
+# wenn beides ausgereizt ist, nicht naeher (Wunsch des Menschen). Der Kasten
+# traegt dafuer seine Oberkante als koerperfesten Hoehenwinkel (`bild_oben`).
+
+
+def _gesicht(oben, abstand=3.0, peilung=0.0):
+    return Ziel(peilung, abstand, "Gesicht", bild_oben=oben)
+
+
+def _nicks(spot):
+    return [k["nick_grad"] for k in spot.kommandos if isinstance(k, dict)]
+
+
+def test_ein_hoher_kasten_hebt_die_nase_schrittweise_bis_zum_maximum():
+    spot = _Spot(neigt=True)
+    folgen.folge(spot, lambda _s: _gesicht(25.0), melde=lambda _t: None,
+                 schlaf=lambda _s: None, laeuft=_laeuft_takte(5))
+    assert _nicks(spot) == [-18.0, -20.0, -20.0, -20.0, -20.0], _nicks(spot)
+
+
+def test_ein_tiefer_kasten_senkt_die_nase_bis_zur_untergrenze():
+    """Weit weg: die Nase kommt runter, und die Hindernisschranke bekommt den
+    Boden zurueck -- aber nie ganz flach, sonst geht das Gesicht beim Naeherkommen
+    sofort wieder verloren."""
+    spot = _Spot(neigt=True)
+    folgen.folge(spot, lambda _s: _gesicht(-20.0), melde=lambda _t: None,
+                 schlaf=lambda _s: None, laeuft=_laeuft_takte(4))
+    assert _nicks(spot) == [-12.0, -10.0, -10.0, -10.0], _nicks(spot)
+    assert folgen.NICK_MIN_GRAD == 10.0
+
+
+def test_im_totband_bleibt_die_nase_ruhig():
+    spot = _Spot(neigt=True)
+    folgen.folge(spot, lambda _s: _gesicht(folgen.SOLL_OBEN_GRAD + 1.0), melde=lambda _t: None,
+                 schlaf=lambda _s: None, laeuft=_laeuft_takte(3))
+    assert _nicks(spot) == [-15.0, -15.0, -15.0]
+
+
+def test_am_maximum_und_immer_noch_zu_hoch_kommt_er_nicht_naeher_dreht_aber_mit():
+    """Das 'gerade noch so': so nah, wie er noch sehen kann -- nicht naeher."""
+    spot = _Spot(neigt=True)
+    folgen.folge(spot, lambda _s: _gesicht(30.0, abstand=3.0, peilung=20.0),
+                 melde=lambda _t: None, schlaf=lambda _s: None, laeuft=_laeuft_takte(5))
+    fahrten = [k for k in spot.kommandos if isinstance(k, dict)]
+    assert fahrten[0]["vx"] > 0.0, "solange die Nase noch hoeher kann, faehrt er heran"
+    assert fahrten[-1]["nick_grad"] == -folgen.MAX_BLICK_GRAD
+    assert fahrten[-1]["vx"] == 0.0, "am Anschlag: nicht naeher"
+    assert fahrten[-1]["wz"] != 0.0, "aber weiter mitdrehen"
+
+
+def test_ein_tag_ziel_laesst_die_neigung_in_ruhe():
+    spot = _Spot(tags=[_tag(3, 0.0, 3.0)], neigt=True)
+    folgen.folge(spot, folgen.tag_finder(), melde=lambda _t: None,
+                 schlaf=lambda _s: None, laeuft=_laeuft_takte(3))
+    assert _nicks(spot) == [-15.0, -15.0, -15.0]
+
+
+def test_ohne_ziel_bleibt_die_zuletzt_geregelte_neigung_stehen():
+    """Suchhaltung dort, wo er das Gesicht zuletzt sah -- nicht zurueck auf 15."""
+    plan = iter([_gesicht(25.0), _gesicht(25.0), None, None, None])
+
+    def finde(_spot):
+        return next(plan, None)
+
+    spot = _Spot(neigt=True)
+    folgen.folge(spot, finde, melde=lambda _t: None, schlaf=lambda _s: None,
+                 laeuft=_laeuft_takte(5), nachlauf_s=0.0)
+    nicks = _nicks(spot)
+    assert nicks[:2] == [-18.0, -20.0]
+    assert all(n == -20.0 for n in nicks[2:]) and len(nicks) > 2
+
+
+def test_im_nachlauf_wird_nicht_weitergeregelt():
+    """Ein gehaltenes Ziel ist kein gesehenes: die Nase regelt nur auf echte Kaesten."""
+    plan = iter([_gesicht(25.0), None, None])
+
+    def finde(_spot):
+        return next(plan, None)
+
+    spot = _Spot(neigt=True)
+    folgen.folge(spot, finde, melde=lambda _t: None, jetzt=_uhr_schritte(0.05),
+                 schlaf=lambda _s: None, laeuft=_laeuft_takte(3))
+    assert _nicks(spot) == [-18.0, -18.0, -18.0], _nicks(spot)
+
+
+def test_flach_bleibt_flach():
+    """blick_grad=0 ist der alte Weg: keine Regelung, auch bei hohem Kasten."""
+    spot = _Spot(neigt=True)
+    folgen.folge(spot, lambda _s: _gesicht(25.0), melde=lambda _t: None,
+                 schlaf=lambda _s: None, laeuft=_laeuft_takte(3), blick_grad=0.0)
+    assert _nicks(spot) == [0.0, 0.0, 0.0]
+
+
+def test_der_gesichtsfinder_traegt_die_kastenoberkante_ins_ziel():
+    """Aus dem Befund (Kasten x, y, b, h) und der Panorama-Geometrie: der
+    Hoehenwinkel der OBERKANTE, koerperfest -- das ist, was oben rauslaeuft."""
+    from spotlab.backends.real.gesicht import Befund
+
+    class _Pano:
+        def winkel(self, spalte, zeile):
+            return 5.0, 30.0 - zeile / 10.0        # Zeile 0 = +30 Grad, Zeile 100 = +20
+
+    kopf = Befund(5.0, 12.0, 0.9, (100.0, 100.0, 40.0, 40.0), distance=2.0, height=1.6,
+                  genommen=True)
+    ziel = folgen._ziel_aus_befund(kopf, _Pano())
+    assert ziel.bearing == 5.0 and ziel.distance == 2.0
+    assert ziel.bild_oben == pytest.approx(20.0), "Oberkante y=100 -> +20 Grad"
+    assert "1.60 m" in ziel.name

@@ -118,6 +118,16 @@ darauf, dass er es tut.
 
 **Ergebnis** _(offen)_
 
+> **Befund 16.09.2026 (Lauf `20260916T143307Z_6fdb5181`, Software 5.1.3):** nach einem
+> regulären `close()` stand `spotlab` weiterhin in der E-Stop-Konfiguration (157 s ohne
+> gültige Antwort). Rückblick: in allen 84 Läufen am Gerät seit dem neuen Abbau vom
+> 09.09.2026 fehlt die Zeile `E-Stop-Abgabe: …` in `diagnose.log` — die Abgabe kam nie zu
+> Ende, auch nicht nach normalen Enden. **A3 gilt damit als NICHT bestanden.** Seit dem
+> 16.09. nennt jeder frühe Ausstieg die Bedingung und die IDs
+> (`E-Stop-Abgabe uebersprungen: …`); der nächste Lauf am Gerät entscheidet, ob die
+> Konfigurations-ID oder der Endpunkt-Abgleich der Grund ist. Erst mit diesem Befund den
+> Abgleich anpassen — und dabei nie nach Namen löschen.
+
 ---
 
 ## A4 — Lease-Übernahme von einem zweiten Laptop
@@ -990,6 +1000,21 @@ RECHTECK, ohne Aufhellung — Folgemodus: Grau, ALLES, aufgehellt) und vier Zwis
   Gegenprobe 107 ms, RPCs 50–150 ms — und dann schlief die Schleife unbedingt noch 200 ms
   obendrauf. Die Tiefe (4 ms) war nie der Preis; sie jeden zweiten Takt zu holen hätte
   nichts gebracht und wurde deshalb nicht gebaut.
+- **Reichweite bei 15° gemessen** (120 Takte neben dem Folgelauf, Nick konstant −15°, zwei
+  Personen): Farbe fand das Gesicht in 45 Takten, Punktzahl median 0.84, Kastenhöhe median
+  39 px (~2.2 m), zuverlässig bei 2–3 m auch seitlich bis ±50°. Zwei Löcher, fotografiert:
+  **auf ~1.6 m genau voraus schneidet die Naht-Kerbe am Hals ab** (Kerbe 9° tief, ±15° breit,
+  Kopfgrenze dort 1.46 m), und **unter ~1.3 m sind nur noch Beine im Bild**. Der Wunschabstand
+  1.6 m lag also mitten im Loch der Kerbe.
+- **Die Nase folgt dem Gesicht** (statt fester Zahlen, Wunsch des Menschen: erst so nah wie
+  möglich, dann so hoch wie möglich schauen). `Ziel.bild_oben` trägt die Oberkante des Kastens
+  als körperfesten Höhenwinkel; `folge()` hält sie auf `SOLL_OBEN_GRAD = 10` — zu hoch → Nase
+  hoch (3° je Takt, bis 20°), zu tief → Nase runter (bis 10°, Boden für die Schranke), am
+  Anschlag und immer noch zu hoch → nicht näher, aber mitdrehen. Ohne Ziel bleibt die zuletzt
+  geregelte Neigung als Suchhaltung; ein gehaltenes Ziel (Nachlauf) regelt nicht. **Am Gerät zu
+  prüfen:** derselbe Lauf wie die Reichweiten-Sonde — an der Stelle von Takt 110 (aufrecht,
+  1.6 m, genau voraus) muss jetzt ein Gesicht stehen, weil Spot vorher die Nase gehoben oder
+  angehalten hat.
 
 **Teil 4 — Nickwinkel.** Seit dem 16.09.2026 fährt das Beispiel mit der Vorgabe
 `BLICK_GRAD = 15`; zum Vergleich mit `blick_grad=0` starten. Vorher jemanden mit
