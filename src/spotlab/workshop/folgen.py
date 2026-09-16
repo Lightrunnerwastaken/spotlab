@@ -69,6 +69,13 @@ VERLOREN_S = 5.0                 # so lange ohne Ziel, dann sagt er es
 # Minute ist die Zeile weggescrollt, und ein stehender Spot ist von einem
 # hängenden Programm nicht zu unterscheiden (gesehen am 16.09.2026).
 STILLE_TAKT_S = 15.0
+# NACHLAUF: ein Ziel, das vor unter einer Sekunde noch da war, gilt weiter, und
+# der Regler faehrt aus dem letzten Ziel weiter -- mit allen Schranken. Der
+# Erkenner trifft neun von zehn Takten, und der zehnte hielt Spot bisher sofort
+# an; das Folgen stotterte. Eine Sekunde bei 0.5 m/s sind 50 cm blind, und das
+# Fahrkommando selbst verfaellt ohnehin nach rund einer Sekunde. Entscheidung
+# des Menschen am 16.09.2026. 0 = der alte Sofortstopp.
+NACHLAUF_S = 1.0
 # Wie weit Spot die Nase hebt, damit die Kameras hoeher schauen. 0 = gar nicht.
 # Gerechnet (`backends/real/gesicht.py`): ohne Neigung kommt ein stehendes Gesicht
 # erst ab 2.31 m ins Bild, mit 10 Grad ab 1.46 m, mit 15 Grad ab 1.18 m. Der
@@ -447,7 +454,7 @@ def befehl(ziel, wunsch=WUNSCH_ABSTAND_M, mindest=MIN_ABSTAND_M, toleranz=TOLERA
 
 def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
           schlaf=time.sleep, takt_s=TAKT_S, laeuft=None, lauf_dir=None,
-          kopfraum_takt_s=KOPFRAUM_TAKT_S, blick_grad=BLICK_GRAD):
+          kopfraum_takt_s=KOPFRAUM_TAKT_S, blick_grad=BLICK_GRAD, nachlauf_s=NACHLAUF_S):
     """Die Schleife: Ziel suchen, Abstand halten, bei jeder Schranke stehen bleiben.
 
     `blick_grad` hebt die Nase während der Fahrt, damit die Kameras höher
@@ -495,6 +502,7 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
     kopfraum_geprueft = None
     faehrt = False
     takt_beginn = None          # wann der letzte Takt begann: so lange dreht Spot blind
+    letztes_ziel = None         # fuer den Nachlauf: das zuletzt ECHT gesehene Ziel
 
     try:
         while laeuft():
@@ -502,6 +510,11 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
             takt_dauer = max(takt_s, nun - takt_beginn) if takt_beginn is not None else takt_s
             takt_beginn = nun
             ziel = _sicher(finder, spot)
+            echt = ziel is not None
+            if not echt and letztes_ziel is not None and nun - zuletzt_gesehen < nachlauf_s:
+                # Nachlauf: aus dem letzten Ziel weiter -- der Regler rechnet
+                # neu und ALLE Schranken werden unten wie sonst geprueft.
+                ziel = letztes_ziel
             if ziel is None:
                 if faehrt:
                     spot.stop()
@@ -530,14 +543,18 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
                     if fehlschlag and not schreibfehler_gemeldet:
                         schreibfehler_gemeldet = True
                         melde(f"Die Stille liess sich nicht aufzeichnen: {fehlschlag}")
-                schlaf(takt_s)
+                schlaf(_rest(takt_s, takt_beginn, jetzt))
                 continue
 
-            if stille_gemeldet is not None:
-                # „wieder da" nur, wenn er wirklich schon einmal da war.
-                melde(f"{ziel.name} {'wieder da' if je_gesehen else 'gefunden'}.")
-            zuletzt_gesehen, stille_gemeldet = jetzt(), None
-            je_gesehen = True
+            if echt:
+                if stille_gemeldet is not None:
+                    # „wieder da" nur, wenn er wirklich schon einmal da war.
+                    melde(f"{ziel.name} {'wieder da' if je_gesehen else 'gefunden'}.")
+                # Nur ein ECHTES Ziel zaehlt als gesehen -- ein gehaltenes
+                # verlaengerte sonst seinen eigenen Nachlauf, und er hielte nie.
+                zuletzt_gesehen, stille_gemeldet = jetzt(), None
+                je_gesehen = True
+                letztes_ziel = ziel
             vx, wz = befehl(ziel, takt_s=takt_dauer)
 
             if vx > 0.0:
@@ -562,7 +579,7 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
                 # Mit Neigung auch bei Tempo null: das haelt die Nase oben.
                 spot.walk(vx=vx, vy=0.0, wz=wz, stop=False, nick_grad=nick)
                 faehrt = True
-            schlaf(takt_s)
+            schlaf(_rest(takt_s, takt_beginn, jetzt))
     finally:
         spot.stop()
         melde("Folgen beendet.")
@@ -607,6 +624,17 @@ def _notiere_stille(spot, seit_s, je_gesehen, befund=""):
     except Exception as fehler:
         return f"{type(fehler).__name__}: {fehler}"
     return ""
+
+
+def _rest(takt_s, takt_beginn, jetzt):
+    """Was vom Takt noch übrig ist — null, wenn die Arbeit länger war als der Takt.
+
+    Gemessen am 16.09.2026: ein Gesichts-Takt kostet Bildabrufe ~100 ms, YuNet
+    85 ms, Gegenprobe 107 ms, RPCs 50–150 ms — und dann schlief die Schleife
+    UNBEDINGT noch 200 ms obendrauf. Beim Tag (0.05 s Arbeit) ist der Schlaf das
+    Taktmass, und das bleibt er; beim Gesicht war er reine Blindzeit.
+    """
+    return max(0.0, float(takt_s) - (jetzt() - takt_beginn))
 
 
 def _sicher(finder, spot):

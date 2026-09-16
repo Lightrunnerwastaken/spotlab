@@ -977,6 +977,19 @@ RECHTECK, ohne Aufhellung — Folgemodus: Grau, ALLES, aufgehellt) und vier Zwis
   (`ANTEIL_JE_TAKT`), gemessen an der wirklichen Taktdauer; mit dem Tag (0.2 s) greift die
   Deckelung nie. **Am Gerät zu prüfen:** Spot hält die Nase im Stehen oben, ein aufrecht
   stehender Mensch auf 1.5 m wird gefunden, und Spot dreht sich ohne Pendeln zu ihm hin.
+- **Lauf 12:55 bestätigt beides** (65 Haltungsbefehle vor dem ersten Ziel, Nick −15°;
+  13 Fahrbefehle mit `wz` ±0.23 und 2 Drehsinn-Wechseln statt ±0.79 und 8). Danach zwei
+  Schranken: „nur 0.0 m frei voraus" und „Überhang 0.95 m voraus" — **was** die Schranken
+  sahen, steht nicht im Lauf (Teil 4 bleibt offen; ein `ziel`-Ereignis je Takt wäre der Weg).
+- **Nachlauf 1 s** (`NACHLAUF_S`, Entscheidung des Menschen): ein Ziel, das vor unter einer
+  Sekunde noch da war, gilt weiter, der Regler rechnet aus dem letzten Ziel neu, alle
+  Schranken gelten. Bis dahin hielt ein einziger verpasster Takt Spot sofort an, obwohl
+  der Erkenner neun von zehn Takten traf — das Folgen stotterte. `nachlauf_s=0` ist der
+  alte Sofortstopp.
+- **Nur der Rest des Takts wird geschlafen.** Gemessen: Bildabrufe ~100 ms, YuNet 85 ms,
+  Gegenprobe 107 ms, RPCs 50–150 ms — und dann schlief die Schleife unbedingt noch 200 ms
+  obendrauf. Die Tiefe (4 ms) war nie der Preis; sie jeden zweiten Takt zu holen hätte
+  nichts gebracht und wurde deshalb nicht gebaut.
 
 **Teil 4 — Nickwinkel.** Seit dem 16.09.2026 fährt das Beispiel mit der Vorgabe
 `BLICK_GRAD = 15`; zum Vergleich mit `blick_grad=0` starten. Vorher jemanden mit

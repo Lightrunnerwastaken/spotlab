@@ -786,8 +786,9 @@ def test_beim_verlieren_haelt_er_sofort_an_und_bleibt_geneigt():
         return next(plan, None)
 
     spot = _Spot(neigt=True)
+    # Ohne Nachlauf: hier geht es um den Stopp beim Verlust und die Haltung danach.
     folgen.folge(spot, finde, melde=lambda _t: None, schlaf=lambda _s: None,
-                 laeuft=_laeuft_takte(5))
+                 laeuft=_laeuft_takte(5), nachlauf_s=0.0)
     k = spot.kommandos
     erste_null = next(i for i, c in enumerate(k) if isinstance(c, dict) and c["vx"] == 0.0)
     assert "stop" in k[:erste_null + 1], "beim Verlust erst der Stopp"
@@ -801,3 +802,145 @@ def test_ohne_neigung_gibt_es_ohne_ziel_keinen_befehl():
     folgen.folge(spot, lambda _s: None, melde=lambda _t: None,
                  schlaf=lambda _s: None, laeuft=_laeuft_takte(3), blick_grad=0.0)
     assert spot.kommandos == ["stop"]
+
+
+# ------------------------------------------------------------ Nachlauf (16.09.2026)
+#
+# Der Erkenner trifft neun von zehn Takten -- und der zehnte hielt Spot sofort
+# an. Ein Ziel, das vor unter einer Sekunde noch da war, gilt weiter: der
+# Regler faehrt aus dem LETZTEN Ziel weiter, mit allen Schranken. Eine Sekunde
+# bei 0.5 m/s sind 50 cm blind; das Fahrkommando selbst verfaellt ohnehin nach
+# rund einer Sekunde. Entscheidung des Menschen am 16.09.2026.
+
+
+def _uhr_schritte(*schritte):
+    """Eine Uhr, die je Aufruf den naechsten Schritt weitergeht (dann den letzten)."""
+    stand = {"t": 0.0, "i": 0}
+
+    def jetzt():
+        s = schritte[min(stand["i"], len(schritte) - 1)]
+        stand["i"] += 1
+        stand["t"] += s
+        return stand["t"]
+
+    return jetzt
+
+
+def test_ein_kurzer_aussetzer_haelt_ihn_nicht_an():
+    """Ziel, dann drei Takte nichts innerhalb einer Sekunde: er faehrt weiter."""
+    plan = iter([Ziel(0.0, 3.0, "Gesicht"), None, None, None])
+
+    def finde(_spot):
+        return next(plan, None)
+
+    spot = _Spot()
+    folgen.folge(spot, finde, melde=lambda _t: None, jetzt=_uhr_schritte(0.05),
+                 schlaf=lambda _s: None, laeuft=_laeuft_takte(4))
+    fahrten = [k for k in spot.kommandos if isinstance(k, dict)]
+    assert len(fahrten) >= 3, "auch in den Aussetzer-Takten geht ein Fahrbefehl raus"
+    assert all(k["vx"] > 0.0 for k in fahrten), "aus dem letzten Ziel, nicht Stillstand"
+    assert "stop" not in spot.kommandos[:-1], "kein Stopp zwischendurch"
+
+
+def test_nach_dem_nachlauf_haelt_er_an():
+    plan = iter([Ziel(0.0, 3.0, "Gesicht"), None, None, None, None])
+
+    def finde(_spot):
+        return next(plan, None)
+
+    spot = _Spot()
+    # Jeder Takt kostet 0.6 s: der erste Aussetzer liegt im Nachlauf, der zweite nicht mehr.
+    folgen.folge(spot, finde, melde=lambda _t: None, jetzt=_uhr_schritte(0.6),
+                 schlaf=lambda _s: None, laeuft=_laeuft_takte(5))
+    assert "stop" in spot.kommandos[:-1], "nach NACHLAUF_S haelt er an"
+    fahrten = [k for k in spot.kommandos if isinstance(k, dict)]
+    assert 1 <= len(fahrten) <= 3, "hoechstens einen Nachlauf-Takt lang weitergefahren"
+
+
+def test_im_nachlauf_gelten_die_schranken_weiter():
+    """Blind fahren heisst nicht ungeprueft fahren: eine Wand im Nachlauf stoppt."""
+    plan = iter([Ziel(0.0, 3.0, "Gesicht"), None, None])
+
+    def finde(_spot):
+        return next(plan, None)
+
+    spot = _Spot(frei=5.0)
+    frei = {"m": 5.0}
+    spot.obstacles = lambda: SimpleNamespace(free_distance=lambda x, y, g: frei["m"])
+    gesagt = []
+
+    def melde(text):
+        gesagt.append(text)
+
+    # Nach dem ersten Takt steht ploetzlich etwas im Weg.
+    original = finde
+
+    def finde_und_wand(s):
+        z = original(s)
+        if z is None:
+            frei["m"] = 0.2
+        return z
+
+    folgen.folge(spot, finde_und_wand, melde=melde, jetzt=_uhr_schritte(0.05),
+                 schlaf=lambda _s: None, laeuft=_laeuft_takte(3))
+    fahrten = [k for k in spot.kommandos if isinstance(k, dict)]
+    assert fahrten[0]["vx"] > 0.0
+    assert all(k["vx"] == 0.0 for k in fahrten[1:]), "im Nachlauf: Wand -> kein Vorwaerts"
+    assert any("Stehen geblieben" in m for m in gesagt)
+
+
+def test_der_nachlauf_verlaengert_sich_nicht_selbst():
+    """Ein gehaltenes Ziel zaehlt nicht als gesehen -- sonst hielte er ewig."""
+    plan = iter([Ziel(0.0, 3.0, "Gesicht")] + [None] * 10)
+
+    def finde(_spot):
+        return next(plan, None)
+
+    spot = _Spot()
+    folgen.folge(spot, finde, melde=lambda _t: None, jetzt=_uhr_schritte(0.3),
+                 schlaf=lambda _s: None, laeuft=_laeuft_takte(11))
+    fahrten = [k for k in spot.kommandos if isinstance(k, dict)]
+    assert len(fahrten) < 8, "irgendwann ist der Nachlauf um"
+    assert spot.kommandos[-1] == "stop"
+
+
+# ------------------------------------------ Nur den Rest des Takts schlafen
+#
+# Gemessen am 16.09.2026, ein Gesichts-Takt: Bildabrufe ~100 ms, YuNet 85 ms,
+# beurteile 107 ms, RPCs 50-150 ms -- und dann schlief die Schleife UNBEDINGT
+# noch 200 ms obendrauf. Beim Tag (0.05 s Arbeit) ist der Schlaf das Taktmass;
+# beim Gesicht war er reine Blindzeit. Die Tiefe (4 ms) war es nie.
+
+
+def test_bei_langsamer_arbeit_schlaeft_er_nicht_mehr_obendrauf():
+    """Der Finder braucht 0.5 s: laenger als der Takt. Dann wird nicht geschlafen."""
+    uhr = {"t": 0.0}
+
+    def jetzt():
+        return uhr["t"]
+
+    def langsam(_spot):
+        uhr["t"] += 0.5
+        return Ziel(0.0, 3.0, "Gesicht")
+
+    geschlafen = []
+    folgen.folge(_Spot(), langsam, melde=lambda _t: None, jetzt=jetzt,
+                 schlaf=geschlafen.append, laeuft=_laeuft_takte(3), takt_s=0.2)
+    assert geschlafen and all(s <= 1e-9 for s in geschlafen), geschlafen
+
+
+def test_bei_schneller_arbeit_bleibt_der_takt_das_mass():
+    """Der Tag antwortet sofort: dann schlaeft er wie bisher bis zum Taktende."""
+    uhr = {"t": 0.0}
+
+    def jetzt():
+        return uhr["t"]
+
+    def schnell(_spot):
+        uhr["t"] += 0.02
+        return Ziel(0.0, 3.0, "Tag 3")
+
+    geschlafen = []
+    folgen.folge(_Spot(), schnell, melde=lambda _t: None, jetzt=jetzt,
+                 schlaf=geschlafen.append, laeuft=_laeuft_takte(3), takt_s=0.2)
+    assert geschlafen and all(0.1 <= s <= 0.2 for s in geschlafen), geschlafen

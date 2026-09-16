@@ -202,7 +202,16 @@ versionsgepinntes Extra `spotlab[sim]`.
   ein Takt 0.45–0.9 s, und bei 45°/s drehte Spot je Takt 20–40°, mehr als die Peilung — 94
   Befehle, `wz` pendelnd ±0.79 rad/s, 13 Drehsinn-Wechsel, `vx` null. `befehl(takt_s=…)`
   dreht je Takt höchstens die halbe Peilung (`ANTEIL_JE_TAKT`); beim Tag (0.2 s) greift das
-  nie. Deshalb gibt es `zuerst(...)`: Strategien werden
+  nie. **Nachlauf `NACHLAUF_S = 1.0`** (Entscheidung des Menschen, 16.09.2026): ein Ziel,
+  das vor unter einer Sekunde noch da war, gilt weiter — der Regler rechnet aus dem LETZTEN
+  Ziel neu, alle Schranken gelten, und nur ein ECHTES Ziel zählt als gesehen, sonst
+  verlängerte der Nachlauf sich selbst. Vorher hielt ein einziger verpasster Takt Spot
+  sofort an, obwohl der Erkenner neun von zehn Takten traf. **Und die Schleife schläft nur
+  den REST des Takts** (`_rest`): gemessen kostet ein Gesichts-Takt Bildabrufe ~100 ms,
+  YuNet 85 ms, Gegenprobe 107 ms, RPCs 50–150 ms — und schlief dann unbedingt noch 200 ms
+  obendrauf. Die Tiefe (`punkte_aus_bild` ×2: 4 ms) war nie der Preis; „Tiefe nur jeden
+  zweiten Takt" wäre eine Änderung ohne Wirkung gewesen und wurde nach der Messung
+  verworfen. Deshalb gibt es `zuerst(...)`: Strategien werden
   GESTAFFELT, nicht gewählt. Und deshalb hat `Panorama` zwei Zuschnitte — `RECHTECK` (voll
   gedeckt, 16:9, zum Fahren, reicht 7° hinauf) und `ALLES` (alles Gesehene samt schwarzen
   Ecken, reicht 26° hinauf). Für einen Erkenner ist eine schwarze Ecke kein Problem, ein
