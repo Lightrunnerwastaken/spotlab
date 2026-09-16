@@ -68,6 +68,7 @@ def _probe(tmp_path, spot, **kw):
         jetzt=_uhr(0.1), schlaf=lambda _s: None, melde=lambda _t: None,
         aufnahme_holen=lambda _spot, _gemerkt: spot.aufnahme(),
         kaesten_holen=lambda _feld, _erkenner: spot.naechste_kaesten(),
+        koerper_holen=lambda _feld: [],        # kein echter Koerper-Erkenner in Tests
     )
     argumente.update(kw)
     return gesichtsprobe.probe(spot, **argumente)
@@ -210,3 +211,116 @@ def test_die_probe_verbindet_ohne_lease():
     for aufruf in aufrufe:
         assert [w for w in aufruf.keywords
                 if w.arg == "nur_lesen" and getattr(w.value, "value", None) is True]
+
+
+# ------------------------------------------------------------ Die Koerperzeile
+#
+# Seit 16.09.2026 steht der Koerper VOR dem Gesicht in der Staffel (Messung:
+# 510 Panoramen, 33-mal nur der Koerper, 47-mal nur das Gesicht). Die Probe muss
+# deshalb beide Wege je Takt aufschreiben -- sonst misst sie etwas anderes, als
+# der Folgemodus tut. Dieselbe Formulierung: `koerper.beurteile`.
+
+
+def _koerper(huefte_zeile, schulter_zeile=None):
+    from spotlab.backends.real.koerper import Koerper
+
+    schulter = (200.0, schulter_zeile) if schulter_zeile is not None else (200.0, huefte_zeile - 50.0)
+    return Koerper(huefte=(200.0, huefte_zeile), schulter=schulter, conf=0.93,
+                   kasten=(150.0, 50.0, 250.0, 200.0))
+
+
+def test_ein_koerper_steht_mit_urteil_im_protokoll(tmp_path):
+    """Huefte bei +10 Grad im Bild (Zeile 150), Tiefe 2 m: 0.81 m ueber dem Boden -> genommen."""
+    from test_backend_gesicht import _wolke
+
+    spot = FakeSpot([[]], punkte=_wolke(2.0, 0.0, 10.0))
+    ergebnis = _probe(tmp_path, spot, koerper_holen=lambda _feld: [_koerper(150.0)])
+
+    [zeile] = _zeilen(tmp_path)[:1]
+    [k] = zeile["koerper"]
+    assert k["genommen"] is True and k["grund"] is None
+    assert k["punkt"] == "huefte"
+    assert k["height"] == pytest.approx(0.81, abs=0.03)
+    assert k["distance"] == pytest.approx(2.0, abs=0.05)
+    assert k["bild_oben"] == pytest.approx(20.0), "die Schulterlinie (Zeile 100) koerperfest"
+    assert ergebnis["koerper"]["takte"] >= 1
+    assert ergebnis["koerper"]["genommen"] == ergebnis["koerper"]["takte"], "in jedem Takt genommen"
+
+
+def test_ein_koerper_auf_kistenhoehe_wird_verworfen_mit_grund(tmp_path):
+    from test_backend_gesicht import _wolke
+
+    spot = FakeSpot([[]], punkte=_wolke(2.0, 0.0, -5.0))
+    ergebnis = _probe(tmp_path, spot, koerper_holen=lambda _feld: [_koerper(225.0)])
+    [k] = _zeilen(tmp_path)[0]["koerper"]
+    assert k["genommen"] is False and k["grund"] == "zu tief"
+    assert ergebnis["koerper"]["gruende"]["zu tief"] == ergebnis["koerper"]["takte"] >= 1
+
+
+def test_ein_takt_ohne_koerper_steht_auch_da(tmp_path):
+    spot = FakeSpot([[]])
+    _probe(tmp_path, spot)
+    assert _zeilen(tmp_path)[0]["koerper"] == []
+
+
+def test_die_koerperzeile_wird_gemeldet(tmp_path):
+    from test_backend_gesicht import _wolke
+
+    gesagt = []
+    spot = FakeSpot([[]], punkte=_wolke(2.0, 0.0, 10.0))
+    _probe(tmp_path, spot, koerper_holen=lambda _feld: [_koerper(150.0)], melde=gesagt.append)
+    assert any("Körper" in s and "0.81 m" in s and "genommen" in s for s in gesagt), gesagt
+    assert any("Körper" in s and "genommen" in s for s in gesagt[-4:]), "und in der Zusammenfassung"
+
+
+def test_ohne_koerpermodelle_laeuft_die_probe_weiter_und_sagt_es_einmal(tmp_path):
+    """Die Gesichtszeile bleibt vollstaendig; die Koerperzeile faellt aus und heisst None."""
+    from spotlab.errors import SpotlabError
+
+    def keine_modelle(_feld):
+        raise SpotlabError("Die Körpermodelle fehlen (gesucht in ...)")
+
+    gesagt = []
+    spot = FakeSpot([[(320.0, 180.0, 40.0, 40.0, 0.7)], [(320.0, 180.0, 40.0, 40.0, 0.7)]])
+    ergebnis = _probe(tmp_path, spot, koerper_holen=keine_modelle, melde=gesagt.append, dauer_s=2.5)
+    zeilen = _zeilen(tmp_path)
+    assert len(zeilen) >= 2 and all(z["koerper"] is None for z in zeilen)
+    assert all(len(z["befunde"]) == 1 for z in zeilen[:2]), "das Gesicht misst weiter"
+    # Einmal im Lauf -- und noch einmal in der Zusammenfassung, wo man hinschaut.
+    im_lauf = [s for s in gesagt if "modelle fehlen" in s.lower() and not s.startswith("Körper: aus")]
+    assert len(im_lauf) == 1, "EINMAL gesagt, nicht je Takt"
+    assert any(s.startswith("Körper: aus") for s in gesagt[-4:]), "und in der Zusammenfassung"
+    assert "fehlen" in ergebnis["koerper"]["aus"]
+
+
+def test_ein_stolpernder_koerpererkenner_beendet_die_probe_nicht(tmp_path):
+    aufrufe = {"n": 0}
+
+    def stolpert(_feld):
+        aufrufe["n"] += 1
+        raise RuntimeError("cv2 hat schlechte Laune")
+
+    gesagt = []
+    spot = FakeSpot([[], []])
+    ergebnis = _probe(tmp_path, spot, koerper_holen=stolpert, melde=gesagt.append, dauer_s=2.5)
+    assert aufrufe["n"] >= 2, "er versucht es weiter -- kein dauerhaftes Aus"
+    assert ergebnis["koerper"]["fehler"] >= 2
+    assert len([s for s in gesagt if "schlechte Laune" in s]) == 1, "gemeldet wird einmal"
+
+
+def test_der_vorgabeweg_baut_den_echten_koerpererkenner_einmal(monkeypatch, tmp_path):
+    from spotlab.backends.real import koerper as koerpermodul
+
+    gebaut = []
+
+    class _Attrappe:
+        def __init__(self, *a, **kw):
+            gebaut.append(1)
+
+        def finde(self, feld):
+            return []
+
+    monkeypatch.setattr(koerpermodul, "Koerpererkenner", _Attrappe)
+    spot = FakeSpot([[], [], []])
+    _probe(tmp_path, spot, koerper_holen=None, dauer_s=3.5)
+    assert len(gebaut) == 1, "ein Erkenner fuer die ganze Probe"

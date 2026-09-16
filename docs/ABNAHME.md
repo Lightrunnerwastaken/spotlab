@@ -896,6 +896,11 @@ Spot STEHT dabei (kein Lease, das Tablet bleibt in der Hand). Eine Person stellt
 sich nacheinander auf 1.5, 2, 2.5 und 3 m und bleibt je 15 s stehen. Die Probe
 schreibt je Kasten des Erkenners Punktzahl, gemessenen Abstand, Höhe über dem
 Boden und das URTEIL — genommen, oder an welcher Schranke er gescheitert ist.
+Seit 16.09.2026 daneben die **Körperzeile** (Hüfte oder Schulter, Höhe über dem
+Boden, Abstand, Urteil — `koerper.beurteile`, dieselbe Rechnung wie im
+Folgemodus); fehlen die Körpermodelle, sagt die Probe es einmal und misst das
+Gesicht weiter. **Notieren je Abstand also für beide Wege**, wer wann trägt:
+erwartet ist nah der Körper (1.3–2.5 m, auch kopflos) und weit das Gesicht.
 
 **Warum zuerst die Probe.** Am 11.09.2026 meldete der Folgemodus in 73 von 73
 Takten kein Gesicht, und die Aufzeichnung konnte nicht sagen, woran es lag: kein
