@@ -256,18 +256,119 @@ def test_ein_finder_der_wirft_beendet_den_lauf_nicht():
     assert spot.kommandos == ["stop"]
 
 
-def test_das_verlieren_wird_einmal_gesagt_und_die_rueckkehr_auch():
-    zeit = {"t": 0.0}
+class _Aufzeichnung:
+    """Der Schreiber des Laufs, so viel davon wie `folge()` benutzt."""
+
+    def __init__(self):
+        self.ereignisse = []
+
+    def event(self, art, **daten):
+        self.ereignisse.append((art, daten))
+
+
+def _uhr(schritt=3.0):
+    stand = {"t": 0.0}
 
     def jetzt():
-        zeit["t"] += 3.0
-        return zeit["t"]
+        stand["t"] += schritt
+        return stand["t"]
+
+    return jetzt
+
+
+def test_ein_nie_gesehenes_ziel_heisst_nicht_verloren():
+    """Am 16.09.2026 stand Spot 28 Sekunden da, weil `personen_finder()` auf
+    diesem Geraet nie etwas liefert. "Ziel verloren" waere dabei eine falsche
+    Auskunft: verloren hat er nichts, er hatte nie eines."""
+    gemeldet = []
+    folgen.folge(_Spot(), lambda _s: None, melde=gemeldet.append, jetzt=_uhr(),
+                 schlaf=lambda _s: None, laeuft=_laeuft_takte(6))
+    stille = [m for m in gemeldet if "kein Ziel" in m]
+    assert stille, "er sagt, dass er nichts hat"
+    assert not [m for m in gemeldet if "verloren" in m], "aber nicht 'verloren'"
+
+
+def test_die_stille_wird_immer_wieder_gemeldet():
+    """Einmal am Anfang genuegt nicht: nach einer halben Minute ist die Zeile
+    weggescrollt, und ein stehender Spot sieht aus wie ein haengendes Programm."""
+    gemeldet = []
+    folgen.folge(_Spot(), lambda _s: None, melde=gemeldet.append,
+                 jetzt=_uhr(folgen.STILLE_TAKT_S), schlaf=lambda _s: None,
+                 laeuft=_laeuft_takte(12))
+    stille = [m for m in gemeldet if "kein Ziel" in m]
+    assert len(stille) >= 2, "sie wird wiederholt"
+    assert any(m != stille[0] for m in stille[1:]), "und traegt die verstrichene Zeit"
+
+
+def test_nach_einem_echten_verlust_heisst_es_verloren_und_die_rueckkehr_auch():
+    plan = iter([Ziel(0.0, 3.0, "Tag 5"), None, None, None, None, None])
+
+    def finde(_spot):
+        return next(plan, Ziel(0.0, 3.0, "Tag 5"))
+
+    gemeldet = []
+    folgen.folge(_Spot(), finde, melde=gemeldet.append, jetzt=_uhr(),
+                 schlaf=lambda _s: None, laeuft=_laeuft_takte(7))
+    assert [m for m in gemeldet if "verloren" in m], "hier war wirklich eines da"
+    assert any("wieder da" in m for m in gemeldet)
+
+
+def test_die_stille_steht_auch_in_der_aufzeichnung():
+    """Heute liess sich nur deshalb klaeren, was los war, weil die Aufzeichnung
+    135 gleiche Zeilen enthielt -- die musste man erst zaehlen. Ein Ereignis
+    sagt es in einer Zeile."""
+    spot = _Spot()
+    spot.recorder = _Aufzeichnung()
+    folgen.folge(spot, lambda _s: None, melde=lambda _t: None, jetzt=_uhr(),
+                 schlaf=lambda _s: None, laeuft=_laeuft_takte(6))
+    ohne_ziel = [d for art, d in spot.recorder.ereignisse if art == "kein_ziel"]
+    assert ohne_ziel, "die Stille steht im Lauf"
+    assert ohne_ziel[0]["je_gesehen"] is False
+    assert ohne_ziel[0]["seit_s"] >= folgen.VERLOREN_S
+
+
+def test_eine_fehlende_aufzeichnung_stoert_die_schleife_nicht():
+    """`folge()` laeuft auch aus einem Skript ohne Recorder -- und ein Schreiber,
+    der wirft, darf einen autonom fahrenden Roboter nicht anhalten."""
+    class _Kaputt:
+        def event(self, art, **daten):
+            raise RuntimeError("Platte voll")
 
     spot = _Spot()
-    gemeldet = []
-    folgen.folge(spot, lambda s: None, melde=gemeldet.append, jetzt=jetzt,
+    spot.recorder = _Kaputt()
+    folgen.folge(spot, lambda _s: None, melde=lambda _t: None, jetzt=_uhr(),
                  schlaf=lambda _s: None, laeuft=_laeuft_takte(6))
-    assert len([m for m in gemeldet if "verloren" in m]) == 1
+    assert spot.kommandos == ["stop"]
+
+
+def test_der_hinweis_des_finders_steht_genau_einmal_dabei():
+    def finde(_spot):
+        return None
+
+    finde.hinweis = "Dieser Finder braucht ein blaues Tag."
+    gemeldet = []
+    folgen.folge(_Spot(), finde, melde=gemeldet.append,
+                 jetzt=_uhr(folgen.STILLE_TAKT_S), schlaf=lambda _s: None,
+                 laeuft=_laeuft_takte(12))
+    assert len([m for m in gemeldet if "blaues Tag" in m]) == 1, "einmal, nicht bei jeder Stille"
+
+
+def test_der_personen_finder_nennt_den_befund_vom_geraet():
+    """Er bleibt im Code und ist richtig -- er findet auf DIESEM Roboter nur
+    nichts. Wer ihn waehlt, soll das erfahren, ohne die Abnahme zu lesen."""
+    hinweis = folgen.personen_finder().hinweis
+    assert "A34" in hinweis, "mit dem Beleg, nicht als Behauptung"
+    assert "tag_finder" in hinweis or "gesicht_finder" in hinweis, "und mit einem Ausweg"
+
+
+def test_zuerst_reicht_die_hinweise_seiner_finder_weiter():
+    """Sonst verschwindet der Hinweis genau dann, wenn man staffelt."""
+    def ohne(_spot):
+        return None
+
+    mit = folgen.personen_finder()
+    staffel = folgen.zuerst(ohne, mit)
+    assert mit.hinweis in getattr(staffel, "hinweis", "")
 
 
 def test_die_stoppdatei_beendet_den_lauf(tmp_path):

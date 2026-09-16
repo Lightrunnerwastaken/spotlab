@@ -93,6 +93,27 @@ versionsgepinntes Extra `spotlab[sim]`.
   Abfragen von `tracked_entity` über drei Läufe, null Treffer, während derselbe Dienst
   gleichzeitig AprilTags meldete (A34 Teil 1). `personen_finder()` bleibt im Code und ist
   richtig; er findet auf diesem Roboter nur nichts. Deshalb tragen Tag und Gesicht.
+- **Ein Finder, der nichts findet, muss das SAGEN — ein stehender Spot ist von einem
+  hängenden Programm nicht zu unterscheiden.** Am 16.09.2026 stand er 28 Sekunden lang
+  und wirkte tot; in Wahrheit lief ein altes `Beispiele/folgen.py` mit
+  `personen_finder()`, und die Aufzeichnung enthielt 135 erfolglose `world_objects` —
+  die musste man erst zählen. Drei Lehren stecken jetzt im Code: **„noch kein Ziel" ist
+  nicht „Ziel verloren"** (`_stille()`; verloren hat er nichts, wenn er nie eines hatte,
+  und die beiden Fälle verlangen verschiedene Schritte — näher herangehen oder den Finder
+  wechseln); die Meldung **wiederholt sich** alle `STILLE_TAKT_S`, weil eine Zeile vom
+  Anfang nach einer halben Minute weggescrollt ist; und sie geht als Ereignis
+  `kein_ziel` **in die Aufzeichnung**, eine Zeile statt 135 gleicher Abfragen. Dazu trägt
+  jeder Finder ein optionales `hinweis`-Attribut, das `folge()` genau einmal ausgibt, wenn
+  wirklich nichts kommt — `personen_finder()` nennt dort den Befund von A34 Teil 1 samt
+  Ausweg. Der Hinweis hängt am FINDER, nicht am Regler: nur der Finder weiss, warum er leer
+  ausgeht, und `zuerst()` reicht die Hinweise seiner Mitglieder weiter, sonst verschwände
+  die Auskunft ausgerechnet beim Staffeln.
+- **`bereitstellen()` überschreibt vorhandene Beispiele NIE** (`if datei.exists(): continue`)
+  — richtig, sonst wären eigene Änderungen jedes Mal weg. Der Preis ist eine stille Falle:
+  die Kopie im Arbeitsordner kann Fassungen hinter der Vorlage liegen, und nichts sagt es.
+  Genau das war der Fehler vom 16.09.2026. Wer ein Beispiel anders verhalten sieht als
+  beschrieben, vergleicht zuerst `spotProjects/<Projekt>/<name>.py` mit
+  `src/spotlab/workshop/beispiele/<name>.py`.
 - **Das Bild für den ERKENNER wird aufgehellt, die Fahransicht nicht.** Spots Frontbilder
   sind im Gebäude dunkel: über 60 echte Panoramen vom 11.09.2026 lag die mittlere Helligkeit
   bei 36 von 255, und YuNet kam auf 0.37 — unter der Schwelle 0.6, und der eine Kasten war

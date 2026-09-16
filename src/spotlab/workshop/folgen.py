@@ -58,7 +58,11 @@ ZONE_VORAUS_M = 1.0
 GESICHT_QUELLEN = ("frontright_fisheye_image", "frontleft_fisheye_image")
 TIEFE_QUELLEN = ("frontleft_depth", "frontright_depth")
 TAKT_S = 0.2
-VERLOREN_S = 5.0                 # danach sagt er es einmal
+VERLOREN_S = 5.0                 # so lange ohne Ziel, dann sagt er es
+# ...und dann immer wieder. Einmal am Anfang genügt nicht: nach einer halben
+# Minute ist die Zeile weggescrollt, und ein stehender Spot ist von einem
+# hängenden Programm nicht zu unterscheiden (gesehen am 16.09.2026).
+STILLE_TAKT_S = 15.0
 # Wie weit Spot die Nase hebt, damit die Kameras hoeher schauen. 0 = gar nicht.
 # Gemessen (`backends/real/gesicht.py`): ohne Neigung kommt ein stehendes Gesicht
 # erst ab 2.31 m ins Bild, mit 10 Grad ab 1.46 m, mit 15 Grad ab 1.18 m. Der
@@ -116,6 +120,16 @@ def personen_finder(mindestsicherheit=None):
         person = leute[0]
         return Ziel(person.bearing, person.distance, f"Person {person.entity_id}")
 
+    # Der Hinweis hängt am Finder, nicht in `folge()`: nur der Finder weiss, warum
+    # er leer ausgeht. `folge()` sagt ihn einmal, wenn wirklich nichts kommt --
+    # sonst stünde er auch dort, wo der Tracker tut, was er soll.
+    finde.hinweis = (
+        "Hinweis zu personen_finder(): er fragt Spots eigenen Personen-Tracker. "
+        "Am Schul-Spot lieferte der in 560 Abfragen null Treffer — diese "
+        "Robotersoftware führt keine Personen (docs/ABNAHME.md, A34 Teil 1, "
+        "gemessen am 11.09.2026). Nimm tag_finder() oder gesicht_finder(), oder "
+        "staffle beide mit zuerst()."
+    )
     return finde
 
 
@@ -246,6 +260,11 @@ def zuerst(*finder):
                 return ziel
         return None
 
+    # Die Hinweise der Mitglieder wandern mit: sonst verschwände ausgerechnet
+    # beim Staffeln die Auskunft, warum ein Finder nie etwas liefert.
+    finde.hinweis = "\n".join(
+        h for h in (getattr(einer, "hinweis", "") for einer in finder) if h
+    )
     return finde
 
 
@@ -349,6 +368,12 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
     Fahren. Ein Kommando mit Tempo null hält die Lage; es verfällt wie jedes
     andere nach rund einer Sekunde.
 
+    WENN NICHTS KOMMT, sagt er es — wiederholt, unterschieden und aufgeschrieben.
+    Ein stehender Spot sieht aus wie ein hängendes Programm, deshalb meldet die
+    Schleife die Stille alle `STILLE_TAKT_S`, trennt „noch kein Ziel" von „Ziel
+    verloren", gibt den `hinweis` des Finders einmal aus und schreibt das
+    Ereignis `kein_ziel` in die Aufzeichnung.
+
     Testbar ohne Roboter: `spot` braucht `walk` und `stop`, dazu was der Finder
     und die Schranken abfragen. Am Ende hält Spot immer.
     """
@@ -367,7 +392,9 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
             return not stopp.exists()
 
     zuletzt_gesehen = jetzt()
-    verloren_gemeldet = False
+    je_gesehen = False              # hatte er ueberhaupt je ein Ziel?
+    stille_gemeldet = None          # wann zuletzt ueber die Stille berichtet wurde
+    hinweis_gesagt = False
     letzter_grund = ""
     kopfraum = (True, "")
     kopfraum_geprueft = None
@@ -380,15 +407,26 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
                 if faehrt:
                     spot.stop()
                     faehrt = False
-                if not verloren_gemeldet and jetzt() - zuletzt_gesehen >= VERLOREN_S:
-                    melde("Ziel verloren — Spot wartet.")
-                    verloren_gemeldet = True
+                nun = jetzt()
+                seit = nun - zuletzt_gesehen
+                faellig = stille_gemeldet is None or nun - stille_gemeldet >= STILLE_TAKT_S
+                if seit >= VERLOREN_S and faellig:
+                    stille_gemeldet = nun
+                    melde(_stille(je_gesehen, seit))
+                    if not hinweis_gesagt:
+                        hinweis_gesagt = True
+                        hinweis = getattr(finder, "hinweis", "")
+                        if hinweis:
+                            melde(hinweis)
+                    _notiere_stille(spot, seit, je_gesehen)
                 schlaf(takt_s)
                 continue
 
-            if verloren_gemeldet:
-                melde(f"{ziel.name} wieder da.")
-            zuletzt_gesehen, verloren_gemeldet = jetzt(), False
+            if stille_gemeldet is not None:
+                # „wieder da" nur, wenn er wirklich schon einmal da war.
+                melde(f"{ziel.name} {'wieder da' if je_gesehen else 'gefunden'}.")
+            zuletzt_gesehen, stille_gemeldet = jetzt(), None
+            je_gesehen = True
             vx, wz = befehl(ziel)
 
             if vx > 0.0:
@@ -417,6 +455,38 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
     finally:
         spot.stop()
         melde("Folgen beendet.")
+
+
+def _stille(je_gesehen, seit_s):
+    """Was Spot sagt, während er wartet — und der Unterschied ist die Sache selbst.
+
+    Am 16.09.2026 stand er 28 Sekunden lang, weil `personen_finder()` auf diesem
+    Roboter nie etwas liefert. „Ziel verloren" wäre dabei eine falsche Auskunft
+    gewesen: verloren hat er nichts, er hatte nie eines. Genau diese beiden Fälle
+    verlangen verschiedene Schritte — einmal näher herangehen, einmal den Finder
+    wechseln.
+    """
+    if je_gesehen:
+        return f"Ziel verloren, seit {seit_s:.0f} s — Spot wartet."
+    return f"Noch kein Ziel nach {seit_s:.0f} s — Spot wartet."
+
+
+def _notiere_stille(spot, seit_s, je_gesehen):
+    """Die Stille in die Aufzeichnung — EINE Zeile statt 135 gleicher Abfragen.
+
+    Am 16.09.2026 liess sich nur deshalb klären, was los war, weil
+    `ereignisse.jsonl` 135 erfolglose `world_objects` enthielt — die musste man
+    erst zählen. Ein Schreiber darf einen autonom fahrenden Roboter dabei nie
+    anhalten: ohne Eintrag fährt man weiter, ohne Regler nicht.
+    """
+    recorder = getattr(spot, "recorder", None)
+    if recorder is None:
+        return
+    try:
+        recorder.event("kein_ziel", seit_s=round(float(seit_s), 1),
+                       je_gesehen=bool(je_gesehen))
+    except Exception:
+        pass
 
 
 def _sicher(finder, spot):
