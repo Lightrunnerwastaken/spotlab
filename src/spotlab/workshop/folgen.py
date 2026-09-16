@@ -64,11 +64,19 @@ VERLOREN_S = 5.0                 # so lange ohne Ziel, dann sagt er es
 # hängenden Programm nicht zu unterscheiden (gesehen am 16.09.2026).
 STILLE_TAKT_S = 15.0
 # Wie weit Spot die Nase hebt, damit die Kameras hoeher schauen. 0 = gar nicht.
-# Gemessen (`backends/real/gesicht.py`): ohne Neigung kommt ein stehendes Gesicht
+# Gerechnet (`backends/real/gesicht.py`): ohne Neigung kommt ein stehendes Gesicht
 # erst ab 2.31 m ins Bild, mit 10 Grad ab 1.46 m, mit 15 Grad ab 1.18 m. Der
 # Preis steht daneben: der Boden vor den Fuessen verschwindet, bei 15 Grad ist er
 # erst ab 0.66 m statt 0.32 m im Bild.
-BLICK_GRAD = 0.0
+#
+# VORGABE 15 SEIT DEM 16.09.2026. Bis dahin war sie null, um der Hindernisschranke
+# den Boden zu lassen -- und der Folgemodus fand deshalb NIE einen aufrecht
+# stehenden Menschen auf Folgeabstand: mit waagrechtem Koerper reicht das Bild bei
+# 1.5 m bis 1.20 m Hoehe, bei 2 m bis 1.45 m (150 Takte bei `stand()`: auf 1 m nur
+# Beine im Bild, auf 2 m der Oberkoerper oben abgeschnitten). In den beiden Sonden,
+# in denen er jeden Takt ein Gesicht fand, stand er mit der Nase 25 Grad oben.
+# Wer den Boden braucht, sagt `blick_grad=0` -- der alte Weg bleibt.
+BLICK_GRAD = 15.0
 MAX_BLICK_GRAD = 20.0
 
 
@@ -148,9 +156,12 @@ def gesicht_finder(modell=None, mindestscore=None, quellen=GESICHT_QUELLEN,
                    tiefe_quellen=TIEFE_QUELLEN):
     """Folgt einem Gesicht — mit Gegenprobe aus der Tiefenkamera.
 
-    Die Kameras schauen nach unten: ein stehender Mensch hat erst ab gut
-    zweieinhalb Metern ein Gesicht im Bild, näher sieht Spot Beine (gemessen,
-    `backends/real/gesicht.py`). Deshalb gehört dieser Finder mit einem zweiten
+    Die Kameras schauen nach unten: mit waagrechtem Körper reicht das Bild bei
+    1.5 m bis 1.20 m Höhe, bei 3 m bis 1.94 m — ein stehender Mensch hat je nach
+    Grösse erst ab 2.3 bis 2.8 m ein Gesicht im Bild, näher sieht Spot Beine
+    (gerechnet in `backends/real/gesicht.py`, am 16.09.2026 mit 150 Takten am
+    Gerät bestätigt). Deshalb hebt `folge()` die Nase (`BLICK_GRAD`), und deshalb
+    gehört dieser Finder mit einem zweiten
     zusammengeschaltet — `zuerst(gesicht_finder(), tag_finder())` nimmt das
     Gesicht, solange es eines gibt, und sonst das Tag.
 
@@ -218,7 +229,7 @@ def _gesichtsbefund(befunde):
 class Gesichtsaufnahme:
     """Alles, was eine Gesichtsprüfung in EINEM Takt braucht."""
 
-    feld: object              # das zusammengesetzte Panorama (Graustufen)
+    feld: object              # das zusammengesetzte Panorama (Farbe; Grau bei älteren Spots)
     pano: object              # die virtuelle Kamera dazu — rechnet Spalte/Zeile in Winkel
     erkenner: object          # YuNet, einmal gebaut
     punkte: object            # Nx3 Tiefenpunkte im aufgerichteten Körperrahmen
@@ -242,8 +253,17 @@ def gesichtsaufnahme(spot, gemerkt, quellen=GESICHT_QUELLEN,
     from spotlab.backends.real import gesicht as gesichtsmodul
     from spotlab.backends.real import panorama, tiefe
 
-    antworten = spot.backend.images(list(quellen) + list(tiefe_quellen))
-    nach_name = {a.source.name: a for a in antworten}
+    # ZWEI Anfragen, nicht eine: die Kameras in Farbe, die Tiefe nicht. Ein
+    # RGB-Wunsch für ein Tiefenbild wird vom Roboter abgewiesen, und `images()`
+    # merkt sich das als „keine Farbe möglich" für die ganze Sitzung — die Farbe
+    # wäre still weg. Farbe deshalb, weil am 16.09.2026 dasselbe Bild durch beide
+    # Wege lief (390 Takte): Farbe ohne Aufhellung fand jedes echte Gesicht, das
+    # Grau mit Aufhellung fand, aber sieben Phantome weniger. Ein älterer Spot
+    # ohne Farbkameras fällt in `images()` von selbst auf Grau zurück, und dort
+    # greift die Aufhellung in `kaesten()` weiter.
+    kameras = spot.backend.images(list(quellen), farbe=True)
+    tiefe_antworten = spot.backend.images(list(tiefe_quellen))
+    nach_name = {a.source.name: a for a in list(kameras) + list(tiefe_antworten)}
     grau = [nach_name[q] for q in quellen if q in nach_name]
     tiefen = [nach_name[q] for q in tiefe_quellen if q in nach_name]
     if len(grau) < 2 or not tiefen:
@@ -420,7 +440,8 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
     schauen — positiv, in Grad. Damit kommt ein stehendes Gesicht schon auf
     Folgeabstand ins Bild statt erst ab zweieinhalb Metern. Der Preis: der Boden
     dicht vor den Füssen fällt aus dem Blickfeld, und das ist genau der Bereich,
-    in dem die Hindernisschranke prüft. Deshalb ist die Vorgabe 0.
+    in dem die Hindernisschranke prüft. Die Vorgabe ist `BLICK_GRAD` (15 seit dem
+    16.09.2026, siehe dort); `blick_grad=0` ist der alte, flache Weg.
 
     Auch im STEHEN bleibt die Neigung: sonst legt Spot die Nase ab, sobald er im
     Wunschabstand ist, verliert das Gesicht und pendelt zwischen Suchen und

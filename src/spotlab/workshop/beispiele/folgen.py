@@ -13,11 +13,13 @@ Gesichtsmodell, fällt der erste Finder aus und das Tag trägt allein; warum,
 steht im Protokoll.
 
 Mit `blick_grad` hebt Spot beim Gehen die Nase, damit die Kameras höher
-schauen — zwölf Grad holen das Gesicht von zweieinhalb Metern auf gut einen
-Meter herunter. Dafür sieht er den Boden dicht vor den Füssen nicht mehr, und
-genau dort prüft die Hindernisschranke. Deshalb ist die Vorgabe null:
+schauen — fünfzehn Grad holen das Gesicht von zweieinhalb Metern auf gut einen
+Meter herunter. Das ist seit dem 16.09.2026 die Vorgabe: mit flacher Nase sah
+Spot einen aufrecht stehenden Menschen auf Folgeabstand nie, nur Beine. Der
+Preis: er sieht den Boden dicht vor den Füssen nicht mehr, und genau dort prüft
+die Hindernisschranke. Wer das braucht, fährt flach:
 
-    folgen.folge(spot, finder, lauf_dir=…, blick_grad=12)
+    folgen.folge(spot, finder, lauf_dir=…, blick_grad=0)
 
 Nur ein Weg, wenn du vergleichen willst:
 

@@ -469,7 +469,7 @@ def test_der_gesichtsfinder_findet_nichts_ohne_die_noetigen_kameras():
     class _OhneKameras(_Spot):
         def __init__(self):
             super().__init__()
-            self.backend = SimpleNamespace(images=lambda quellen: [])
+            self.backend = SimpleNamespace(images=lambda quellen, **kw: [])
 
     assert folgen.gesicht_finder()(_OhneKameras()) is None
 
@@ -479,7 +479,7 @@ def test_ein_werfender_gesichtsfinder_beendet_den_lauf_nicht():
         def __init__(self):
             super().__init__()
 
-            def wirft(quellen):
+            def wirft(quellen, **kw):
                 raise RuntimeError("Kamera weg")
 
             self.backend = SimpleNamespace(images=wirft)
@@ -509,9 +509,41 @@ def test_ein_ausfallender_finder_haelt_die_staffel_nicht_auf(monkeypatch):
 
 # ================== S1.15 Nickwinkel: hoeher schauen waehrend der Fahrt
 #
-# Ohne Neigung kommt ein stehendes Gesicht erst ab 2.31 m ins Bild, der
-# Folgemodus will aber 1.6 m halten. Zehn bis fuenfzehn Grad schliessen genau
-# diese Luecke -- und kosten den Boden dicht vor den Fuessen.
+# Ohne Neigung reicht das Bild bei 1.5 m bis 1.20 m Hoehe, bei 3 m bis 1.94 m
+# (gemessen am 16.09.2026 mit 150 Takten bei waagrechtem Koerper: aufrecht auf
+# 1 m nur Beine im Bild, auf 2 m der Oberkoerper oben abgeschnitten). Der
+# Folgemodus will aber 1.6 m halten. Fuenfzehn Grad heben die Kante bei 1.5 m
+# auf 1.76 m -- und kosten den Boden dicht vor den Fuessen.
+
+
+def test_die_vorgabe_hebt_die_nase():
+    """Seit dem 16.09.2026 ist die Vorgabe NICHT mehr null: mit waagrechtem
+    Koerper sieht Spot einen aufrecht stehenden Menschen auf Folgeabstand nie --
+    in 390 Takten ueber vier Sonden kein einziges Gesicht ueber 1.20 m bei
+    1.5 m. Die beiden Sonden, in denen er jeden Takt eines fand, hatten die Nase
+    25 Grad oben. Genau das baut die Vorgabe nach, geklemmt unter MAX."""
+    assert 0.0 < folgen.BLICK_GRAD <= folgen.MAX_BLICK_GRAD
+    spot = _Spot(tags=[_tag(3, 0.0, 3.0)], neigt=True)
+    folgen.folge(spot, folgen.tag_finder(), melde=lambda _t: None,
+                 schlaf=lambda _s: None, laeuft=_laeuft_takte(2))
+    fahrten = [k for k in spot.kommandos if isinstance(k, dict)]
+    assert fahrten and all(k["nick_grad"] == -folgen.BLICK_GRAD for k in fahrten), \
+        "ohne Angabe faehrt er mit der Vorgabe, Nase hoch ist negativ"
+
+
+def test_mit_blick_grad_null_bleibt_der_fahrbefehl_flach():
+    """Der alte Weg bleibt waehlbar -- wer den Boden vor den Fuessen braucht,
+    sagt blick_grad=0 und bekommt nick 0 und im Wunschabstand einen Stopp."""
+    spot = _Spot(tags=[_tag(3, 0.0, 3.0)], neigt=True)
+    folgen.folge(spot, folgen.tag_finder(), melde=lambda _t: None,
+                 schlaf=lambda _s: None, laeuft=_laeuft_takte(2), blick_grad=0.0)
+    fahrten = [k for k in spot.kommandos if isinstance(k, dict)]
+    assert fahrten and all(k["nick_grad"] == 0.0 for k in fahrten)
+
+    still = _Spot(tags=[_tag(3, 0.0, folgen.WUNSCH_ABSTAND_M)], neigt=True)
+    folgen.folge(still, folgen.tag_finder(), melde=lambda _t: None,
+                 schlaf=lambda _s: None, laeuft=_laeuft_takte(2), blick_grad=0.0)
+    assert still.kommandos == ["stop"], "kein Fahrbefehl, wenn nichts zu tun ist"
 
 
 def test_die_neigung_geht_mit_jedem_fahrbefehl_mit():
@@ -523,14 +555,6 @@ def test_die_neigung_geht_mit_jedem_fahrbefehl_mit():
         "Projektkonvention: Nase hoch ist NEGATIV"
 
 
-def test_ohne_neigung_bleibt_der_fahrbefehl_wie_bisher():
-    spot = _Spot(tags=[_tag(3, 0.0, 3.0)], neigt=True)
-    folgen.folge(spot, folgen.tag_finder(), melde=lambda _t: None,
-                 schlaf=lambda _s: None, laeuft=_laeuft_takte(2))
-    fahrten = [k for k in spot.kommandos if isinstance(k, dict)]
-    assert fahrten and all(k["nick_grad"] == 0.0 for k in fahrten)
-
-
 def test_im_wunschabstand_haelt_er_die_nase_oben():
     """Sonst legt Spot sie ab, verliert das Gesicht und pendelt zwischen Suchen
     und Fahren."""
@@ -540,13 +564,6 @@ def test_im_wunschabstand_haelt_er_die_nase_oben():
     fahrten = [k for k in spot.kommandos if isinstance(k, dict)]
     assert fahrten, "auch bei Tempo null geht ein Kommando raus"
     assert all(k["vx"] == 0.0 and k["nick_grad"] == -12.0 for k in fahrten)
-
-
-def test_ohne_neigung_haelt_er_im_wunschabstand_wie_bisher_an():
-    spot = _Spot(tags=[_tag(3, 0.0, folgen.WUNSCH_ABSTAND_M)], neigt=True)
-    folgen.folge(spot, folgen.tag_finder(), melde=lambda _t: None,
-                 schlaf=lambda _s: None, laeuft=_laeuft_takte(2))
-    assert spot.kommandos == ["stop"], "kein Fahrbefehl, wenn nichts zu tun ist"
 
 
 def test_ein_backend_das_sich_nicht_neigt_sagt_es_und_faehrt_flach():
@@ -623,7 +640,7 @@ def test_der_gesichtsfinder_traegt_einen_befund_und_nennt_fehlende_bilder():
     class _OhneKameras(_Spot):
         def __init__(self):
             super().__init__()
-            self.backend = SimpleNamespace(images=lambda quellen: [])
+            self.backend = SimpleNamespace(images=lambda quellen, **kw: [])
 
     finder = folgen.gesicht_finder()
     assert finder(_OhneKameras()) is None
@@ -683,3 +700,36 @@ def test_zuerst_reicht_auch_die_befunde_weiter():
     zwei.befund = lambda: "kein Tag sichtbar"
     text = folgen.zuerst(eins, zwei).befund()
     assert "kein Kasten vom Erkenner" in text and "kein Tag sichtbar" in text
+
+
+# ------------------------------------------------- Farbe statt Grau + Aufhellung
+#
+# Gemessen am 16.09.2026, dasselbe Bild durch beide Wege, 390 Takte: Farbe ohne
+# Aufhellung fand JEDES echte Gesicht, das Grau mit Aufhellung fand (D ohne B: 0)
+# -- aber sieben Riesenkaesten weniger (Phantome auf Beinen und einem
+# Regalbrett, 0.60-0.78). Dieser Spot liefert die Frontbilder in Farbe; aeltere
+# Spots fallen ueber `images(farbe=True)` von selbst auf Grau zurueck, und dort
+# greift die Aufhellung weiter.
+
+
+def test_die_gesichtsaufnahme_bittet_fuer_die_kameras_um_farbe_nicht_fuer_die_tiefe():
+    """Zwei Anfragen, keine. Ein RGB-Wunsch fuer ein TIEFENBILD wird vom Roboter
+    abgewiesen -- und `images()` merkt sich das als 'keine Farbe moeglich' fuer
+    die ganze Sitzung. Dann waere die Farbe still weg, ohne dass es jemand sieht."""
+    gefragt = []
+
+    class _Backend:
+        def images(self, quellen, **kw):
+            gefragt.append((tuple(quellen), dict(kw)))
+            return []
+
+    spot = _Spot()
+    spot.backend = _Backend()
+    assert folgen.gesichtsaufnahme(spot, {}) is None, "ohne Bilder keine Aufnahme"
+
+    mit_farbe = [q for q, kw in gefragt if kw.get("farbe")]
+    ohne_farbe = [q for q, kw in gefragt if not kw.get("farbe")]
+    assert mit_farbe and set(mit_farbe[0]) == set(folgen.GESICHT_QUELLEN)
+    assert ohne_farbe and set(ohne_farbe[0]) == set(folgen.TIEFE_QUELLEN)
+    assert not any(set(q) & set(folgen.TIEFE_QUELLEN) for q in mit_farbe), \
+        "die Tiefe NIE in Farbe erbitten"

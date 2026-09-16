@@ -158,6 +158,14 @@ def aufhellen(feld):
     Die FAHRANSICHT bleibt unberührt: `ansicht.jpg` geht über einen eigenen Weg
     (`workshop/blick.py`, Zuschnitt `RECHTECK`). Ein aufgehelltes Livebild wäre
     eine Aussage über die Belichtung, die niemand geprüft hat.
+
+    SEIT DEM 16.09.2026 IST DAS DER RÜCKFALL, NICHT DER HAUPTWEG. Der Schul-Spot
+    liefert die Frontbilder in Farbe, und `folgen.gesichtsaufnahme` erbittet sie
+    so; `kaesten()` hellt nur graue Bilder auf. Gemessen an demselben Bild durch
+    beide Wege (390 Takte): Farbe ohne Aufhellung fand jedes echte Gesicht, das
+    Grau mit Aufhellung fand — und sieben Riesenkästen weniger (Phantome auf
+    Beinen und einem Regalbrett, 0.60–0.78). Ob Farbe auch das dunkle, liegende
+    Bild vom 11.09. geschafft hätte, ist offen: davon gibt es keine Farbaufnahme.
     """
     import cv2
 

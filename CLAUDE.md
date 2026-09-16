@@ -127,8 +127,9 @@ versionsgepinntes Extra `spotlab[sim]`.
   Genau das war der Fehler vom 16.09.2026. Wer ein Beispiel anders verhalten sieht als
   beschrieben, vergleicht zuerst `spotProjects/<Projekt>/<name>.py` mit
   `src/spotlab/workshop/beispiele/<name>.py`.
-- **Das Bild für den ERKENNER wird aufgehellt, die Fahransicht nicht.** Spots Frontbilder
-  sind im Gebäude dunkel: über 60 echte Panoramen vom 11.09.2026 lag die mittlere Helligkeit
+- **GRAUE Erkennerbilder werden aufgehellt — seit dem 16.09.2026 der Rückfall, der Hauptweg
+  ist Farbe (siehe unten) — die Fahransicht nie.** Spots Frontbilder waren als Graubild im
+  Gebäude dunkel: über 60 echte Panoramen vom 11.09.2026 lag die mittlere Helligkeit
   bei 36 von 255, und YuNet kam auf 0.37 — unter der Schwelle 0.6, und der eine Kasten war
   493×551 px gross, also ein halbes Bild statt eines Gesichts. Nach dem Histogrammausgleich
   sitzt ein 123×137-Kasten mit 0.71 auf dem Gesicht. `gesicht.aufhellen` gleicht **nur über
@@ -187,13 +188,38 @@ versionsgepinntes Extra `spotlab[sim]`.
   auf drei Metern bei 15° Neigung rund 80 cm zu tief und fiele durch die Gegenprobe. Gerechnet
   wird mit dem GEMESSENEN Nick aus `state.pitch`, nicht mit dem befohlenen — so stimmt es auch
   an einer Rampe und wenn der Roboter unsere Neigung nicht ganz umsetzt.
-- **Die Frontkameras schauen nach unten, und das begrenzt jede Bildstrategie.** Gemessen:
-  bei 1.5 m reicht das Bild bis 1.20 m Höhe, bei 3.0 m bis 1.94 m. Ein stehender Mensch hat
-  erst ab gut zweieinhalb Metern ein Gesicht im Bild — der Folgemodus will aber 1.6 m
-  halten. Deshalb gibt es `zuerst(...)`: Strategien werden GESTAFFELT, nicht gewählt. Und
-  deshalb hat `Panorama` zwei Zuschnitte — `RECHTECK` (voll gedeckt, 16:9, zum Fahren,
-  reicht 7° hinauf) und `ALLES` (alles Gesehene samt schwarzen Ecken, reicht 26° hinauf).
-  Für einen Erkenner ist eine schwarze Ecke kein Problem, ein fehlendes Blickfeld schon.
+- **Die Frontkameras schauen nach unten, und das begrenzt jede Bildstrategie.** Gerechnet
+  und am 16.09.2026 mit 150 Takten bei `stand()` bestätigt: bei 1.5 m reicht das Bild bis
+  1.20 m Höhe, bei 2 m bis 1.45 m, bei 3.0 m bis 1.94 m — aufrecht auf 1 m sind nur Beine im
+  Bild, auf 2 m ist der Oberkörper oben abgeschnitten. Ein stehender Mensch hat je nach
+  Grösse erst ab 2.3–2.8 m ein Gesicht im Bild, der Folgemodus will aber 1.6 m halten.
+  Deshalb ist **`BLICK_GRAD` seit dem 16.09.2026 15 statt 0** (die beiden Sonden, in denen
+  jeder Takt ein Gesicht fand, hatten die Nase 25° oben; `blick_grad=0` bleibt der flache
+  Weg für die Hindernisschranke). Deshalb gibt es `zuerst(...)`: Strategien werden
+  GESTAFFELT, nicht gewählt. Und deshalb hat `Panorama` zwei Zuschnitte — `RECHTECK` (voll
+  gedeckt, 16:9, zum Fahren, reicht 7° hinauf) und `ALLES` (alles Gesehene samt schwarzen
+  Ecken, reicht 26° hinauf). Für einen Erkenner ist eine schwarze Ecke kein Problem, ein
+  fehlendes Blickfeld schon.
+- **„Beim Fahren sieht er mich, beim Folgen nicht" war Geometrie, nicht Code — und das
+  liess sich nur mit DEMSELBEN Bild durch beide Wege zeigen.** Am 16.09.2026 vier Sonden am
+  Gerät, 390 Takte, je Takt sechs Varianten (Farbe/Grau × RECHTECK/ALLES × mit/ohne
+  Aufhellung) und ein gespeichertes Bild: **A ohne B = 0** — nie fand der Fahrblick-Weg ein
+  Gesicht, das der Folgemodus-Weg nicht fand. Vorher waren drei Hypothesen tot, jede an
+  einer Zahl: Auflösung (7.0 px/Grad in beiden), Farbe (beide Wege identisch, wenn das
+  Gesicht im Bild ist), Zuschnitt (RECHTECK ⊂ ALLES). Der Fahrblick „sah" den Menschen
+  nur, weil der beim Fahren am Boden sass. **Lehre: Vergleiche zwischen zwei Nachmittagen
+  sind keine Vergleiche** — zwei Läufe, andere Haltung, anderer Nick (per Tablet um 25°
+  geneigt, in `zustand.jsonl` ablesbar); erst die Sonde mit sechs Varianten aus einer
+  Aufnahme hat entschieden. Die Sonde (`ab_sonde_stand.py`) stellt Spot mit `stand()` hin,
+  weil das Tablet ihn geneigt hinstellt, und fängt `TimedOutError` je Takt ab.
+- **Aufhellen erzeugt Phantome; Farbe braucht es bei Tageslicht nicht.** Dieselbe Messung:
+  Riesenkästen (>180 px) Grau+Aufhellung 7, Farbe ohne Aufhellung 1; ein Regalbrett 76-mal
+  bei 0.60–0.78 in leerer Szene; Farbe fand jedes echte Gesicht, das Grau fand (D ohne B:
+  0). Deshalb erbittet `gesichtsaufnahme` die Kameras jetzt mit `farbe=True` — **in einer
+  EIGENEN Anfrage, getrennt von der Tiefe**: ein RGB-Wunsch für ein Tiefenbild wird
+  abgewiesen, und `images()` merkt sich das als „keine Farbe möglich" für die ganze Sitzung.
+  Die Aufhellung bleibt der Rückfall für graue Bilder. Ob Farbe das dunkle, liegende Bild
+  vom 11.09. geschafft hätte, ist offen — davon gibt es keine Farbaufnahme.
 - **Jede Schranke im Folgemodus ist fail-closed, und sie gelten alle gleichzeitig.** Wer
   ihre Daten nicht lesen kann, verbietet die Fahrt: ein unlesbares Hindernisgitter und ein
   unlesbares Tiefenbild heissen „stehen bleiben", nicht „weiterfahren". Dazu: näher als

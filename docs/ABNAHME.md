@@ -927,8 +927,9 @@ Abstand vor den Roboter und schaut ihn an, dann kommt sie langsam näher.
 **Erwartung Teil 3**
 - (7) In drei Metern folgt Spot dem Gesicht; die Meldung nennt die Höhe über dem Boden, und
   die passt zur Person (1.5 bis 1.8 m).
-- (8) Beim Näherkommen verliert er das Gesicht — gemessen ist es unterhalb von etwa
-  zweieinhalb Metern nicht mehr im Bild. Das Tag übernimmt, ohne dass Spot stehen bleibt.
+- (8) Beim Näherkommen verliert er das Gesicht — mit flacher Nase ist es je nach Grösse
+  unterhalb von 2.3 bis 2.8 m nicht mehr im Bild, mit der Vorgabe `BLICK_GRAD = 15` erst
+  unterhalb von etwa 1.3 m. Das Tag übernimmt, ohne dass Spot stehen bleibt.
   **Notieren, bei welchem Abstand der Wechsel wirklich passiert**: das ist die Zahl, die
   die Geometrie vorhersagt.
 - (9) Kein Fehlalarm auf Stuhllehnen, Beine oder Taschen: die Gegenprobe verwirft alles,
@@ -936,7 +937,34 @@ Abstand vor den Roboter und schaut ihn an, dann kommt sie langsam näher.
 - (10) Ohne Modell oder ohne OpenCV läuft das Beispiel weiter, das Tag trägt allein, und im
   Protokoll steht der Grund.
 
-**Teil 4 — Nickwinkel.** Das Beispiel mit `blick_grad=12` starten. Vorher jemanden mit
+**Befund 16.09.2026 — warum der Folgemodus „nichts sah", der Fahrblick aber schon.**
+Vier Sonden am Gerät, jede Aufnahme durch BEIDE Wege (Fahrblick: Farbe, Zuschnitt
+RECHTECK, ohne Aufhellung — Folgemodus: Grau, ALLES, aufgehellt) und vier Zwischenstufen,
+390 Takte, Bilder und Zahlen je Takt (Sonde `ab_sonde_stand.py`, Ergebnisse
+`ab_stand1/ergebnis.jsonl`):
+
+- **A ohne B: 0.** In keinem Takt fand der Fahrblick-Weg ein Gesicht, das der Folgemodus-Weg
+  nicht auch fand; umgekehrt 33-mal (ALLES reicht 26° hinauf, RECHTECK 7°). Farbe, Zuschnitt,
+  Aufhellung und Gegenprobe sind als Ursache **ausgeschlossen**.
+- **Die Ursache ist die Geometrie.** Bei waagrechtem Körper (`stand()`, gemessen ±0.3°)
+  reicht das Bild bei 1.5 m bis 1.20 m Höhe, bei 2 m bis 1.45 m, bei 3 m bis 1.94 m.
+  Aufrecht auf 1 m: nur Beine im Bild. Aufrecht auf 2 m: Oberkörper oben abgeschnitten.
+  Sitzend auf 2.5 m: Gesicht knapp unter der Kante, gefunden mit 0.92. Die beiden Sonden,
+  in denen JEDER Takt ein Gesicht fand (0.85–0.93), hatten den Körper per Tablet 25° nach
+  oben geneigt. **Deshalb ist `BLICK_GRAD` jetzt 15 statt 0.**
+- **Der Fahrblick sah den Menschen nur, wenn er tief war** (am Boden mit dem Tablet, kauernd).
+  Er sieht nie mehr als der Folgemodus — er wird nur öfter aus tiefer Haltung angeschaut.
+- **Aufhellen erzeugt Phantome.** Riesenkästen über 180 px: Grau+Aufhellung 7, Farbe ohne
+  Aufhellung 1; dazu ein Regalbrett 76-mal bei 0.60–0.78 in einer leeren Szene. Farbe fand
+  jedes echte Gesicht, das Grau fand (D ohne B: 0). **Deshalb erbittet `gesichtsaufnahme`
+  jetzt Farbe**; die Aufhellung bleibt Rückfall für Spots ohne Farbkameras.
+- Zu klein für YuNet: sitzend weit hinten im Gang (rund 5 m) — im Bild, aber kein Kasten.
+- Nebenbei: der erste Verbindungsaufbau scheiterte einmal mit „Zeitsync fehlgeschlagen";
+  der zweite ging durch, `doctor` meldete die Uhren synchron. Die Meldung behauptet die
+  Uhr, ohne sie geprüft zu haben (A3-Verwandter).
+
+**Teil 4 — Nickwinkel.** Seit dem 16.09.2026 fährt das Beispiel mit der Vorgabe
+`BLICK_GRAD = 15`; zum Vergleich mit `blick_grad=0` starten. Vorher jemanden mit
 einem Zollstock danebenstellen, um die Körperneigung grob abzulesen.
 
 **Erwartung Teil 4**
