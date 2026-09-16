@@ -5,12 +5,13 @@ Programm und geh los. Spot dreht sich zu dir und hält ungefähr anderthalb Mete
 Abstand. Näher als einen Meter kommt er nie, und rückwärts fährt er nicht —
 nach hinten sieht er nichts.
 
-Gesucht wird in einer STAFFEL: zuerst ein Gesicht, dann das Tag. Das hat einen
-gemessenen Grund. Spots Frontkameras schauen rund 20 Grad nach unten, und ein
-stehender Mensch hat erst ab gut zweieinhalb Metern ein Gesicht im Bild —
-näher sieht Spot Beine. Das Tag übernimmt genau dort. Fehlt OpenCV oder das
-Gesichtsmodell, fällt der erste Finder aus und das Tag trägt allein; warum,
-steht im Protokoll.
+Gesucht wird in einer STAFFEL: zuerst der Körper, dann ein Gesicht, dann das Tag.
+Das hat einen gemessenen Grund. Spots Frontkameras schauen rund 20 Grad nach
+unten; nah und genau voraus ist ein Gesicht über dem Bild oder in der Naht der
+beiden Kameras — die Hüfte nicht. Weit weg ist der Körper für den Erkenner zu
+klein, das Gesicht nicht. Das Tag geht immer. Fehlt ein Modell oder OpenCV,
+fällt der betroffene Finder aus und die nächste Stufe trägt; warum, steht im
+Protokoll und in der Zeile „Noch kein Ziel".
 
 Mit `blick_grad` hebt Spot beim Gehen die Nase, damit die Kameras höher
 schauen — fünfzehn Grad holen das Gesicht von zweieinhalb Metern auf gut einen
@@ -40,7 +41,7 @@ with spotlab.connect() as spot:
     print('Folgen: zeig Spot das Tag und geh los. Stopp beendet.')
     folgen.folge(
         spot,
-        folgen.zuerst(folgen.gesicht_finder(), folgen.tag_finder()),
+        folgen.zuerst(folgen.koerper_finder(), folgen.gesicht_finder(), folgen.tag_finder()),
         lauf_dir=spot.recorder.dir,
     )
     spot.sit()

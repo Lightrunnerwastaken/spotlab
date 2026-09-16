@@ -245,6 +245,24 @@ versionsgepinntes Extra `spotlab[sim]`.
   abgewiesen, und `images()` merkt sich das als „keine Farbe möglich" für die ganze Sitzung.
   Die Aufhellung bleibt der Rückfall für graue Bilder. Ob Farbe das dunkle, liegende Bild
   vom 11.09. geschafft hätte, ist offen — davon gibt es keine Farbaufnahme.
+- **Der Körper ist das bessere Folgeziel als das Gesicht — nah und kopflos.** Gemessen am
+  16.09.2026 über 510 gespeicherte Panoramen (`backends/real/koerper.py`, MediaPipe-Pose aus
+  dem OpenCV-Zoo als ONNX über `cv2.dnn`, KEIN neues Paket): Gesicht 149 Takte, Körper 134,
+  beide 102, nur Körper 33 (1.3–2 m, aufrecht, Naht-Kerbe — Takt 110 bekommt ein Skelett mit
+  0.99, wo das Gesicht am Hals abgeschnitten war), nur Gesicht 47 (weit weg: der Erkenner
+  sieht das ganze Panorama bei 224 px, ein Mensch auf 3 m ist darin 15 px). Also nicht Körper
+  STATT Gesicht, sondern **Körper vor Gesicht vor Tag** — jede Stufe dort, wo sie stark ist.
+  Ziel ist die Hüftmitte (Gegenprobe 0.6–1.3 m über dem Boden, Schulter 0.9–1.7 m als Ersatz,
+  wenn die Beine abgeschnitten sind), `bild_oben` die Schulterlinie — die Nasenregel braucht
+  für Schultern viel weniger Neigung als für eine Stirn. **Der Preis ist der Erkenner**: 375 ms
+  je Bild (Ganzbild plus drei Kacheln; 142 von 208 Treffern kamen erst auf den Kacheln), Pose
+  57 ms. Deshalb die **Spur** wie bei MediaPipe selbst: gesucht wird nur, wenn die Pose
+  abreisst, sonst läuft die Pose auf dem Ausschnitt aus der letzten (`person_aus_pose`), rund
+  60 ms je Takt. Die Zoo-Referenzklassen liegen UNVERÄNDERT in `backends/real/zoo/` (Apache
+  2.0, LICENSE dabei, `ruff: noqa`) — Ankerlogik nachzubauen wäre Fehlerquelle ohne Gewinn.
+  `bildaufnahme` (Panorama + Punkte, ohne YuNet) ist die gemeinsame Grundlage beider Finder:
+  ein fehlendes Gesichtsmodell darf den Körper-Weg nicht mitreissen. Die Zoo-Klassen wollen
+  BGR mit drei Kanälen — Grau wird verdreifacht, das RGB-Panorama gedreht.
 - **Jede Schranke im Folgemodus ist fail-closed, und sie gelten alle gleichzeitig.** Wer
   ihre Daten nicht lesen kann, verbietet die Fahrt: ein unlesbares Hindernisgitter und ein
   unlesbares Tiefenbild heissen „stehen bleiben", nicht „weiterfahren". Dazu: näher als

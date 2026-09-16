@@ -186,6 +186,64 @@ def personen_finder(mindestsicherheit=None):
     return finde
 
 
+def koerper_finder(ordner=None, quellen=GESICHT_QUELLEN, tiefe_quellen=TIEFE_QUELLEN,
+                   aufnahme_holen=None, koerper_holen=None):
+    """Folgt einem Körper — der Hüfte, notfalls den Schultern — mit Gegenprobe aus der Tiefe.
+
+    Gemessen am 16.09.2026 über 510 Panoramen: das Gesicht fand den Menschen in
+    149 Takten, der Körper in 134 — in ANDEREN Momenten. 33-mal nur der Körper:
+    die kopflosen Bilder, 1.3–2 m, aufrecht, in der Naht-Kerbe. 47-mal nur das
+    Gesicht: weit weg. Deshalb steht dieser Finder in der Staffel VOR dem
+    Gesicht — `zuerst(koerper_finder(), gesicht_finder(), tag_finder())`.
+
+    Das Ziel ist die Hüftmitte (`backends/real/koerper.py`), geprüft auf
+    0.6–1.3 m über dem Boden; `bild_oben` ist die Schulterlinie, nicht die
+    Stirn — die Nasenregel in `folge()` hält also die Schultern im Bild, und
+    dafür braucht es viel weniger Neigung als für ein Gesicht.
+
+    `aufnahme_holen` und `koerper_holen` sind die Testtüren; ohne sie kommen
+    Bilder aus `bildaufnahme` (ohne YuNet) und Körper aus `Koerpererkenner`,
+    einer je Lauf, mit Spur.
+    """
+    gemerkt = {}
+    zuletzt = {"text": ""}
+    erkenner = {}
+
+    def holen_vorgabe(feld):
+        from spotlab.backends.real import koerper as koerpermodul
+
+        if "erkenner" not in erkenner:
+            erkenner["erkenner"] = koerpermodul.Koerpererkenner(ordner=ordner)
+        return erkenner["erkenner"].finde(feld)
+
+    holen = koerper_holen or holen_vorgabe
+    aufnahme_holen = aufnahme_holen or (
+        lambda spot, gemerkt: bildaufnahme(spot, gemerkt, quellen, tiefe_quellen))
+
+    def finde(spot):
+        from spotlab.backends.real import koerper as koerpermodul
+
+        aufnahme = aufnahme_holen(spot, gemerkt)
+        if aufnahme is None:
+            zuletzt["text"] = "keine Bilder (Kamera oder Tiefe fehlt)"
+            return None
+        befunde = koerpermodul.beurteile(
+            holen(aufnahme.feld), aufnahme.pano, aufnahme.punkte,
+            aufnahme.pano.kamerahoehe(aufnahme.blick_grad), blick_grad=aufnahme.blick_grad,
+        )
+        zuletzt["text"] = _koerperbefund(befunde)
+        genommen = sorted((b for b in befunde if b.genommen), key=lambda b: b.distance)
+        if not genommen:
+            return None
+        b = genommen[0]
+        teil = "Hüfte" if b.punkt == "huefte" else "Schulter"
+        return Ziel(b.bearing, b.distance, f"Körper, {teil} auf {b.height:.2f} m",
+                    bild_oben=b.bild_oben)
+
+    finde.befund = lambda: zuletzt["text"]
+    return finde
+
+
 def gesicht_finder(modell=None, mindestscore=None, quellen=GESICHT_QUELLEN,
                    tiefe_quellen=TIEFE_QUELLEN):
     """Folgt einem Gesicht — mit Gegenprobe aus der Tiefenkamera.
@@ -251,6 +309,20 @@ def _ziel_aus_befund(kopf, pano):
                 bild_oben=float(oben))
 
 
+def _koerperbefund(befunde):
+    """Was der Körper-Erkenner in diesem Takt sah — und was die Gegenprobe damit tat."""
+    import collections
+
+    if not befunde:
+        return "kein Körper vom Erkenner"
+    genommen = sum(1 for b in befunde if b.genommen)
+    if genommen:
+        return f"{len(befunde)} Körper, {genommen} genommen"
+    gruende = collections.Counter(b.grund for b in befunde if b.grund)
+    liste = ", ".join(f"{anzahl}× {grund}" for grund, anzahl in sorted(gruende.items()))
+    return f"{len(befunde)} Körper, alle verworfen ({liste})"
+
+
 def _gesichtsbefund(befunde):
     """Was der Erkenner in diesem Takt sah — und was die Gegenprobe damit tat.
 
@@ -283,21 +355,17 @@ class Gesichtsaufnahme:
     blick_grad: float         # der GEMESSENE Nick, nach oben positiv
 
 
-def gesichtsaufnahme(spot, gemerkt, quellen=GESICHT_QUELLEN,
-                     tiefe_quellen=TIEFE_QUELLEN, modell=None, mindestscore=None):
-    """Vier Bilder holen und daraus Panorama, Erkenner und Punktwolke — oder None.
+def bildaufnahme(spot, gemerkt, quellen=GESICHT_QUELLEN, tiefe_quellen=TIEFE_QUELLEN):
+    """Vier Bilder holen und daraus Panorama und Punktwolke — oder None. OHNE Erkenner.
 
-    Die gemeinsame Vorbereitung von `gesicht_finder` und der Messprobe
-    (`workshop/gesichtsprobe.py`). EINE Formulierung: sonst misst die Probe
-    etwas anderes, als der Folgemodus tut, und das fiele erst am Gerät auf.
+    Die gemeinsame Grundlage von Körper- und Gesichtsfinder. Der Körper-Weg
+    braucht kein YuNet; ein fehlendes Gesichtsmodell darf ihn nicht mitreissen.
 
-    `gemerkt` ist ein Wörterbuch, das der Aufrufer hält — Panorama und Erkenner
-    werden einmal gebaut und dann wiederverwendet; YuNet je Takt neu zu bauen
-    kostete mehr als der Abruf.
+    `gemerkt` ist ein Wörterbuch, das der Aufrufer hält — das Panorama wird
+    einmal gebaut und dann wiederverwendet.
     """
     import numpy as np
 
-    from spotlab.backends.real import gesicht as gesichtsmodul
     from spotlab.backends.real import panorama, tiefe
 
     # ZWEI Anfragen, nicht eine: die Kameras in Farbe, die Tiefe nicht. Ein
@@ -319,17 +387,35 @@ def gesichtsaufnahme(spot, gemerkt, quellen=GESICHT_QUELLEN,
         gemerkt["pano"] = panorama.Panorama(
             panorama.kalibrierung_aus(grau), zuschnitt=panorama.ALLES
         )
-        gemerkt["erkenner"] = gesichtsmodul.erkenner(
-            gemerkt["pano"].breite, gemerkt["pano"].hoehe, modell,
-            mindestscore or gesichtsmodul.MINDESTSCORE,
-        )
     feld = gemerkt["pano"].zusammensetzen(panorama.bilder_aus(grau))
     punkte = np.vstack([tiefe.punkte_aus_bild(a) for a in tiefen])
     # Der GEMESSENE Nick, nicht der befohlene: so stimmt die Rechnung auch,
     # wenn Spot an einer Rampe steht oder unsere Neigung nicht ganz umsetzt.
     # `state.pitch` ist im Bogenmass, Nase hoch NEGATIV (Projektkonvention).
-    return Gesichtsaufnahme(feld, gemerkt["pano"], gemerkt["erkenner"], punkte,
-                            -math.degrees(_nick(spot)))
+    return Gesichtsaufnahme(feld, gemerkt["pano"], None, punkte, -math.degrees(_nick(spot)))
+
+
+def gesichtsaufnahme(spot, gemerkt, quellen=GESICHT_QUELLEN,
+                     tiefe_quellen=TIEFE_QUELLEN, modell=None, mindestscore=None):
+    """`bildaufnahme` plus der YuNet-Erkenner, einmal gebaut und dann wiederverwendet.
+
+    Die gemeinsame Vorbereitung von `gesicht_finder` und der Messprobe
+    (`workshop/gesichtsprobe.py`). EINE Formulierung: sonst misst die Probe
+    etwas anderes, als der Folgemodus tut, und das fiele erst am Gerät auf.
+    """
+    from dataclasses import replace
+
+    from spotlab.backends.real import gesicht as gesichtsmodul
+
+    aufnahme = bildaufnahme(spot, gemerkt, quellen, tiefe_quellen)
+    if aufnahme is None:
+        return None
+    if "erkenner" not in gemerkt:
+        gemerkt["erkenner"] = gesichtsmodul.erkenner(
+            aufnahme.pano.breite, aufnahme.pano.hoehe, modell,
+            mindestscore or gesichtsmodul.MINDESTSCORE,
+        )
+    return replace(aufnahme, erkenner=gemerkt["erkenner"])
 
 
 def _nick(spot):

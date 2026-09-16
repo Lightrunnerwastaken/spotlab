@@ -1059,3 +1059,114 @@ def test_der_gesichtsfinder_traegt_die_kastenoberkante_ins_ziel():
     assert ziel.bearing == 5.0 and ziel.distance == 2.0
     assert ziel.bild_oben == pytest.approx(20.0), "Oberkante y=100 -> +20 Grad"
     assert "1.60 m" in ziel.name
+
+
+# ------------------------------------------------- Der Koerper-Finder (16.09.2026)
+#
+# Gemessen ueber 510 Panoramen: Gesicht 149 Takte, Koerper 134 -- in anderen
+# Momenten (33-mal nur der Koerper: die kopflosen Bilder nah und in der Kerbe;
+# 47-mal nur das Gesicht: weit weg). Also Koerper vor Gesicht vor Tag. Der
+# Finder hat dieselben drei Naehte wie die anderen: `hinweis`, `befund`, und
+# ein Ziel mit `bild_oben` -- hier die Schulterlinie, nicht die Stirn.
+
+
+def _koerperaufnahme_bei(hoehenwinkel=10.0, abstand=2.0):
+    """Eine Aufnahme ohne YuNet: Panorama-Attrappe und Tiefenpunkte genau voraus,
+    in `abstand` Metern unter `hoehenwinkel` Grad -- dort, wo der Test die Huefte hinlegt."""
+    import numpy as np
+    from test_backend_koerper import _Pano, _wolke
+
+    from spotlab.workshop.folgen import Gesichtsaufnahme
+
+    def holen(spot, gemerkt, quellen=None, tiefe_quellen=None):
+        feld = np.zeros((782, 1239), dtype="uint8")
+        return Gesichtsaufnahme(feld, _Pano(), None, _wolke(abstand, 0.0, hoehenwinkel), 0.0)
+
+    return holen
+
+
+_koerperaufnahme = _koerperaufnahme_bei(10.0)
+
+
+def _ein_koerper(huefte_zeile=300.0, schulter_zeile=250.0):
+    from spotlab.backends.real.koerper import Koerper
+
+    return Koerper(huefte=(620.0, huefte_zeile), schulter=(620.0, schulter_zeile),
+                   conf=0.95, kasten=(500.0, 100.0, 740.0, 700.0))
+
+
+def test_der_koerperfinder_zielt_auf_die_huefte_und_traegt_die_schulterlinie():
+    finder = folgen.koerper_finder(aufnahme_holen=_koerperaufnahme,
+                                   koerper_holen=lambda feld: [_ein_koerper()])
+    ziel = finder(_Spot())
+    assert ziel is not None
+    assert ziel.bearing == pytest.approx(0.0) and ziel.distance == pytest.approx(2.0, abs=0.05)
+    assert "Körper" in ziel.name and "0.81 m" in ziel.name
+    assert ziel.bild_oben == pytest.approx(15.0), "die Schulterlinie, koerperfest"
+    assert "1 Körper, 1 genommen" in finder.befund()
+
+
+def test_ein_koerper_auf_kistenhoehe_wird_verworfen_und_der_befund_sagt_es():
+    """Huefte bei -5 Grad im Bild, Tiefenpunkte dort in 2 m: 0.29 m ueber dem Boden."""
+    finder = folgen.koerper_finder(aufnahme_holen=_koerperaufnahme_bei(-5.0),
+                                   koerper_holen=lambda feld: [_ein_koerper(huefte_zeile=450.0)])
+    assert finder(_Spot()) is None
+    assert "verworfen" in finder.befund() and "zu tief" in finder.befund()
+
+
+def test_ohne_koerper_sagt_der_befund_es():
+    finder = folgen.koerper_finder(aufnahme_holen=_koerperaufnahme, koerper_holen=lambda feld: [])
+    assert finder(_Spot()) is None
+    assert "kein Körper" in finder.befund()
+
+
+def test_ohne_bilder_findet_der_koerperfinder_nichts_und_sagt_warum():
+    finder = folgen.koerper_finder(aufnahme_holen=lambda *a, **kw: None,
+                                   koerper_holen=lambda feld: [_ein_koerper()])
+    assert finder(_Spot()) is None
+    assert "Bilder" in finder.befund()
+
+
+def test_die_koerperaufnahme_braucht_keinen_gesichtserkenner(monkeypatch):
+    """`bildaufnahme` holt Panorama und Punkte ohne YuNet: ein fehlendes
+    Gesichtsmodell darf den Koerper-Weg nicht mitreissen."""
+    from spotlab.backends.real import gesicht as gesichtsmodul
+
+    def kein_yunet(*a, **kw):
+        raise AssertionError("YuNet darf hier nicht gebaut werden")
+
+    monkeypatch.setattr(gesichtsmodul, "erkenner", kein_yunet)
+
+    class _OhneKameras(_Spot):
+        def __init__(self):
+            super().__init__()
+            self.backend = SimpleNamespace(images=lambda quellen, **kw: [])
+
+    assert folgen.bildaufnahme(_OhneKameras(), {}) is None, "ohne Bilder None, ohne YuNet-Aufruf"
+
+
+def test_der_vorgabeweg_des_koerperfinders_baut_den_echten_erkenner(monkeypatch):
+    from spotlab.backends.real import koerper as koerpermodul
+
+    gebaut = []
+
+    class _Attrappe:
+        def __init__(self, *a, **kw):
+            gebaut.append(kw)
+
+        def finde(self, feld):
+            return [_ein_koerper()]
+
+    monkeypatch.setattr(koerpermodul, "Koerpererkenner", _Attrappe)
+    finder = folgen.koerper_finder(aufnahme_holen=_koerperaufnahme)
+    assert finder(_Spot()) is not None and finder(_Spot()) is not None
+    assert len(gebaut) == 1, "ein Erkenner fuer den ganzen Lauf, nicht je Takt"
+
+
+def test_die_vorlage_staffelt_koerper_vor_gesicht_vor_tag():
+    """Jede Stufe dort, wo sie stark ist: Koerper nah und kopflos, Gesicht weit, Tag immer."""
+    from pathlib import Path
+
+    quelle = (Path(folgen.__file__).parent / "beispiele" / "folgen.py").read_text(encoding="utf-8")
+    zeile = next(z for z in quelle.splitlines() if "zuerst(" in z and "finder()" in z)
+    assert zeile.index("koerper_finder()") < zeile.index("gesicht_finder()") < zeile.index("tag_finder()")

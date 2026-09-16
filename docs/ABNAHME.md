@@ -1015,6 +1015,20 @@ RECHTECK, ohne Aufhellung — Folgemodus: Grau, ALLES, aufgehellt) und vier Zwis
   prüfen:** derselbe Lauf wie die Reichweiten-Sonde — an der Stelle von Takt 110 (aufrecht,
   1.6 m, genau voraus) muss jetzt ein Gesicht stehen, weil Spot vorher die Nase gehoben oder
   angehalten hat.
+- **Der Körper als erste Stufe** (`koerper_finder`, `backends/real/koerper.py`; MediaPipe-Pose
+  aus dem OpenCV-Zoo als ONNX über `cv2.dnn`, kein neues Paket). Offline über 510 gespeicherte
+  Panoramen des Tages: Gesicht 149 Takte, Körper (Hüfte) 134, beide 102, **nur Körper 33** (die
+  kopflosen Bilder: 1.3–2 m, aufrecht, Kerbe — Takt 110 bekommt ein Skelett mit 0.99), **nur
+  Gesicht 47** (weit weg: für den 224-px-Erkenner zu klein), zusammen 182. Deshalb die Staffel
+  `zuerst(koerper_finder(), gesicht_finder(), tag_finder())`. Preis: Erkenner 375 ms je Bild
+  (Ganzbild plus drei Kacheln; 142 von 208 Treffern kamen erst auf den Kacheln), Pose 57 ms —
+  deshalb die Spur wie bei MediaPipe: gesucht wird nur, wenn die Pose abreisst. Modelle unter
+  `~/.spotlab/modelle/`: `person_detection_mediapipe_2023mar.onnx` (11 990 159 Bytes, SHA-256
+  beginnt `47fd5599d6fa1760`) und `pose_estimation_mediapipe_2023mar.onnx` (5 557 238 Bytes,
+  `9d89c599319a18fb`), beide über git-lfs wie das Gesicht. **Am Gerät zu prüfen:** aufrecht auf
+  1.3–2 m genau voraus meldet der Lauf „Körper, Hüfte auf ~1.0 m" statt „kein Kasten"; die
+  Nase bleibt dabei nahe 10°, weil die Schulterlinie das Soll ist; und die Taktdauer mit Spur
+  (`ereignisse.jsonl`, Abstand der `walk`-Befehle) liegt unter der des Gesichtswegs.
 
 **Teil 4 — Nickwinkel.** Seit dem 16.09.2026 fährt das Beispiel mit der Vorgabe
 `BLICK_GRAD = 15`; zum Vergleich mit `blick_grad=0` starten. Vorher jemanden mit
