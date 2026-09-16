@@ -208,6 +208,9 @@ robot werden nicht automatisch vollständig als Komfortkommando protokolliert.
 Vier neue ausführbare Beispiele stehen unter `src/spotlab/workshop/beispiele/`:
 zustand_lesen.py, umgebung_lesen.py, licht_und_ton.py, koerper_ausrichten.py.
 Die [Abdeckungsmatrix](EXAMPLE_COVERAGE.md) zeigt verbleibende SDK-Funktionen.
+Zwei weitere zeigen den Rohzugang über `send`: batteriewechsel.py (Spot rollt auf
+die Seite und schaltet die Motoren selbst ab) und aufrichten.py (Self-Right); beide
+nur am echten Spot und nur bei ausgeschalteten Motoren startbar.
 Offizielle Grundlagen: [SDK-Beispiele](https://dev.bostondynamics.com/python/examples/readme),
 [Audio/Visual](https://dev.bostondynamics.com/docs/concepts/audio_visual.html),
 [AV-Protobuf](https://github.com/boston-dynamics/spot-sdk/blob/master/protos/bosdyn/api/audio_visual.proto).

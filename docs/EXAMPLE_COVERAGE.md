@@ -22,6 +22,7 @@ Komfortmethode. Das SDK erfordert weiter eigene Parameter und Rückmeldungsbehan
 | GraphNav-Aufzeichnung / Autowalk-Missionen | GUI-Kartenworkflow / SDK-Clients | keine vollständige Python-Komfort-API |
 | AV-LEDs / Piezo-Summer | lights, beep | neu; licht_und_ton.py; audio-visual nötig |
 | spot_light (Lichtquelle verfolgen) | camera().array + eigener Algorithmus + walk | Bildverarbeitung fehlt als Komfortbefehl; kein LED-Beispiel |
+| Batteriewechsel-Haltung / Self-Right | send + RobotCommandBuilder | neu; batteriewechsel.py, aufrichten.py; nur real, Motoren vorher aus |
 | Docking / Undocking | DockingClient | SDK-only |
 | Arm, Greifer, Manipulation, Türen | entsprechende SDK-Clients | SDK-only; passende Hardware nötig |
 | Spot CAM Audio/WAV, PTZ, Beleuchtung | Spot-CAM-Clients | SDK-only; Payload nötig; beep ersetzt dies nicht |

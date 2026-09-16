@@ -20,7 +20,7 @@ def test_reference_covers_public_facade():
 
 @pytest.mark.parametrize('name', ['zustand_lesen', 'umgebung_lesen', 'licht_und_ton',
                                   'koerper_ausrichten', 'tiefenbild_lesen', 'punktwolke_speichern',
-                                  'localgrids_lesen'])
+                                  'localgrids_lesen', 'batteriewechsel', 'aufrichten'])
 def test_new_examples_without_robot(name, tmp_path):
     env = dict(os.environ, SPOTLAB_BACKEND='dryrun', SPOTLAB_NUR_TROCKEN='1',
                PYTHONPATH=str(ROOT / 'src'), PYTHONDONTWRITEBYTECODE='1')

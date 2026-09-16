@@ -10,6 +10,8 @@ bleibt. Löschst du eine Datei, kommt das Original beim nächsten Start wieder.
 | `durchgang_finden.py` | mit den Sensoren eine Tür finden, in den nächsten Raum gehen, absitzen |
 | `treppe_steigen.py` | die Treppe mit `spot.stairs()` finden, vorwärts hinauf, rückwärts hinunter |
 | `fahren.py` | selbst fahren: W/S, A/D, Q/E im Übungsfenster — der Knopf „🎮 Fahren" startet es |
+| `batteriewechsel.py` | Akku wechseln: Spot setzt sich, rollt auf die Seite und schaltet die Motoren selbst ab (`links`/`rechts`) |
+| `aufrichten.py` | das Gegenstück: Spot rollt sich zurück und setzt sich hin |
 
 Starten: Datei öffnen, über dem Editor „Wo läuft es?" wählen, ▶ Starten.
 Für `durchgang_finden.py` vorher im Raumeditor den Raum `durchgang` wählen,
@@ -41,3 +43,10 @@ Grenzen und Messwerte: Projektdatei `docs/PHYSICS.md`.
 Neu: `physik_treppe_3stufen.py` mit Raum `physik_treppe_3stufen`,
 Physik 3D und Start `(0,0,0)`: drei niedrige 4-cm-Stufen vorwärts hinauf und
 rückwärts herunter. Etwa 7–12 Minuten; Grenzen und Messwerte in `docs/PHYSICS.md`.
+
+Batteriewechsel, nur am echten Spot: vorher die Motoren am Tablet ausschalten
+(bei laufenden Motoren darf spotlab seinen Not-Aus nicht eintragen). Hält das
+Tablet das Lease, `--uebernehmen` anhängen — das nimmt dem Tablet die Steuerung
+ab und steht so im Laufprotokoll. Beide Skripte schicken rohe SDK-Kommandos
+über `spot.send()` und messen den Erfolg am Rollwinkel, weil die Rückmeldung
+des Batteriewechsel-Kommandos leer bleibt. Im Trockenlauf prüfen sie nur den Ablauf.
