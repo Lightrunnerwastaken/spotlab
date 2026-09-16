@@ -103,11 +103,24 @@ versionsgepinntes Extra `spotlab[sim]`.
   wechseln); die Meldung **wiederholt sich** alle `STILLE_TAKT_S`, weil eine Zeile vom
   Anfang nach einer halben Minute weggescrollt ist; und sie geht als Ereignis
   `kein_ziel` **in die Aufzeichnung**, eine Zeile statt 135 gleicher Abfragen. Dazu trägt
-  jeder Finder ein optionales `hinweis`-Attribut, das `folge()` genau einmal ausgibt, wenn
-  wirklich nichts kommt — `personen_finder()` nennt dort den Befund von A34 Teil 1 samt
-  Ausweg. Der Hinweis hängt am FINDER, nicht am Regler: nur der Finder weiss, warum er leer
-  ausgeht, und `zuerst()` reicht die Hinweise seiner Mitglieder weiter, sonst verschwände
-  die Auskunft ausgerechnet beim Staffeln.
+  jeder Finder zwei optionale Attribute, beide am FINDER und nicht am Regler — nur der
+  Finder weiss, warum er leer ausgeht, und `zuerst()` reicht beide weiter, sonst verschwände
+  die Auskunft ausgerechnet beim Staffeln: **`hinweis`** sagt `folge()` genau einmal
+  (`personen_finder()` nennt dort A34 Teil 1 samt Ausweg), **`befund()`** sagt bei jeder
+  Stille, was der Finder zuletzt SAH. Beim Gesicht sind das die drei Fälle, die zu
+  verschiedenen Schritten führen: „kein Kasten vom Erkenner" (zu dunkel, zu weit, ausserhalb
+  der Deckung), „3 Kästen, alle verworfen (2× zu tief)" (die Geometrie stimmt nicht — der
+  Mensch hockt oder liegt) und „2 Kästen, 1 genommen" (dann lag es am Regler oder an einer
+  Schranke). Dafür ruft `gesicht_finder` **`beurteile()` statt `gesichter()`**: dasselbe
+  Ergebnis, aber mit dem Urteil je Kasten. Ein `befund()`, der wirft, bleibt stumm — eine
+  Auskunft über den Zustand darf den Zustand nicht ändern.
+- **`RunRecorder.event()` hat eine ERLAUBNISLISTE** (`record/events.py::ARTEN`) und wirft bei
+  einer unbekannten Art. Wer ein neues Ereignis schreibt, trägt es dort ein — sonst scheitert
+  jeder Aufruf. Am 16.09.2026 kostete das einen ganzen Messnachmittag: `kein_ziel` fehlte in
+  der Liste, und ein `except Exception: pass` an der Schreibstelle verschluckte den Fehler,
+  sodass der Weg, der gerade gegen Schweigen gebaut wurde, selbst schwieg. **Eine
+  Test-Attrappe, die jede Art annimmt, ist grosszügiger als die Sache und findet so etwas
+  nie** — der Test dafür nimmt den echten `RunRecorder` und liest die Zeile zurück.
 - **`bereitstellen()` überschreibt vorhandene Beispiele NIE** (`if datei.exists(): continue`)
   — richtig, sonst wären eigene Änderungen jedes Mal weg. Der Preis ist eine stille Falle:
   die Kopie im Arbeitsordner kann Fassungen hinter der Vorlage liegen, und nichts sagt es.

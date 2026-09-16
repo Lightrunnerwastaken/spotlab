@@ -581,3 +581,105 @@ def test_der_gemessene_nick_kommt_aus_dem_zustand():
             raise RuntimeError("kein Zustand")
 
     assert folgen._nick(_Ohne()) == 0.0
+
+
+# ------------------------------------------------- Was der Finder gesehen hat
+#
+# Am 16.09.2026 stand Spot 43 Sekunden vor einem Menschen und folgte nicht,
+# waehrend derselbe Erkenner im Fahren-Reiter Kaesten auf dasselbe Gesicht
+# setzte. Aus dem Lauf war nicht zu entnehmen, WORAN es lag: kein Kasten vom
+# Erkenner, oder alle von der Tiefen-Gegenprobe verworfen? `finde` gibt in
+# beiden Faellen None zurueck. Ein Nullergebnis ohne Begruendung ist keine
+# Messung -- also sagt der Finder jetzt, was er gesehen hat.
+
+
+class _Befund:
+    """So viel von `gesicht.Befund`, wie die Zusammenfassung liest."""
+
+    def __init__(self, genommen=False, grund=None, distance=2.0):
+        self.genommen, self.grund, self.distance = genommen, grund, distance
+
+
+def test_ohne_kasten_sagt_der_befund_dass_der_erkenner_nichts_setzte():
+    assert "kein Kasten" in folgen._gesichtsbefund([])
+
+
+def test_verworfene_kaesten_stehen_mit_grund_und_anzahl_da():
+    """Die Zeile, die heute gefehlt hat."""
+    text = folgen._gesichtsbefund([
+        _Befund(grund="zu tief"), _Befund(grund="zu tief"),
+        _Befund(grund="keine tiefenpunkte"),
+    ])
+    assert "3" in text and "verworfen" in text
+    assert "2× zu tief" in text and "1× keine tiefenpunkte" in text
+
+
+def test_ein_genommener_kasten_steht_auch_im_befund():
+    text = folgen._gesichtsbefund([_Befund(genommen=True), _Befund(grund="zu hoch")])
+    assert "1 genommen" in text
+
+
+def test_der_gesichtsfinder_traegt_einen_befund_und_nennt_fehlende_bilder():
+    class _OhneKameras(_Spot):
+        def __init__(self):
+            super().__init__()
+            self.backend = SimpleNamespace(images=lambda quellen: [])
+
+    finder = folgen.gesicht_finder()
+    assert finder(_OhneKameras()) is None
+    assert "Bilder" in finder.befund(), "auch das ist eine Auskunft"
+
+
+def test_die_stille_traegt_den_befund_des_finders(tmp_path):
+    """In der Meldung UND im Lauf -- sonst muss man wieder danebenstehen."""
+    import json
+
+    from spotlab.record.run import RunRecorder
+
+    def finde(_spot):
+        return None
+
+    finde.befund = lambda: "3 Kästen, alle verworfen (3× zu tief)"
+
+    spot = _Spot()
+    spot.recorder = RunRecorder(tmp_path / "runs", None, backend="dryrun")
+    gemeldet = []
+    folgen.folge(spot, finde, melde=gemeldet.append, jetzt=_uhr(),
+                 schlaf=lambda _s: None, laeuft=_laeuft_takte(6))
+
+    assert any("zu tief" in m for m in gemeldet), "er sagt es beim Warten"
+    zeilen = [json.loads(z) for z in
+              (spot.recorder.dir / "ereignisse.jsonl").read_text(encoding="utf-8").splitlines()
+              if z.strip()]
+    ohne_ziel = [z for z in zeilen if z["art"] == "kein_ziel"]
+    assert ohne_ziel and "zu tief" in ohne_ziel[0]["daten"]["befund"]
+
+
+def test_ein_werfender_befund_haelt_die_schleife_nicht_an():
+    """Eine Auskunft ueber den Zustand darf den Zustand nicht veraendern."""
+    def finde(_spot):
+        return None
+
+    def kaputt():
+        raise RuntimeError("Zaehler kaputt")
+
+    finde.befund = kaputt
+    spot = _Spot()
+    folgen.folge(spot, finde, melde=lambda _t: None, jetzt=_uhr(),
+                 schlaf=lambda _s: None, laeuft=_laeuft_takte(6))
+    assert spot.kommandos == ["stop"]
+
+
+def test_zuerst_reicht_auch_die_befunde_weiter():
+    """Bei der Staffel ist die Frage erst recht offen: welcher der beiden hat
+    nichts gesehen, und warum?"""
+    def eins(_spot):
+        return None
+
+    def zwei(_spot):
+        return None
+
+    eins.befund = lambda: "kein Kasten vom Erkenner"
+    zwei.befund = lambda: "kein Tag sichtbar"
+    text = folgen.zuerst(eins, zwei).befund()
+    assert "kein Kasten vom Erkenner" in text and "kein Tag sichtbar" in text

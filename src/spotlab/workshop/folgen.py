@@ -94,13 +94,18 @@ def tag_finder(tag_id=None):
     Peilung und Abstand kommen aus demselben Dienst wie bei der Kartenaufnahme,
     in Grad und Metern. Ohne `tag_id` das nächste sichtbare Tag.
     """
+    zuletzt = {"text": ""}
+
     def finde(spot):
         gefunden = spot.tags(id=tag_id) if tag_id is not None else spot.tags()
+        zuletzt["text"] = (f"{len(gefunden)} Tags sichtbar" if gefunden
+                           else "kein Tag sichtbar")
         if not gefunden:
             return None
         tag = gefunden[0]
         return Ziel(tag.bearing, tag.distance, f"Tag {tag.id}")
 
+    finde.befund = lambda: zuletzt["text"]
     return finde
 
 
@@ -111,14 +116,20 @@ def personen_finder(mindestsicherheit=None):
     Ob dieser Spot ihn hat, zeigt erst das Gerät; liefert er nichts, findet
     dieser Finder nichts, und `folge()` lässt Spot stehen.
     """
+    zuletzt = {"text": ""}
+
     def finde(spot):
         leute = spot.people()
         if mindestsicherheit is not None:
             leute = [p for p in leute if p.likelihood >= mindestsicherheit]
+        zuletzt["text"] = (f"{len(leute)} Personen gemeldet" if leute
+                           else "keine Person gemeldet")
         if not leute:
             return None
         person = leute[0]
         return Ziel(person.bearing, person.distance, f"Person {person.entity_id}")
+
+    finde.befund = lambda: zuletzt["text"]
 
     # Der Hinweis hängt am Finder, nicht in `folge()`: nur der Finder weiss, warum
     # er leer ausgeht. `folge()` sagt ihn einmal, wenn wirklich nichts kommt --
@@ -152,6 +163,7 @@ def gesicht_finder(modell=None, mindestscore=None, quellen=GESICHT_QUELLEN,
     weiter, wenn der Takt einmal hängt.
     """
     gemerkt = {}
+    zuletzt = {"text": ""}
 
     def finde(spot):
         from spotlab.backends.real import gesicht as gesichtsmodul
@@ -159,18 +171,47 @@ def gesicht_finder(modell=None, mindestscore=None, quellen=GESICHT_QUELLEN,
         aufnahme = gesichtsaufnahme(spot, gemerkt, quellen, tiefe_quellen,
                                     modell, mindestscore)
         if aufnahme is None:
+            zuletzt["text"] = "keine Bilder (Kamera oder Tiefe fehlt)"
             return None
-        gefunden = gesichtsmodul.gesichter(
+        # `beurteile` statt `gesichter`: dasselbe Ergebnis, aber mit dem Urteil je
+        # Kasten. Ohne das ist „kein Gesicht" nicht von „alle verworfen" zu
+        # unterscheiden -- genau die Frage, die am 16.09.2026 offen blieb.
+        befunde = gesichtsmodul.beurteile(
             aufnahme.feld, aufnahme.pano, aufnahme.erkenner, aufnahme.punkte,
             aufnahme.pano.kamerahoehe(aufnahme.blick_grad),
             blick_grad=aufnahme.blick_grad,
         )
-        if not gefunden:
+        zuletzt["text"] = _gesichtsbefund(befunde)
+        genommen = sorted((b for b in befunde if b.genommen),
+                          key=lambda b: b.distance)
+        if not genommen:
             return None
-        kopf = gefunden[0]
+        kopf = genommen[0]
         return Ziel(kopf.bearing, kopf.distance, f"Gesicht auf {kopf.height:.2f} m")
 
+    finde.befund = lambda: zuletzt["text"]
     return finde
+
+
+def _gesichtsbefund(befunde):
+    """Was der Erkenner in diesem Takt sah — und was die Gegenprobe damit tat.
+
+    Die drei Fälle führen zu verschiedenen Schritten: kein Kasten heisst zu
+    dunkel, zu weit oder das Gesicht liegt ausserhalb der Deckung; alle
+    verworfen heisst, die Geometrie stimmt nicht (`zu tief` ist der häufigste
+    Fall, und dann hockt oder liegt der Mensch); genommen heisst, es lag am
+    Regler oder an einer Schranke.
+    """
+    import collections
+
+    if not befunde:
+        return "kein Kasten vom Erkenner"
+    genommen = sum(1 for b in befunde if b.genommen)
+    if genommen:
+        return f"{len(befunde)} Kästen, {genommen} genommen"
+    gruende = collections.Counter(b.grund for b in befunde if b.grund)
+    liste = ", ".join(f"{anzahl}× {grund}" for grund, anzahl in sorted(gruende.items()))
+    return f"{len(befunde)} Kästen, alle verworfen ({liste})"
 
 
 @dataclass(frozen=True)
@@ -260,12 +301,30 @@ def zuerst(*finder):
                 return ziel
         return None
 
-    # Die Hinweise der Mitglieder wandern mit: sonst verschwände ausgerechnet
-    # beim Staffeln die Auskunft, warum ein Finder nie etwas liefert.
+    # Hinweise UND Befunde der Mitglieder wandern mit: sonst verschwände
+    # ausgerechnet beim Staffeln die Auskunft, warum ein Finder nichts liefert --
+    # und dort ist die Frage erst recht offen, welcher der beiden schwieg.
     finde.hinweis = "\n".join(
         h for h in (getattr(einer, "hinweis", "") for einer in finder) if h
     )
+    finde.befund = lambda: " · ".join(b for b in (_befund(e) for e in finder) if b)
     return finde
+
+
+def _befund(finder):
+    """Was der Finder zuletzt gesehen hat — leer, wenn er nichts dazu sagt.
+
+    Eine Auskunft über den Zustand darf den Zustand nie verändern und erst recht
+    keinen fahrenden Roboter anhalten: ein Finder, der beim Erzählen stolpert,
+    bleibt stumm statt zu werfen.
+    """
+    holen = getattr(finder, "befund", None)
+    if holen is None:
+        return ""
+    try:
+        return str(holen() or "")
+    except Exception:
+        return ""
 
 
 # ---------------------------------------------------------------- Schranken
@@ -413,13 +472,14 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
                 faellig = stille_gemeldet is None or nun - stille_gemeldet >= STILLE_TAKT_S
                 if seit >= VERLOREN_S and faellig:
                     stille_gemeldet = nun
-                    melde(_stille(je_gesehen, seit))
+                    befund = _befund(finder)
+                    melde(_stille(je_gesehen, seit) + (f"  ({befund})" if befund else ""))
                     if not hinweis_gesagt:
                         hinweis_gesagt = True
                         hinweis = getattr(finder, "hinweis", "")
                         if hinweis:
                             melde(hinweis)
-                    fehlschlag = _notiere_stille(spot, seit, je_gesehen)
+                    fehlschlag = _notiere_stille(spot, seit, je_gesehen, befund)
                     if fehlschlag and not schreibfehler_gemeldet:
                         schreibfehler_gemeldet = True
                         melde(f"Die Stille liess sich nicht aufzeichnen: {fehlschlag}")
@@ -475,7 +535,7 @@ def _stille(je_gesehen, seit_s):
     return f"Noch kein Ziel nach {seit_s:.0f} s — Spot wartet."
 
 
-def _notiere_stille(spot, seit_s, je_gesehen):
+def _notiere_stille(spot, seit_s, je_gesehen, befund=""):
     """Die Stille in die Aufzeichnung — EINE Zeile statt 135 gleicher Abfragen.
 
     Am 16.09.2026 liess sich nur deshalb klären, was los war, weil
@@ -496,7 +556,7 @@ def _notiere_stille(spot, seit_s, je_gesehen):
         return ""
     try:
         recorder.event("kein_ziel", seit_s=round(float(seit_s), 1),
-                       je_gesehen=bool(je_gesehen))
+                       je_gesehen=bool(je_gesehen), befund=str(befund))
     except Exception as fehler:
         return f"{type(fehler).__name__}: {fehler}"
     return ""
