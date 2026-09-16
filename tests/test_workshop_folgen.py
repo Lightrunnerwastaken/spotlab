@@ -327,15 +327,56 @@ def test_die_stille_steht_auch_in_der_aufzeichnung():
     assert ohne_ziel[0]["seit_s"] >= folgen.VERLOREN_S
 
 
-def test_eine_fehlende_aufzeichnung_stoert_die_schleife_nicht():
-    """`folge()` laeuft auch aus einem Skript ohne Recorder -- und ein Schreiber,
-    der wirft, darf einen autonom fahrenden Roboter nicht anhalten."""
+def test_die_stille_kommt_beim_ECHTEN_schreiber_an(tmp_path):
+    """Am 16.09.2026 stand `kein_ziel` in KEINEM Lauf, obwohl der Code lief: die
+    Aufzeichnung fuehrt eine Erlaubnisliste (`record/events.py`), und die Art war
+    nicht darin. `event()` warf, und der Auffangblock verschluckte es.
+
+    Die Attrappe oben nahm jede Art an -- sie war grosszuegiger als die Sache
+    selbst und konnte den Fehler deshalb nicht sehen. Dieser Test nimmt den
+    echten Schreiber.
+    """
+    import json
+
+    from spotlab.record.run import RunRecorder
+
+    spot = _Spot()
+    spot.recorder = RunRecorder(tmp_path / "runs", None, backend="dryrun")
+    gemeldet = []
+    folgen.folge(spot, lambda _s: None, melde=gemeldet.append, jetzt=_uhr(),
+                 schlaf=lambda _s: None, laeuft=_laeuft_takte(6))
+
+    zeilen = [json.loads(z) for z in
+              (spot.recorder.dir / "ereignisse.jsonl").read_text(encoding="utf-8").splitlines()
+              if z.strip()]
+    ohne_ziel = [z for z in zeilen if z["art"] == "kein_ziel"]
+    assert ohne_ziel, "die Stille steht wirklich im Lauf, nicht nur in der Attrappe"
+    assert ohne_ziel[0]["daten"]["je_gesehen"] is False
+    assert not [m for m in gemeldet if "nicht aufzeichnen" in m], "und zwar ohne Klage"
+
+
+def test_ein_schreiber_der_wirft_haelt_den_roboter_nicht_an_und_sagt_es(tmp_path):
+    """Beides zusammen. Anhalten waere schlimmer als der fehlende Eintrag -- aber
+    STILL scheitern ist genau der Fehler, den dieser Weg beheben soll."""
     class _Kaputt:
         def event(self, art, **daten):
             raise RuntimeError("Platte voll")
 
     spot = _Spot()
     spot.recorder = _Kaputt()
+    gemeldet = []
+    folgen.folge(spot, lambda _s: None, melde=gemeldet.append,
+                 jetzt=_uhr(folgen.STILLE_TAKT_S), schlaf=lambda _s: None,
+                 laeuft=_laeuft_takte(12))
+    assert spot.kommandos == ["stop"], "der Lauf geht weiter"
+    klagen = [m for m in gemeldet if "nicht aufzeichnen" in m]
+    assert len(klagen) == 1, "einmal gesagt, nicht bei jeder Stille"
+    assert "Platte voll" in klagen[0]
+
+
+def test_ohne_aufzeichnung_laeuft_es_auch():
+    """`folge()` laeuft auch aus einem Skript ohne Recorder."""
+    spot = _Spot()
     folgen.folge(spot, lambda _s: None, melde=lambda _t: None, jetzt=_uhr(),
                  schlaf=lambda _s: None, laeuft=_laeuft_takte(6))
     assert spot.kommandos == ["stop"]

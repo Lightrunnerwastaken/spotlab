@@ -395,6 +395,7 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
     je_gesehen = False              # hatte er ueberhaupt je ein Ziel?
     stille_gemeldet = None          # wann zuletzt ueber die Stille berichtet wurde
     hinweis_gesagt = False
+    schreibfehler_gemeldet = False
     letzter_grund = ""
     kopfraum = (True, "")
     kopfraum_geprueft = None
@@ -418,7 +419,10 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
                         hinweis = getattr(finder, "hinweis", "")
                         if hinweis:
                             melde(hinweis)
-                    _notiere_stille(spot, seit, je_gesehen)
+                    fehlschlag = _notiere_stille(spot, seit, je_gesehen)
+                    if fehlschlag and not schreibfehler_gemeldet:
+                        schreibfehler_gemeldet = True
+                        melde(f"Die Stille liess sich nicht aufzeichnen: {fehlschlag}")
                 schlaf(takt_s)
                 continue
 
@@ -476,17 +480,26 @@ def _notiere_stille(spot, seit_s, je_gesehen):
 
     Am 16.09.2026 liess sich nur deshalb klären, was los war, weil
     `ereignisse.jsonl` 135 erfolglose `world_objects` enthielt — die musste man
-    erst zählen. Ein Schreiber darf einen autonom fahrenden Roboter dabei nie
-    anhalten: ohne Eintrag fährt man weiter, ohne Regler nicht.
+    erst zählen.
+
+    Gibt den FEHLERTEXT zurück, wenn das Schreiben scheitert, statt ihn zu
+    verschlucken. Genau das war hier schon einmal falsch: die Art `kein_ziel`
+    fehlte in der Erlaubnisliste (`record/events.py`), `event()` warf, ein
+    `except Exception: pass` schluckte es — und in keinem einzigen Lauf stand
+    eine Zeile, während die Tests grün blieben, weil ihre Attrappe jede Art
+    annahm. Anhalten darf ein Schreiber den Roboter trotzdem nie: ohne Eintrag
+    fährt man weiter, ohne Regler nicht. Also melden statt werfen, und der
+    Aufrufer sagt es einmal.
     """
     recorder = getattr(spot, "recorder", None)
     if recorder is None:
-        return
+        return ""
     try:
         recorder.event("kein_ziel", seit_s=round(float(seit_s), 1),
                        je_gesehen=bool(je_gesehen))
-    except Exception:
-        pass
+    except Exception as fehler:
+        return f"{type(fehler).__name__}: {fehler}"
+    return ""
 
 
 def _sicher(finder, spot):

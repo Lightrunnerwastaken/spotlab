@@ -16,6 +16,7 @@ ARTEN = frozenset(
         "fehler",
         "lease_verloren",
         "lease_übernommen",
+        "kein_ziel",        # Folgemodus: der Finder liefert nichts (mit seit_s, je_gesehen)
         "angestossen",      # Übungsraum: Spot steht an einer Wand an (nur die Flanke)
         "treppe_verweigert",  # Übungsraum: Treppe falsch herum (Nase bergab), nur die Flanke
         "ende",
