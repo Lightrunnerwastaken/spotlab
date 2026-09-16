@@ -78,6 +78,8 @@ class RekonstruktionsDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Raum aus einer Karte rekonstruieren")
         self.ergebnis = None
+        self._eingabe_revision = 0
+        self._auftrag_revision = None
         self._arbeiter = None
         self._arbeitsordner = arbeitsordner
 
@@ -141,8 +143,34 @@ class RekonstruktionsDialog(QDialog):
         aussen.addWidget(self.status)
         aussen.addWidget(self.bericht, 1)
         aussen.addWidget(self.knoepfe)
+        for feld in (self.band_von, self.band_bis, self.zelle, self.luecke,
+                     self.min_laenge, self.schlauch):
+            feld.valueChanged.connect(self._entwerte)
+        for feld in (self.ausrichten, self.sichtpruefung, self.begradigen):
+            feld.toggled.connect(self._entwerte)
+        self.ordner_feld.textChanged.connect(self._entwerte)
         if self._karten:
             self._karte_gewaehlt(0)
+
+    def _entwerte(self, *_):
+        self._eingabe_revision += 1
+        self.ergebnis = None
+        self.knoepfe.button(QDialogButtonBox.Ok).setEnabled(False)
+        self.bericht.clear()
+        self.status.setText("Eingaben geändert — Vorschau neu rechnen.")
+
+    def accept(self):
+        if self.ergebnis is not None and not self._rechnet():
+            super().accept()
+
+    def _rechnet(self):
+        return self._arbeiter is not None and self._arbeiter.isRunning()
+
+    def reject(self):
+        if self._rechnet():
+            self.status.setText("Berechnung läuft noch. Danach kann der Dialog geschlossen werden.")
+            return
+        super().reject()
 
     @staticmethod
     def _zahl(wert, von, bis, schritt=0.1):
@@ -178,6 +206,8 @@ class RekonstruktionsDialog(QDialog):
             return
         if self._arbeiter is not None and self._arbeiter.isRunning():
             return
+        self._entwerte()
+        self._auftrag_revision = self._eingabe_revision
         self.vorschau_knopf.setEnabled(False)
         self.status.setText("Rechne…")
         self._arbeiter = RekonstruktionsArbeiter(ordner, self.einstellungen(), self)
@@ -187,6 +217,10 @@ class RekonstruktionsDialog(QDialog):
         self._arbeiter.start()
 
     def _fertig(self, ergebnis):
+        self.vorschau_knopf.setEnabled(True)
+        if self._auftrag_revision != self._eingabe_revision:
+            self.status.setText("Eingaben inzwischen geändert — Vorschau neu rechnen.")
+            return
         self.ergebnis = ergebnis
         self.bericht.setPlainText(_berichtstext(ergebnis.bericht))
         b = ergebnis.bericht
@@ -198,11 +232,15 @@ class RekonstruktionsDialog(QDialog):
         self.ergebnis_da.emit(ergebnis)
 
     def _fehler(self, text):
+        self.ergebnis = None
+        self.knoepfe.button(QDialogButtonBox.Ok).setEnabled(False)
+        self.bericht.clear()
         self.status.setText(text)
         self.vorschau_knopf.setEnabled(True)
 
     def closeEvent(self, ereignis):
         # Ein laufender Arbeiter darf nicht mit dem Dialog sterben (siehe CLAUDE.md, JediWorker).
-        if self._arbeiter is not None and self._arbeiter.isRunning():
-            self._arbeiter.wait(30_000)
+        if self._rechnet():
+            ereignis.ignore()
+            return
         super().closeEvent(ereignis)

@@ -708,6 +708,9 @@ class MainWindow(QWidget):
         }.get(antwort, "abbrechen")
 
     def closeEvent(self, ereignis):
+        if not self.ansichten["raumeditor"].darf_verlassen():
+            ereignis.ignore()
+            return
         # Der X-Knopf verwarf Arbeit kommentarlos, obwohl das Schliessen eines
         # einzelnen Reiters längst fragt. Für einen Schüler ist beides derselbe
         # Vorgang — nur dass er beim Fenster mehr verliert.

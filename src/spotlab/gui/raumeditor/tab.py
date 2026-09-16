@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QMessageBox,
     QPushButton,
     QSpinBox,
     QStackedWidget,
@@ -242,6 +243,11 @@ class RaumeditorView(QWidget):
     # ------------------------------------------------------------- Raum
 
     def _setze(self, raum, name, eigen, geaendert, punkte=(), weg=()):
+        if not self.darf_verlassen():
+            return False
+        if self._korrektur_dialog is not None:
+            self._korrektur_dialog.close()
+            self._korrektur_dialog = None
         self._raumname, self._eigen = name, eigen
         self._pauspapier = list(punkte)
         self._weg = list(weg)
@@ -256,6 +262,20 @@ class RaumeditorView(QWidget):
         self.sicht.setze_kandidaten([])
         self.sicht.setze_offen([])
         self._zeige()
+        return True
+
+    def darf_verlassen(self):
+        """Dokumentwechsel und App-Schliessen schuetzen denselben Entwurf."""
+        if not self.steuerung.geaendert:
+            return True
+        wahl = QMessageBox.warning(
+            self, "Ungespeicherter Raum",
+            "Der Raum wurde geändert. Änderungen vor dem Verlassen speichern?",
+            QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel,
+            QMessageBox.Cancel)
+        if wahl == QMessageBox.Save:
+            return self.speichern()
+        return wahl == QMessageBox.Discard
 
     def waehle_raum(self, name):
         if not name:
@@ -284,7 +304,9 @@ class RaumeditorView(QWidget):
 
     def uebernimm_rekonstruktion(self, ergebnis):
         """Das Ergebnis als neuen, ungespeicherten Raum oeffnen -- mit Pauspapier und Weg."""
-        self._setze(ergebnis.raum, "", False, True, ergebnis.pauspapier, getattr(ergebnis, "weg", ()))
+        if not self._setze(ergebnis.raum, "", False, True, ergebnis.pauspapier,
+                          getattr(ergebnis, "weg", ())):
+            return
         hinweise = ergebnis.bericht.get("hinweise") or []
         b = ergebnis.bericht
         self.meldung.emit(
@@ -304,11 +326,21 @@ class RaumeditorView(QWidget):
         dialog = KorrekturDialog(self, self.steuerung.raum, self._weg, self._pauspapier)
         dialog.markiere.connect(self.sicht.setze_markierung)
         dialog.kandidaten.connect(self.sicht.setze_kandidaten)
-        dialog.angewendet.connect(self.uebernimm_korrektur)
+        basis, revision = self.steuerung.raum, self.steuerung.revision
+        dialog.angewendet.connect(
+            lambda korrektur: self._korrektur_fertig(dialog, basis, revision, korrektur))
         dialog.finished.connect(lambda _ergebnis: (self.sicht.setze_markierung([]),
                                                    self.sicht.setze_kandidaten([])))
         self._korrektur_dialog = dialog
         dialog.show()
+
+    def _korrektur_fertig(self, dialog, basis, revision, korrektur):
+        if (dialog is not self._korrektur_dialog or self.steuerung.raum is not basis
+                or self.steuerung.revision != revision):
+            self.meldung.emit("Korrektur nicht übernommen: Der Raum wurde inzwischen geändert. "
+                              "Korrigieren erneut öffnen und die Vorschläge neu prüfen.")
+            return
+        self.uebernimm_korrektur(korrektur)
 
     def uebernimm_korrektur(self, korrektur):
         """Das Ergebnis des Korrigierers als EIN Verlaufsschritt, offene Raender sichtbar."""
@@ -381,6 +413,12 @@ class RaumeditorView(QWidget):
         if any(z in name for z in PFADZEICHEN):
             self.meldung.emit(f"Der Name darf keine Pfadzeichen enthalten ({PFADZEICHEN}).")
             return False
+        if raum_pfad(self._arbeitsordner, name).exists():
+            wahl = QMessageBox.question(
+                self, "Raum ersetzen?", f"Der Raum „{name}“ existiert bereits. Ersetzen?",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if wahl != QMessageBox.Yes:
+                return False
         return self._schreibe(name)
 
     def _schreibe(self, name):
@@ -392,6 +430,9 @@ class RaumeditorView(QWidget):
             raum_speichern(raum, pfad)
             if self._pauspapier or self._weg:
                 pauspapier.schreibe(pauspapier.pfad_zu(pfad), self._pauspapier, weg=self._weg)
+            else:
+                # Sonst laedt ein neuer Raum die Messdaten seines Vorgaengers.
+                pauspapier.pfad_zu(pfad).unlink(missing_ok=True)
         except OSError as fehler:
             self.meldung.emit(f"Speichern nach {pfad} scheiterte: {fehler}")
             return False
@@ -469,7 +510,9 @@ class RaumeditorView(QWidget):
                 anstoesse.append((daten.get("x", 0.0), daten.get("y", 0.0)))
         # Offene Aenderungen gehen vor: das Nachspielen eines Laufs darf die
         # Arbeit des Schuelers nicht ueberschreiben.
-        if name and (name != self._raumname or not self.steuerung.geaendert):
+        if self.steuerung.geaendert:
+            return
+        if name:
             self.waehle_raum(name)
         spur = []
         for satz in _zeilen(ordner / "zustand.jsonl"):
@@ -533,14 +576,14 @@ class RaumeditorView(QWidget):
             return
         self.steuerung.auswahl = frozenset(
             w.data(Qt.UserRole) for w in self.liste.selectedItems()
-        )
+        ) & self.steuerung.auswaehlbare()
         self._zeige()
 
     def _ebene_gewaehlt(self, index):
         if self._ebenen_sperre or index < 0:
             return
         self.steuerung.setze_ebene(self.ebenenwahl.itemData(index))
-        self._zeige(nur_sicht=True)
+        self._zeige()
 
     def _fuelle_ebenen(self):
         from spotlab.welt.hoehe import ebenen

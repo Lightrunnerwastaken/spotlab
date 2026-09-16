@@ -369,10 +369,12 @@ def _abstand_strecke(px, py, x1, y1, x2, y2):
     return math.hypot(px - (x1 + t * dx), py - (y1 + t * dy))
 
 
-def fange_ende(raum, x, y, ausser=None):
+def fange_ende(raum, x, y, ausser=None, erlaubt=None):
     """Der naechste fremde Wandendpunkt innerhalb FANG_M, sonst (x, y) selbst."""
     beste, bester_abstand = (x, y), FANG_M
     for i, wand in enumerate(raum.waende):
+        if erlaubt is not None and ("wand", i) not in erlaubt:
+            continue
         if ausser is not None and ausser == ("wand", i):
             continue
         for ex, ey in ((wand.x1, wand.y1), (wand.x2, wand.y2)):
@@ -385,7 +387,7 @@ def fange_ende(raum, x, y, ausser=None):
 _RANG = {"start": 0, "tag": 1, "block": 2, "sperrzone": 3, "boden": 4, "wand": 5}
 
 
-def treffer(raum, x, y, toleranz=0.1):
+def treffer(raum, x, y, toleranz=0.1, erlaubt=None):
     """Der Schluessel unter dem Zeiger oder None. Das Kleinere liegt oben."""
     kandidaten = []
     d = math.hypot(raum.start[0] - x, raum.start[1] - y)
@@ -412,12 +414,14 @@ def treffer(raum, x, y, toleranz=0.1):
         d = _abstand_strecke(x, y, *wand)
         if d <= toleranz + halbe_dicke:
             kandidaten.append((max(d - halbe_dicke, 0.0), _RANG["wand"], ("wand", i)))
+    if erlaubt is not None:
+        kandidaten = [k for k in kandidaten if k[2] in erlaubt]
     if not kandidaten:
         return None
     return min(kandidaten)[2]
 
 
-def im_rahmen(raum, x1, y1, x2, y2):
+def im_rahmen(raum, x1, y1, x2, y2, erlaubt=None):
     """Alle Elemente, deren Lage im Rechteck liegt."""
     lo_x, hi_x = min(x1, x2), max(x1, x2)
     lo_y, hi_y = min(y1, y2), max(y1, y2)
@@ -429,7 +433,8 @@ def im_rahmen(raum, x1, y1, x2, y2):
     schluessel.append(START)
     return frozenset(
         s for s in schluessel
-        if lo_x <= lage(raum, s)[0] <= hi_x and lo_y <= lage(raum, s)[1] <= hi_y
+        if (erlaubt is None or s in erlaubt)
+        and lo_x <= lage(raum, s)[0] <= hi_x and lo_y <= lage(raum, s)[1] <= hi_y
     )
 
 

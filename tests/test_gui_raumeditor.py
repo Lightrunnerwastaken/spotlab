@@ -260,7 +260,9 @@ def test_die_felder_eines_bodens(qapp):
     assert any("(Podest)" in ansicht.liste.item(i).text() for i in range(ansicht.liste.count()))
 
 
-def test_der_weg_wird_mit_dem_pauspapier_gespeichert_und_geladen(qapp, tmp_path):
+def test_der_weg_wird_mit_dem_pauspapier_gespeichert_und_geladen(qapp, tmp_path, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+
     from spotlab.maps.rekonstruktion import Ergebnis
     from spotlab.welt.raum import raum_laden as _laden
 
@@ -273,6 +275,7 @@ def test_der_weg_wird_mit_dem_pauspapier_gespeichert_und_geladen(qapp, tmp_path)
     assert ansicht._schreibe("wegtest")
     ansicht.neu()
     assert ansicht._weg == []
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a: QMessageBox.Discard)
     ansicht.waehle_raum("wegtest")
     assert ansicht._weg == [(0.0, 0.0, 0.0), (1.0, 0.0, 0.2)] and ansicht._pauspapier == [(1.0, 1.0)]
 

@@ -20,6 +20,7 @@ class Steuerung:
         self.setze_raum(raum)
 
     def setze_raum(self, raum, geaendert=False):
+        self.revision = getattr(self, "revision", 0) + 1
         self.raum = raum
         self.auswahl = frozenset()
         # Die gewaehlte Ebene der 2D-Sicht (None = alle). Neue Elemente landen
@@ -42,6 +43,7 @@ class Steuerung:
         """Eine bestaetigte Aenderung: in den Verlauf, als geaendert merken.
         Auch der Korrigierer uebergibt sein Ergebnis so -- als EINEN Schritt."""
         self.raum = raum
+        self.revision += 1
         self.verlauf.merke(raum)
         self.geaendert = True
 
@@ -58,7 +60,38 @@ class Steuerung:
 
     def setze_ebene(self, wert):
         """Die Ebene der 2D-Sicht: eine Bodenhoehe aus `hoehe.ebenen` oder None (alle)."""
-        self.ebene = None if wert is None else float(wert)
+        neue_ebene = None if wert is None else float(wert)
+        if neue_ebene == self.ebene:
+            return
+        self.ebene = neue_ebene
+        self._beende_geste()
+        self.auswahl &= self.auswaehlbare()
+
+    def auswaehlbare(self):
+        """Derselbe Ebenenbegriff wie beim Zeichnen, auch fuer Fang und Rahmen."""
+        from spotlab.welt.hoehe import auf_ebene, boden_bei
+
+        if self.raum is None:
+            return frozenset()
+        if self.ebene is None:
+            return self.alle()
+        def passt(s):
+            if s == b.START:
+                z, _ = boden_bei(self.raum, *self.raum.start[:2])
+                return abs(z - self.ebene) <= 0.3
+            if s[0] in ("sperrzone", "gelaende"):
+                return True
+            return auf_ebene(b.element(self.raum, s), self.raum, self.ebene)
+        return frozenset(s for s in self.alle() if passt(s))
+
+    def _beende_geste(self):
+        if self.modus.aktiv:
+            self.raum = self.modus.abbruch()
+        elif self._zug is not None and "raum" in self._zug:
+            self.raum = self._zug["raum"]
+        self._zug = None
+        self.kette = None
+        self.rahmen = None
 
     @property
     def _z_neu(self):
@@ -118,7 +151,10 @@ class Steuerung:
             if math.hypot(gx - x, gy - y) <= toleranz:
                 self._zug = {"art": art, "schluessel": s, "raum": self.raum, "von": (x, y)}
                 return
-        s = treffer if treffer is not None else b.treffer(self.raum, x, y, toleranz)
+        erlaubt = self.auswaehlbare()
+        s = treffer if treffer is not None else b.treffer(self.raum, x, y, toleranz, erlaubt)
+        if s not in erlaubt:
+            s = None
         if s is None:
             if not shift:
                 self.auswahl = frozenset()
@@ -133,7 +169,8 @@ class Steuerung:
                      "auswahl": self.auswahl}
 
     def _druecke_wand(self, x, y, ctrl):
-        px, py = b.fange_ende(self.raum, self._rast(x, ctrl), self._rast(y, ctrl))
+        px, py = b.fange_ende(self.raum, self._rast(x, ctrl), self._rast(y, ctrl),
+                            erlaubt=self.auswaehlbare())
         if self.kette is None:
             self.kette = (px, py)
             return
@@ -164,7 +201,8 @@ class Steuerung:
                                      self._rast(dx, ctrl), self._rast(dy, ctrl))
         elif art in ("ende_a", "ende_b"):
             s = z["schluessel"]
-            px, py = b.fange_ende(z["raum"], self._rast(x, ctrl), self._rast(y, ctrl), ausser=s)
+            px, py = b.fange_ende(z["raum"], self._rast(x, ctrl), self._rast(y, ctrl), ausser=s,
+                                erlaubt=self.auswaehlbare())
             fx, fy = ("x1", "y1") if art == "ende_a" else ("x2", "y2")
             self.raum = b.setze_feld(b.setze_feld(z["raum"], s, fx, px), s, fy, py)
         elif art.startswith("ecke"):
@@ -192,7 +230,7 @@ class Steuerung:
             x1, y1, x2, y2 = self.rahmen
             self.rahmen = None
             if abs(x2 - x1) > 0.02 or abs(y2 - y1) > 0.02:
-                neue = b.im_rahmen(self.raum, x1, y1, x2, y2)
+                neue = b.im_rahmen(self.raum, x1, y1, x2, y2, self.auswaehlbare())
                 self.auswahl = (self.auswahl | neue) if shift else neue
             return
         if art in ("block", "boden", "sperrzone"):
@@ -221,6 +259,10 @@ class Steuerung:
         if self.raum is None:
             return False
         name = name.lower()
+        if ctrl and name == "z":
+            return self.rueckgaengig()
+        if ctrl and name == "y":
+            return self.wiederholen()
         if self.modus.aktiv:
             if name in ("return", "enter"):
                 self.uebernimm(self.modus.bestaetige())
@@ -229,16 +271,12 @@ class Steuerung:
                 self.raum = self.modus.abbruch()
                 return True
             return self.modus.taste(name)
-        if ctrl and name == "z":
-            return self.rueckgaengig()
-        if ctrl and name == "y":
-            return self.wiederholen()
         if name == "escape":
             self.kette = None
             self.auswahl = frozenset()
             return True
         if name == "a":
-            self.auswahl = frozenset() if alt else self.alle()
+            self.auswahl = frozenset() if alt else self.auswaehlbare()
             return True
         if not self.auswahl:
             return False
@@ -259,17 +297,21 @@ class Steuerung:
         return False
 
     def rueckgaengig(self):
+        self._beende_geste()
         raum = self.verlauf.zurueck()
         if raum is None:
             return False
         self.raum, self.auswahl, self.geaendert = raum, frozenset(), True
+        self.revision += 1
         return True
 
     def wiederholen(self):
+        self._beende_geste()
         raum = self.verlauf.vor()
         if raum is None:
             return False
         self.raum, self.auswahl, self.geaendert = raum, frozenset(), True
+        self.revision += 1
         return True
 
     # ---------------------------------------------------------- Auskunft
@@ -287,7 +329,9 @@ class Steuerung:
         )
 
     def setze_feld(self, schluessel, feld, wert):
-        self.uebernimm(b.setze_feld(self.raum, schluessel, feld, wert))
+        raum = b.setze_feld(self.raum, schluessel, feld, wert)
+        if raum != self.raum:
+            self.uebernimm(raum)
 
     def griffe(self):
         if self.raum is None or self.modus.aktiv:
