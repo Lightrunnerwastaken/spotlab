@@ -48,6 +48,12 @@ MAX_TEMPO_M_S = 0.5              # zusätzlich zum Deckel aus config.toml
 ANNAEHERUNG = 0.6                # m/s je Meter Abstandsfehler
 MAX_DREHRATE_GRAD = 45.0
 LENKUNG = 1.2                    # Grad/s je Grad Peilung
+# Je Takt hoechstens diesen Anteil der Peilung wegdrehen. Mit dem Tag dauert ein
+# Takt 0.2 s und die Deckelung greift nie; mit dem Gesicht sind es 0.45-0.9 s
+# (vier Bilder plus YuNet), und bei 45 Grad/s drehte Spot je Takt 20-40 Grad --
+# mehr als die Peilung selbst. Lauf 20260916T122739Z: 94 Befehle, wz pendelt
+# zwischen -0.79 und +0.79 rad/s mit 13 Drehsinn-Wechseln, vx fast immer null.
+ANTEIL_JE_TAKT = 0.5
 SCHWENK_GRAD = 40.0              # weiter seitlich: erst drehen, nicht fahren
 FREIRAUM_M = 0.8                 # so viel muss voraus frei sein
 KOPFRAUM_M = 1.0                 # so weit voraus darf nichts über dem Weg hängen
@@ -416,13 +422,21 @@ def zone_voraus(spot, raum, strecke=ZONE_VORAUS_M):
 # ------------------------------------------------------------------ Regler
 
 
-def befehl(ziel, wunsch=WUNSCH_ABSTAND_M, mindest=MIN_ABSTAND_M, toleranz=TOLERANZ_M):
+def befehl(ziel, wunsch=WUNSCH_ABSTAND_M, mindest=MIN_ABSTAND_M, toleranz=TOLERANZ_M,
+           takt_s=None):
     """(vx, wz) aus Peilung und Abstand — ohne Roboter prüfbar.
 
     Rückwärts gibt es nicht: nach hinten sieht Spot nichts. Ist der Mensch zu
     nah, bleibt er stehen und dreht sich höchstens mit.
+
+    `takt_s` ist die Zeit, die Spot bis zum nächsten Blick blind dreht. Wer 0.6 s
+    nicht hinschaut, darf in der Zeit nicht weiter drehen, als das Ziel entfernt
+    ist — sonst liegt es danach auf der anderen Seite, und er dreht zurück.
     """
-    wz = math.radians(max(-MAX_DREHRATE_GRAD, min(MAX_DREHRATE_GRAD, LENKUNG * ziel.bearing)))
+    drehrate = min(MAX_DREHRATE_GRAD, abs(LENKUNG * ziel.bearing))
+    if takt_s:
+        drehrate = min(drehrate, ANTEIL_JE_TAKT * abs(ziel.bearing) / float(takt_s))
+    wz = math.radians(math.copysign(drehrate, ziel.bearing)) if ziel.bearing else 0.0
     if abs(ziel.bearing) > SCHWENK_GRAD:
         return 0.0, wz                       # erst die Nase hin, dann gehen
     fehler = ziel.distance - wunsch
@@ -480,14 +494,26 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
     kopfraum = (True, "")
     kopfraum_geprueft = None
     faehrt = False
+    takt_beginn = None          # wann der letzte Takt begann: so lange dreht Spot blind
 
     try:
         while laeuft():
+            nun = jetzt()
+            takt_dauer = max(takt_s, nun - takt_beginn) if takt_beginn is not None else takt_s
+            takt_beginn = nun
             ziel = _sicher(finder, spot)
             if ziel is None:
                 if faehrt:
                     spot.stop()
                     faehrt = False
+                if blick_grad:
+                    # SUCHHALTUNG: die Neigung muss VOR dem ersten Ziel da sein.
+                    # Bis zum 16.09.2026 kam sie nur mit einem Fahrbefehl, und den
+                    # gab es nur mit Ziel -- mit flacher Nase sah Spot keinen
+                    # aufrecht stehenden Menschen und fand deshalb nie eines
+                    # (drei Laeufe, null Fahrbefehle, Nick null). Tempo null:
+                    # er steht, das Kommando verfaellt wie jedes andere.
+                    spot.walk(vx=0.0, vy=0.0, wz=0.0, stop=False, nick_grad=nick)
                 nun = jetzt()
                 seit = nun - zuletzt_gesehen
                 faellig = stille_gemeldet is None or nun - stille_gemeldet >= STILLE_TAKT_S
@@ -512,7 +538,7 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
                 melde(f"{ziel.name} {'wieder da' if je_gesehen else 'gefunden'}.")
             zuletzt_gesehen, stille_gemeldet = jetzt(), None
             je_gesehen = True
-            vx, wz = befehl(ziel)
+            vx, wz = befehl(ziel, takt_s=takt_dauer)
 
             if vx > 0.0:
                 if kopfraum_geprueft is None or jetzt() - kopfraum_geprueft >= kopfraum_takt_s:

@@ -963,6 +963,21 @@ RECHTECK, ohne Aufhellung — Folgemodus: Grau, ALLES, aufgehellt) und vier Zwis
   der zweite ging durch, `doctor` meldete die Uhren synchron. Die Meldung behauptet die
   Uhr, ohne sie geprüft zu haben (A3-Verwandter).
 
+**Nachtrag 16.09.2026, erste Läufe mit `BLICK_GRAD = 15`.** Zwei Regelfehler, beide aus
+`ereignisse.jsonl` belegt und behoben:
+- **Suchhaltung fehlte.** Die Neigung kam nur mit einem Fahrbefehl, der Fahrbefehl nur mit
+  Ziel — drei Läufe mit null Fahrbefehlen und Nick null, weil Spot mit flacher Nase keinen
+  aufrecht stehenden Menschen sah. Jetzt hält `folge()` die Nase auch ohne Ziel (Tempo
+  null), `blick_grad=0` bleibt der alte Weg. Ein kauernder Mensch wird dabei weiterhin
+  `zu tief` verworfen (Kopf unter 1.0 m) — das ist die Schienbein-Schranke und bleibt.
+- **Übersteuern.** Lauf `20260916T122739Z`: 94 Fahrbefehle, `wz` zwischen −0.79 und +0.79
+  rad/s mit 13 Drehsinn-Wechseln, `vx` fast immer null. Mit dem Gesicht dauert ein Takt
+  0.45–0.9 s; bei 45°/s drehte Spot je Takt 20–40°, mehr als die Peilung, und schoss über
+  die Nase hinaus. `befehl()` dreht je Takt jetzt höchstens die halbe Peilung
+  (`ANTEIL_JE_TAKT`), gemessen an der wirklichen Taktdauer; mit dem Tag (0.2 s) greift die
+  Deckelung nie. **Am Gerät zu prüfen:** Spot hält die Nase im Stehen oben, ein aufrecht
+  stehender Mensch auf 1.5 m wird gefunden, und Spot dreht sich ohne Pendeln zu ihm hin.
+
 **Teil 4 — Nickwinkel.** Seit dem 16.09.2026 fährt das Beispiel mit der Vorgabe
 `BLICK_GRAD = 15`; zum Vergleich mit `blick_grad=0` starten. Vorher jemanden mit
 einem Zollstock danebenstellen, um die Körperneigung grob abzulesen.

@@ -733,3 +733,71 @@ def test_die_gesichtsaufnahme_bittet_fuer_die_kameras_um_farbe_nicht_fuer_die_ti
     assert ohne_farbe and set(ohne_farbe[0]) == set(folgen.TIEFE_QUELLEN)
     assert not any(set(q) & set(folgen.TIEFE_QUELLEN) for q in mit_farbe), \
         "die Tiefe NIE in Farbe erbitten"
+
+
+# ---------------------------------- Suchhaltung und Uebersteuern (16.09.2026)
+#
+# Lauf 20260916T122739Z: 94 Fahrbefehle, wz pendelt zwischen -0.79 und +0.79
+# rad/s mit 13 Drehsinn-Wechseln, vx fast immer null. Mit dem Gesichtsfinder
+# dauert ein Takt 0.45-0.9 s (vier Bilder plus YuNet); bei 45 Grad/s dreht Spot
+# je Takt 20-40 Grad -- mehr als die Peilung selbst -- und schiesst ueber die
+# Nase hinaus. Die Laeufe danach: null Fahrbefehle, Nick null. Ohne Ziel gab es
+# keinen Fahrbefehl, ohne Fahrbefehl keine Neigung, ohne Neigung kein Ziel.
+
+
+def test_bei_langsamem_takt_dreht_er_je_takt_hoechstens_die_halbe_peilung():
+    """Wer 0.6 s lang nicht hinschaut, darf in der Zeit nicht weiter drehen, als
+    das Ziel entfernt ist -- sonst liegt es danach auf der anderen Seite."""
+    import math
+
+    _, wz = folgen.befehl(Ziel(20.0, 3.0), takt_s=0.6)
+    assert abs(wz) <= math.radians(0.5 * 20.0 / 0.6) + 1e-9
+    assert wz > 0.0, "die Richtung bleibt"
+
+
+def test_bei_schnellem_takt_bleibt_die_drehrate_wie_bisher():
+    """Das Tag liefert alle 0.2 s -- dort war nichts kaputt, dort aendert sich nichts."""
+    import math
+
+    _, schnell = folgen.befehl(Ziel(20.0, 3.0), takt_s=0.2)
+    _, ohne = folgen.befehl(Ziel(20.0, 3.0))
+    assert schnell == pytest.approx(ohne)
+    _, gross = folgen.befehl(Ziel(180.0, 3.0), takt_s=0.2)
+    assert gross == pytest.approx(math.radians(folgen.MAX_DREHRATE_GRAD)), "der Deckel bleibt"
+
+
+def test_ohne_ziel_haelt_er_die_nase_oben_und_steht():
+    """Die Suchhaltung: die Neigung muss VOR dem ersten Ziel da sein, sonst sieht
+    er mit flacher Nase keinen aufrecht stehenden Menschen und findet nie eines."""
+    spot = _Spot(neigt=True)
+    folgen.folge(spot, lambda _s: None, melde=lambda _t: None,
+                 schlaf=lambda _s: None, laeuft=_laeuft_takte(3))
+    fahrten = [k for k in spot.kommandos if isinstance(k, dict)]
+    assert fahrten, "auch ohne Ziel geht ein Haltungsbefehl raus"
+    assert all(k["vx"] == 0.0 and k["wz"] == 0.0 for k in fahrten), "aber er faehrt nicht"
+    assert all(k["nick_grad"] == -folgen.BLICK_GRAD for k in fahrten)
+    assert spot.kommandos[-1] == "stop", "am Ende haelt er immer"
+
+
+def test_beim_verlieren_haelt_er_sofort_an_und_bleibt_geneigt():
+    plan = iter([Ziel(0.0, 3.0, "Tag 5"), Ziel(0.0, 3.0, "Tag 5"), None, None, None])
+
+    def finde(_spot):
+        return next(plan, None)
+
+    spot = _Spot(neigt=True)
+    folgen.folge(spot, finde, melde=lambda _t: None, schlaf=lambda _s: None,
+                 laeuft=_laeuft_takte(5))
+    k = spot.kommandos
+    erste_null = next(i for i, c in enumerate(k) if isinstance(c, dict) and c["vx"] == 0.0)
+    assert "stop" in k[:erste_null + 1], "beim Verlust erst der Stopp"
+    danach = [c for c in k[erste_null:] if isinstance(c, dict)]
+    assert danach and all(c["vx"] == 0.0 and c["nick_grad"] == -folgen.BLICK_GRAD for c in danach)
+
+
+def test_ohne_neigung_gibt_es_ohne_ziel_keinen_befehl():
+    """Der flache Weg bleibt, wie er war: ohne Ziel kein einziger Fahrbefehl."""
+    spot = _Spot(neigt=True)
+    folgen.folge(spot, lambda _s: None, melde=lambda _t: None,
+                 schlaf=lambda _s: None, laeuft=_laeuft_takte(3), blick_grad=0.0)
+    assert spot.kommandos == ["stop"]

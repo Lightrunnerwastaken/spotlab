@@ -195,7 +195,14 @@ versionsgepinntes Extra `spotlab[sim]`.
   Grösse erst ab 2.3–2.8 m ein Gesicht im Bild, der Folgemodus will aber 1.6 m halten.
   Deshalb ist **`BLICK_GRAD` seit dem 16.09.2026 15 statt 0** (die beiden Sonden, in denen
   jeder Takt ein Gesicht fand, hatten die Nase 25° oben; `blick_grad=0` bleibt der flache
-  Weg für die Hindernisschranke). Deshalb gibt es `zuerst(...)`: Strategien werden
+  Weg für die Hindernisschranke). **Die Neigung ist eine SUCHHALTUNG, kein Fahrzusatz**:
+  `folge()` hält sie auch ohne Ziel (Tempo null), denn die ersten Läufe mit 15° zeigten null
+  Fahrbefehle und Nick null — die Neigung kam nur mit Fahrbefehl, der Fahrbefehl nur mit
+  Ziel, das Ziel nur mit Neigung. **Und die Drehrate hängt am Takt**: mit dem Gesicht dauert
+  ein Takt 0.45–0.9 s, und bei 45°/s drehte Spot je Takt 20–40°, mehr als die Peilung — 94
+  Befehle, `wz` pendelnd ±0.79 rad/s, 13 Drehsinn-Wechsel, `vx` null. `befehl(takt_s=…)`
+  dreht je Takt höchstens die halbe Peilung (`ANTEIL_JE_TAKT`); beim Tag (0.2 s) greift das
+  nie. Deshalb gibt es `zuerst(...)`: Strategien werden
   GESTAFFELT, nicht gewählt. Und deshalb hat `Panorama` zwei Zuschnitte — `RECHTECK` (voll
   gedeckt, 16:9, zum Fahren, reicht 7° hinauf) und `ALLES` (alles Gesehene samt schwarzen
   Ecken, reicht 26° hinauf). Für einen Erkenner ist eine schwarze Ecke kein Problem, ein
