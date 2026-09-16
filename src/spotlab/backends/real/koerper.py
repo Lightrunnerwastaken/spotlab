@@ -67,6 +67,7 @@ class Koerper:
     schulter: tuple              # (x, y) Mitte der Schultern — oder None
     conf: float                  # Sicherheit der Pose
     kasten: tuple                # (x1, y1, x2, y2) über alle sichtbaren Punkte
+    schulterbreite: float = None  # Abstand der Schultern in px — oder None (nur eine sichtbar)
 
 
 @dataclass(frozen=True)
@@ -149,8 +150,14 @@ def koerper_aus_pose(lm, conf, x_versatz=0.0, mindest=MINDESTPRAESENZ):
     def versetzt(p):
         return None if p is None else (p[0] + x_versatz, p[1])
 
+    # Die Schulterbreite trägt der Gestenleser (`gesten.rumpf_ausschnitt`):
+    # sie sagt, wie gross der Mensch im Bild ist, ohne die Tiefe zu fragen.
+    schulterbreite = None
+    if lm[SCHULTER_L, 4] > mindest and lm[SCHULTER_R, 4] > mindest:
+        schulterbreite = float(np.linalg.norm(lm[SCHULTER_L, :2] - lm[SCHULTER_R, :2]))
     return Koerper(versetzt(huefte), versetzt(schulter), float(conf),
-                   (float(x1 + x_versatz), float(y1), float(x2 + x_versatz), float(y2)))
+                   (float(x1 + x_versatz), float(y1), float(x2 + x_versatz), float(y2)),
+                   schulterbreite)
 
 
 def person_aus_pose(lm):

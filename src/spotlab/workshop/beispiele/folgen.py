@@ -13,6 +13,14 @@ klein, das Gesicht nicht. Das Tag geht immer. Fehlt ein Modell oder OpenCV,
 fällt der betroffene Finder aus und die nächste Stufe trägt; warum, steht im
 Protokoll und in der Zeile „Noch kein Ziel".
 
+Zwei HANDZEICHEN versteht er, wenn er deinem Körper folgt: die offene Hand
+(Finger nach oben, Handfläche zu ihm) heisst Halt — er bleibt stehen und schaut
+dich weiter an; der Daumen hoch heisst Weiter. Halte das Zeichen vor der Brust
+oder neben dem Kopf, auf ein bis zwei Meter, etwa zwei Sekunden. Ein Zeichen
+ist kein Fahrbefehl: es nimmt nur weg oder gibt zurück, was das Folgen ohnehin
+tut, und jede Schranke gilt weiter. Fehlen die Handmodelle, sagt er es einmal
+und folgt ohne Zeichen.
+
 Mit `blick_grad` hebt Spot beim Gehen die Nase, damit die Kameras höher
 schauen — fünfzehn Grad holen das Gesicht von zweieinhalb Metern auf gut einen
 Meter herunter. Das ist seit dem 16.09.2026 die Vorgabe: mit flacher Nase sah
@@ -38,10 +46,12 @@ from spotlab.workshop import folgen
 with spotlab.connect() as spot:
     spot.power_on()
     spot.stand()
-    print('Folgen: zeig Spot das Tag und geh los. Stopp beendet.')
+    print('Folgen: stell dich vor Spot und geh los. Offene Hand = Halt, Daumen hoch = Weiter. Stopp beendet.')
+    staffel = folgen.zuerst(folgen.koerper_finder(), folgen.gesicht_finder(), folgen.tag_finder())
     folgen.folge(
         spot,
-        folgen.zuerst(folgen.koerper_finder(), folgen.gesicht_finder(), folgen.tag_finder()),
+        staffel,
+        gesten=folgen.gesten_leser(staffel),
         lauf_dir=spot.recorder.dir,
     )
     spot.sit()

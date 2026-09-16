@@ -271,6 +271,26 @@ versionsgepinntes Extra `spotlab[sim]`.
   `bildaufnahme` (Panorama + Punkte, ohne YuNet) ist die gemeinsame Grundlage beider Finder:
   ein fehlendes Gesichtsmodell darf den Körper-Weg nicht mitreissen. Die Zoo-Klassen wollen
   BGR mit drei Kanälen — Grau wird verdreifacht, das RGB-Panorama gedreht.
+- **Handzeichen gibt es nur beim gefolgten Körper, und ein Zeichen ist kein Fahrbefehl.**
+  `backends/real/gesten.py` (MediaPipe-Handfläche und -Handpose aus dem Zoo, ONNX über
+  `cv2.dnn`) und `folgen.gesten_leser(finder)`: offene Hand = Halt, Daumen hoch = Weiter.
+  Gemessen am 16.09.2026 über dieselben 510 Panoramen: auf dem GANZEN Bild fand die Handpose
+  null Hände (eine Hand auf 2 m ist bei 192 px Eingabe fünf Pixel), auf drei Kacheln zwei, im
+  Rumpf-Ausschnitt um den gefundenen Körper 31 — deshalb hängt der Leser an der `Sicht` des
+  Körper-Finders (`finde.letzte()`, von `zuerst()` durchgereicht) und nimmt dessen Bild aus
+  demselben Takt, ohne zweiten Kameraabruf; Lesung 45 + 18 ms. **Drei Regeln gegen erfundene
+  Zeichen**, alle gemessen: die offene Hand muss AUFRECHT stehen und der Daumen nach OBEN zeigen
+  (von 31 natürlichen Händen — hängend, zwischen den Knien, auf dem Tablet — hatten fünf alle
+  Finger gestreckt, aber alle 31 die Spitzen unter dem Gelenk; ohne die Richtungsregel wären
+  das fünf falsche Halt), ein Zeichen zählt erst nach `GESTEN_TAKTE` Lesungen hintereinander
+  und dann EINMAL (`gesten.Entprellung`), und dieselbe Sicht wird nie zweimal gelesen (die
+  Staffel fand vorher ein Tag → der Körper-Finder lief nicht → altes Bild). In `folge()` nimmt
+  „halt" nur weg, was das Folgen tut (vx = wz = 0, die Nase bleibt auf dem Menschen), „weiter"
+  gibt es zurück — ohne Ziel steht er trotzdem, und jede Schranke gilt danach wie vorher. Fehlen
+  die Modelle (`SpotlabError` beim ersten Lesen), sagt er es einmal und folgt ohne Zeichen; das
+  Ereignis `geste` steht in `ARTEN` und wird gegen den echten `RunRecorder` geprüft. **Am Gerät
+  noch nicht gezeigt** — die Regel ist nur GEGEN natürliche Hände gemessen, nie FÜR ein Zeichen
+  (A34 Teil 3).
 - **Jede Schranke im Folgemodus ist fail-closed, und sie gelten alle gleichzeitig.** Wer
   ihre Daten nicht lesen kann, verbietet die Fahrt: ein unlesbares Hindernisgitter und ein
   unlesbares Tiefenbild heissen „stehen bleiben", nicht „weiterfahren". Dazu: näher als

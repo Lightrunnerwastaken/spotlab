@@ -80,6 +80,15 @@ def test_ein_versatz_verschiebt_alles_in_bildkoordinaten():
     assert k.huefte[0] == pytest.approx(577.0) and k.schulter[0] == pytest.approx(577.0)
 
 
+def test_die_schulterbreite_kommt_aus_beiden_schultern():
+    """Der Gestenleser schneidet den Rumpf in Schulterbreiten aus (`gesten.rumpf_ausschnitt`)."""
+    k = koerper.koerper_aus_pose(_landmarken((90, 400), (110, 400), (60, 250), (140, 250)), 0.9)
+    assert k.schulterbreite == pytest.approx(80.0)
+    lm = _landmarken((90, 400), (110, 400), (60, 250), (140, 250))
+    lm[koerper.SCHULTER_R, 4] = 0.1
+    assert koerper.koerper_aus_pose(lm, 0.9).schulterbreite is None, "eine Schulter allein: keine Breite"
+
+
 def test_ohne_huefte_und_schulter_ist_es_kein_koerper():
     lm = _landmarken((100.0, 400.0), (140.0, 400.0), (90.0, 200.0), (150.0, 200.0), praesenz=0.2)
     assert koerper.koerper_aus_pose(lm, conf=0.9) is None

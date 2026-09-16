@@ -36,6 +36,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from spotlab.errors import SpotlabError
 from spotlab.record.run import STOPP_DATEI
 from spotlab.workshop.beispiele import ORDNER
 
@@ -109,6 +110,16 @@ NICK_SCHRITT_GRAD = 3.0
 TOTBAND_GRAD = 2.0
 ZU_HOCH_GRAD = 4.0
 
+# Handzeichen (`gesten_leser`): gelesen wird nur beim gefolgten Koerper, jeden
+# `GESTEN_JEDER_TAKT`-ten Takt, in dem es einen gibt -- eine Lesung kostet rund
+# 65 ms (Handflaeche 45, Handpose 18, gemessen am 16.09.2026), ein Koerper-Takt
+# mit Spur rund 60 ms. Ein Zeichen zaehlt erst nach `GESTEN_TAKTE` Lesungen
+# hintereinander: bei einem halben Takt-Sekunde sind das zwei bis drei Sekunden
+# gehaltene Hand. Ein erfundenes Halt haelt den Roboter an, ein erfundenes
+# Weiter laesst ihn losgehen -- beides ist schlimmer als ein uebersehenes.
+GESTEN_JEDER_TAKT = 2
+GESTEN_TAKTE = 3
+
 
 @dataclass(frozen=True)
 class Ziel:
@@ -119,6 +130,19 @@ class Ziel:
     # nur beim Gesicht gesetzt. Das ist, was oben aus dem Bild laeuft, und
     # danach regelt `folge()` die Nase. Ein Tag hat kein "im Bild"-Problem.
     bild_oben: float = None
+
+
+@dataclass(frozen=True)
+class Sicht:
+    """Was der Koerper-Finder in seinem letzten Takt sah -- fuer den Gestenleser.
+
+    `nummer` zaehlt die Takte des Finders: wer dieselbe Sicht zweimal bekommt,
+    liest ein altes Bild und darf daraus keine Geste zaehlen.
+    """
+
+    nummer: int
+    aufnahme: object             # die `Gesichtsaufnahme` des Takts (Feld, Panorama, Punkte)
+    koerper: object              # der GENOMMENE `Koerper` -- der Mensch, dem Spot folgt
 
 
 def skript_in(arbeitsordner):
@@ -204,9 +228,13 @@ def koerper_finder(ordner=None, quellen=GESICHT_QUELLEN, tiefe_quellen=TIEFE_QUE
     `aufnahme_holen` und `koerper_holen` sind die Testtüren; ohne sie kommen
     Bilder aus `bildaufnahme` (ohne YuNet) und Körper aus `Koerpererkenner`,
     einer je Lauf, mit Spur.
+
+    `finde.letzte()` ist die `Sicht` des letzten Takts (Bild und genommener
+    Körper) — oder None, wenn er keinen nahm. Daran hängt `gesten_leser`: die
+    Hand wird im Rumpf-Ausschnitt des Menschen gelesen, dem Spot folgt.
     """
     gemerkt = {}
-    zuletzt = {"text": ""}
+    zuletzt = {"text": "", "nummer": 0, "sicht": None}
     erkenner = {}
 
     def holen_vorgabe(feld):
@@ -223,24 +251,32 @@ def koerper_finder(ordner=None, quellen=GESICHT_QUELLEN, tiefe_quellen=TIEFE_QUE
     def finde(spot):
         from spotlab.backends.real import koerper as koerpermodul
 
+        # Die Sicht faellt ZUERST: ein Takt, der scheitert, darf kein altes Bild
+        # als aktuelles stehen lassen.
+        zuletzt["nummer"] += 1
+        zuletzt["sicht"] = None
         aufnahme = aufnahme_holen(spot, gemerkt)
         if aufnahme is None:
             zuletzt["text"] = "keine Bilder (Kamera oder Tiefe fehlt)"
             return None
+        koerper_liste = holen(aufnahme.feld)
         befunde = koerpermodul.beurteile(
-            holen(aufnahme.feld), aufnahme.pano, aufnahme.punkte,
+            koerper_liste, aufnahme.pano, aufnahme.punkte,
             aufnahme.pano.kamerahoehe(aufnahme.blick_grad), blick_grad=aufnahme.blick_grad,
         )
         zuletzt["text"] = _koerperbefund(befunde)
-        genommen = sorted((b for b in befunde if b.genommen), key=lambda b: b.distance)
+        genommen = sorted(((b, k) for b, k in zip(befunde, koerper_liste) if b.genommen),
+                          key=lambda paar: paar[0].distance)
         if not genommen:
             return None
-        b = genommen[0]
+        b, k = genommen[0]
+        zuletzt["sicht"] = Sicht(zuletzt["nummer"], aufnahme, k)
         teil = "Hüfte" if b.punkt == "huefte" else "Schulter"
         return Ziel(b.bearing, b.distance, f"Körper, {teil} auf {b.height:.2f} m",
                     bild_oben=b.bild_oben)
 
     finde.befund = lambda: zuletzt["text"]
+    finde.letzte = lambda: zuletzt["sicht"]
     return finde
 
 
@@ -461,6 +497,9 @@ def zuerst(*finder):
         h for h in (getattr(einer, "hinweis", "") for einer in finder) if h
     )
     finde.befund = lambda: " · ".join(b for b in (_befund(e) for e in finder) if b)
+    # Und die Sicht des Koerper-Finders, damit `gesten_leser(staffel)` geht.
+    mit_sicht = [einer for einer in finder if callable(getattr(einer, "letzte", None))]
+    finde.letzte = lambda: next((s for s in (e.letzte() for e in mit_sicht) if s is not None), None)
     return finde
 
 
@@ -478,6 +517,69 @@ def _befund(finder):
         return str(holen() or "")
     except Exception:
         return ""
+
+
+# ------------------------------------------------------------ Handzeichen
+
+
+def gesten_leser(finder, ordner=None, haende_holen=None, jeder=GESTEN_JEDER_TAKT,
+                 takte=GESTEN_TAKTE):
+    """Ein Leser `lies(spot) -> "halt" | "weiter" | None` für `folge(gesten=…)`.
+
+    Er hängt am KÖRPER-Finder (oder einer Staffel, die einen enthält): gelesen
+    wird die Hand im Rumpf-Ausschnitt des Menschen, dem Spot gerade folgt —
+    aus dem Bild, das der Finder in diesem Takt schon geholt hat, ohne zweiten
+    Kameraabruf. Gemessen am 16.09.2026 über 510 Panoramen: auf dem ganzen
+    Bild fand die Handpose keine Hand, im Rumpf-Ausschnitt 31. Und nur dort
+    ist die Frage sinnvoll — die Geste eines Zuschauers zählt nicht.
+
+    Drei Regeln, alle gegen erfundene Zeichen: eine Sicht wird nur EINMAL
+    gelesen (der Finder lief nicht, weil ein Tag vorher gewann → kein altes
+    Bild zweimal); gelesen wird jeden `jeder`-ten Takt mit Körper, die
+    übersprungenen zählen nicht; ein Takt OHNE Körper setzt die Zählung
+    zurück. Ein Zeichen kommt erst nach `takte` Lesungen hintereinander, und
+    dann genau einmal (`gesten.Entprellung`).
+
+    `haende_holen(feld, ausschnitt)` ist die Testtür; ohne sie wird der
+    `Handerkenner` beim ersten Lesen gebaut — fehlen die Modelle, kommt dort
+    ein `SpotlabError`, und `folge()` sagt es einmal und folgt ohne Zeichen.
+    """
+    from spotlab.backends.real import gesten as gestenmodul
+
+    letzte = getattr(finder, "letzte", None)
+    if not callable(letzte):
+        raise ValueError("gesten_leser() braucht den Körper-Finder (oder eine Staffel damit): "
+                         "nur dort gibt es eine Sicht, in der die Hand zu lesen ist.")
+    erkenner = {}
+    stand = {"gelesen": 0, "takte": 0}
+    entprellung = gestenmodul.Entprellung(takte)
+
+    def holen_vorgabe(feld, ausschnitt):
+        if "erkenner" not in erkenner:
+            erkenner["erkenner"] = gestenmodul.Handerkenner(ordner=ordner)
+        return erkenner["erkenner"].finde(feld, ausschnitt=ausschnitt)
+
+    holen = haende_holen or holen_vorgabe
+
+    def lies(spot):
+        sicht = letzte()
+        if sicht is None:
+            entprellung.naechste(None)          # kein Koerper: von vorn
+            return None
+        if sicht.nummer == stand["gelesen"]:
+            return None                         # dasselbe Bild schon gelesen
+        stand["gelesen"] = sicht.nummer
+        stand["takte"] += 1
+        if stand["takte"] % max(int(jeder), 1):
+            return None
+        feld = sicht.aufnahme.feld
+        hoehe, breite = feld.shape[:2]
+        ausschnitt = gestenmodul.rumpf_ausschnitt(sicht.koerper, breite=breite, hoehe=hoehe)
+        if ausschnitt is None:
+            return entprellung.naechste(None)
+        return entprellung.naechste(gestenmodul.geste_der_haende(holen(feld, ausschnitt)))
+
+    return lies
 
 
 # ---------------------------------------------------------------- Schranken
@@ -574,8 +676,19 @@ def befehl(ziel, wunsch=WUNSCH_ABSTAND_M, mindest=MIN_ABSTAND_M, toleranz=TOLERA
 
 def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
           schlaf=time.sleep, takt_s=TAKT_S, laeuft=None, lauf_dir=None,
-          kopfraum_takt_s=KOPFRAUM_TAKT_S, blick_grad=BLICK_GRAD, nachlauf_s=NACHLAUF_S):
+          kopfraum_takt_s=KOPFRAUM_TAKT_S, blick_grad=BLICK_GRAD, nachlauf_s=NACHLAUF_S,
+          gesten=None):
     """Die Schleife: Ziel suchen, Abstand halten, bei jeder Schranke stehen bleiben.
+
+    `gesten` ist ein Leser `gesten(spot) -> "halt" | "weiter" | None`
+    (`gesten_leser`). Die offene Hand hält Spot an — er steht, dreht nicht
+    mit, hält aber die Nase auf den Menschen; der Daumen hoch lässt ihn
+    weitergehen. Ein Zeichen ist KEIN Fahrbefehl: es nimmt nur weg oder gibt
+    zurück, was das Folgen ohnehin tut — ohne Ziel steht er trotzdem, und jede
+    Schranke gilt nach einem „weiter" wie vorher. Fehlen die Handmodelle
+    (`SpotlabError` beim ersten Lesen), sagt er es einmal und folgt ohne
+    Zeichen; ein stolpernder Leser wird einmal gemeldet und weiter gefragt.
+    Jedes gezählte Zeichen steht als Ereignis `geste` in der Aufzeichnung.
 
     `blick_grad` hebt die Nase während der Fahrt, damit die Kameras höher
     schauen — positiv, in Grad. Damit kommt ein stehendes Gesicht schon auf
@@ -624,6 +737,8 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
     faehrt = False
     takt_beginn = None          # wann der letzte Takt begann: so lange dreht Spot blind
     letztes_ziel = None         # fuer den Nachlauf: das zuletzt ECHT gesehene Ziel
+    angehalten = False          # per Handzeichen -- bis zum Daumen hoch
+    gesten_stolpern_gemeldet = False
 
     try:
         while laeuft():
@@ -632,6 +747,27 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
             takt_beginn = nun
             ziel = _sicher(finder, spot)
             echt = ziel is not None
+
+            if gesten is not None:
+                # Direkt nach dem Finder: der Leser nimmt dessen Bild aus DIESEM Takt.
+                geste = None
+                try:
+                    geste = gesten(spot)
+                except SpotlabError as fehler:
+                    gesten = None
+                    melde(f"Gesten aus — {fehler} Spot folgt ohne Gesten weiter.")
+                except Exception as fehler:
+                    if not gesten_stolpern_gemeldet:
+                        gesten_stolpern_gemeldet = True
+                        melde(f"Der Gestenleser stolpert ({type(fehler).__name__}: {fehler}) "
+                              f"— Spot folgt weiter, das Zeichen kommt vielleicht später an.")
+                if geste is not None:
+                    angehalten, text = _geste_wirkt(geste, angehalten)
+                    melde(text)
+                    fehlschlag = _notiere_geste(spot, geste, angehalten)
+                    if fehlschlag and not schreibfehler_gemeldet:
+                        schreibfehler_gemeldet = True
+                        melde(f"Die Geste liess sich nicht aufzeichnen: {fehlschlag}")
             if not echt and letztes_ziel is not None and nun - zuletzt_gesehen < nachlauf_s:
                 # Nachlauf: aus dem letzten Ziel weiter -- der Regler rechnet
                 # neu und ALLE Schranken werden unten wie sonst geprueft.
@@ -688,6 +824,10 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
                 # oben raus: so nah, wie er noch sehen kann -- nicht naeher.
                 # Mitdrehen darf er weiter.
                 vx = 0.0
+            if angehalten:
+                # Halt heisst STEHEN, nicht nur nicht vorwaerts. Die Nase bleibt
+                # auf dem Menschen (geregelt oben), damit er den Daumen sieht.
+                vx, wz = 0.0, 0.0
 
             if vx > 0.0:
                 if kopfraum_geprueft is None or jetzt() - kopfraum_geprueft >= kopfraum_takt_s:
@@ -753,6 +893,37 @@ def _notiere_stille(spot, seit_s, je_gesehen, befund=""):
     try:
         recorder.event("kein_ziel", seit_s=round(float(seit_s), 1),
                        je_gesehen=bool(je_gesehen), befund=str(befund))
+    except Exception as fehler:
+        return f"{type(fehler).__name__}: {fehler}"
+    return ""
+
+
+def _geste_wirkt(geste, angehalten):
+    """(angehalten danach, Meldung) -- ein Zeichen nimmt oder gibt nur, was das Folgen tut.
+
+    Ein Zeichen, das nichts aendert, wird trotzdem gesagt: wer die Hand hebt,
+    will wissen, ob Spot sie gesehen hat.
+    """
+    from spotlab.backends.real.gesten import HALT, WEITER
+
+    if geste == HALT:
+        if angehalten:
+            return True, "Offene Hand gesehen — Spot steht schon."
+        return True, "Geste: offene Hand — Halt. Spot steht, bis er einen Daumen hoch sieht."
+    if geste == WEITER:
+        if angehalten:
+            return False, "Geste: Daumen hoch — Spot geht weiter."
+        return False, "Daumen hoch gesehen — Spot war nicht angehalten."
+    return angehalten, f"Unbekannte Geste „{geste}“ — nichts geändert."
+
+
+def _notiere_geste(spot, geste, angehalten):
+    """Das Zeichen in die Aufzeichnung -- Fehlertext zurueck statt werfen, wie `_notiere_stille`."""
+    recorder = getattr(spot, "recorder", None)
+    if recorder is None:
+        return ""
+    try:
+        recorder.event("geste", geste=str(geste), angehalten=bool(angehalten))
     except Exception as fehler:
         return f"{type(fehler).__name__}: {fehler}"
     return ""

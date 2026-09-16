@@ -1034,6 +1034,24 @@ RECHTECK, ohne Aufhellung — Folgemodus: Grau, ALLES, aufgehellt) und vier Zwis
   1.3–2 m genau voraus meldet der Lauf „Körper, Hüfte auf ~1.0 m" statt „kein Kasten"; die
   Nase bleibt dabei nahe 10°, weil die Schulterlinie das Soll ist; und die Taktdauer mit Spur
   (`ereignisse.jsonl`, Abstand der `walk`-Befehle) liegt unter der des Gesichtswegs.
+- **Handzeichen** (`folgen.gesten_leser`, `backends/real/gesten.py`; MediaPipe-Handfläche und
+  -Handpose aus dem Zoo, Modelle `palm_detection_mediapipe_2023feb.onnx` (3 905 734 Bytes,
+  SHA-256 beginnt `78ff51c38496b7fc`) und `handpose_estimation_mediapipe_2023feb.onnx`
+  (4 099 621 Bytes, `db0898ae717b76b0`) in `~/.spotlab/modelle/`). Offline über dieselben 510
+  Panoramen: Handpose auf dem ganzen Bild 0, auf Kacheln 2, im Rumpf-Ausschnitt des Körpers 31
+  (sitzend nah 23 von 40 Takten, stehend auf 2–3 m mit hängenden Armen 3 von 120) — gelesen wird
+  deshalb nur beim gefolgten Körper, jeden zweiten Takt, 45 + 18 ms je Lesung. Die Regel (offene
+  Hand AUFRECHT = Halt, Daumen nach OBEN = Weiter, drei Lesungen hintereinander) ist bisher nur
+  GEGEN die 31 natürlichen Hände gemessen (null Zeichen daraus), nie FÜR ein Zeichen. **Am Gerät
+  zu prüfen, mit dem Beispiel `folgen.py`:** (a) beim Gehen die offene Hand vor der Brust, Finger
+  nach oben, Handfläche zu Spot, auf 1.3–2 m, etwa zwei Sekunden halten — die Zeile „Geste: offene
+  Hand — Halt" muss kommen, Spot steht (kein `vx`, kein `wz` in den `walk`-Befehlen danach) und
+  hält die Nase oben; (b) Daumen hoch, gleich lang — „Geste: Daumen hoch — Spot geht weiter", und
+  er geht wieder; (c) Gegenprobe: eine Minute mit hängenden Armen, dann mit dem Tablet in der
+  Hand gehen — kein `geste`-Ereignis in `ereignisse.jsonl`; (d) Gegenprobe zur Sicherheit: im
+  Halt einen Rucksack in den Weg legen, dann Daumen hoch — Spot bleibt stehen und meldet die
+  Schranke; (e) notieren, ab welchem Abstand das Zeichen nicht mehr ankommt (erwartet: über 2 m,
+  die Hand ist dann unter 30 px), und wie lange man es halten muss.
 
 **Teil 4 — Nickwinkel.** Seit dem 16.09.2026 fährt das Beispiel mit der Vorgabe
 `BLICK_GRAD = 15`; zum Vergleich mit `blick_grad=0` starten. Vorher jemanden mit
