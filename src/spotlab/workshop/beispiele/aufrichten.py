@@ -17,8 +17,9 @@ import math
 import sys
 import time
 
-import spotlab
 from bosdyn.client.robot_command import RobotCommandBuilder
+
+import spotlab
 
 WARTE_S = 40.0
 AUFRECHT_GRAD = 15.0

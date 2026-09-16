@@ -26,9 +26,10 @@ import math
 import sys
 import time
 
-import spotlab
 from bosdyn.api.basic_command_pb2 import BatteryChangePoseCommand
 from bosdyn.client.robot_command import RobotCommandBuilder
+
+import spotlab
 
 RICHTUNG = {
     "links": BatteryChangePoseCommand.Request.HINT_LEFT,
