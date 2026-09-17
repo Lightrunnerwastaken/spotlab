@@ -708,3 +708,20 @@ def test_starte_skript_startet_eine_fremde_datei_ohne_reiter(qapp, tmp_path):
     prozess.wait(timeout=TEST_TIMEOUT_S)
     ansicht.pruefe_lauf_lebt()
     assert not ansicht.laeuft()
+
+
+def test_starte_skript_reicht_argumente_an_das_programm(qapp, tmp_path):
+    """Die Knoepfe „Akku wechseln" und „Aufrichten" sagen dem Paketcode, was er tun
+    soll -- als Argumente, nie ueber eine Shell zusammengesetzt."""
+    ansicht, _ordner, _projekt = _ansicht(tmp_path)
+    skript = tmp_path / "lage.py"
+    skript.write_text("import sys\nprint('ARGV', sys.argv[1:])\n", encoding="utf-8")
+    ansicht.setze_backend("dryrun")
+    gestartet = []
+    ansicht.lauf_gestartet.connect(lambda p, s: gestartet.append((p, s)))
+    ansicht.starte_skript(skript, argumente=["akku", "rechts", "--runs", "x"])
+    prozess = gestartet[0][0]
+    ausgabe = "".join(prozess.stdout)
+    prozess.wait(timeout=TEST_TIMEOUT_S)
+    ansicht.pruefe_lauf_lebt()
+    assert "ARGV ['akku', 'rechts', '--runs', 'x']" in ausgabe

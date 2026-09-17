@@ -1101,3 +1101,102 @@ def test_nach_einem_lauf_wird_die_kartenliste_neu_geholt(qapp, tmp_path, lebendi
     _karte_im_arbeitsordner(tmp_path)           # entsteht waehrend des Laufs
     fenster._lauf_beendet(_zweit_lauf(tmp_path, "lauf_a"))
     assert tab.liste.count() == 1
+
+
+# ------------------------------------------------- Lage: Akku wechseln, Aufrichten
+
+
+def _fenster_mit_arbeitsordner(tmp_path):
+    from dataclasses import replace
+
+    from spotlab.config import Config, Limits
+
+    fenster = MainWindow()
+    fenster._config = replace(fenster._config or Config(ip="", username="", limits=Limits()),
+                              workspace=str(tmp_path))
+    fenster._setze_arbeitsordner(str(tmp_path))
+    return fenster
+
+
+def test_akku_wechseln_startet_paketcode_mit_seite_laufordner_und_uebernahme(qapp, tmp_path, monkeypatch):
+    """Wie beim Gehzeit-Knopf: PAKETCODE, nicht die Kopie im Arbeitsordner -- der Knopf
+    verspricht eine bestimmte Bewegung. Der Lauf landet trotzdem unter Beispiele/runs,
+    wo der Watcher sucht. Backend „real", und der Lauf ist KEINE Fahrt: die Tasten
+    bleiben stumm."""
+    from spotlab.workshop import lage
+
+    fenster = _fenster_mit_arbeitsordner(tmp_path)
+    gestartet = []
+    monkeypatch.setattr(fenster.ansichten["code"], "starte_skript",
+                        lambda pfad, argumente=(): gestartet.append((Path(pfad), list(argumente))))
+    fenster.ansichten["fahren"].lage_gewuenscht.emit("akku", "rechts", True)
+    assert gestartet == [(lage.SKRIPT, ["akku", "rechts", "--runs", str(tmp_path / "Beispiele" / "runs"),
+                                        "--uebernehmen"])]
+    assert fenster.ansichten["code"].gewaehltes_backend() == "real"
+    assert fenster._fahrt_erwartet is False
+
+
+def test_aufrichten_ohne_uebernahme(qapp, tmp_path, monkeypatch):
+    from spotlab.workshop import lage
+
+    fenster = _fenster_mit_arbeitsordner(tmp_path)
+    gestartet = []
+    monkeypatch.setattr(fenster.ansichten["code"], "starte_skript",
+                        lambda pfad, argumente=(): gestartet.append((Path(pfad), list(argumente))))
+    fenster.ansichten["fahren"].lage_gewuenscht.emit("aufrichten", "links", False)
+    assert gestartet == [(lage.SKRIPT, ["aufrichten", "links", "--runs", str(tmp_path / "Beispiele" / "runs")])]
+
+
+def test_lage_waehrend_eines_laufs_wird_abgelehnt(qapp, tmp_path, monkeypatch):
+    """Kein Umschalten wie beim Fahrknopf: ein Roboter, der gerade faehrt, soll sich
+    nicht auf Knopfdruck auf die Seite legen. Erst beenden."""
+    fenster = _fenster_mit_arbeitsordner(tmp_path)
+    gestartet, meldungen = [], []
+    monkeypatch.setattr(fenster.ansichten["code"], "starte_skript",
+                        lambda pfad, argumente=(): gestartet.append(pfad))
+    monkeypatch.setattr(fenster.ansichten["code"], "laeuft", lambda: True)
+    monkeypatch.setattr(fenster, "_melde", meldungen.append)
+    fenster.ansichten["fahren"].lage_gewuenscht.emit("akku", "links", False)
+    assert gestartet == [] and meldungen and "beenden" in meldungen[0]
+
+
+def test_lage_ohne_arbeitsordner_sagt_es(qapp, monkeypatch):
+    fenster = MainWindow()
+    fenster._config = None
+    gestartet, meldungen = [], []
+    monkeypatch.setattr(fenster.ansichten["code"], "starte_skript",
+                        lambda pfad, argumente=(): gestartet.append(pfad))
+    monkeypatch.setattr(fenster, "_melde", meldungen.append)
+    fenster.ansichten["fahren"].lage_gewuenscht.emit("akku", "links", False)
+    assert gestartet == [] and meldungen and "Arbeitsordner" in meldungen[0]
+
+
+def test_akku_wechseln_laeuft_wirklich_als_prozess_und_der_tab_zeigt_das_ende(qapp, tmp_path, monkeypatch):
+    """Die ganze Kette mit dem Trockenlauf an Stelle des Roboters: Knopf, echter
+    Prozess, die Ausgabe erreicht den Tab, der Lauf liegt unter Beispiele/runs, und
+    am Ende sind die Knoepfe wieder frei."""
+    from spotlab.gui import app as app_modul
+    from tests_zeitgrenzen import TEST_TIMEOUT_S
+
+    monkeypatch.setattr(app_modul, "FAHREN_BACKEND", "dryrun")
+    fenster = _fenster_mit_arbeitsordner(tmp_path)
+    fenster._wechsle("fahren")
+    tab = fenster.ansichten["fahren"]
+    tab.lage_gewuenscht.emit("akku", "links", False)
+    assert fenster.ansichten["code"].laeuft(), fenster.statuszeile.text()
+    assert not tab.akku.isEnabled() and not tab.start.isEnabled()
+    prozess = fenster.ansichten["code"]._prozess
+    try:
+        warte_bis(lambda: "Fertig" in tab.lage_zustand.text(),
+                  lambda: f"das Ende des Laufs im Tab (bisher: {tab.lage_zustand.text()!r})",
+                  zwischendurch=qapp.processEvents)
+        prozess.wait(timeout=TEST_TIMEOUT_S)
+        warte_bis(lambda: tab.akku.isEnabled(), "die Knoepfe sind wieder frei",
+                  zwischendurch=qapp.processEvents)
+    finally:
+        if prozess.poll() is None:
+            prozess.kill()
+    laeufe = list((tmp_path / "Beispiele" / "runs").glob("*/lauf.json"))
+    assert laeufe, "der Lauf liegt dort, wo der Watcher sucht"
+    assert json.loads(laeufe[0].read_text(encoding="utf-8"))["backend"] == "dryrun"
+    assert fenster.stapel.currentWidget() is tab, "der Tab bleibt vorne"

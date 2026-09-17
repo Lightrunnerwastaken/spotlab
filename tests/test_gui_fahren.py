@@ -267,6 +267,68 @@ def test_der_handschalter_sagt_woher_der_kasten_kommt_und_was_er_kostet(qapp):
     assert "halt" in text and "weiter" in text
 
 
+# ------------------------------------------------------------- Die Zeile „Lage"
+
+
+def test_die_lage_zeile_hat_richtung_akku_aufrichten_und_lease():
+    ansicht = FahrenView()
+    assert [ansicht.seite.itemData(i) for i in range(ansicht.seite.count())] == ["links", "rechts"]
+    assert ansicht.akku.isEnabled() and ansicht.aufrichten.isEnabled(), "ohne Lauf frei -- die App prueft den Rest"
+    assert not ansicht.uebernehmen.isChecked(), "Uebernahme ist eine bewusste Handlung, nie Vorgabe"
+
+
+def test_die_knoepfe_melden_aktion_seite_und_uebernahme(qapp):
+    ansicht = FahrenView()
+    gewuenscht = []
+    ansicht.lage_gewuenscht.connect(lambda a, s, u: gewuenscht.append((a, s, u)))
+    ansicht.seite.setCurrentIndex(ansicht.seite.findData("rechts"))
+    ansicht.uebernehmen.setChecked(True)
+    ansicht.akku.click()
+    ansicht.uebernehmen.setChecked(False)
+    ansicht.aufrichten.click()
+    assert gewuenscht == [("akku", "rechts", True), ("aufrichten", "rechts", False)]
+
+
+def test_waehrend_der_fahrt_sind_die_lageknoepfe_grau(qapp, tmp_path):
+    ansicht = FahrenView()
+    ansicht.lauf_beginnt(tmp_path, "fahren.py")
+    assert not ansicht.akku.isEnabled() and not ansicht.aufrichten.isEnabled()
+    ansicht.lauf_beendet()
+    assert ansicht.akku.isEnabled() and ansicht.aufrichten.isEnabled()
+
+
+def test_ein_lagelauf_sperrt_die_fahrt_und_zeigt_die_letzte_zeile(qapp):
+    """Der Fortschritt (Rollwinkel) steht dort, wo der Knopf ist -- nicht nur in „Live"."""
+    ansicht = FahrenView()
+    ansicht.lage_beginnt("akku")
+    assert not ansicht.start.isEnabled() and not ansicht.akku.isEnabled() and not ansicht.aufrichten.isEnabled()
+    assert "Akku" in ansicht.lage_zustand.text()
+    ansicht.zeige_lage_zeile("  Rollwinkel -45°\n")
+    assert ansicht.lage_zustand.text() == "Rollwinkel -45°"
+    ansicht.zeige_lage_zeile("   \n")
+    assert ansicht.lage_zustand.text() == "Rollwinkel -45°", "eine Leerzeile loescht nichts"
+    ansicht.zeige_lage_zeile("Fertig: Spot liegt auf der linken Seite.")
+    ansicht.lage_beendet()
+    assert ansicht.start.isEnabled() and ansicht.akku.isEnabled() and ansicht.aufrichten.isEnabled()
+    assert ansicht.lage_zustand.text().startswith("Fertig"), "die letzte Zeile bleibt stehen"
+
+
+def test_zeilen_ohne_lagelauf_werden_nicht_angezeigt(qapp):
+    ansicht = FahrenView()
+    ansicht.zeige_lage_zeile("Rollwinkel -45°")
+    assert ansicht.lage_zustand.text() == ""
+
+
+def test_der_lagehinweis_nennt_die_bedingungen(qapp):
+    """Motoren vorher aus (sonst kein Not-Aus-Eintrag), ebener Boden mit Platz, Lease frei.
+    Und dass die Akku-Haltung das Weiteste ist, was die API rollt."""
+    ansicht = FahrenView()
+    text = (ansicht.akku.toolTip() + " " + ansicht.aufrichten.toolTip() + " "
+            + ansicht.lage_hinweis.text()).lower()
+    for wort in ("motoren", "lease", "eben", "platz", "hand"):
+        assert wort in text, wort
+
+
 def test_der_schalter_sagt_dass_die_tiefenpruefung_fehlt(qapp):
     """Was man sieht, sind die Kaesten des Erkenners -- Fehltreffer eingeschlossen.
     Das muss dort stehen, wo der Schalter ist, nicht nur in der Dokumentation."""

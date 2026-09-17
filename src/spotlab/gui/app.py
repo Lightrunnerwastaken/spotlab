@@ -163,6 +163,7 @@ class MainWindow(QWidget):
         self.ansichten["fahren"].fahrt_gewuenscht.connect(
             lambda: self._starte_fahrt(FAHREN_BACKEND)
         )
+        self.ansichten["fahren"].lage_gewuenscht.connect(self._starte_lage)
         self.ansichten["fahren"].stopp_gewuenscht.connect(
             lambda: self.ansichten["live"].stoppe()
         )
@@ -307,6 +308,7 @@ class MainWindow(QWidget):
         self._leser.zeile.connect(self.ansichten["live"].zeige_ausgabe)
         self._leser.zeile.connect(self.ansichten["code"].zeige_ausgabe)
         self._leser.zeile.connect(self._zeile_ins_uebungsfenster)
+        self._leser.zeile.connect(self.ansichten["fahren"].zeige_lage_zeile)
         # Der Leser weiss als Erster, dass der Prozess weg ist. Ein Skript mit
         # Syntaxfehler stirbt, bevor es ein Lauf-Verzeichnis anlegt — der
         # Watcher meldet dann nie ein Ende, und der Stopp-Knopf im Editor bliebe
@@ -386,6 +388,7 @@ class MainWindow(QWidget):
             self._fahrt_erwartet = False
             self._navigation_erwartet = False
             self._karte_fuer_lauf = None
+            self.ansichten["fahren"].lage_beendet()
             self.ansichten["fahren"].lauf_beendet()
             self.ansichten["karten"].lauf_beendet()
 
@@ -419,6 +422,41 @@ class MainWindow(QWidget):
             self.ansichten["code"].setze_backend("mujoco" if "mujoco" in namen else "sim")
             self._fahrt_erwartet = True
         self.ansichten["code"].starte_skript(fahren.skript_in(arbeitsordner))
+
+    def _starte_lage(self, aktion, seite, uebernehmen):
+        """Akku wechseln und Aufrichten aus dem Tab „Fahren": PAKETCODE (`workshop/lage.py`)
+        ueber den einen Startweg, Backend „real", der Lauf unter Beispiele/runs.
+
+        Paketcode wie beim Gehzeit-Knopf: der Knopf verspricht eine bestimmte
+        Bewegung, und die Kopie im Arbeitsordner kann jemand bearbeitet haben.
+        KEIN Umschalten wie beim Fahrknopf -- ein Roboter, der gerade faehrt, soll
+        sich nicht auf Knopfdruck auf die Seite legen: erst beenden. Und keine
+        Fahrt: `_fahrt_erwartet` bleibt aus, die Tasten bleiben stumm.
+        """
+        from spotlab.workshop import lage
+        from spotlab.workshop.beispiele import ORDNER as BEISPIELORDNER
+        from spotlab.workshop.beispiele import bereitstellen
+
+        if self.ansichten["code"].laeuft():
+            self._melde("Es läuft schon ein Programm — erst beenden, dann die Lage ändern.")
+            return
+        arbeitsordner = self._config.workspace if self._config else None
+        if not arbeitsordner:
+            self._melde("Zum Akkuwechsel oder Aufrichten zuerst einen Arbeitsordner wählen — "
+                        "dort landet der Lauf.")
+            return
+        try:
+            bereitstellen(arbeitsordner)
+        except OSError as fehler:
+            self._melde(f"Beispiele konnten nicht angelegt werden: {fehler}")
+            return
+        runs = Path(arbeitsordner) / BEISPIELORDNER / "runs"
+        argumente = [aktion, seite, "--runs", str(runs)] + (["--uebernehmen"] if uebernehmen else [])
+        self.ansichten["code"].setze_backend(FAHREN_BACKEND)
+        self._fahrt_erwartet = False
+        self.ansichten["code"].starte_skript(lage.SKRIPT, argumente=argumente)
+        if self.ansichten["code"].laeuft():
+            self.ansichten["fahren"].lage_beginnt(aktion)
 
     def _starte_navigation(self):
         """Der Tab „Karten": das mitgelieferte `navigieren.py` am echten Spot, mit der

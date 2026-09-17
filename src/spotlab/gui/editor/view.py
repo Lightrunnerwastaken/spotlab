@@ -502,13 +502,14 @@ class EditorView(QWidget):
         """
         self._starten_oder_stoppen()
 
-    def starte_skript(self, pfad):
+    def starte_skript(self, pfad, argumente=()):
         """Ein mitgeliefertes Programm starten (der Fahrmodus des Raumeditors) --
-        ueber denselben Startweg wie die offene Datei, mit dem gewaehlten Backend."""
+        ueber denselben Startweg wie die offene Datei, mit dem gewaehlten Backend.
+        `argumente` gehen als Liste an den Prozess (Akku wechseln, Aufrichten)."""
         if self._laeuft:
             self.stopp_gewuenscht.emit()
             return
-        self._starte(Path(pfad))
+        self._starte(Path(pfad), argumente)
 
     def _starten_oder_stoppen(self):
         # Am `clicked`-Signal: Qt reicht `checked` herein, deshalb KEIN Parameter hier.
@@ -528,7 +529,7 @@ class EditorView(QWidget):
             return
         self._starte(eintrag.pfad)
 
-    def _starte(self, skript):
+    def _starte(self, skript, argumente=()):
         wo = self.gewaehltes_backend()
         try:
             # nur_trocken NUR beim Uebungsraum: `connect(backend="real")` im
@@ -538,7 +539,7 @@ class EditorView(QWidget):
             # Bedeutung hier zu aendern, waere eine zweite, ungefragte Aenderung.
             prozess = start_script(
                 skript, backend=wo, nur_trocken=(wo in ("sim", "mujoco", "physics")),
-                umgebung=self.zusatz_umgebung(),
+                umgebung=self.zusatz_umgebung(), argumente=[str(a) for a in argumente],
             )
         except SpotlabError as fehler:
             self.meldung.emit(str(fehler))

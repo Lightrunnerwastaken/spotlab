@@ -74,6 +74,28 @@ HAND_WERKZEUG = (
     "Zeichnet die Hände des gefundenen Körpers mit dem gelesenen Zeichen in den Blick — "
     "im Laufprozess. Braucht die Körper- und Handmodelle; fehlen sie, steht es rot im Bild."
 )
+LAGE_HINWEIS = (
+    "Lage — vorher: Motoren am Tablet AUS (sonst kann spotlab seinen Not-Aus nicht eintragen), "
+    "Spot sitzt auf ebenem Boden mit einem Meter Platz auf der Rollseite, das Lease ist frei "
+    "oder wird übernommen. Die Akku-Haltung ist das Weiteste, was die API rollt (etwa 130°); "
+    "ganz auf den Rücken, etwa für den Koffer, kippt man ihn von dort von Hand. "
+    "„Aufrichten“ ist auch der Weg aus der Rückenlage nach dem Auspacken."
+)
+AKKU_WERKZEUG = (
+    "Spot setzt sich, rollt zur gewählten Seite in die Batteriewechsel-Haltung und schaltet "
+    "die Motoren ab. Ein eigener Lauf mit Lease, Not-Aus-Endpunkt und Aufzeichnung, am ECHTEN "
+    "Spot. Nach dem Wechsel startet der Roboter neu — danach „Aufrichten“. "
+    "Motoren vorher aus, ebener Boden, Platz, Lease frei oder übernommen."
+)
+AUFRICHTEN_WERKZEUG = (
+    "Self-right: Spot rollt sich auf die Füsse und setzt sich hin — aus der Seiten- oder "
+    "Rückenlage, nach dem Akkuwechsel oder dem Auspacken. Ein eigener Lauf am ECHTEN Spot. "
+    "Motoren vorher aus, Platz rundum, Lease frei oder übernommen."
+)
+UEBERNEHMEN_WERKZEUG = (
+    "Nimmt dem Tablet das Lease ab — eine bewusste Handlung, sie wird protokolliert. "
+    "Ohne Häkchen bricht der Lauf ab, wenn das Tablet das Lease hält."
+)
 
 
 class Bildfeld(QWidget):
@@ -118,6 +140,7 @@ class Bildfeld(QWidget):
 class FahrenView(QWidget):
     fahrt_gewuenscht = Signal()        # beginnen oder beenden -- die App entscheidet (ein Lauf)
     stopp_gewuenscht = Signal()
+    lage_gewuenscht = Signal(str, str, bool)   # Aktion (akku|aufrichten), Seite, Lease uebernehmen
     meldung = Signal(str)
 
     def __init__(self, parent=None):
@@ -125,6 +148,7 @@ class FahrenView(QWidget):
         self.setFocusPolicy(Qt.StrongFocus)
         self._laeuft = False
         self._lauf_dir = None
+        self._lage_laeuft = False
 
         titel = QLabel("Den echten Spot über die Tastatur fahren")
         titel.setObjectName("Titel")
@@ -168,6 +192,37 @@ class FahrenView(QWidget):
         knoepfe.addWidget(self.hand)
         knoepfe.addStretch(1)
 
+        # Die Lage: Akku wechseln (auf die Seite rollen) und Aufrichten. Kein eigener
+        # Weg zum Roboter -- jeder Knopf startet einen Lauf ueber die App, mit dem
+        # Paketcode `workshop/lage.py` (wie der Gehzeit-Knopf: der Knopf verspricht
+        # eine bestimmte Bewegung, und die Kopie im Arbeitsordner kann jemand
+        # bearbeitet haben). Die Uebernahme des Leases ist ein Haekchen, nie Vorgabe.
+        self.seite = QComboBox()
+        self.seite.addItem("nach links", "links")
+        self.seite.addItem("nach rechts", "rechts")
+        self.akku = QPushButton("🔋 Akku wechseln")
+        self.akku.setToolTip(AKKU_WERKZEUG)
+        self.akku.clicked.connect(self._akku_geklickt)
+        self.aufrichten = QPushButton("⬆ Aufrichten")
+        self.aufrichten.setToolTip(AUFRICHTEN_WERKZEUG)
+        self.aufrichten.clicked.connect(self._aufrichten_geklickt)
+        self.uebernehmen = QCheckBox("Lease vom Tablet übernehmen")
+        self.uebernehmen.setToolTip(UEBERNEHMEN_WERKZEUG)
+        self.lage_zustand = QLabel("")
+        self.lage_zustand.setObjectName("Gedaempft")
+        self.lage_zustand.setWordWrap(True)
+        self.lage_hinweis = QLabel(LAGE_HINWEIS)
+        self.lage_hinweis.setObjectName("Gedaempft")
+        self.lage_hinweis.setWordWrap(True)
+
+        lage = QHBoxLayout()
+        lage.addWidget(QLabel("Lage"))
+        lage.addWidget(self.seite)
+        lage.addWidget(self.akku)
+        lage.addWidget(self.aufrichten)
+        lage.addWidget(self.uebernehmen)
+        lage.addStretch(1)
+
         # Der Blick nach vorn: `workshop/blick.py` schreibt `ansicht.jpg` (beide
         # Frontkameras zu einem Bild) ins Lauf-Verzeichnis, der Watcher meldet
         # jede Aenderung mit bis zu 60 Hz. Die GUI holt sich nichts vom Roboter
@@ -202,11 +257,14 @@ class FahrenView(QWidget):
         anordnung.addWidget(titel)
         anordnung.addWidget(hinweis)
         anordnung.addLayout(knoepfe)
+        anordnung.addLayout(lage)
+        anordnung.addWidget(self.lage_zustand)
         anordnung.addWidget(self.hinweis_bild)
         anordnung.addWidget(self.bild, 1)
         anordnung.addWidget(self.bildrate)
         anordnung.addWidget(self.gesicht_hinweis)
         anordnung.addWidget(self.hand_hinweis)
+        anordnung.addWidget(self.lage_hinweis)
         anordnung.addWidget(self.belegung)
         anordnung.addWidget(self.gedrueckt)
         anordnung.addWidget(self.befehl_zeile)
@@ -233,6 +291,7 @@ class FahrenView(QWidget):
         self.tastenfahrt.beginne(lauf_dir)
         self.start.setText("■ Fahrt beenden")
         self.stopp.setEnabled(True)
+        self._lageknoepfe(False)          # waehrend der Fahrt legt er sich nicht hin
         self.gesicht.setEnabled(True)
         self.hand.setEnabled(True)
         # Die Häkchen bleiben über Läufe hinweg stehen, die Datei aber nicht: sie
@@ -249,6 +308,7 @@ class FahrenView(QWidget):
         self._tastatur_loslassen()
         self.start.setText("🎮 Fahrt beginnen")
         self.stopp.setEnabled(False)
+        self._lageknoepfe(not self._lage_laeuft)
         # Grau, aber nicht abgehakt: die Wahl des Menschen gilt für den nächsten Lauf.
         self.gesicht.setEnabled(False)
         self.gesicht_hinweis.hide()
@@ -310,6 +370,43 @@ class FahrenView(QWidget):
     def _stopp_geklickt(self):
         self.tastenfahrt.alle_los()
         self.stopp_gewuenscht.emit()
+
+    # ----------------------------------------------------------------- Lage
+
+    def _akku_geklickt(self):
+        self.lage_gewuenscht.emit("akku", self.seite.currentData(), self.uebernehmen.isChecked())
+
+    def _aufrichten_geklickt(self):
+        self.lage_gewuenscht.emit("aufrichten", self.seite.currentData(), self.uebernehmen.isChecked())
+
+    def _lageknoepfe(self, an):
+        self.akku.setEnabled(an)
+        self.aufrichten.setEnabled(an)
+
+    def lage_beginnt(self, aktion):
+        """Die App hat den Lauf gestartet: Fahrt und Lage sind gesperrt, bis er endet."""
+        self._lage_laeuft = True
+        self.start.setEnabled(False)
+        self._lageknoepfe(False)
+        name = "Akku wechseln" if aktion == "akku" else "Aufrichten"
+        self.lage_zustand.setText(f"{name} läuft — Spot bewegt sich. Stopp im Kopf, Not-Aus am Tablet.")
+        self.zustand.setText(f"{name} läuft.")
+
+    def zeige_lage_zeile(self, zeile):
+        """Die letzte Ausgabezeile des Lage-Laufs (Rollwinkel, Befund) -- dort, wo der Knopf ist."""
+        if not self._lage_laeuft:
+            return
+        text = str(zeile).strip()
+        if text:
+            self.lage_zustand.setText(text)
+
+    def lage_beendet(self):
+        if not self._lage_laeuft:
+            return
+        self._lage_laeuft = False
+        self.start.setEnabled(True)
+        self._lageknoepfe(not self._laeuft)
+        self.zustand.setText("Kein Lauf.")
 
     def _gesicht_umgelegt(self, an):
         self.gesicht_hinweis.setVisible(bool(an) and self._laeuft)

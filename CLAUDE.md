@@ -941,6 +941,22 @@ versionsgepinntes Extra `spotlab[sim]`.
   eigene Meldung und eigene Zähler — ein fehlendes Handmodell reisst den Gesichtsweg nicht mit.
   OpenCV fehlt dort erst beim BAU der Zoo-Klassen (ImportError), nicht beim Import des Moduls;
   `_vom_handerkenner` übersetzt das in dieselbe rote Meldung wie beim Gesicht.
+- **„🔋 Akku wechseln" und „⬆ Aufrichten" im Tab „Fahren" sind LÄUFE mit Paketcode
+  (`workshop/lage.py`), nie ein eigener Weg zum Roboter.** Zwei Rollkommandos kennt das SDK, nur
+  diese: `battery_change_pose` (links oder rechts; Endlage ≈ 130°, Spot schaltet die Motoren
+  SELBST ab, die Rückmeldung bleibt STATUS_UNKNOWN — gemessen wird der Rollwinkel, 16.09.2026)
+  und `selfright` (danach `sit()`, erst `RUHE_S` ruhig heisst oben, der Winkel geht unterwegs
+  durch null). Ein „ganz auf den Rücken" gibt es nicht; von der Akku-Haltung kippt ein Mensch
+  von Hand. Paketcode wie beim Gehzeit-Knopf: der Knopf verspricht eine bestimmte Bewegung, und
+  die Kopie im Arbeitsordner kann jemand bearbeitet haben (die Beispiele bleiben zum Lesen und
+  rufen denselben Kern). KEIN Umschalten wie beim Fahrknopf: läuft ein Programm, lehnt
+  `_starte_lage` ab — ein fahrender Roboter legt sich nicht auf Knopfdruck hin. Der Lauf ist
+  KEINE Fahrt (`_fahrt_erwartet` bleibt aus, die Tasten stumm); die letzte Ausgabezeile steht im
+  Tab (`zeige_lage_zeile`, eine weitere Senke am EINEN Leser), und der Lauf landet über `--runs`
+  unter `Beispiele/runs`, wo der Watcher sucht. Motoren müssen VOR dem Verbinden aus sein
+  (`MotorsOnError` beim Not-Aus-Eintrag), und die Lease-Übernahme ist ein Häkchen, nie Vorgabe.
+  `starte_skript(pfad, argumente=())` reicht die Aktion als Liste an den Prozess, nie über
+  eine Shell. Am Gerät: A36.
 - **Das Fenstersymbol ist FREIGESTELLT und liegt im Paket** (`gui/spotlab.png`, runde
   Ecken mit Transparenz aussen, dazu `package-data`). Ein Symbol mit eigenem
   Hintergrund sitzt in der Taskleiste in einem grauen Kasten, und ohne den

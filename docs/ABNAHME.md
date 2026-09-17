@@ -1148,6 +1148,58 @@ Streuung der Streckenmessung und ob eine Person über acht Meter dieselbe Kennun
 
 ---
 
+## A36 — Lage: Akku wechseln und Aufrichten aus dem Tab „Fahren"
+
+**Voraussetzung** A1 (der Lauf hält ein Lease und trägt den Not-Aus-Endpunkt ein).
+Zwei Rollkommandos kennt das SDK, nur diese: die Batteriewechsel-Haltung (auf die
+Seite, links oder rechts; Endlage etwa 130°, Spot schaltet die Motoren selbst ab) und
+Self-right. Ein „ganz auf den Rücken" gibt es nicht — von der Akku-Haltung kippt man ihn
+von Hand, etwa für den Koffer; „Aufrichten" ist auch der Weg aus der Rückenlage nach dem
+Auspacken. Beides ist am 16.09.2026 einmal über die Beispiele gelaufen (Rollen ~5 s bis
+−131°, Motoren von selbst aus bei −113°; Self-right ~3.5 s von −134° auf 0°, Rückmeldung
+des Rollkommandos die ganze Zeit STATUS_UNKNOWN). **Der Knopfweg ist am Gerät noch nicht
+gezeigt.**
+
+**Vorbereitung** Motoren am Tablet AUS (sonst `MotorsOnError` beim Not-Aus-Eintrag — der
+Lauf bricht dann ab, bevor er etwas tut). Spot sitzt auf ebenem Boden, ein Meter frei auf
+der Rollseite, Tablet mit Not-Aus in Reichweite. Hält das Tablet das Lease: Häkchen „Lease
+vom Tablet übernehmen" — sonst bricht der Lauf mit der Lease-Meldung ab.
+
+**Vorgehen** Reiter „Fahren", Zeile „Lage".
+1. Richtung „nach links", „🔋 Akku wechseln".
+2. Akku wechseln; der Roboter startet neu. Verbinden, Motoren aus lassen, „⬆ Aufrichten".
+3. Dasselbe mit „nach rechts".
+4. Gegenprobe der Sperren: während einer Fahrt sind die Lage-Knöpfe grau; während eines
+   Lage-Laufs ist „Fahrt beginnen" grau; ein Lauf aus „Code" läuft, „Akku wechseln" meldet
+   „erst beenden".
+5. Ohne Häkchen bei belegtem Lease drücken.
+6. Abbruch: einmal während des Rollens „Stopp" im Kopf — beobachten und notieren.
+
+**Erwartung**
+- (1) Die Zustandszeile unter den Knöpfen zeigt „Rolle nach links …", dann den Rollwinkel in
+  15°-Schritten, dann „Fertig: Motoren von selbst aus bei Rollwinkel …" — Spot liegt links,
+  die Motoren sind aus, der Lauf endet „ok" (der Abbau meldet höchstens `NotPoweredOnError`
+  in `diagnose.log` — harmlos). **Notieren:** Rollwinkel beim Abschalten und Endlage.
+- (2) „Rollwinkel jetzt −1xx°", „Richte auf …", der Winkel geht nach 0, „aufrecht", „Setze
+  hin …", „Fertig: Spot sitzt aufrecht" — und die Motoren gehen beim Ende des Laufs aus.
+  Der Lauf liegt unter `Beispiele/runs/` mit `skript` = `lage.py`.
+- (3) Wie (1) und (2), Vorzeichen des Rollwinkels umgekehrt.
+- (4) Alle drei Sperren greifen; nichts bewegt sich auf einen Knopf, der grau ist.
+- (5) Der Lauf bricht mit der Lease-Meldung ab, Spot bewegt sich nicht; mit Häkchen läuft
+  er, und `ereignisse.jsonl` trägt `lease_übernommen`.
+- (6) Was der Stopp mitten im Rollen tut, steht hier: das Rollkommando ist ein
+  Ganzkörper-Kommando, der freundliche Stopp schickt Stopp und Hinsetzen — ob der Roboter
+  aus halber Lage sauber zurückkommt, weiss nur das Gerät. Der Not-Aus am Tablet muss
+  jederzeit greifen.
+
+**Warum am Gerät** Die Kette ist im Test durchgespielt (Knopf, Prozess, Ausgabe im Tab,
+Lauf im richtigen Ordner), aber Rollwinkel, Abschaltzeitpunkt und das Verhalten beim
+Stopp kann nur der Roboter liefern.
+
+**Ergebnis** _(offen)_
+
+---
+
 ## Nach der Abnahme
 
 Ergebnisse hier eintragen, Abweichungen als Befund in die Spec zurückspielen, und erst
