@@ -1,17 +1,17 @@
 """Folgen: Spot geht dir hinterher — mit Abstand.
 
-Halte ein AprilTag in der Hand oder häng es dir an den Rucksack, starte dieses
-Programm und geh los. Spot dreht sich zu dir und hält ungefähr anderthalb Meter
-Abstand. Näher als einen Meter kommt er nie, und rückwärts fährt er nicht —
-nach hinten sieht er nichts.
+Stell dich vor Spot, starte dieses Programm und geh los. Spot dreht sich zu dir
+und hält ungefähr anderthalb Meter Abstand. Näher als einen Meter kommt er nie,
+und rückwärts fährt er nicht — nach hinten sieht er nichts.
 
-Gesucht wird in einer STAFFEL: zuerst der Körper, dann ein Gesicht, dann das Tag.
-Das hat einen gemessenen Grund. Spots Frontkameras schauen rund 20 Grad nach
-unten; nah und genau voraus ist ein Gesicht über dem Bild oder in der Naht der
-beiden Kameras — die Hüfte nicht. Weit weg ist der Körper für den Erkenner zu
-klein, das Gesicht nicht. Das Tag geht immer. Fehlt ein Modell oder OpenCV,
-fällt der betroffene Finder aus und die nächste Stufe trägt; warum, steht im
-Protokoll und in der Zeile „Noch kein Ziel".
+Gesucht wird in einer STAFFEL: zuerst der Körper, dann ein Gesicht. Das hat
+einen gemessenen Grund. Spots Frontkameras schauen rund 20 Grad nach unten;
+nah und genau voraus ist ein Gesicht über dem Bild oder in der Naht der beiden
+Kameras — die Hüfte nicht. Weit weg ist der Körper für den Erkenner zu klein,
+das Gesicht nicht. Fehlt ein Modell oder OpenCV, fällt der betroffene Finder
+aus und die nächste Stufe trägt; warum, steht im Protokoll und in der Zeile
+„Noch kein Ziel". Ein AprilTag braucht es nicht mehr — wer den Tag-Weg zum
+Vergleich will, nimmt `folgen.tag_finder()` (unten).
 
 Zwei HANDZEICHEN versteht er, wenn er deinem Körper folgt: die offene Hand
 (Finger nach oben, Handfläche zu ihm) heisst Halt — er bleibt stehen und schaut
@@ -47,7 +47,7 @@ with spotlab.connect() as spot:
     spot.power_on()
     spot.stand()
     print('Folgen: stell dich vor Spot und geh los. Offene Hand = Halt, Daumen hoch = Weiter. Stopp beendet.')
-    staffel = folgen.zuerst(folgen.koerper_finder(), folgen.gesicht_finder(), folgen.tag_finder())
+    staffel = folgen.zuerst(folgen.koerper_finder(), folgen.gesicht_finder())
     folgen.folge(
         spot,
         staffel,

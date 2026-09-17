@@ -1163,10 +1163,13 @@ def test_der_vorgabeweg_des_koerperfinders_baut_den_echten_erkenner(monkeypatch)
     assert len(gebaut) == 1, "ein Erkenner fuer den ganzen Lauf, nicht je Takt"
 
 
-def test_die_vorlage_staffelt_koerper_vor_gesicht_vor_tag():
-    """Jede Stufe dort, wo sie stark ist: Koerper nah und kopflos, Gesicht weit, Tag immer."""
+def test_die_vorlage_staffelt_koerper_vor_gesicht_und_braucht_kein_tag():
+    """Jede Stufe dort, wo sie stark ist: Koerper nah und kopflos, Gesicht weit. Das Tag
+    ist seit dem 17.09.2026 nicht mehr in der Vorlage (Wunsch des Menschen: ein Schueler
+    soll ohne AprilTag losgehen koennen); `tag_finder()` bleibt fuer den Vergleich."""
     from pathlib import Path
 
     quelle = (Path(folgen.__file__).parent / "beispiele" / "folgen.py").read_text(encoding="utf-8")
     zeile = next(z for z in quelle.splitlines() if "zuerst(" in z and "finder()" in z)
-    assert zeile.index("koerper_finder()") < zeile.index("gesicht_finder()") < zeile.index("tag_finder()")
+    assert zeile.index("koerper_finder()") < zeile.index("gesicht_finder()")
+    assert "tag_finder()" not in zeile

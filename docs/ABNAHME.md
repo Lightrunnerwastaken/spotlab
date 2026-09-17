@@ -875,7 +875,9 @@ kein Fehler: dann kann diese Software es nicht, und der Tag-Finder bleibt der We
 > einmal aktualisiert werden, ist der Test drei Zeilen lang und die Zahl hier zu
 > ersetzen.
 
-**Teil 2 — folgen mit dem Tag.** `Beispiele/folgen.py` starten, Tag zeigen, langsam gehen.
+**Teil 2 — folgen mit dem Tag.** Seit dem 17.09.2026 hat die Vorlage `Beispiele/folgen.py`
+kein Tag mehr (Körper, dann Gesicht); für diesen Teil `folgen.folge(spot, folgen.tag_finder(),
+lauf_dir=spot.recorder.dir)` in eine Kopie schreiben, starten, Tag zeigen, langsam gehen.
 
 **Erwartung**
 - (1) Spot dreht sich zum Tag und folgt mit etwa anderthalb Metern Abstand.
@@ -1033,7 +1035,8 @@ RECHTECK, ohne Aufhellung — Folgemodus: Grau, ALLES, aufgehellt) und vier Zwis
   Panoramen des Tages: Gesicht 149 Takte, Körper (Hüfte) 134, beide 102, **nur Körper 33** (die
   kopflosen Bilder: 1.3–2 m, aufrecht, Kerbe — Takt 110 bekommt ein Skelett mit 0.99), **nur
   Gesicht 47** (weit weg: für den 224-px-Erkenner zu klein), zusammen 182. Deshalb die Staffel
-  `zuerst(koerper_finder(), gesicht_finder(), tag_finder())`. Preis: Erkenner 375 ms je Bild
+  `zuerst(koerper_finder(), gesicht_finder())` (das Tag war bis zum 17.09.2026 die dritte Stufe
+  und ist auf Wunsch draussen — ein Schüler soll ohne AprilTag losgehen). Preis: Erkenner 375 ms je Bild
   (Ganzbild plus drei Kacheln; 142 von 208 Treffern kamen erst auf den Kacheln), Pose 57 ms —
   deshalb die Spur wie bei MediaPipe: gesucht wird nur, wenn die Pose abreisst. Modelle unter
   `~/.spotlab/modelle/`: `person_detection_mediapipe_2023mar.onnx` (11 990 159 Bytes, SHA-256

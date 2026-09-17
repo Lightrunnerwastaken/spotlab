@@ -259,7 +259,9 @@ versionsgepinntes Extra `spotlab[sim]`.
   beide 102, nur Körper 33 (1.3–2 m, aufrecht, Naht-Kerbe — Takt 110 bekommt ein Skelett mit
   0.99, wo das Gesicht am Hals abgeschnitten war), nur Gesicht 47 (weit weg: der Erkenner
   sieht das ganze Panorama bei 224 px, ein Mensch auf 3 m ist darin 15 px). Also nicht Körper
-  STATT Gesicht, sondern **Körper vor Gesicht vor Tag** — jede Stufe dort, wo sie stark ist.
+  STATT Gesicht, sondern **Körper vor Gesicht** — jede Stufe dort, wo sie stark ist. (Das Tag
+  war bis zum 17.09.2026 die dritte Stufe der Vorlage und ist auf Wunsch des Menschen draussen:
+  ein Schüler soll ohne AprilTag losgehen können; `tag_finder()` bleibt für den Vergleich.)
   Ziel ist die Hüftmitte (Gegenprobe 0.6–1.3 m über dem Boden, Schulter 0.9–1.7 m als Ersatz,
   wenn die Beine abgeschnitten sind), `bild_oben` die Schulterlinie — die Nasenregel braucht
   für Schultern viel weniger Neigung als für eine Stirn. **Der Preis ist der Erkenner**: 375 ms
