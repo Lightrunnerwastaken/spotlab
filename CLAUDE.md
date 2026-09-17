@@ -173,7 +173,13 @@ versionsgepinntes Extra `spotlab[sim]`.
   Höhe über dem Boden und verwirft, was nicht auf Kopfhöhe liegt. Die Entfernung kommt aus
   den Tiefenkameras, nie aus der Kastengrösse: an ihr hängt der Mindestabstand des
   Folgemodus, und eine geschätzte Entfernung wäre dort erfundene Sicherheit. Ein Kasten ohne
-  Tiefenpunkte zählt gar nicht — ohne Gegenprobe ist ein Schienbein ein Gesicht.
+  Tiefenpunkte zählt gar nicht — ohne Gegenprobe ist ein Schienbein ein Gesicht. **Und die
+  Kastenbreite muss zur gemessenen Tiefe passen** (`groesse_passt`, seit 17.09.2026): ein
+  YuNet-Kasten ist rund 0.22 m breit (59 px bei 1.5 m, 44 bei 2 m, 29 bei 3 m); offline setzte
+  der Erkenner in einem Lauf sechsmal einen 180 px breiten Kasten bei +57° an dieselbe Stelle —
+  bei 2 m ein 0.9 m breites „Gesicht", das die Höhenprobe passierte. Verhältnis ausserhalb
+  `GROESSE_SPANNE` heisst `zu gross/zu klein fuer die tiefe`; ohne Winkelbreite (Attrappe mit
+  fester Richtung) wird die Probe ausgelassen, nicht geraten.
 - **Neigen beim GEHEN geht nur über `base_offset_rt_footprint`.** Das naheliegende
   `body_pose` wirkt laut Protokoll ausdrücklich NUR zusammen mit einem Stehkommando — und
   genau deshalb kann `spot.pose()` nur im Stand. Der Nickwinkel geht deshalb als
@@ -273,6 +279,29 @@ versionsgepinntes Extra `spotlab[sim]`.
   `bildaufnahme` (Panorama + Punkte, ohne YuNet) ist die gemeinsame Grundlage beider Finder:
   ein fehlendes Gesichtsmodell darf den Körper-Weg nicht mitreissen. Die Zoo-Klassen wollen
   BGR mit drei Kanälen — Grau wird verdreifacht, das RGB-Panorama gedreht.
+- **Die Peilung wird vor dem Befehl um die GEMESSENE Drehung seit dem Bild nachgeführt
+  (`Ziel.gier`, `nachgefuehrt`), und wer eine halbe Drehung lang seitlich bleibt, ist kein
+  Mensch (`MAX_SUCHDREHUNG_GRAD`).** Befund vom 17.09.2026 (Läufe 09:41 und 09:49, Körper-Finder,
+  Takt 0.5–0.7 s): 35 Drehsinn-Wechsel in 100 s — Spot sah den Menschen bei +30°, drehte, und
+  weil das Bild beim Befehl einen halben Takt alt war und der vorige Befehl bis zum nächsten
+  Blick weiterlief, drehte er über ihn hinaus, verlor ihn 4 s, fand ihn auf der anderen Seite
+  und drehte zurück. Die Deckelung `ANTEIL_JE_TAKT` half nicht: sie rechnete auf die VERALTETE
+  Peilung. Deshalb trägt jede Bildaufnahme den Gierwinkel aus DERSELBEN Zustandsabfrage wie
+  den Nick (`Gesichtsaufnahme.gier` → `Ziel.gier`), und `folge()` zieht vor dem Befehl ab, was
+  Spot seither gedreht hat — auch für das gehaltene Ziel im Nachlauf, sonst drehte er blind dem
+  alten Winkel nach. Ein Tag hat keine Gier (Weltmodell, kein Bild) und wird nicht nachgeführt.
+  Dazu `PEILUNG_TOTBAND_GRAD` (4°: die Hüfte zittert im Bild um Pixel). **Die Kreissperre:**
+  derselbe Lauf drehte zweimal 14 Takte lang mit +45°/s über 400°, ohne dass das Ziel je vor
+  den Roboter kam — ein Mensch bei +60° ist nach 1.3 s voraus, ein Ziel, das im Bild stehen
+  bleibt, ist keiner. Seit das Ziel zuletzt innerhalb `SCHWENK_GRAD` war, wird die gemessene
+  Drehung summiert; ab 180° dreht er nicht weiter (sagt es einmal), bis etwas vor ihm ist oder
+  das Ziel weg ist. Woher das mitdrehende Ziel kam, ist OFFEN — deshalb steht seit heute **jeder
+  Takt mit Ziel als Ereignis `ziel` im Lauf** (Finder, Peilung roh und nachgeführt, Abstand,
+  Oberkante, echt/Nachlauf, vx, wz, Takt, gesperrt) und das Wegbleiben EINMAL als `weg` — aus
+  169 walk-Befehlen war nicht zu sagen, ob ein Mensch bei +60° stand oder ein Phantom. Offline
+  über 510 Panoramen: Körpertreffer am Rand (|Peilung| ≥ 50°) 7 von 163 an verschiedenen
+  Stellen, aber der Gesichtserkenner setzte in einem Lauf sechsmal einen 170–190 px breiten
+  „Gesichts"-Kasten an derselben Stelle bei +57° (ein Phantom, das die Höhenprobe passiert).
 - **Handzeichen gibt es nur beim gefolgten Körper, und ein Zeichen ist kein Fahrbefehl.**
   `backends/real/gesten.py` (MediaPipe-Handfläche und -Handpose aus dem Zoo, ONNX über
   `cv2.dnn`) und `folgen.gesten_leser(finder)`: offene Hand = Halt, Daumen hoch = Weiter.

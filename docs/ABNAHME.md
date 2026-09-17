@@ -1063,6 +1063,25 @@ RECHTECK, ohne Aufhellung — Folgemodus: Grau, ALLES, aufgehellt) und vier Zwis
   Halt einen Rucksack in den Weg legen, dann Daumen hoch — Spot bleibt stehen und meldet die
   Schranke; (e) notieren, ab welchem Abstand das Zeichen nicht mehr ankommt (erwartet: über 2 m,
   die Hand ist dann unter 30 px), und wie lange man es halten muss.
+- **Pendeln und Kreise, Befund 17.09.2026** (Läufe `20260917T094118Z` und `20260917T094954Z`,
+  Körper vor Gesicht, Takt 0.5–0.7 s): 35 Drehsinn-Wechsel in 100 s; Muster „gesehen bei +30°,
+  drehen, über den Menschen hinaus, 4 s verloren, auf der anderen Seite wiedergefunden, zurück".
+  Ursache: das Bild ist beim Befehl einen halben Takt alt, der vorige Befehl läuft bis zum
+  nächsten Blick weiter, und die Deckelung je Takt rechnete auf die veraltete Peilung. Dazu
+  zweimal eine volle Runde (14 Takte +45°/s, über 400°), ohne dass das Ziel je vor den Roboter
+  kam — ein Ziel, das sich mit dem Bild dreht. Offline über die 510 Panoramen vom 16.09.: der
+  Gesichtserkenner setzte in einem Lauf sechsmal einen 170–190 px breiten Kasten an dieselbe
+  Stelle bei +57° (ein Phantom, das die Höhenprobe passiert). **Gebaut:** die Peilung wird um die
+  GEMESSENE Drehung seit dem Bild nachgeführt (`Ziel.gier`), auch im Nachlauf; Totband 4°;
+  Kreissperre ab 180° seitlich; die Kastenbreite muss zur Tiefe passen (`zu gross fuer die
+  tiefe`); und je Takt eine Zeile `ziel` in `ereignisse.jsonl`. **Am Gerät zu prüfen:**
+  (a) langsam gehen, stehen bleiben: Spot kommt ohne Pendeln vor einem zu stehen — in
+  `ereignisse.jsonl` bleiben die `wz_grad` der `ziel`-Zeilen ein Vorzeichen, bis `peilung_jetzt`
+  im Totband liegt; (b) den Kreis provozieren wie heute (kurz gehen, seitlich stehen bleiben):
+  entweder bleibt er aus, oder die Meldung „Spot hat sich 180° gedreht" kommt und die `ziel`-
+  Zeilen davor zeigen, WELCHER Finder das mitdrehende Ziel lieferte, mit Peilung und Abstand —
+  das ist die offene Frage; (c) mit `nachlauf_s` und `PEILUNG_TOTBAND_GRAD` nicht vor dem Befund
+  spielen.
 
 **Teil 4 — Nickwinkel.** Seit dem 16.09.2026 fährt das Beispiel mit der Vorgabe
 `BLICK_GRAD = 15`; zum Vergleich mit `blick_grad=0` starten. Vorher jemanden mit

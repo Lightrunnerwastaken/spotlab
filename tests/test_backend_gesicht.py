@@ -294,6 +294,47 @@ def test_ein_kasten_zu_tief_nennt_die_hoehe_und_die_schranke(monkeypatch):
     assert b.distance == pytest.approx(1.0, abs=0.01)
 
 
+class _PanoSpalte:
+    """Peilung aus der Spalte (7 px je Grad, Mitte 620), Hoehenwinkel fest -- wie das echte Panorama."""
+
+    def __init__(self, hoehenwinkel=20.0):
+        self._h = hoehenwinkel
+
+    def winkel(self, spalte, zeile):
+        return (620.0 - spalte) / 7.0, self._h
+
+
+def test_ein_kasten_der_bei_dieser_tiefe_kein_gesicht_sein_kann_wird_verworfen(monkeypatch):
+    """Offline ueber 510 Panoramen (17.09.2026): sechsmal ein 170-190 px breiter "Gesichts"-
+    Kasten an derselben Stelle bei +57 Grad -- ein Phantom, das die Hoehenprobe passiert.
+    Ein echter Kasten ist 59 px bei 1.5 m, 44 bei 2 m, 29 bei 3 m (~0.22 m). 180 px bei
+    2 m waeren 0.9 m: kein Gesicht."""
+    _mit_kaesten(monkeypatch, [(200.0, 100.0, 180.0, 180.0, 0.7)])
+    [b] = gesicht.beurteile(None, _PanoSpalte(), None, _wolke(2.0, (620.0 - 290.0) / 7.0, 20.0), 0.46)
+    assert not b.genommen and b.grund == gesicht.ZU_GROSS
+    assert b.distance == pytest.approx(2.0, abs=0.05), "gemessen, nur zu gross"
+
+
+def test_ein_kasten_in_passender_groesse_zaehlt(monkeypatch):
+    _mit_kaesten(monkeypatch, [(598.0, 100.0, 44.0, 50.0, 0.8)])
+    [b] = gesicht.beurteile(None, _PanoSpalte(), None, _wolke(2.0, 0.0, 20.0), 0.46)
+    assert b.genommen, b.grund
+
+
+def test_ein_winziger_kasten_ist_auch_keiner(monkeypatch):
+    _mit_kaesten(monkeypatch, [(615.0, 100.0, 8.0, 8.0, 0.8)])
+    [b] = gesicht.beurteile(None, _PanoSpalte(), None, _wolke(2.0, 0.0, 20.0), 0.46)
+    assert not b.genommen and b.grund == gesicht.ZU_KLEIN
+
+
+def test_ohne_winkelbreite_gibt_es_keine_groessenprobe(monkeypatch):
+    """Eine Attrappe, die fuer jede Spalte dieselbe Richtung liefert, kennt keine Breite --
+    dann wird nicht geraten, sondern die Probe ausgelassen."""
+    _mit_kaesten(monkeypatch, [(200.0, 100.0, 180.0, 180.0, 0.7)])
+    [b] = gesicht.beurteile(None, _Pano(0.0, 20.0), None, _wolke(2.0, 0.0, 20.0), 0.46)
+    assert b.genommen
+
+
 def test_gesichter_ist_die_auswahl_aus_den_befunden(monkeypatch):
     """Eine Formulierung, nicht zwei. Sonst misst die Messprobe etwas anderes,
     als der Folgemodus tut -- und das faellt erst am Geraet auf, wo niemand es

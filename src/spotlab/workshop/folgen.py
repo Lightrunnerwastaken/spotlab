@@ -56,6 +56,14 @@ LENKUNG = 1.2                    # Grad/s je Grad Peilung
 # zwischen -0.79 und +0.79 rad/s mit 13 Drehsinn-Wechseln, vx fast immer null.
 ANTEIL_JE_TAKT = 0.5
 SCHWENK_GRAD = 40.0              # weiter seitlich: erst drehen, nicht fahren
+# Unter dieser Peilung wird nicht gedreht: die Huefte eines Menschen wandert im Bild
+# um ein paar Pixel, und bei 7 px je Grad hiesse jedes Zittern ein Drehbefehl.
+PEILUNG_TOTBAND_GRAD = 4.0
+# Die Kreissperre. Lauf 20260917T094118Z: zweimal 14 Takte lang +45 Grad/s, ueber 400
+# Grad, ohne dass das Ziel je vor den Roboter kam -- ein Mensch bei +60 Grad ist nach
+# 1.3 s voraus, ein Ziel, das im Bild stehen bleibt, ist keiner. Wer eine halbe
+# Drehung lang seitlich bleibt, hoert auf zu drehen und wartet, bis etwas vor ihm ist.
+MAX_SUCHDREHUNG_GRAD = 180.0
 FREIRAUM_M = 0.8                 # so viel muss voraus frei sein
 KOPFRAUM_M = 1.0                 # so weit voraus darf nichts über dem Weg hängen
 KOPFRAUM_TAKT_S = 1.0
@@ -130,6 +138,11 @@ class Ziel:
     # nur beim Gesicht gesetzt. Das ist, was oben aus dem Bild laeuft, und
     # danach regelt `folge()` die Nase. Ein Tag hat kein "im Bild"-Problem.
     bild_oben: float = None
+    # Der Gierwinkel des Roboters (RAD, aus `state.pose`), als das Bild kam, aus dem
+    # dieses Ziel stammt -- None, wenn das Ziel nicht aus einem Bild ist (Tag, Tracker).
+    # `folge()` zieht davon ab, was Spot seither gedreht hat: das Bild ist beim Befehl
+    # einen halben Takt alt, und der vorige Befehl lief die ganze Zeit weiter.
+    gier: float = None
 
 
 @dataclass(frozen=True)
@@ -273,7 +286,7 @@ def koerper_finder(ordner=None, quellen=GESICHT_QUELLEN, tiefe_quellen=TIEFE_QUE
         zuletzt["sicht"] = Sicht(zuletzt["nummer"], aufnahme, k)
         teil = "Hüfte" if b.punkt == "huefte" else "Schulter"
         return Ziel(b.bearing, b.distance, f"Körper, {teil} auf {b.height:.2f} m",
-                    bild_oben=b.bild_oben)
+                    bild_oben=b.bild_oben, gier=aufnahme.gier)
 
     finde.befund = lambda: zuletzt["text"]
     finde.letzte = lambda: zuletzt["sicht"]
@@ -326,13 +339,13 @@ def gesicht_finder(modell=None, mindestscore=None, quellen=GESICHT_QUELLEN,
         if not genommen:
             return None
         kopf = genommen[0]
-        return _ziel_aus_befund(kopf, aufnahme.pano)
+        return _ziel_aus_befund(kopf, aufnahme.pano, aufnahme.gier)
 
     finde.befund = lambda: zuletzt["text"]
     return finde
 
 
-def _ziel_aus_befund(kopf, pano):
+def _ziel_aus_befund(kopf, pano, gier=None):
     """Ein genommener Befund als Ziel — samt der Oberkante des Kastens im Bild.
 
     `pano.winkel` rechnet Spalte/Zeile in Peilung und Hoehenwinkel um, koerperfest.
@@ -342,7 +355,7 @@ def _ziel_aus_befund(kopf, pano):
     x, y, breite, _hoehe = kopf.box
     _, oben = pano.winkel(x + breite / 2.0, y)
     return Ziel(kopf.bearing, kopf.distance, f"Gesicht auf {kopf.height:.2f} m",
-                bild_oben=float(oben))
+                bild_oben=float(oben), gier=gier)
 
 
 def _koerperbefund(befunde):
@@ -389,6 +402,7 @@ class Gesichtsaufnahme:
     erkenner: object          # YuNet, einmal gebaut
     punkte: object            # Nx3 Tiefenpunkte im aufgerichteten Körperrahmen
     blick_grad: float         # der GEMESSENE Nick, nach oben positiv
+    gier: float = None        # der Gierwinkel (rad) beim Bild -- fuer `Ziel.gier`
 
 
 def bildaufnahme(spot, gemerkt, quellen=GESICHT_QUELLEN, tiefe_quellen=TIEFE_QUELLEN):
@@ -428,7 +442,9 @@ def bildaufnahme(spot, gemerkt, quellen=GESICHT_QUELLEN, tiefe_quellen=TIEFE_QUE
     # Der GEMESSENE Nick, nicht der befohlene: so stimmt die Rechnung auch,
     # wenn Spot an einer Rampe steht oder unsere Neigung nicht ganz umsetzt.
     # `state.pitch` ist im Bogenmass, Nase hoch NEGATIV (Projektkonvention).
-    return Gesichtsaufnahme(feld, gemerkt["pano"], None, punkte, -math.degrees(_nick(spot)))
+    # EINE Zustandsabfrage fuer Nick und Gier: beide gehoeren zu diesem Bild.
+    nick, gier = _lage(spot)
+    return Gesichtsaufnahme(feld, gemerkt["pano"], None, punkte, -math.degrees(nick), gier=gier)
 
 
 def gesichtsaufnahme(spot, gemerkt, quellen=GESICHT_QUELLEN,
@@ -456,10 +472,51 @@ def gesichtsaufnahme(spot, gemerkt, quellen=GESICHT_QUELLEN,
 
 def _nick(spot):
     """Der gemessene Nickwinkel des Körpers in RAD — 0.0, wenn nicht lesbar."""
+    return _lage(spot)[0]
+
+
+def _lage(spot):
+    """(Nick, Gier) des Körpers in RAD aus EINER Zustandsabfrage — (0.0, None), wenn nicht lesbar.
+
+    Der Nick ohne Wert ist 0.0 (die Rechnung läuft dann flach weiter), die Gier
+    ohne Wert ist None: ohne sie wird nicht nachgeführt, und das darf man wissen.
+    """
     try:
-        return float(spot.state.pitch)
+        zustand = spot.state
     except Exception:
-        return 0.0
+        return 0.0, None
+    try:
+        nick = float(zustand.pitch)
+    except Exception:
+        nick = 0.0
+    try:
+        gier = float(zustand.pose[2])
+    except Exception:
+        gier = None
+    return nick, gier
+
+
+def _gier(spot):
+    """Der Gierwinkel (rad) JETZT — oder None."""
+    return _lage(spot)[1]
+
+
+def _wickle(rad):
+    """Einen Winkel auf (-pi, pi] bringen — von +170 nach -170 Grad sind +20 gedreht."""
+    return (rad + math.pi) % (2.0 * math.pi) - math.pi
+
+
+def nachgefuehrt(ziel, gier_jetzt):
+    """Das Ziel mit der Peilung von JETZT: was Spot seit dem Bild gedreht hat, ist abgezogen.
+
+    Ohne Gier am Ziel (Tag, Tracker) oder ohne lesbare Gier jetzt bleibt es, wie es ist.
+    """
+    if ziel is None or ziel.gier is None or gier_jetzt is None:
+        return ziel
+    from dataclasses import replace
+
+    gedreht = math.degrees(_wickle(float(gier_jetzt) - float(ziel.gier)))
+    return replace(ziel, bearing=ziel.bearing - gedreht)
 
 
 def zuerst(*finder):
@@ -665,7 +722,9 @@ def befehl(ziel, wunsch=WUNSCH_ABSTAND_M, mindest=MIN_ABSTAND_M, toleranz=TOLERA
     drehrate = min(MAX_DREHRATE_GRAD, abs(LENKUNG * ziel.bearing))
     if takt_s:
         drehrate = min(drehrate, ANTEIL_JE_TAKT * abs(ziel.bearing) / float(takt_s))
-    wz = math.radians(math.copysign(drehrate, ziel.bearing)) if ziel.bearing else 0.0
+    if abs(ziel.bearing) < PEILUNG_TOTBAND_GRAD:
+        drehrate = 0.0                       # Totband: um null nicht zappeln
+    wz = math.radians(math.copysign(drehrate, ziel.bearing)) if drehrate else 0.0
     if abs(ziel.bearing) > SCHWENK_GRAD:
         return 0.0, wz                       # erst die Nase hin, dann gehen
     fehler = ziel.distance - wunsch
@@ -739,6 +798,10 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
     letztes_ziel = None         # fuer den Nachlauf: das zuletzt ECHT gesehene Ziel
     angehalten = False          # per Handzeichen -- bis zum Daumen hoch
     gesten_stolpern_gemeldet = False
+    gier_vorher = None          # die Gier beim letzten Befehl: so viel hat er seither gedreht
+    seitlich_gedreht = 0.0      # Grad gedreht, seit das Ziel zuletzt VOR ihm war (Kreissperre)
+    drehsperre = False
+    ziel_gemeldet = False       # ob der letzte Takt ein Ziel hatte (fuer die Zeile `weg`)
 
     try:
         while laeuft():
@@ -776,6 +839,15 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
                 if faehrt:
                     spot.stop()
                     faehrt = False
+                if ziel_gemeldet:
+                    # EINMAL "weg", nicht jeden leeren Takt -- die Lehre der 135 world_objects.
+                    ziel_gemeldet = False
+                    fehlschlag = _notiere_ziel(spot, None)
+                    if fehlschlag and not schreibfehler_gemeldet:
+                        schreibfehler_gemeldet = True
+                        melde(f"Das Ziel liess sich nicht aufzeichnen: {fehlschlag}")
+                # Ohne Ziel gibt es nichts, dem er nachdrehen koennte: die Sperre faellt.
+                seitlich_gedreht, drehsperre, gier_vorher = 0.0, False, None
                 if blick_grad:
                     # SUCHHALTUNG: die Neigung muss VOR dem ersten Ziel da sein.
                     # Bis zum 16.09.2026 kam sie nur mit einem Fahrbefehl, und den
@@ -816,7 +888,26 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
                     # Nur auf ECHTE Kaesten regeln: ein gehaltenes Ziel ist kein gesehenes.
                     neigung = _neigung_nach(neigung, ziel.bild_oben)
                     nick = -neigung
-            vx, wz = befehl(ziel, takt_s=takt_dauer)
+            # NACHFUEHREN: das Bild ist beim Befehl einen halben Takt alt, und der
+            # vorige Befehl lief die ganze Zeit weiter. Abgezogen wird, was Spot seit
+            # dem Bild GEMESSEN gedreht hat -- auch im Nachlauf, sonst drehte er blind
+            # dem alten Winkel nach (17.09.2026: 35 Drehsinn-Wechsel in 100 s).
+            gier_jetzt = _gier(spot) if ziel.gier is not None else None
+            ziel_jetzt = nachgefuehrt(ziel, gier_jetzt)
+            # KREISSPERRE: seit das Ziel zuletzt vor ihm war, so viel gedreht?
+            if abs(ziel_jetzt.bearing) <= SCHWENK_GRAD:
+                seitlich_gedreht, drehsperre = 0.0, False
+            elif gier_jetzt is not None and gier_vorher is not None:
+                seitlich_gedreht += abs(math.degrees(_wickle(gier_jetzt - gier_vorher)))
+                if seitlich_gedreht >= MAX_SUCHDREHUNG_GRAD and not drehsperre:
+                    drehsperre = True
+                    melde(f"Spot hat sich {seitlich_gedreht:.0f}° gedreht, und das Ziel blieb "
+                          f"seitlich — das ist kein Mensch. Er dreht nicht weiter, bis etwas "
+                          f"vor ihm ist.")
+            gier_vorher = gier_jetzt
+            vx, wz = befehl(ziel_jetzt, takt_s=takt_dauer)
+            if drehsperre:
+                vx, wz = 0.0, 0.0
             if (blick_grad and ziel.bild_oben is not None
                     and neigung >= MAX_BLICK_GRAD - 1e-9
                     and ziel.bild_oben > SOLL_OBEN_GRAD + ZU_HOCH_GRAD):
@@ -828,6 +919,15 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
                 # Halt heisst STEHEN, nicht nur nicht vorwaerts. Die Nase bleibt
                 # auf dem Menschen (geregelt oben), damit er den Daumen sieht.
                 vx, wz = 0.0, 0.0
+            # Jeder Takt mit Ziel steht im Lauf: WAS der Finder lieferte, wie es nachgefuehrt
+            # wurde und was daraus befohlen wird. Ohne diese Zeile war am 17.09.2026 aus 169
+            # walk-Befehlen nicht zu sagen, ob ein Mensch bei +60 Grad stand oder ein Phantom.
+            ziel_gemeldet = True
+            fehlschlag = _notiere_ziel(spot, ziel, ziel_jetzt=ziel_jetzt, echt=echt, vx=vx, wz=wz,
+                                       takt_s=takt_dauer, gesperrt=drehsperre)
+            if fehlschlag and not schreibfehler_gemeldet:
+                schreibfehler_gemeldet = True
+                melde(f"Das Ziel liess sich nicht aufzeichnen: {fehlschlag}")
 
             if vx > 0.0:
                 if kopfraum_geprueft is None or jetzt() - kopfraum_geprueft >= kopfraum_takt_s:
@@ -915,6 +1015,30 @@ def _geste_wirkt(geste, angehalten):
             return False, "Geste: Daumen hoch — Spot geht weiter."
         return False, "Daumen hoch gesehen — Spot war nicht angehalten."
     return angehalten, f"Unbekannte Geste „{geste}“ — nichts geändert."
+
+
+def _notiere_ziel(spot, ziel, ziel_jetzt=None, echt=True, vx=0.0, wz=0.0, takt_s=None,
+                  gesperrt=False):
+    """Je Takt mit Ziel eine Zeile `ziel`; `ziel=None` heisst einmal „weg". Fehlertext statt werfen."""
+    recorder = getattr(spot, "recorder", None)
+    if recorder is None:
+        return ""
+    try:
+        if ziel is None:
+            recorder.event("ziel", finder=None, weg=True)
+        else:
+            jetzt_ = ziel_jetzt if ziel_jetzt is not None else ziel
+            recorder.event(
+                "ziel", finder=str(ziel.name), peilung=round(float(ziel.bearing), 1),
+                peilung_jetzt=round(float(jetzt_.bearing), 1),
+                abstand=round(float(ziel.distance), 2),
+                bild_oben=None if ziel.bild_oben is None else round(float(ziel.bild_oben), 1),
+                echt=bool(echt), vx=round(float(vx), 3), wz_grad=round(math.degrees(float(wz)), 1),
+                takt_s=None if takt_s is None else round(float(takt_s), 3), gesperrt=bool(gesperrt),
+            )
+    except Exception as fehler:
+        return f"{type(fehler).__name__}: {fehler}"
+    return ""
 
 
 def _notiere_geste(spot, geste, angehalten):

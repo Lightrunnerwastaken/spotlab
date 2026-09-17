@@ -70,6 +70,15 @@ class Gesicht:
 OHNE_TIEFE = "keine tiefenpunkte"
 ZU_TIEF = "zu tief"
 ZU_HOCH = "zu hoch"
+ZU_GROSS = "zu gross fuer die tiefe"
+ZU_KLEIN = "zu klein fuer die tiefe"
+# Wie breit ein YuNet-Kasten in Metern ist (rund 1.4-mal das Gesicht): gemessen am
+# 16.09.2026 59 px bei 1.5 m, 44 bei 2 m, 29 bei 3 m -- bei 7 px je Grad jedes Mal 0.22 m.
+KASTEN_BREITE_M = 0.22
+# So weit darf die Kastenbreite von der zur gemessenen Tiefe passenden abweichen. Am
+# 17.09.2026 setzte YuNet in einem Lauf sechsmal einen 170-190 px breiten Kasten an
+# derselben Stelle bei +57 Grad: bei 2 m waere das ein 0.9 m breites Gesicht.
+GROESSE_SPANNE = (0.4, 2.5)
 
 
 @dataclass(frozen=True)
@@ -279,7 +288,33 @@ def beurteile(feld, pano, erkenner_, punkte, kamerahoehe,
             grund = ZU_TIEF
         elif ueber_boden > oben:
             grund = ZU_HOCH
+        else:
+            grund = groesse_passt(_kastenbreite_grad(pano, x, y, breite, hoehe), abstand)
         befunde.append(Befund(peilung, hoehenwinkel, score, kasten,
                               distance=abstand, height=ueber_boden,
                               genommen=grund is None, grund=grund))
     return befunde
+
+
+def _kastenbreite_grad(pano, x, y, breite, hoehe):
+    """Die Winkelbreite des Kastens aus dem Panorama — 0, wenn es keine kennt."""
+    links, _ = pano.winkel(x, y + hoehe / 2.0)
+    rechts, _ = pano.winkel(x + breite, y + hoehe / 2.0)
+    return abs(float(links) - float(rechts))
+
+
+def groesse_passt(breite_grad, abstand):
+    """None, wenn der Kasten bei dieser Tiefe ein Gesicht sein kann — sonst `ZU_GROSS`/`ZU_KLEIN`.
+
+    Ohne Winkelbreite (0, etwa eine Attrappe mit fester Richtung) wird nicht
+    geraten, sondern die Probe ausgelassen: die Höhenprobe steht dann allein.
+    """
+    if breite_grad <= 0.0 or abstand <= 0.0:
+        return None
+    erwartet = 2.0 * math.degrees(math.atan(KASTEN_BREITE_M / 2.0 / abstand))
+    verhaeltnis = breite_grad / erwartet
+    if verhaeltnis > GROESSE_SPANNE[1]:
+        return ZU_GROSS
+    if verhaeltnis < GROESSE_SPANNE[0]:
+        return ZU_KLEIN
+    return None
