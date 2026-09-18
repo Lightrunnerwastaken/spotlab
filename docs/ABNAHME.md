@@ -696,6 +696,14 @@ mit Alt-Tab in ein anderes Fenster wechseln; zurück und „■ Stopp".
   merklichen Verzug (unter einer halben Sekunde). Liegt die Rate darunter, entscheidet das
   WLAN oder die Kamera, nicht die Oberfläche: `ansicht.jpg` im Lauf-Verzeichnis wird genau
   so oft ersetzt, wie Bilder ankommen.
+- (7) **Nach dem NOT-AUS wieder hinein** (Befund 18.09.2026, zweimal hintereinander
+  ausgesperrt): den NOT-AUS drücken, dann sofort wieder „🎮 Fahrt beginnen" ohne Häkchen —
+  der Lauf muss mit der Meldung abbrechen, dass das Lease an einem abgestürzten Lauf DIESES
+  Rechners hängt, samt Prozessnummer, und dass gerade NIEMAND steuert. Dann das Häkchen
+  „🔓 Kontrolle übernehmen" setzen und neu starten: der Lauf kommt hoch, `ereignisse.jsonl`
+  trägt `lease_übernommen`, und im Reiter stand vorher der Hinweis, wie man zurückkommt.
+  **Notieren**, ob die Motoren dabei von selbst wieder eingeschaltet werden können — der
+  stehen gebliebene Not-Aus-Endpunkt wird nur ersetzt, solange die Motoren aus sind (A3).
 
 **Ergebnis** _(offen)_
 

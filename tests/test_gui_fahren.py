@@ -267,6 +267,50 @@ def test_der_handschalter_sagt_woher_der_kasten_kommt_und_was_er_kostet(qapp):
     assert "halt" in text and "weiter" in text
 
 
+# ------------------------------------- Zurueck nach dem NOT-AUS (Kontrolle uebernehmen)
+
+
+def test_der_fahrtknopf_meldet_ob_uebernommen_werden_soll(qapp):
+    """Nach dem NOT-AUS haelt der getoetete Lauf das Lease -- ohne Uebernahme kommt
+    man nie wieder hinein (18.09.2026, zweimal hintereinander)."""
+    ansicht = FahrenView()
+    gewuenscht = []
+    ansicht.fahrt_gewuenscht.connect(gewuenscht.append)
+    ansicht.start.click()
+    ansicht.uebernehmen.setChecked(True)
+    ansicht.start.click()
+    assert gewuenscht == [False, True]
+
+
+def test_das_haekchen_gilt_fuer_fahrt_und_lage(qapp):
+    """EIN Haekchen fuer diesen Reiter: es geht immer um dieselbe Frage, wer steuert."""
+    ansicht = FahrenView()
+    gewuenscht = []
+    ansicht.lage_gewuenscht.connect(lambda a, s, u: gewuenscht.append(u))
+    ansicht.uebernehmen.setChecked(True)
+    ansicht.akku.click()
+    assert gewuenscht == [True]
+
+
+def test_nach_dem_notaus_steht_der_weg_zurueck_im_reiter(qapp, tmp_path):
+    ansicht = FahrenView()
+    assert ansicht.notaus_hinweis.isHidden()
+    ansicht.nach_notaus()
+    assert not ansicht.notaus_hinweis.isHidden()
+    text = ansicht.notaus_hinweis.text().lower()
+    assert "übernehmen" in text and "lease" in text
+    ansicht.lauf_beginnt(tmp_path, "fahren.py")
+    assert ansicht.notaus_hinweis.isHidden(), "der naechste Lauf laeuft -- der Hinweis ist erledigt"
+
+
+def test_die_uebernahme_bleibt_eine_bewusste_handlung(qapp):
+    """Nie vorausgewaehlt, auch nicht nach dem NOT-AUS: der Mensch setzt das Haekchen."""
+    ansicht = FahrenView()
+    assert not ansicht.uebernehmen.isChecked()
+    ansicht.nach_notaus()
+    assert not ansicht.uebernehmen.isChecked()
+
+
 # ------------------------------------------------------------- Die Zeile „Lage"
 
 

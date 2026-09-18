@@ -7,9 +7,10 @@ from spotlab.errors import LeaseBusy, LeaseLost
 
 
 class FakeLeaseClient:
-    def __init__(self, besitzer=None, blockiert=False):
+    def __init__(self, besitzer=None, blockiert=False, mit_antwort=False):
         self._besitzer = besitzer
         self._blockiert = blockiert
+        self._mit_antwort = mit_antwort
         self.acquired = self.taken = self.returned = 0
         self.lease_wallet = self
 
@@ -24,7 +25,11 @@ class FakeLeaseClient:
 
     def acquire(self, resource="body", **kw):
         if self._blockiert:
-            raise ResourceAlreadyClaimedError(response=None)
+            antwort = None
+            if self._mit_antwort:
+                antwort = lease_pb2.AcquireLeaseResponse()
+                antwort.lease_owner.client_name = self._besitzer or ""
+            raise ResourceAlreadyClaimedError(response=antwort)
         self.acquired += 1
         return object()
 
@@ -54,6 +59,99 @@ def test_belegtes_lease_wird_zu_klartext():
     with pytest.raises(LeaseBusy) as info:
         wache.start()
     assert "spotlab lease --take" in str(info.value)
+
+
+# --------------------------------------------- Das Lease eines toten Laufs
+
+
+def _halter_dieses_rechners(pid):
+    """So nennt der Roboter einen spotlab-Lauf DIESES Rechners: Name, Skript, PID."""
+    import socket
+
+    return f"spotlab{socket.gethostname()}:__main__.py-{pid}"
+
+
+def test_ein_abgestuerzter_eigener_lauf_wird_als_solcher_erkannt():
+    """Nach dem NOT-AUS haelt genau so einer das Lease -- der Prozess ist tot."""
+    from spotlab.backends.real import lease as lease_modul
+
+    assert lease_modul.eigener_toter_lauf(_halter_dieses_rechners(29228),
+                                          lebt=lambda _p: False) == 29228
+
+
+def test_ein_laufender_eigener_prozess_ist_keine_leiche():
+    from spotlab.backends.real import lease as lease_modul
+
+    assert lease_modul.eigener_toter_lauf(_halter_dieses_rechners(29228),
+                                          lebt=lambda _p: True) is None
+
+
+def test_ein_fremder_rechner_und_das_tablet_zaehlen_nie_als_leiche():
+    """Ein anderer Laptop kann eine tote PID-Nummer haben, die es hier zufaellig gibt --
+    und ein Tablet hat gar keine. Beides darf nie als 'niemand steuert' gelten."""
+    from spotlab.backends.real import lease as lease_modul
+
+    for halter in ("spotlabANDERER-LAPTOP:__main__.py-29228",
+                   "bosdyn.android.spotapp 2c4e3c0060f5edde",
+                   _halter_dieses_rechners(29228).replace("spotlab", "fremdprogramm"),
+                   "", None):
+        assert lease_modul.eigener_toter_lauf(halter, lebt=lambda _p: False) is None
+
+
+def test_ohne_nummer_am_ende_gibt_es_keine_leiche():
+    import socket
+
+    from spotlab.backends.real import lease as lease_modul
+
+    assert lease_modul.eigener_toter_lauf(f"spotlab{socket.gethostname()}:__main__.py",
+                                          lebt=lambda _p: False) is None
+
+
+def test_die_pruefung_wirft_nie_und_antwortet_im_zweifel_mit_ja():
+    """Die vorsichtige Richtung: lieber 'jemand steuert' als ein falsches 'niemand steuert'.
+    Und eine Nummer, die es nicht geben kann, darf keine Ausnahme ausloesen."""
+    from spotlab.backends.real import lease as lease_modul
+
+    assert lease_modul.lebt(2**31 - 1) is False, "diese Nummer laeuft sicher nicht"
+    assert lease_modul.lebt("keine zahl") is True, "unlesbar heisst im Zweifel: lebt"
+    assert lease_modul.lebt(None) is True
+
+
+def test_der_eigene_prozess_lebt():
+    import os
+
+    from spotlab.backends.real import lease as lease_modul
+
+    assert lease_modul.lebt(os.getpid()) is True
+
+
+def test_ein_totes_eigenes_lease_sagt_es_und_nennt_die_pid(monkeypatch):
+    """Die Meldung, die am 18.09.2026 fehlte: der Halter WAR tot, und spotlab sagte
+    trotzdem 'steuert den Spot gerade -- erst absprechen'. Mit wem denn?"""
+    from spotlab.backends.real import lease as lease_modul
+
+    monkeypatch.setattr(lease_modul, "lebt", lambda _pid: False)
+    halter = _halter_dieses_rechners(29228)
+    wache = LeaseGuard(FakeLeaseClient(besitzer=halter, blockiert=True, mit_antwort=True))
+    with pytest.raises(LeaseBusy) as info:
+        wache.start()
+    text = str(info.value)
+    assert "29228" in text
+    assert "NOT-AUS" in text
+    assert "niemand" in text.lower(), "es steuert gerade NIEMAND -- das ist die Nachricht"
+    assert "absprechen" not in text, "mit einem toten Prozess spricht sich niemand ab"
+    assert info.value.holder == halter
+
+
+def test_ein_lebender_fremder_halter_bleibt_die_alte_warnung(monkeypatch):
+    from spotlab.backends.real import lease as lease_modul
+
+    monkeypatch.setattr(lease_modul, "lebt", lambda _pid: False)
+    wache = LeaseGuard(FakeLeaseClient(besitzer="bosdyn.android.spotapp", blockiert=True,
+                                       mit_antwort=True))
+    with pytest.raises(LeaseBusy) as info:
+        wache.start()
+    assert "absprechen" in str(info.value) and "NOT-AUS" not in str(info.value)
 
 
 def test_take_uebernimmt_bewusst():

@@ -6,7 +6,10 @@ mit take — Übernahme ist eine bewusste Handlung.
 """
 
 import getpass
+import os
+import re
 import socket
+import subprocess
 
 from bosdyn.client.exceptions import (
     LeaseUseError,
@@ -17,7 +20,7 @@ from bosdyn.client.exceptions import (
 from bosdyn.client.lease import DisplacedLeaseError, LeaseKeepAlive
 
 from spotlab import protokoll
-from spotlab.errors import LeaseLost, translate
+from spotlab.errors import LeaseBusy, LeaseLost, translate
 
 
 def client_name():
@@ -33,6 +36,68 @@ def holder_of(lease_client, resource="body"):
     return None
 
 
+# Der Roboter nennt einen spotlab-Lauf so: Name, Rechner, Skript, Prozessnummer —
+# zum Beispiel `spotlabLIGHTRUNNER-LEG:__main__.py-29228`.
+_PID_AM_ENDE = re.compile(r"-(\d+)\s*$")
+
+
+def lebt(pid):
+    """Läuft auf DIESEM Rechner ein Prozess mit dieser Nummer? Im Zweifel ja.
+
+    Im Zweifel ja ist die vorsichtige Richtung: ein falsches „lebt nicht“ hiesse
+    „niemand steuert den Spot“, und das ist die gefährlichere Auskunft. Wirft nie.
+
+    Kein `os.kill(pid, 0)` unter Windows — dort kennt `os.kill` kein Signal 0 und
+    BEENDET den Prozess stattdessen. Die Frage darf den Gefragten nicht töten.
+    """
+    try:
+        pid = int(pid)
+    except (TypeError, ValueError):
+        return True
+    if os.name == "nt":
+        try:
+            ergebnis = subprocess.run(
+                ["tasklist", "/FI", f"PID eq {pid}", "/NH"],
+                capture_output=True, text=True, check=False, timeout=10,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return True
+        return str(pid) in (ergebnis.stdout or "")
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except OSError:
+        return True
+    return True
+
+
+def eigener_toter_lauf(halter, rechner=None, lebt=None):
+    """Die Prozessnummer eines spotlab-Laufs DIESES Rechners, der nicht mehr läuft — sonst None.
+
+    Genau das hinterlässt der NOT-AUS: er tötet den Laufprozess hart, `close()`
+    läuft nie, und das Lease bleibt beim Toten stehen. Der nächste Start prallt
+    daran ab, und spotlab sagte bis zum 18.09.2026 „steuert den Spot gerade —
+    erst absprechen". Mit wem denn?
+
+    Streng, weil die Auskunft „niemand steuert“ die gefährlichere ist: der Name
+    muss mit `spotlab` beginnen, DIESEN Rechner nennen und auf eine Nummer enden,
+    und der Prozess muss nachweislich weg sein. Ein Tablet, ein anderer Laptop
+    und ein laufender eigener Prozess fallen alle heraus.
+    """
+    if not halter:
+        return None
+    rechner = socket.gethostname() if rechner is None else rechner
+    if not halter.startswith("spotlab") or rechner.lower() not in halter.lower():
+        return None
+    treffer = _PID_AM_ENDE.search(halter)
+    if treffer is None:
+        return None
+    pid = int(treffer.group(1))
+    prueft = lebt if lebt is not None else globals()["lebt"]
+    return None if prueft(pid) else pid
+
+
 # Ein Keepalive kann aus zwei sehr verschiedenen Gruenden fehlschlagen: das Netz
 # hat gehustet, oder jemand hat uebernommen. Nur das Zweite ist ein Lease-Verlust.
 VORUEBERGEHEND = (RetryableUnavailableError, TimedOutError, ProxyConnectionError)
@@ -44,6 +109,21 @@ def _ist_voruebergehend(ursache):
     if isinstance(ursache, (DisplacedLeaseError, LeaseUseError)):
         return False
     return isinstance(ursache, VORUEBERGEHEND)
+
+
+def _leiche_statt_fremder(busy):
+    """Aus „jemand steuert“ wird „niemand steuert“, wenn der Halter nachweislich tot ist."""
+    pid = eigener_toter_lauf(busy.holder)
+    if pid is None:
+        return busy
+    return LeaseBusy(
+        f"Das Lease hängt noch an einem abgestürzten spotlab-Lauf dieses Rechners "
+        f"(Prozess {pid}, läuft nicht mehr) — typisch nach dem NOT-AUS, der den Lauf hart "
+        f"tötet, bevor er es zurückgeben kann. Es steuert also gerade NIEMAND den Spot. "
+        f"Zurück kommst du im Reiter „Fahren“ mit dem Häkchen „🔓 Kontrolle übernehmen“ und "
+        f"einem neuen Start, auf der Kommandozeile mit `spotlab lease --take`.",
+        holder=busy.holder,
+    )
 
 
 class LeaseGuard:
@@ -64,6 +144,8 @@ class LeaseGuard:
                 self._client.acquire()
         except Exception as fehler:
             uebersetzt = translate(fehler)
+            if isinstance(uebersetzt, LeaseBusy):
+                uebersetzt = _leiche_statt_fremder(uebersetzt)
             if uebersetzt is not None:
                 raise uebersetzt from fehler
             raise

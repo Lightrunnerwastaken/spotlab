@@ -360,8 +360,16 @@ def _lease(uebernehmen):
         if input("Wirklich übernehmen? [ja/nein] ").strip().lower() not in ("ja", "j"):
             print("Abgebrochen.")
             return 1
-    client.take()
-    print(f"Übernommen als {client_name()}.")
+    # Nehmen UND zurückgeben. Ein Befehl, der gleich endet, kann kein Lease halten:
+    # ohne Keepalive stünde danach wieder ein toter Halter da, und der nächste Start
+    # prallte an genau derselben Meldung ab — nur mit diesem Namen darin.
+    genommen = client.take()
+    try:
+        client.return_lease(genommen)
+    except Exception as fehler:            # noqa: BLE001 - Rückgabe darf nie werfen
+        print(f"Übernommen als {client_name()}, aber nicht freigegeben: {fehler}")
+        return 1
+    print("Übernommen und wieder freigegeben — der nächste Start bekommt den Spot.")
     return 0
 
 

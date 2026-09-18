@@ -145,6 +145,9 @@ class MainWindow(QWidget):
     def _verdrahte(self):
         self.leiste.gewaehlt.connect(self._wechsle)
         self.kopf.notaus.connect(lambda: self.ansichten["live"].notaus())
+        # Der NOT-AUS toetet den Lauf hart; sein Lease bleibt beim toten Prozess stehen.
+        # Der Weg zurueck steht dort, wo man gleich wieder starten will.
+        self.kopf.notaus.connect(self.ansichten["fahren"].nach_notaus)
         self.ansichten["live"].meldung.connect(self._melde)
         self.ansichten["projekte"].lauf_gestartet.connect(self._lauf_gestartet)
         self.ansichten["projekte"].meldung.connect(self._melde)
@@ -161,7 +164,7 @@ class MainWindow(QWidget):
         self.ansichten["raumeditor"].fahrt_gewuenscht.connect(self._starte_fahrt)
         # Der Tab „Fahren": dasselbe Programm, derselbe Startweg, Backend „real".
         self.ansichten["fahren"].fahrt_gewuenscht.connect(
-            lambda: self._starte_fahrt(FAHREN_BACKEND)
+            lambda uebernehmen: self._starte_fahrt(FAHREN_BACKEND, uebernehmen=uebernehmen)
         )
         self.ansichten["fahren"].lage_gewuenscht.connect(self._starte_lage)
         self.ansichten["fahren"].stopp_gewuenscht.connect(
@@ -392,10 +395,14 @@ class MainWindow(QWidget):
             self.ansichten["fahren"].lauf_beendet()
             self.ansichten["karten"].lauf_beendet()
 
-    def _starte_fahrt(self, backend=None):
+    def _starte_fahrt(self, backend=None, uebernehmen=False):
         """Der Fahrmodus: das mitgelieferte `fahren.py`, W A S D Q E. Ohne `backend`
         virtuell (Uebungsfenster, Raumeditor), mit `FAHREN_BACKEND` am echten Spot
-        (Tab „Fahren"). Derselbe Startweg und dieselben Regeln wie „Starten"."""
+        (Tab „Fahren"). Derselbe Startweg und dieselben Regeln wie „Starten".
+
+        `uebernehmen` reicht `--uebernehmen` an das Programm durch: der Weg zurueck,
+        wenn ein vom NOT-AUS getoeteter Lauf oder das Tablet das Lease noch haelt.
+        """
         from spotlab.workshop import fahren
         from spotlab.workshop.beispiele import bereitstellen
 
@@ -421,7 +428,10 @@ class MainWindow(QWidget):
             namen = [name for _, name in verfuegbare_backends()]
             self.ansichten["code"].setze_backend("mujoco" if "mujoco" in namen else "sim")
             self._fahrt_erwartet = True
-        self.ansichten["code"].starte_skript(fahren.skript_in(arbeitsordner))
+        self.ansichten["code"].starte_skript(
+            fahren.skript_in(arbeitsordner),
+            argumente=["--uebernehmen"] if uebernehmen else [],
+        )
 
     def _starte_lage(self, aktion, seite, uebernehmen):
         """Akku wechseln und Aufrichten aus dem Tab „Fahren": PAKETCODE (`workshop/lage.py`)

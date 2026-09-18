@@ -1,7 +1,7 @@
-"""Die Ansicht „Fahren": den echten Spot live ueber W A S D Q E fahren.
+"""Die Ansicht „Fahren“: den echten Spot live ueber W A S D Q E fahren.
 
 Kein eigener Weg zum Roboter: der Knopf startet `Beispiele/fahren.py` ueber die
-App -- derselbe eine Startweg wie „Starten" im Editor, mit dem Backend „real"
+App -- derselbe eine Startweg wie „Starten“ im Editor, mit dem Backend „real“
 (`app.py::_starte_fahrt`), also Lease, Not-Aus-Endpunkt, Geschwindigkeits-
 deckel aus `config.toml` und die Aufzeichnung wie bei jedem Programm. Die
 Tasten gehen als `fahrt.json` ins Lauf-Verzeichnis (`gui/tastenfahrt.py`,
@@ -44,7 +44,7 @@ from spotlab.record import fahrt
 VORGABE_STUFE = "langsam"             # am echten Roboter gemächlich anfangen
 
 HINWEIS = (
-    'Startet das Programm „fahren.py" aus dem Projekt Beispiele am ECHTEN Spot — mit Lease, '
+    'Startet das Programm „fahren.py“ aus dem Projekt Beispiele am ECHTEN Spot — mit Lease, '
     "Not-Aus-Endpunkt und den Tempogrenzen aus der Konfiguration, aufgezeichnet wie jeder Lauf. "
     "Tasten: W/S vor und zurück · A/D seitwärts · Q/E drehen · 1/2/3 Tempo · "
     "Leertaste oder Esc hält. "
@@ -66,8 +66,8 @@ GESICHT_WERKZEUG = (
 )
 HAND_HINWEIS = (
     "Der Handkasten kommt aus dem Rumpf-Ausschnitt des gefundenen Körpers, wie im "
-    'Folgemodus: „Halt" ist die offene Hand aufrecht, „Weiter" der Daumen hoch, sonst '
-    'steht nur „Hand". Kostet Bildrate: ohne Mensch im Bild sucht der Körpererkenner '
+    'Folgemodus: „Halt“ ist die offene Hand aufrecht, „Weiter“ der Daumen hoch, sonst '
+    'steht nur „Hand“. Kostet Bildrate: ohne Mensch im Bild sucht der Körpererkenner '
     "jedes Bild neu (rund 0.4 s), mit Mensch trägt die Spur."
 )
 HAND_WERKZEUG = (
@@ -93,8 +93,15 @@ AUFRICHTEN_WERKZEUG = (
     "Motoren vorher aus, Platz rundum, Lease frei oder übernommen."
 )
 UEBERNEHMEN_WERKZEUG = (
-    "Nimmt dem Tablet das Lease ab — eine bewusste Handlung, sie wird protokolliert. "
-    "Ohne Häkchen bricht der Lauf ab, wenn das Tablet das Lease hält."
+    "Nimmt die Kontrolle, egal wer sie hält — das Tablet oder ein abgestürzter Lauf. "
+    "Eine bewusste Handlung, sie wird als „lease_übernommen“ aufgezeichnet. Gilt für die "
+    "Fahrt und für die Lage-Knöpfe. Ohne Häkchen bricht der Start ab, wenn jemand anders hält."
+)
+NOTAUS_HINWEIS = (
+    "Nach dem NOT-AUS: der Lauf wurde hart getötet und konnte das Lease nicht zurückgeben — "
+    "der Spot hängt jetzt an einem toten Prozess, gesteuert wird er von niemandem. "
+    "Häkchen „🔓 Kontrolle übernehmen“ setzen und neu starten. Der Not-Aus-Endpunkt wird "
+    "beim nächsten Verbinden von selbst ersetzt, solange die Motoren aus sind."
 )
 
 
@@ -138,7 +145,7 @@ class Bildfeld(QWidget):
 
 
 class FahrenView(QWidget):
-    fahrt_gewuenscht = Signal()        # beginnen oder beenden -- die App entscheidet (ein Lauf)
+    fahrt_gewuenscht = Signal(bool)    # beginnen oder beenden, mit Uebernahme -- die App entscheidet
     stopp_gewuenscht = Signal()
     lage_gewuenscht = Signal(str, str, bool)   # Aktion (akku|aufrichten), Seite, Lease uebernehmen
     meldung = Signal(str)
@@ -182,12 +189,18 @@ class FahrenView(QWidget):
         self.hand.setEnabled(False)
         self.hand.setToolTip(HAND_WERKZEUG)
         self.hand.toggled.connect(self._hand_umgelegt)
+        # EIN Haekchen fuer diesen Reiter: es geht immer um dieselbe Frage, wer steuert --
+        # das Tablet oder ein vom NOT-AUS getoeteter Lauf, der sein Lease nie zurueckgab.
+        # Deshalb steht es bei den Knoepfen und nicht in der Lage-Zeile.
+        self.uebernehmen = QCheckBox("🔓 Kontrolle übernehmen")
+        self.uebernehmen.setToolTip(UEBERNEHMEN_WERKZEUG)
 
         knoepfe = QHBoxLayout()
         knoepfe.addWidget(self.start)
         knoepfe.addWidget(self.stopp)
         knoepfe.addWidget(QLabel("Tempo"))
         knoepfe.addWidget(self.stufe)
+        knoepfe.addWidget(self.uebernehmen)
         knoepfe.addWidget(self.gesicht)
         knoepfe.addWidget(self.hand)
         knoepfe.addStretch(1)
@@ -206,8 +219,6 @@ class FahrenView(QWidget):
         self.aufrichten = QPushButton("⬆ Aufrichten")
         self.aufrichten.setToolTip(AUFRICHTEN_WERKZEUG)
         self.aufrichten.clicked.connect(self._aufrichten_geklickt)
-        self.uebernehmen = QCheckBox("Lease vom Tablet übernehmen")
-        self.uebernehmen.setToolTip(UEBERNEHMEN_WERKZEUG)
         self.lage_zustand = QLabel("")
         self.lage_zustand.setObjectName("Gedaempft")
         self.lage_zustand.setWordWrap(True)
@@ -220,7 +231,6 @@ class FahrenView(QWidget):
         lage.addWidget(self.seite)
         lage.addWidget(self.akku)
         lage.addWidget(self.aufrichten)
-        lage.addWidget(self.uebernehmen)
         lage.addStretch(1)
 
         # Der Blick nach vorn: `workshop/blick.py` schreibt `ansicht.jpg` (beide
@@ -244,6 +254,10 @@ class FahrenView(QWidget):
         self.hand_hinweis.setObjectName("Gedaempft")
         self.hand_hinweis.setWordWrap(True)
         self.hand_hinweis.hide()
+        self.notaus_hinweis = QLabel(NOTAUS_HINWEIS)
+        self.notaus_hinweis.setObjectName("Gedaempft")
+        self.notaus_hinweis.setWordWrap(True)
+        self.notaus_hinweis.hide()
 
         self.belegung = QLabel(BELEGUNG)
         self.belegung.setObjectName("Kachelname")
@@ -257,6 +271,7 @@ class FahrenView(QWidget):
         anordnung.addWidget(titel)
         anordnung.addWidget(hinweis)
         anordnung.addLayout(knoepfe)
+        anordnung.addWidget(self.notaus_hinweis)
         anordnung.addLayout(lage)
         anordnung.addWidget(self.lage_zustand)
         anordnung.addWidget(self.hinweis_bild)
@@ -291,6 +306,7 @@ class FahrenView(QWidget):
         self.tastenfahrt.beginne(lauf_dir)
         self.start.setText("■ Fahrt beenden")
         self.stopp.setEnabled(True)
+        self.notaus_hinweis.hide()          # es läuft wieder etwas: erledigt
         self._lageknoepfe(False)          # waehrend der Fahrt legt er sich nicht hin
         self.gesicht.setEnabled(True)
         self.hand.setEnabled(True)
@@ -365,7 +381,16 @@ class FahrenView(QWidget):
 
     def _start_geklickt(self):
         # Am `clicked`-Signal: Qt reicht `checked` herein, deshalb kein Parameter.
-        self.fahrt_gewuenscht.emit()
+        self.fahrt_gewuenscht.emit(self.uebernehmen.isChecked())
+
+    def nach_notaus(self):
+        """Der NOT-AUS wurde gedrückt: hier steht, wie man zurückkommt.
+
+        Der Knopf tötet den Lauf hart, damit er nicht auf einen sauberen Abbau
+        warten muss — der Preis ist ein Lease, das an einem toten Prozess hängt.
+        Das Häkchen wird NICHT gesetzt: Übernehmen bleibt eine Handlung des Menschen.
+        """
+        self.notaus_hinweis.show()
 
     def _stopp_geklickt(self):
         self.tastenfahrt.alle_los()

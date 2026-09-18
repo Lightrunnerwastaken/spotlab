@@ -730,7 +730,7 @@ def test_fahren_startet_das_programm_aus_beispiele_und_das_fenster_kennt_es(qapp
     fenster._config = replace(fenster._config or Config(ip="", username="", limits=Limits()),
                               workspace=str(tmp_path))
     gestartet = []
-    monkeypatch.setattr(fenster.ansichten["code"], "starte_skript", lambda pfad: gestartet.append(pfad))
+    monkeypatch.setattr(fenster.ansichten["code"], "starte_skript", lambda pfad, argumente=(): gestartet.append(pfad))
     fenster.ansichten["raumeditor"].fahrt_gewuenscht.emit()
     assert gestartet == [tmp_path / "Beispiele" / "fahren.py"] and gestartet[0].is_file()
     assert fenster.ansichten["code"].gewaehltes_backend() in ("sim", "mujoco")
@@ -751,8 +751,8 @@ def test_der_tab_fahren_startet_dasselbe_programm_am_echten_spot(qapp, tmp_path,
     fenster._config = replace(fenster._config or Config(ip="", username="", limits=Limits()),
                               workspace=str(tmp_path))
     gestartet = []
-    monkeypatch.setattr(fenster.ansichten["code"], "starte_skript", lambda pfad: gestartet.append(pfad))
-    fenster.ansichten["fahren"].fahrt_gewuenscht.emit()
+    monkeypatch.setattr(fenster.ansichten["code"], "starte_skript", lambda pfad, argumente=(): gestartet.append(pfad))
+    fenster.ansichten["fahren"].fahrt_gewuenscht.emit(False)
     assert gestartet == [tmp_path / "Beispiele" / "fahren.py"]
     assert fenster.ansichten["code"].gewaehltes_backend() == "real"
     assert fenster._fahrt_erwartet == "real"
@@ -808,7 +808,7 @@ def test_der_tab_fahren_faehrt_wirklich_ueber_knopf_watcher_und_tasten(qapp, tmp
     fenster._setze_arbeitsordner(str(tmp_path))
     fenster._wechsle("fahren")
     tab = fenster.ansichten["fahren"]
-    tab.fahrt_gewuenscht.emit()
+    tab.fahrt_gewuenscht.emit(False)
     assert fenster.ansichten["code"].laeuft(), fenster.statuszeile.text()
     prozess = fenster.ansichten["code"]._prozess
     lauf = None
@@ -838,7 +838,7 @@ def test_fahren_ohne_arbeitsordner_sagt_es(qapp, monkeypatch):
     fenster = MainWindow()
     fenster._config = None
     gestartet, meldungen = [], []
-    monkeypatch.setattr(fenster.ansichten["code"], "starte_skript", lambda pfad: gestartet.append(pfad))
+    monkeypatch.setattr(fenster.ansichten["code"], "starte_skript", lambda pfad, argumente=(): gestartet.append(pfad))
     monkeypatch.setattr(fenster, "_melde", meldungen.append)
     fenster.ansichten["raumeditor"].fahrt_gewuenscht.emit()
     assert gestartet == [] and meldungen and "Arbeitsordner" in meldungen[0]
@@ -939,7 +939,7 @@ def test_der_karten_tab_startet_navigieren_am_echten_spot_ueber_den_einen_startw
     fenster.ansichten["code"].setze_backend("sim")
     fenster.ansichten["karten"].liste.setCurrentRow(0)
     gestartet = []
-    monkeypatch.setattr(fenster.ansichten["code"], "starte_skript", lambda pfad: gestartet.append(pfad))
+    monkeypatch.setattr(fenster.ansichten["code"], "starte_skript", lambda pfad, argumente=(): gestartet.append(pfad))
     fenster.ansichten["karten"].navigation_gewuenscht.emit()
     assert gestartet == [tmp_path / "Beispiele" / "navigieren.py"]
     assert (tmp_path / "Beispiele" / "navigieren.py").is_file()
@@ -959,7 +959,7 @@ def test_navigation_ohne_gewaehlte_karte_sagt_es(qapp, tmp_path, monkeypatch):
                               workspace=str(tmp_path))
     fenster._setze_arbeitsordner(str(tmp_path))
     gestartet, meldungen = [], []
-    monkeypatch.setattr(fenster.ansichten["code"], "starte_skript", lambda pfad: gestartet.append(pfad))
+    monkeypatch.setattr(fenster.ansichten["code"], "starte_skript", lambda pfad, argumente=(): gestartet.append(pfad))
     monkeypatch.setattr(fenster, "_melde", meldungen.append)
     fenster.ansichten["karten"].navigation_gewuenscht.emit()
     assert gestartet == [] and meldungen and "Karte" in meldungen[0]
@@ -1116,6 +1116,44 @@ def _fenster_mit_arbeitsordner(tmp_path):
                               workspace=str(tmp_path))
     fenster._setze_arbeitsordner(str(tmp_path))
     return fenster
+
+
+def test_die_fahrt_kann_das_lease_uebernehmen(qapp, tmp_path, monkeypatch):
+    """Der Weg zurueck nach dem NOT-AUS: der getoetete Lauf haelt das Lease noch,
+    und ohne Uebernahme prallt jeder Start daran ab."""
+    fenster = _fenster_mit_arbeitsordner(tmp_path)
+    gestartet = []
+    monkeypatch.setattr(fenster.ansichten["code"], "starte_skript",
+                        lambda pfad, argumente=(): gestartet.append((Path(pfad), list(argumente))))
+    fenster.ansichten["fahren"].fahrt_gewuenscht.emit(True)
+    assert gestartet == [(tmp_path / "Beispiele" / "fahren.py", ["--uebernehmen"])]
+    assert fenster._fahrt_erwartet == "real"
+
+
+def test_ohne_haekchen_faehrt_die_fahrt_ohne_uebernahme(qapp, tmp_path, monkeypatch):
+    fenster = _fenster_mit_arbeitsordner(tmp_path)
+    gestartet = []
+    monkeypatch.setattr(fenster.ansichten["code"], "starte_skript",
+                        lambda pfad, argumente=(): gestartet.append((Path(pfad), list(argumente))))
+    fenster.ansichten["fahren"].fahrt_gewuenscht.emit(False)
+    assert gestartet == [(tmp_path / "Beispiele" / "fahren.py", [])]
+
+
+def test_der_notaus_zeigt_dem_fahren_reiter_den_weg_zurueck(qapp, tmp_path, monkeypatch):
+    """Der NOT-AUS toetet den Prozess hart -- `close()` laeuft nie, das Lease bleibt
+    beim Toten. Genau dort muss stehen, wie man zurueckkommt."""
+    fenster = _fenster_mit_arbeitsordner(tmp_path)
+    monkeypatch.setattr(fenster.ansichten["live"], "notaus", lambda: None)
+    fenster.kopf.notaus.emit()
+    assert not fenster.ansichten["fahren"].notaus_hinweis.isHidden()
+
+
+def test_das_beispiel_fahren_kennt_die_uebernahme():
+    """Der Knopf reicht `--uebernehmen` an DIESE Datei -- sie muss es lesen."""
+    from spotlab.workshop import fahren as fahrmodul
+
+    quelle = (Path(fahrmodul.__file__).parent / "beispiele" / "fahren.py").read_text(encoding="utf-8")
+    assert "--uebernehmen" in quelle and "take=" in quelle
 
 
 def test_akku_wechseln_startet_paketcode_mit_seite_laufordner_und_uebernahme(qapp, tmp_path, monkeypatch):

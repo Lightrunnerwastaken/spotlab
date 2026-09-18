@@ -16,7 +16,20 @@ versionsgepinntes Extra `spotlab[sim]`.
   damit den Not-Aus des Tablets. Registrierung ausschliesslich über
   `backends/real/estop.py::register_coexisting`.
 - **Lease wird mit `acquire` geholt, nie implizit mit `take`.** Übernahme ist eine
-  bewusste, protokollierte Handlung.
+  bewusste, protokollierte Handlung. **Der NOT-AUS hinterlässt genau deshalb ein verwaistes
+  Lease** (18.09.2026, zweimal hintereinander): er tötet den Lauf hart, `close()` läuft nie,
+  und der Roboter zählt den toten Prozess weiter als Halter — der nächste Start prallt mit
+  `ResourceAlreadyClaimedError` ab. Der Ausweg ist EIN Häkchen, kein stilles `take`:
+  „🔓 Kontrolle übernehmen" im Reiter „Fahren" gilt für die Fahrt und für die Lage-Knöpfe und
+  reicht `--uebernehmen` an das Programm durch. Dazu sagt die Meldung jetzt die Wahrheit:
+  `lease.eigener_toter_lauf` erkennt einen spotlab-Halter DIESES Rechners, dessen Prozess weg
+  ist, und macht aus „steuert den Spot gerade — erst absprechen" ein „es steuert NIEMAND". Die
+  Erkennung ist streng (Name, Rechner, Nummer, Prozess nachweislich tot) und `lebt()` antwortet
+  im Zweifel mit ja: ein falsches „niemand steuert" wäre die gefährlichere Auskunft. **Kein
+  `os.kill(pid, 0)` unter Windows** — dort kennt `os.kill` kein Signal 0 und BEENDET den
+  Prozess; gefragt wird über `tasklist`. Und `spotlab lease --take` gibt das Lease sofort
+  wieder ZURÜCK: ein Befehl, der gleich endet, kann keines halten, und ohne Rückgabe stünde
+  danach wieder ein toter Halter da.
 - **Wer nur lesen will, nimmt den ZWEITEN Einstieg, nicht ein Argument im ersten.**
   `RealSpot.nur_lesen()` verbindet ohne Lease und ohne Not-Aus-Endpunkt; `connect()` holt
   beides. Ein `if nur_lesen:` mitten im Aufbau hätte den `acquire` einen Tastendruck
