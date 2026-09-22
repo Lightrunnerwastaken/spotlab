@@ -244,3 +244,42 @@ def test_waehrend_der_navigation_wird_nicht_umbenannt(qapp, tmp_path, monkeypatc
 
 def _karte_ordner(tmp_path):
     return karten_wurzel(tmp_path) / "turnhalle"
+
+
+def test_nach_einem_fehlgeschlagenen_verbinden_ist_der_reiter_wieder_benutzbar(qapp, tmp_path):
+    """Befund 22.09.2026: `_aufnahme_fehler` meldete nur und setzte nichts zurueck.
+    Der Knopf blieb fuer immer grau, und ein zweiter Versuch antwortete 'Es laeuft
+    bereits eine Aufnahme' -- eine Ursache, die es nicht gab. Nur ein Neustart half.
+    Das trifft jeden ohne Roboter beim ersten Klick."""
+    from spotlab.config import Config, Limits
+
+    ansicht = MapsView()
+    ansicht.setze_arbeitsordner(str(tmp_path))
+    ansicht.setze_config(Config(ip="10.0.0.9", username="u", limits=Limits()))
+    meldungen = []
+    ansicht.meldung.connect(meldungen.append)
+
+    class _Gescheitert:
+        """Ein Arbeiter, der gar nicht erst verbindet."""
+
+        def __init__(self, *a, **kw):
+            pass
+
+        def start(self):
+            pass
+
+        def schliesse(self):
+            pass
+
+        def wait(self, _ms=0):
+            return True
+
+        status = fehler = gespeichert = bereit = property(lambda self: None)
+
+    ansicht._worker = _Gescheitert()
+    ansicht.start_knopf.setEnabled(False)
+    ansicht._aufnahme_fehler("Ich erreiche 10.0.0.9 nicht.")
+
+    assert meldungen and "10.0.0.9" in meldungen[0]
+    assert ansicht.start_knopf.isEnabled(), "der Reiter muss einen zweiten Versuch zulassen"
+    assert ansicht._worker is None

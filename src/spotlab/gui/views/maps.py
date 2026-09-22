@@ -419,7 +419,13 @@ class MapsView(QWidget):
         )
 
     def _aufnahme_fehler(self, text):
+        """Melden UND aufraeumen. Vorher blieb `_worker` stehen: der Startknopf blieb
+        fuer immer grau, und der zweite Versuch antwortete "Es laeuft bereits eine
+        Aufnahme" -- eine Ursache, die es nicht gab. Nur ein Neustart half, und getroffen
+        hat es jeden ohne Roboter beim ersten Klick."""
         self.meldung.emit(text)
+        self._beende_worker()
+        self.aufnahme_status.setText("Nicht aufgenommen.")
 
     def _aufnahme_gespeichert(self, pfad):
         self.meldung.emit(f"Karte gespeichert: {pfad}")

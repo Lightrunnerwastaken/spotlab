@@ -264,3 +264,41 @@ def test_stop_schreibt_das_scheitern_ins_protokoll(tmp_path):
         protokoll.setze_ziel(None)
     geschrieben = "".join(p.read_text(encoding="utf-8") for p in tmp_path.iterdir())
     assert "Lease-Rueckgabe gescheitert" in geschrieben
+
+
+def test_die_prozesspruefung_liest_die_konsolen_codepage(monkeypatch):
+    """Befund 22.09.2026: `subprocess.run(..., text=True)` ohne `encoding` nimmt unter
+    Windows cp1252, `tasklist` schreibt aber die OEM-Codepage (hier cp850). Die Zeile
+    "Es werden keine Aufgaben ausgefuehrt" enthaelt 0x81 (ue) -- in cp1252 undefiniert.
+    Der UnicodeDecodeError flog im Leserthread, `stdout` wurde None, und `lebt()`
+    antwortete FALSE: genau die gefaehrliche Richtung, die der Docstring ausschliesst."""
+    import subprocess as sp
+
+    from spotlab.backends.real import lease as lease_modul
+
+    gesehen = {}
+
+    def gefragt(argv, **kw):
+        gesehen.update(kw)
+        assert kw.get("encoding"), "ohne ausdrueckliche Kodierung raet Python die falsche"
+        # Genau die BYTES, die `tasklist` schreibt: 0x81 ist "ue" in cp850 und in
+        # cp1252 undefiniert -- daran starb der Leserthread.
+        roh = b"INFORMATION: Es werden keine Aufgaben mit den Kriterien ausgef\x81hrt."
+        text = roh.decode(kw["encoding"], errors=kw.get("errors", "strict"))
+        return sp.CompletedProcess(argv, 0, stdout=text, stderr="")
+
+    monkeypatch.setattr(lease_modul.os, "name", "nt")
+    monkeypatch.setattr(lease_modul.subprocess, "run", gefragt)
+    assert lease_modul.lebt(4711) is False, "die Meldung nennt die Nummer nicht -- er lebt nicht"
+    assert gesehen.get("errors") == "replace", "ein unbekanntes Byte darf die Auskunft nicht kippen"
+
+
+def test_eine_unlesbare_ausgabe_heisst_im_zweifel_lebt(monkeypatch):
+    from spotlab.backends.real import lease as lease_modul
+
+    def wirft(argv, **kw):
+        raise UnicodeDecodeError("charmap", b"\x81", 0, 1, "undefiniert")
+
+    monkeypatch.setattr(lease_modul.os, "name", "nt")
+    monkeypatch.setattr(lease_modul.subprocess, "run", wirft)
+    assert lease_modul.lebt(4711) is True, "wirft nie, und im Zweifel lebt der Prozess"

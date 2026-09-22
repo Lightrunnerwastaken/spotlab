@@ -9,6 +9,8 @@ Die Geschwindigkeitsgrenzen stehen hier, damit eine Lehrperson sie für
 Anfängerstunden herunterdrehen kann, ohne eine TOML-Datei zu suchen.
 """
 
+from dataclasses import replace
+
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QDoubleSpinBox,
@@ -101,17 +103,22 @@ class CheckupView(QWidget):
         self.max_drehung.setValue(grenzen.max_turn_rate)
 
     def speichere(self):
-        alt = self._config
-        cfg = Config(
+        # ERGAENZEN, nicht neu bauen: ein frisches `Config(...)` liess jedes nicht
+        # genannte Feld auf die Vorgabe zurueckfallen -- aktive Karte, Uebungsraum,
+        # Startpose und `treppen` waren nach einer Passwortaenderung weg. `treppen`
+        # ist dabei ein SICHERHEITSWERT (`mobility.mit_grenze` -> `stairs_mode`).
+        # Auf der Kommandozeile war das in `cli.py::_login` laengst so geloest.
+        alt = self._config or Config(ip="", username="", limits=Limits())
+        cfg = replace(
+            alt,
             ip=self.ip.text().strip(),
             username=self.benutzer.text().strip(),
             nickname=self.spitzname.text().strip() or "Spot",
-            limits=Limits(
-                max_speed=self.max_tempo.value(), max_turn_rate=self.max_drehung.value()
+            limits=replace(
+                alt.limits,
+                max_speed=self.max_tempo.value(),
+                max_turn_rate=self.max_drehung.value(),
             ),
-            editor_command=alt.editor_command if alt else "code",
-            default_backend=alt.default_backend if alt else "real",
-            workspace=alt.workspace if alt else "",
         )
         save_config(cfg)
         wort = self.passwort.text()

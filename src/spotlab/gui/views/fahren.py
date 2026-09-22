@@ -210,7 +210,13 @@ class FahrenView(QWidget):
         # Paketcode `workshop/lage.py` (wie der Gehzeit-Knopf: der Knopf verspricht
         # eine bestimmte Bewegung, und die Kopie im Arbeitsordner kann jemand
         # bearbeitet haben). Die Uebernahme des Leases ist ein Haekchen, nie Vorgabe.
+        # Die Seite gilt NUR fuer den Akkuwechsel: `lage.aufrichten` liest sie nie.
+        # Ein Auswahlfeld neben zwei Knoepfen, das nur fuer einen gilt, ist ein
+        # Haekchen ohne Wirkung -- deshalb steht das in der Beschriftung.
+        self.seite_beschriftung = QLabel("Akku-Seite")
         self.seite = QComboBox()
+        self.seite.setToolTip("Zu welcher Seite Spot sich beim Akkuwechsel legt. "
+                              "Fuer das Aufrichten spielt sie keine Rolle.")
         self.seite.addItem("nach links", "links")
         self.seite.addItem("nach rechts", "rechts")
         self.akku = QPushButton("🔋 Akku wechseln")
@@ -228,6 +234,7 @@ class FahrenView(QWidget):
 
         lage = QHBoxLayout()
         lage.addWidget(QLabel("Lage"))
+        lage.addWidget(self.seite_beschriftung)
         lage.addWidget(self.seite)
         lage.addWidget(self.akku)
         lage.addWidget(self.aufrichten)
@@ -383,14 +390,19 @@ class FahrenView(QWidget):
         # Am `clicked`-Signal: Qt reicht `checked` herein, deshalb kein Parameter.
         self.fahrt_gewuenscht.emit(self.uebernehmen.isChecked())
 
-    def nach_notaus(self):
-        """Der NOT-AUS wurde gedrückt: hier steht, wie man zurückkommt.
+    def nach_notaus(self, getoetet=True):
+        """Ein Lauf wurde wirklich hart getötet: hier steht, wie man zurückkommt.
 
         Der Knopf tötet den Lauf hart, damit er nicht auf einen sauberen Abbau
         warten muss — der Preis ist ein Lease, das an einem toten Prozess hängt.
         Das Häkchen wird NICHT gesetzt: Übernehmen bleibt eine Handlung des Menschen.
+
+        `getoetet=False` heisst: es lief nichts, oder das Töten ist GESCHEITERT.
+        Dann wäre der Satz falsch — im zweiten Fall sogar gefährlich, weil er zur
+        Lease-Übernahme schickt, während der Roboter weiterfährt.
         """
-        self.notaus_hinweis.show()
+        if getoetet:
+            self.notaus_hinweis.show()
 
     def _stopp_geklickt(self):
         self.tastenfahrt.alle_los()

@@ -41,12 +41,16 @@ from spotlab.gui.views.projects import projekte_in
 # Beschriftung -> Backend-Name. Drei Zustaende, nicht zwei: der Trockenlauf HAT
 # keine Position (Pose bleibt 0/0/0) und kann im Uebungsraum nichts zeigen.
 # `sim` war bis hierher aus der GUI ueberhaupt nicht erreichbar.
+# Der echte Spot steht ZULETZT. Die Liste wird von oben gelesen, und ein nicht
+# erkannter Wunsch bleibt auf dem ERSTEN Eintrag stehen (`setze_backend` aendert
+# bei unbekanntem Namen nichts) -- stuende dort der Roboter, waere jeder Fehlgriff
+# eine Fahrt am Geraet.
 BACKENDS = (
-    ("Echter Spot", "real"),
-    ("Trockenlauf (nur Text)", "dryrun"),
-    ("Übungsraum (virtuell)", "sim"),
     ("Übungsraum 3D (Wiedergabe)", "mujoco"),
+    ("Übungsraum (virtuell)", "sim"),
+    ("Trockenlauf (nur Text)", "dryrun"),
     ("Physik 3D (experimentell)", "physics"),
+    ("Echter Spot", "real"),
 )
 
 

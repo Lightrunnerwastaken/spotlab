@@ -380,3 +380,26 @@ def test_der_schalter_sagt_dass_die_tiefenpruefung_fehlt(qapp):
     text = (ansicht.gesicht.toolTip() + " " + ansicht.gesicht_hinweis.text()).lower()
     assert "tiefe" in text or "gegenprobe" in text
     assert "fehltreffer" in text
+
+
+# ------------------------------------- Nachtraege aus der Beta-Durchsicht (22.09.2026)
+
+
+def test_die_seitenwahl_gehoert_zum_akkuwechsel_und_sagt_das(qapp):
+    """`lage.aufrichten` liest die Seite NIE. Ein Auswahlfeld, das neben zwei Knoepfen
+    steht und nur fuer einen gilt, ist ein Haekchen ohne Wirkung."""
+    ansicht = FahrenView()
+    beschriftung = (ansicht.seite.toolTip() + " " + ansicht.seite_beschriftung.text()).lower()
+    assert "akku" in beschriftung
+
+
+def test_der_notaus_hinweis_kommt_nur_wenn_wirklich_etwas_getoetet_wurde(qapp, tmp_path):
+    """Ohne laufendes Programm sagt die Statuszeile 'Es laeuft gerade kein Programm' --
+    dann darf im Reiter nicht stehen, ein Lauf sei getoetet worden und das Lease haenge
+    an einem Toten. Im gefaehrlichen Fall (Toeten gescheitert, Roboter faehrt weiter)
+    ist derselbe Satz sogar falsch und schickt zur Lease-Uebernahme."""
+    ansicht = FahrenView()
+    ansicht.nach_notaus(getoetet=False)
+    assert ansicht.notaus_hinweis.isHidden()
+    ansicht.nach_notaus(getoetet=True)
+    assert not ansicht.notaus_hinweis.isHidden()

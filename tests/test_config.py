@@ -248,3 +248,12 @@ def test_ein_unbekannter_treppenmodus_wird_abgewiesen(tmp_path):
     with pytest.raises(ConfigBroken) as fehler:
         load_config(pfad)
     assert "treppen" in str(fehler.value) and "auto" in str(fehler.value)
+
+
+def test_die_vorgabe_ist_die_simulation_nicht_der_roboter():
+    """Beta-Entscheidung 22.09.2026: wer nichts einstellt, faehrt NICHT den echten Spot.
+    Ein frisch installiertes spotlab ohne Konfiguration soll im Uebungsraum starten;
+    den Roboter waehlt man bewusst."""
+    from spotlab.config import Config
+
+    assert Config(ip="", username="").default_backend == "mujoco"

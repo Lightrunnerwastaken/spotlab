@@ -40,7 +40,9 @@ class Config:
     nickname: str = "Spot"
     limits: Limits = field(default_factory=Limits)
     editor_command: str = "code"
-    default_backend: str = "real"
+    # Wer nichts einstellt, faehrt NICHT den echten Spot: den waehlt man bewusst
+    # (Beta-Entscheidung 22.09.2026). Der Uebungsraum 3D liegt jedem Release bei.
+    default_backend: str = "mujoco"
     workspace: str = ""  # Arbeitsordner der GUI; leer = noch nicht gewählt
     active_map: str = ""  # in der GUI gewählte Karte; leer = keine
     raum: str = ""        # Übungsraum für den Sim; leer = keiner

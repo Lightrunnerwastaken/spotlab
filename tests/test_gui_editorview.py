@@ -665,7 +665,9 @@ def test_die_auswahl_zeigt_die_verfuegbaren_backends(qapp, tmp_path, monkeypatch
     monkeypatch.setattr(modul.importlib.util, "find_spec", lambda name: object())
     ansicht, _ordner, _projekt = _ansicht(tmp_path)
     namen = [ansicht.backendwahl.itemData(i) for i in range(ansicht.backendwahl.count())]
-    assert namen == ["real", "dryrun", "sim", "mujoco", "physics"]
+    # Der echte Spot ZULETZT (22.09.2026): ein nicht erkannter Wunsch bleibt auf dem
+    # ersten Eintrag stehen, und der darf keine Fahrt am Geraet sein.
+    assert namen == ["mujoco", "sim", "dryrun", "physics", "real"]
 
 
 def test_die_umgebung_darf_den_start_verweigern(qapp, tmp_path, monkeypatch):
@@ -725,3 +727,19 @@ def test_starte_skript_reicht_argumente_an_das_programm(qapp, tmp_path):
     prozess.wait(timeout=TEST_TIMEOUT_S)
     ansicht.pruefe_lauf_lebt()
     assert "ARGV ['akku', 'rechts', '--runs', 'x']" in ausgabe
+
+
+def test_die_backendliste_stellt_den_echten_spot_ans_ende(qapp):
+    """Die Liste wird von oben gelesen, und ein nicht erkannter Wunsch landet auf dem
+    ERSTEN Eintrag (`setze_backend` aendert bei unbekanntem Namen nichts). Stuende dort
+    der echte Spot, waere jeder Fehlgriff ein Roboterlauf."""
+    from spotlab.gui.editor.view import BACKENDS
+
+    namen = [b[1] for b in BACKENDS]
+    assert namen[-1] == "real", "der echte Spot steht zuletzt"
+    assert namen[0] != "real"
+
+
+def test_eine_frische_ansicht_steht_nicht_auf_dem_echten_spot(qapp, tmp_path):
+    ansicht, _ordner, _projekt = _ansicht(tmp_path)
+    assert ansicht.gewaehltes_backend() != "real"

@@ -144,10 +144,7 @@ class MainWindow(QWidget):
 
     def _verdrahte(self):
         self.leiste.gewaehlt.connect(self._wechsle)
-        self.kopf.notaus.connect(lambda: self.ansichten["live"].notaus())
-        # Der NOT-AUS toetet den Lauf hart; sein Lease bleibt beim toten Prozess stehen.
-        # Der Weg zurueck steht dort, wo man gleich wieder starten will.
-        self.kopf.notaus.connect(self.ansichten["fahren"].nach_notaus)
+        self.kopf.notaus.connect(self._notaus)
         self.ansichten["live"].meldung.connect(self._melde)
         self.ansichten["projekte"].lauf_gestartet.connect(self._lauf_gestartet)
         self.ansichten["projekte"].meldung.connect(self._melde)
@@ -172,6 +169,7 @@ class MainWindow(QWidget):
         )
         self.ansichten["fahren"].meldung.connect(self._melde)
         self.ansichten["experimente"].meldung.connect(self._melde)
+        self._setze_backendwahl(self._config)
         self.ansichten["code"].laeuft_geaendert.connect(self._code_laeuft_geaendert)
         self._fahrt_erwartet = False
         # Wahr, solange ein Navigationslauf aus „Karten" erwartet wird.
@@ -278,10 +276,31 @@ class MainWindow(QWidget):
         save_config(self._config)
         self.ansichten["karten"].setze_config(self._config)
 
+    def _notaus(self):
+        """Hart stoppen -- und den Weg zurueck NUR anbieten, wenn wirklich etwas starb.
+
+        `LiveView.notaus()` meldet, ob ein LEBENDER Lauf getoetet wurde. Nur dann
+        haengt danach ein Lease an einem toten Prozess. Lief nichts, waere der
+        Hinweis falsch; ist das Toeten GESCHEITERT, waere er gefaehrlich -- er
+        schickte zur Lease-Uebernahme, waehrend der Roboter weiterfaehrt.
+        """
+        self.ansichten["fahren"].nach_notaus(getoetet=bool(self.ansichten["live"].notaus()))
+
+    def _setze_backendwahl(self, cfg):
+        """Die Vorauswahl im Reiter „Code" kommt aus der Konfiguration.
+
+        Ohne das stand dort immer der ERSTE Listeneintrag, egal was eingestellt war.
+        Ein unbekannter Name aendert nichts (`setze_backend`), und die Liste beginnt
+        seit dem 22.09.2026 nicht mehr mit dem echten Spot.
+        """
+        if cfg is not None:
+            self.ansichten["code"].setze_backend(cfg.default_backend)
+
     def _config_gespeichert(self, cfg):
         self._config = cfg
         self.kopf.zeige_config(cfg)
         self.ansichten["karten"].setze_config(cfg)
+        self._setze_backendwahl(cfg)
 
     def _pruefe(self):
         self.ansichten["spot"].pruefen_knopf.setEnabled(False)
@@ -461,7 +480,10 @@ class MainWindow(QWidget):
             self._melde(f"Beispiele konnten nicht angelegt werden: {fehler}")
             return
         runs = Path(arbeitsordner) / BEISPIELORDNER / "runs"
-        argumente = [aktion, seite, "--runs", str(runs)] + (["--uebernehmen"] if uebernehmen else [])
+        # Die Seite nur beim Akkuwechsel: `lage.aufrichten` liest sie nie, und ein
+        # Argument, das niemand liest, steht sonst in jeder Aufzeichnung mit drin.
+        argumente = [aktion] + ([seite] if aktion == "akku" else [])
+        argumente += ["--runs", str(runs)] + (["--uebernehmen"] if uebernehmen else [])
         self.ansichten["code"].setze_backend(FAHREN_BACKEND)
         self._fahrt_erwartet = False
         self.ansichten["code"].starte_skript(lage.SKRIPT, argumente=argumente)

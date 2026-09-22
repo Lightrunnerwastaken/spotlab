@@ -56,11 +56,18 @@ def lebt(pid):
         return True
     if os.name == "nt":
         try:
+            # `encoding="oem"` ist Pflicht: `text=True` allein nimmt cp1252, `tasklist`
+            # schreibt aber die KONSOLEN-Codepage (cp850). Die Zeile "Es werden keine
+            # Aufgaben ausgefuehrt" enthaelt 0x81 -- in cp1252 undefiniert. Der
+            # UnicodeDecodeError flog im Leserthread, `stdout` wurde None, und die
+            # Antwort kippte auf False: genau die gefaehrliche Richtung, die diese
+            # Funktion ausschliessen soll. `errors="replace"` als zweiter Boden.
             ergebnis = subprocess.run(
                 ["tasklist", "/FI", f"PID eq {pid}", "/NH"],
                 capture_output=True, text=True, check=False, timeout=10,
+                encoding="oem", errors="replace",
             )
-        except (OSError, subprocess.SubprocessError):
+        except (OSError, subprocess.SubprocessError, ValueError, LookupError):
             return True
         return str(pid) in (ergebnis.stdout or "")
     try:

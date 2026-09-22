@@ -1143,9 +1143,15 @@ def test_der_notaus_zeigt_dem_fahren_reiter_den_weg_zurueck(qapp, tmp_path, monk
     """Der NOT-AUS toetet den Prozess hart -- `close()` laeuft nie, das Lease bleibt
     beim Toten. Genau dort muss stehen, wie man zurueckkommt."""
     fenster = _fenster_mit_arbeitsordner(tmp_path)
-    monkeypatch.setattr(fenster.ansichten["live"], "notaus", lambda: None)
+    # Der Hinweis haengt daran, ob wirklich ein LEBENDER Lauf getoetet wurde.
+    monkeypatch.setattr(fenster.ansichten["live"], "notaus", lambda: True)
     fenster.kopf.notaus.emit()
     assert not fenster.ansichten["fahren"].notaus_hinweis.isHidden()
+
+    fenster.ansichten["fahren"].notaus_hinweis.hide()
+    monkeypatch.setattr(fenster.ansichten["live"], "notaus", lambda: False)
+    fenster.kopf.notaus.emit()
+    assert fenster.ansichten["fahren"].notaus_hinweis.isHidden(),         "es lief nichts, oder das Toeten scheiterte -- dann waere der Satz falsch"
 
 
 def test_das_beispiel_fahren_kennt_die_uebernahme():
@@ -1182,7 +1188,9 @@ def test_aufrichten_ohne_uebernahme(qapp, tmp_path, monkeypatch):
     monkeypatch.setattr(fenster.ansichten["code"], "starte_skript",
                         lambda pfad, argumente=(): gestartet.append((Path(pfad), list(argumente))))
     fenster.ansichten["fahren"].lage_gewuenscht.emit("aufrichten", "links", False)
-    assert gestartet == [(lage.SKRIPT, ["aufrichten", "links", "--runs", str(tmp_path / "Beispiele" / "runs")])]
+    # Ohne Seite: `lage.aufrichten` liest sie nie, und ein Argument, das niemand
+    # liest, stuende sonst in jeder Aufzeichnung mit drin.
+    assert gestartet == [(lage.SKRIPT, ["aufrichten", "--runs", str(tmp_path / "Beispiele" / "runs")])]
 
 
 def test_lage_waehrend_eines_laufs_wird_abgelehnt(qapp, tmp_path, monkeypatch):

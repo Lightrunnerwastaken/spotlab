@@ -83,3 +83,35 @@ def test_pruefergebnisse_werden_angezeigt(qapp):
     )
     text = ansicht.ergebnisse.toPlainText()
     assert "Netz" in text and "spotlab login" in text
+
+
+def test_speichern_behaelt_karte_raum_und_treppensperre(qapp, tmp_path, monkeypatch):
+    """Befund 22.09.2026: `speichere()` baute ein FRISCHES Config-Objekt aus sechs
+    Feldern; alles andere fiel auf die Vorgaben zurueck. Wer den Spitznamen aendert,
+    verlor damit die aktive Karte, den Uebungsraum, die Startpose -- und `treppen`,
+    einen SICHERHEITSWERT (`mobility.mit_grenze` -> `stairs_mode`). Auf der
+    Kommandozeile war derselbe Fehler laengst mit `replace()` behoben."""
+    from spotlab.config import load_config, save_config
+
+    pfad = tmp_path / "config.toml"
+    save_config(
+        Config(ip="10.0.0.9", username="anna", nickname="Bello",
+               limits=Limits(max_speed=0.4, max_turn_rate=0.5, treppen="aus"),
+               active_map="Katakomben", raum="flur", raum_start="1.5,2.0,90",
+               editor_command="code", default_backend="mujoco", workspace="D:/arbeit"),
+        pfad,
+    )
+    monkeypatch.setattr("spotlab.config.CONFIG_PATH", pfad)
+    monkeypatch.setattr("spotlab.gui.views.checkup.save_password", lambda b, w: None)
+
+    ansicht = CheckupView()
+    ansicht.lade()
+    ansicht.spitzname.setText("Spot")
+    ansicht.speichern_knopf.click()
+
+    neu = load_config(pfad)
+    assert neu.nickname == "Spot", "das Geaenderte kommt an"
+    assert neu.limits.treppen == "aus", "die Treppensperre bleibt -- sie ist eine Sicherheitseinstellung"
+    assert neu.active_map == "Katakomben"
+    assert neu.raum == "flur" and neu.raum_start == "1.5,2.0,90"
+    assert neu.default_backend == "mujoco" and neu.workspace == "D:/arbeit"

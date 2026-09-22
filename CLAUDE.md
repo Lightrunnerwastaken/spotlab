@@ -15,6 +15,23 @@ versionsgepinntes Extra `spotlab[sim]`.
   Docstring die E-Stop-Konfiguration durch eine mit nur einem Endpunkt und verdrängt
   damit den Not-Aus des Tablets. Registrierung ausschliesslich über
   `backends/real/estop.py::register_coexisting`.
+- **Wer nichts einstellt, faehrt NICHT den echten Spot.** `Config.default_backend` ist seit dem
+  22.09.2026 `mujoco`, der Reiter „Code" waehlt daraus vor (`app.py::_setze_backendwahl`), und in
+  `BACKENDS` steht der echte Spot ZULETZT. Der Grund ist die Leserichtung: `setze_backend` aendert
+  bei einem unbekannten Namen nichts, ein Fehlgriff bleibt also auf dem ERSTEN Eintrag stehen —
+  und der darf keine Fahrt am Geraet sein. Anlass war die Beta-Durchsicht: beim ersten Start stand
+  „Projekte" vorn, das Haekchen Trockenlauf war aus, und die Beispielliste zeigte einundzwanzig
+  Dateinamen ohne Kennzeichnung, welche davon fahren.
+- **Eine Konfiguration wird ERGAENZT, nie neu gebaut** (`replace`, nicht `Config(...)`). Der Reiter
+  „Spot" baute beim Speichern ein frisches Objekt aus sechs Feldern; aktive Karte, Uebungsraum,
+  Startpose und `treppen` fielen damit auf die Vorgaben zurueck. `treppen` ist ein SICHERHEITSWERT
+  (`mobility.mit_grenze` -> `stairs_mode`): wer die Treppen sperrt und danach den Spitznamen
+  aendert, hatte die Sperre wortlos wieder auf „auto". In `cli.py::_login` war das laengst richtig
+  geloest — der GUI-Pfad war uebersehen worden.
+- **Ein Fehlschlag muss den Zustand zuruecksetzen, nicht nur eine Meldung schreiben.**
+  `MapsView._aufnahme_fehler` meldete und liess `_worker` stehen: der Startknopf blieb fuer immer
+  grau, und der zweite Versuch antwortete „Es laeuft bereits eine Aufnahme" — eine Ursache, die es
+  nicht gab. Getroffen hat es jeden ohne Roboter beim ersten Klick.
 - **Lease wird mit `acquire` geholt, nie implizit mit `take`.** Übernahme ist eine
   bewusste, protokollierte Handlung. **Der NOT-AUS hinterlässt genau deshalb ein verwaistes
   Lease** (18.09.2026, zweimal hintereinander): er tötet den Lauf hart, `close()` läuft nie,
