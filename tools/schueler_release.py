@@ -148,12 +148,14 @@ def build(repo, research, output):
         shutil.copyfile(repo/'tools/pruefe_schueler.py', bundle/'pruefe_schueler.py')
         app_wheel = next(wheels.glob('spotlab-*.whl')).name
         sim_wheel = next(wheels.glob('spotlab_sim_runtime-*.whl')).name
-        requirements = f'./wheels/{app_wheel}[gui,sim]\n./wheels/{sim_wheel}\n'
+        # `gesicht` bringt OpenCV mit. Ohne das sind Folgemodus, Gesichter, Koerper
+        # und Handzeichen auf jedem ausgelieferten Laptop tot -- und sagen es nicht.
+        requirements = f'./wheels/{app_wheel}[gui,sim,gesicht]\n./wheels/{sim_wheel}\n'
         (bundle/'schueler-requirements.txt').write_text(requirements, encoding='utf-8')
         # No dev/MCP dependencies are requested, but normal optional extras remain
         # available in package metadata for developers.
         metadata = tomllib.loads((app/'pyproject.toml').read_text(encoding='utf-8'))
-        report = {'version': release_version, 'extras': ['gui', 'sim'],
+        report = {'version': release_version, 'extras': ['gui', 'sim', 'gesicht'],
                   'dependencies': metadata['project']['dependencies'],
                   'files': {p.relative_to(bundle).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
                             for p in bundle.rglob('*') if p.is_file()}}

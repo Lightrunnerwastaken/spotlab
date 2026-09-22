@@ -457,3 +457,16 @@ def test_die_vorlage_erklaert_die_farben():
     quelle = (Path(folgen.__file__).parent / "beispiele" / "folgen.py").read_text(encoding="utf-8")
     for wort in ("gelb", "blau", "rot", "LED"):
         assert wort in quelle, wort
+
+
+def test_ein_ausgefallener_finder_sagt_warum_statt_nur_zu_schweigen():
+    """Befund der Beta-Durchsicht: fehlen OpenCV oder die Modelle, faellt der Finder
+    aus, `zuerst()` verschluckt den Grund ins Protokoll, und der Lauf sagt nur
+    'Noch kein Ziel'. Genau der verlorene Nachmittag vom 16.09.2026, nur mit einer
+    anderen Ursache. Beide Finder tragen jetzt einen `hinweis`, den `folge()` einmal
+    ausgibt -- mit dem Ordner, in den die Modelle gehoeren."""
+    for finder in (folgen.koerper_finder(), folgen.gesicht_finder()):
+        hinweis = getattr(finder, "hinweis", "")
+        assert "Modell" in hinweis, hinweis
+        assert "opencv" in hinweis.lower() or "OpenCV" in hinweis
+        assert ".spotlab" in hinweis, "der Ordner steht dabei"

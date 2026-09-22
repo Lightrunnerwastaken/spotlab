@@ -298,6 +298,15 @@ def koerper_finder(ordner=None, quellen=GESICHT_QUELLEN, tiefe_quellen=TIEFE_QUE
 
     finde.befund = lambda: zuletzt["text"]
     finde.letzte = lambda: zuletzt["sicht"]
+    # Faellt dieser Finder aus (OpenCV fehlt, Modelle fehlen), verschluckt `zuerst()`
+    # den Grund ins Protokoll -- und der Lauf saehe aus wie "niemand da". Der Hinweis
+    # ist die Gegenmassnahme: `folge()` sagt ihn EINMAL, wenn wirklich nichts kommt.
+    finde.hinweis = (
+        "Hinweis zu koerper_finder(): er braucht OpenCV (`pip install \"spotlab[gesicht]\"`) "
+        "und zwei Modelldateien aus dem OpenCV-Zoo in ~/.spotlab/modelle/ "
+        "(person_detection_mediapipe und pose_estimation_mediapipe). Fehlt eines davon, "
+        "findet er NIE etwas; der genaue Grund steht in `diagnose.log` des Laufs."
+    )
     return finde
 
 
@@ -350,6 +359,12 @@ def gesicht_finder(modell=None, mindestscore=None, quellen=GESICHT_QUELLEN,
         return _ziel_aus_befund(kopf, aufnahme.pano, aufnahme.gier)
 
     finde.befund = lambda: zuletzt["text"]
+    finde.hinweis = (
+        "Hinweis zu gesicht_finder(): er braucht OpenCV (`pip install \"spotlab[gesicht]\"`) "
+        "und das YuNet-Modell aus dem OpenCV-Zoo in ~/.spotlab/modelle/ "
+        "(face_detection_yunet). Fehlt eines davon, findet er NIE etwas; der genaue "
+        "Grund steht in `diagnose.log` des Laufs."
+    )
     return finde
 
 
