@@ -128,6 +128,14 @@ ZU_HOCH_GRAD = 4.0
 GESTEN_JEDER_TAKT = 2
 GESTEN_TAKTE = 3
 
+# Die LEDs am Kopf sagen, was Spot gerade denkt -- fuer den Menschen DAVOR, der
+# keinen Laptop in der Hand hat. Ohne sie sieht niemand, ob ein Handzeichen
+# angekommen ist; man sieht nur, dass der Roboter steht, und das tut er aus
+# vielen Gruenden. Gesetzt wird nur bei ECHTER Aenderung (`api.signals.Statuslicht`).
+LICHT_FOLGT = "blue"          # ein Mensch ist da, Spot haelt sich an ihn
+LICHT_SUCHT = "yellow"        # kein Ziel -- er sucht
+LICHT_ANGEHALTEN = "red"      # per Handzeichen gestoppt, wartet auf den Daumen
+
 
 @dataclass(frozen=True)
 class Ziel:
@@ -736,7 +744,7 @@ def befehl(ziel, wunsch=WUNSCH_ABSTAND_M, mindest=MIN_ABSTAND_M, toleranz=TOLERA
 def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
           schlaf=time.sleep, takt_s=TAKT_S, laeuft=None, lauf_dir=None,
           kopfraum_takt_s=KOPFRAUM_TAKT_S, blick_grad=BLICK_GRAD, nachlauf_s=NACHLAUF_S,
-          gesten=None):
+          gesten=None, licht=None):
     """Die Schleife: Ziel suchen, Abstand halten, bei jeder Schranke stehen bleiben.
 
     `gesten` ist ein Leser `gesten(spot) -> "halt" | "weiter" | None`
@@ -748,6 +756,14 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
     (`SpotlabError` beim ersten Lesen), sagt er es einmal und folgt ohne
     Zeichen; ein stolpernder Leser wird einmal gemeldet und weiter gefragt.
     Jedes gezählte Zeichen steht als Ereignis `geste` in der Aufzeichnung.
+
+    `licht` sind die LEDs am Kopf: gelb sucht, blau folgt, rot heisst „per
+    Handzeichen angehalten". Das ist die Rückmeldung für den Menschen DAVOR —
+    ohne sie sieht niemand, ob sein Zeichen angekommen ist, sondern nur einen
+    stehenden Roboter, und der steht aus vielen Gründen. `licht=False` schaltet
+    sie ab, `None` baut sie selbst (und lässt sie weg, wo es keine gibt). Ein
+    Fehler am Licht hält den Lauf nie an: es wird einmal gesagt und weiter
+    gefolgt.
 
     `blick_grad` hebt die Nase während der Fahrt, damit die Kameras höher
     schauen — positiv, in Grad. Damit kommt ein stehendes Gesicht schon auf
@@ -798,6 +814,24 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
     letztes_ziel = None         # fuer den Nachlauf: das zuletzt ECHT gesehene Ziel
     angehalten = False          # per Handzeichen -- bis zum Daumen hoch
     gesten_stolpern_gemeldet = False
+    licht_stolpern_gemeldet = False
+    if licht is None:
+        from spotlab.api.signals import Statuslicht
+
+        licht = Statuslicht(spot)
+
+    def zeige(farbe):
+        """Die LEDs sind eine Beigabe: ein Fehler daran haelt nie den Regler an."""
+        nonlocal licht_stolpern_gemeldet
+        if not licht:
+            return
+        try:
+            licht.setze(farbe)
+        except Exception as fehler:
+            if not licht_stolpern_gemeldet:
+                licht_stolpern_gemeldet = True
+                melde(f"Das Licht am Kopf geht nicht ({type(fehler).__name__}: {fehler}) "
+                      f"— Spot folgt weiter, nur ohne Farbe.")
     gier_vorher = None          # die Gier beim letzten Befehl: so viel hat er seither gedreht
     seitlich_gedreht = 0.0      # Grad gedreht, seit das Ziel zuletzt VOR ihm war (Kreissperre)
     drehsperre = False
@@ -836,6 +870,7 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
                 # neu und ALLE Schranken werden unten wie sonst geprueft.
                 ziel = letztes_ziel
             if ziel is None:
+                zeige(LICHT_ANGEHALTEN if angehalten else LICHT_SUCHT)
                 if faehrt:
                     spot.stop()
                     faehrt = False
@@ -922,6 +957,7 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
             # Jeder Takt mit Ziel steht im Lauf: WAS der Finder lieferte, wie es nachgefuehrt
             # wurde und was daraus befohlen wird. Ohne diese Zeile war am 17.09.2026 aus 169
             # walk-Befehlen nicht zu sagen, ob ein Mensch bei +60 Grad stand oder ein Phantom.
+            zeige(LICHT_ANGEHALTEN if angehalten else LICHT_FOLGT)
             ziel_gemeldet = True
             fehlschlag = _notiere_ziel(spot, ziel, ziel_jetzt=ziel_jetzt, echt=echt, vx=vx, wz=wz,
                                        takt_s=takt_dauer, gesperrt=drehsperre)
@@ -953,6 +989,11 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
                 faehrt = True
             schlaf(_rest(takt_s, takt_beginn, jetzt))
     finally:
+        if licht:
+            try:
+                licht.aus()
+            except Exception:
+                pass                      # die LEDs erloeschen ohnehin mit der Frist
         spot.stop()
         melde("Folgen beendet.")
 

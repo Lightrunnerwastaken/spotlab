@@ -213,13 +213,13 @@ def _koerper_finder_immer():
                                  koerper_holen=lambda feld: [_koerper_ruhig()])
 
 
-def _lauf(gesten_plan, takte=8, jeder=1, halten=3, spot=None, melde=None):
+def _lauf(gesten_plan, takte=8, jeder=1, halten=3, spot=None, melde=None, licht=False):
     """Ein Folgelauf mit Koerper voraus (2 m) und einem Gestenplan je Lesung."""
     spot = spot or _Spot(neigt=True)
     finder = _koerper_finder_immer()
     gesagt = []
     folgen.folge(spot, finder, melde=(melde or gesagt.append), jetzt=_uhr(0.05),
-                 schlaf=lambda _s: None, laeuft=_laeuft_takte(takte),
+                 schlaf=lambda _s: None, laeuft=_laeuft_takte(takte), licht=licht,
                  gesten=_leser_mit(finder, gesten_plan, jeder=jeder, takte=halten))
     return spot, gesagt
 
@@ -370,3 +370,90 @@ def test_der_gestenleser_verlangt_einen_finder_mit_sicht():
     with pytest.raises(ValueError):
         folgen.gesten_leser(folgen.tag_finder())
     assert folgen.gesten_leser(SimpleNamespace(letzte=lambda: None)) is not None
+
+
+# ------------------------------------------- Das Statuslicht am Roboter (22.09.2026)
+
+
+class _Licht:
+    """Merkt sich die Farbfolge -- ohne Wiederholungen, wie sie ein Mensch sieht."""
+
+    def __init__(self):
+        self.folge = []
+        self.aus_gerufen = 0
+        self.moeglich = True
+
+    def setze(self, farbe):
+        if farbe is not None and (not self.folge or self.folge[-1] != farbe):
+            self.folge.append(farbe)
+
+    def aus(self):
+        self.aus_gerufen += 1
+
+
+def test_ohne_ziel_gelb_mit_ziel_blau():
+    """Wer danebensteht, soll ohne Laptop sehen, ob Spot ihn hat."""
+    licht = _Licht()
+    plan = iter([[], [_koerper_ruhig()], [_koerper_ruhig()]])
+    finder = folgen.koerper_finder(aufnahme_holen=_koerperaufnahme,
+                                   koerper_holen=lambda feld: next(plan, []))
+    spot = _Spot(neigt=True)
+    folgen.folge(spot, finder, melde=lambda _t: None, jetzt=_uhr(0.05), schlaf=lambda _s: None,
+                 laeuft=_laeuft_takte(3), licht=licht, nachlauf_s=0.0)
+    assert licht.folge == [folgen.LICHT_SUCHT, folgen.LICHT_FOLGT]
+    assert licht.aus_gerufen == 1, "am Ende gibt der Lauf die LEDs zurueck"
+
+
+def test_das_handzeichen_halt_macht_rot_und_der_daumen_wieder_blau():
+    """Genau dafuer ist das Licht da: ohne es sieht niemand, ob das Zeichen ankam."""
+    licht = _Licht()
+    plan = [[_offene_hand()]] * 3 + [[_daumen_hoch()]] * 3
+    _lauf(plan, takte=6, licht=licht)
+    assert licht.folge == [folgen.LICHT_FOLGT, folgen.LICHT_ANGEHALTEN, folgen.LICHT_FOLGT]
+
+
+def test_angehalten_und_ziel_weg_bleibt_rot():
+    """Rot heisst 'ich stehe wegen deines Zeichens' -- das gilt auch ohne Ziel."""
+    licht = _Licht()
+    plan = iter([[_koerper_ruhig()]] * 3 + [[]] * 2)
+    finder = folgen.koerper_finder(aufnahme_holen=_koerperaufnahme,
+                                   koerper_holen=lambda feld: next(plan, []))
+    spot = _Spot(neigt=True)
+    folgen.folge(spot, finder, melde=lambda _t: None, jetzt=_uhr(0.05), schlaf=lambda _s: None,
+                 laeuft=_laeuft_takte(5), licht=licht, nachlauf_s=0.0,
+                 gesten=_leser_mit(finder, [[_offene_hand()]] * 3))
+    assert licht.folge == [folgen.LICHT_FOLGT, folgen.LICHT_ANGEHALTEN]
+
+
+def test_ein_licht_das_nicht_geht_haelt_den_lauf_nicht_an():
+    class _Kaputt:
+        moeglich = True
+
+        def setze(self, farbe):
+            raise RuntimeError("AV-Dienst weg")
+
+        def aus(self):
+            raise RuntimeError("auch das noch")
+
+    spot = _Spot(neigt=True)
+    gesagt = []
+    folgen.folge(spot, _koerper_finder_immer(), melde=gesagt.append, jetzt=_uhr(0.05),
+                 schlaf=lambda _s: None, laeuft=_laeuft_takte(4), licht=_Kaputt())
+    fahrten = [k for k in spot.kommandos if isinstance(k, dict)]
+    assert len(fahrten) == 4, "gefolgt wie ohne Licht"
+    assert len([m for m in gesagt if "Licht" in m]) == 1, "einmal gesagt, nicht je Takt"
+
+
+def test_ohne_licht_bleibt_alles_wie_vorher():
+    spot = _Spot(neigt=True)
+    folgen.folge(spot, _koerper_finder_immer(), melde=lambda _t: None, jetzt=_uhr(0.05),
+                 schlaf=lambda _s: None, laeuft=_laeuft_takte(3), licht=False)
+    assert len([k for k in spot.kommandos if isinstance(k, dict)]) == 3
+
+
+def test_die_vorlage_erklaert_die_farben():
+    """Wer danebensteht, muss wissen, was gelb, blau und rot bedeuten -- sonst ist
+    das Licht nur Dekoration."""
+    quelle = (Path(folgen.__file__).parent / "beispiele" / "folgen.py").read_text(encoding="utf-8")
+    for wort in ("gelb", "blau", "rot", "LED"):
+        assert wort in quelle, wort

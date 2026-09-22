@@ -332,6 +332,17 @@ versionsgepinntes Extra `spotlab[sim]`.
   über 510 Panoramen: Körpertreffer am Rand (|Peilung| ≥ 50°) 7 von 163 an verschiedenen
   Stellen, aber der Gesichtserkenner setzte in einem Lauf sechsmal einen 170–190 px breiten
   „Gesichts"-Kasten an derselben Stelle bei +57° (ein Phantom, das die Höhenprobe passiert).
+- **Die LEDs am Kopf sind die Rückmeldung an den Menschen DAVOR, und sie blockieren nie.**
+  `api/signals.py::Statuslicht` (seit 22.09.2026): gelb sucht, blau folgt, rot heisst „per
+  Handzeichen angehalten". `spot.lights()` taugt dafür nicht — es SCHLÄFT die ganze Dauer und
+  räumt danach auf; im Folgetakt wären zwei Sekunden Schlaf zwei Sekunden ohne Fahrbefehl, und
+  die Schleife hält den Totmann. Das Statuslicht legt die Farbe einmal an und schickt nur bei
+  echter ÄNDERUNG oder kurz vor Ablauf der Frist etwas (eine Anfrage alle `LICHT_AUFFRISCHEN_S`).
+  **Die Frist ist der Totmann des Lichts**: stirbt der Lauf, erlischt die Farbe von selbst — ein
+  hängendes Programm leuchtet nicht ewig blau. Ein Fehler am Licht hält den Lauf nie an (einmal
+  gesagt, dann weiter), und wo es keinen AV-Dienst gibt, wird gar nicht erst gefragt. Anlass:
+  ohne Licht sieht der Mensch vor dem Roboter nur, DASS er steht — und das tut er aus vielen
+  Gründen. Ob ein Handzeichen angekommen ist, war bis dahin nur am Laptop zu sehen.
 - **Handzeichen gibt es nur beim gefolgten Körper, und ein Zeichen ist kein Fahrbefehl.**
   `backends/real/gesten.py` (MediaPipe-Handfläche und -Handpose aus dem Zoo, ONNX über
   `cv2.dnn`) und `folgen.gesten_leser(finder)`: offene Hand = Halt, Daumen hoch = Weiter.

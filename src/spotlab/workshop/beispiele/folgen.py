@@ -13,6 +13,13 @@ aus und die nächste Stufe trägt; warum, steht im Protokoll und in der Zeile
 „Noch kein Ziel". Ein AprilTag braucht es nicht mehr — wer den Tag-Weg zum
 Vergleich will, nimmt `folgen.tag_finder()` (unten).
 
+Die LEDS AM KOPF sagen dir, was er gerade denkt — du brauchst dafür keinen
+Blick auf den Laptop:
+
+    gelb    kein Ziel, er sucht
+    blau    er hat dich und hält sich an dich
+    rot     per Handzeichen angehalten, er wartet auf den Daumen hoch
+
 Zwei HANDZEICHEN versteht er, wenn er deinem Körper folgt: die offene Hand
 (Finger nach oben, Handfläche zu ihm) heisst Halt — er bleibt stehen und schaut
 dich weiter an; der Daumen hoch heisst Weiter. Halte das Zeichen vor der Brust
