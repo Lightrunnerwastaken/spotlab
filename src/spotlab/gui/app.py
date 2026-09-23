@@ -352,7 +352,7 @@ class MainWindow(QWidget):
     def _lauf_aus_code(self, prozess, skript):
         # Kein Ansichtswechsel: wer aus „Code" startet, will dort bleiben.
         self._start_aus = "code"
-        if self.ansichten["code"].gewaehltes_backend() in ("sim", "mujoco", "physics"):
+        if self.ansichten["code"].lauf_backend() in ("sim", "mujoco", "physics"):
             self._oeffne_uebungsfenster(Path(skript).name)
         self._starte_leser(prozess)
 
@@ -379,7 +379,7 @@ class MainWindow(QWidget):
         if self._karte_fuer_lauf:
             # Die Karte aus dem Tab „Karten" -- als Name, das Skript laedt sie selbst.
             umgebung[ENV_KARTE] = str(self._karte_fuer_lauf)
-        if self.ansichten["code"].gewaehltes_backend() not in ("sim", "mujoco", "physics"):
+        if self.ansichten["code"].lauf_backend() not in ("sim", "mujoco", "physics"):
             return umgebung
         ansicht = self.ansichten["raumeditor"]
         grund = ansicht.bereit_fuer_lauf()
@@ -399,13 +399,29 @@ class MainWindow(QWidget):
         ueber den Editor -- genau EIN Lauf ist der, auf den Stopp und NOT-AUS
         zeigen.
         """
-        # Nur beim START umstellen: laeuft schon etwas, heisst derselbe Knopf
-        # „Stopp", und die Wahl im Editor darf dabei nicht umspringen.
-        if not self.ansichten["code"].laeuft():
-            # 3D, wenn es auf diesem Laptop laeuft, sonst die Zeichnung.
-            namen = [name for _, name in verfuegbare_backends()]
-            self.ansichten["code"].setze_backend("mujoco" if "mujoco" in namen else "sim")
-        self.ansichten["code"].starte_aktuelles()
+        # Das Backend gilt nur fuer diesen Start; die Wahl im Reiter Code bleibt.
+        self.ansichten["code"].starte_aktuelles(backend=self._virtuelles_backend())
+
+    @staticmethod
+    def _virtuelles_backend():
+        """3D, wenn es auf diesem Laptop laeuft, sonst die Zeichnung."""
+        namen = [name for _, name in verfuegbare_backends()]
+        return "mujoco" if "mujoco" in namen else "sim"
+
+    def _starte_ueber_editor(self, pfad, backend, argumente=()):
+        """Der eine Startweg fuer Knoepfe ausserhalb des Editors.
+
+        `backend` gilt nur fuer diesen Start. Kam der Start nicht zustande (Sperre,
+        Startfehler), fallen die Merker zurueck: sonst galt der naechste, fremde
+        Lauf als Fahrt (scharfe Tasten im Tab Fahren) oder bekam die Karte.
+        """
+        code = self.ansichten["code"]
+        code.starte_skript(pfad, argumente=argumente, backend=backend)
+        if not code.laeuft():
+            self._fahrt_erwartet = False
+            self._navigation_erwartet = False
+            self._karte_fuer_lauf = None
+        return code.laeuft()
 
     def _code_laeuft_geaendert(self, laeuft):
         # Stirbt der Prozess, bevor ein Lauf-Verzeichnis da ist (Roboter nicht
@@ -446,14 +462,12 @@ class MainWindow(QWidget):
             self._melde(f"Beispiele konnten nicht angelegt werden: {fehler}")
             return
         if backend:
-            self.ansichten["code"].setze_backend(backend)
             self._fahrt_erwartet = "real"           # der Lauf gehoert in den Tab „Fahren"
         else:
-            namen = [name for _, name in verfuegbare_backends()]
-            self.ansichten["code"].setze_backend("mujoco" if "mujoco" in namen else "sim")
+            backend = self._virtuelles_backend()
             self._fahrt_erwartet = True
-        self.ansichten["code"].starte_skript(
-            fahren.skript_in(arbeitsordner),
+        self._starte_ueber_editor(
+            fahren.skript_in(arbeitsordner), backend,
             argumente=["--uebernehmen"] if uebernehmen else [],
         )
 
@@ -489,10 +503,8 @@ class MainWindow(QWidget):
         # Argument, das niemand liest, steht sonst in jeder Aufzeichnung mit drin.
         argumente = [aktion] + ([seite] if aktion == "akku" else [])
         argumente += ["--runs", str(runs)] + (["--uebernehmen"] if uebernehmen else [])
-        self.ansichten["code"].setze_backend(FAHREN_BACKEND)
         self._fahrt_erwartet = False
-        self.ansichten["code"].starte_skript(lage.SKRIPT, argumente=argumente)
-        if self.ansichten["code"].laeuft():
+        if self._starte_ueber_editor(lage.SKRIPT, FAHREN_BACKEND, argumente=argumente):
             self.ansichten["fahren"].lage_beginnt(aktion)
 
     def _starte_navigation(self):
@@ -518,10 +530,9 @@ class MainWindow(QWidget):
         except OSError as fehler:
             self._melde(f"Beispiele konnten nicht angelegt werden: {fehler}")
             return
-        self.ansichten["code"].setze_backend(NAVIGATION_BACKEND)
         self._navigation_erwartet = True         # der Lauf gehoert in den Tab „Karten"
         self._karte_fuer_lauf = karte
-        self.ansichten["code"].starte_skript(navigieren.skript_in(arbeitsordner))
+        self._starte_ueber_editor(navigieren.skript_in(arbeitsordner), NAVIGATION_BACKEND)
 
     def _starte_kartenarbeit(self):
         """Eine gespeicherte Karte nachbearbeiten: Schleifen schliessen, Anker optimieren.
@@ -550,12 +561,11 @@ class MainWindow(QWidget):
         except OSError as fehler:
             self._melde(f"Beispiele konnten nicht angelegt werden: {fehler}")
             return
-        self.ansichten["code"].setze_backend(NAVIGATION_BACKEND)
         self._karte_fuer_lauf = name
         self.ansichten["karten"].zeige_verbesserung(
             f'„{name}" wird verbessert — der Fortschritt steht in der Live-Ansicht.'
         )
-        self.ansichten["code"].starte_skript(kartenarbeit.skript_in(arbeitsordner))
+        self._starte_ueber_editor(kartenarbeit.skript_in(arbeitsordner), NAVIGATION_BACKEND)
 
     def _navigation(self, stand):
         if self.ansichten["karten"].laeuft():

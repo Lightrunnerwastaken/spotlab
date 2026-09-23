@@ -578,9 +578,13 @@ def test_der_startknopf_im_uebungsraum_erzwingt_das_sim_backend(qapp):
     Knopf in der Ansicht „Übungsraum" den echten Spot."""
     fenster = MainWindow()
     fenster.ansichten["code"].setze_backend("real")
+    gestartet = []
+    fenster.ansichten["code"].starte_aktuelles = lambda backend=None: gestartet.append(backend)
     fenster.ansichten["raumeditor"].starten.click()
     # 2D oder 3D, je nachdem, was auf diesem Laptop laeuft -- nie der Roboter.
-    assert fenster.ansichten["code"].gewaehltes_backend() in ("sim", "mujoco")
+    assert gestartet and gestartet[0] in ("sim", "mujoco")
+    # ... und die Wahl im Reiter Code bleibt, wie sie war.
+    assert fenster.ansichten["code"].gewaehltes_backend() == "real"
 
 
 def test_der_knopf_im_uebungsraum_wandert_mit_dem_lauf(qapp):
@@ -640,9 +644,10 @@ def test_der_uebungsraum_knopf_nimmt_3d_wenn_es_da_ist(qapp, monkeypatch):
 
     monkeypatch.setattr(modul.importlib.util, "find_spec", lambda name: object())
     fenster = MainWindow()
-    fenster.ansichten["code"].setze_backend("real")
+    gestartet = []
+    fenster.ansichten["code"].starte_aktuelles = lambda backend=None: gestartet.append(backend)
     fenster.ansichten["raumeditor"].starten.click()
-    assert fenster.ansichten["code"].gewaehltes_backend() == "mujoco"
+    assert gestartet == ["mujoco"]
 
 
 def test_der_uebungsraum_knopf_nimmt_2d_ohne_spotsim(qapp, monkeypatch):
@@ -650,9 +655,10 @@ def test_der_uebungsraum_knopf_nimmt_2d_ohne_spotsim(qapp, monkeypatch):
 
     monkeypatch.setattr(modul.importlib.util, "find_spec", lambda name: None)
     fenster = MainWindow()
-    fenster.ansichten["code"].setze_backend("real")
+    gestartet = []
+    fenster.ansichten["code"].starte_aktuelles = lambda backend=None: gestartet.append(backend)
     fenster.ansichten["raumeditor"].starten.click()
-    assert fenster.ansichten["code"].gewaehltes_backend() == "sim"
+    assert gestartet == ["sim"]
 
 
 def test_auch_der_3d_lauf_bekommt_raum_und_start(qapp, monkeypatch):
@@ -742,10 +748,11 @@ def test_fahren_startet_das_programm_aus_beispiele_und_das_fenster_kennt_es(qapp
     fenster._config = replace(fenster._config or Config(ip="", username="", limits=Limits()),
                               workspace=str(tmp_path))
     gestartet = []
-    monkeypatch.setattr(fenster.ansichten["code"], "starte_skript", lambda pfad, argumente=(): gestartet.append(pfad))
+    monkeypatch.setattr(fenster.ansichten["code"], "starte_skript", _starte_wie_editor(fenster, gestartet))
     fenster.ansichten["raumeditor"].fahrt_gewuenscht.emit()
-    assert gestartet == [tmp_path / "Beispiele" / "fahren.py"] and gestartet[0].is_file()
-    assert fenster.ansichten["code"].gewaehltes_backend() in ("sim", "mujoco")
+    (pfad, backend), = gestartet
+    assert pfad == tmp_path / "Beispiele" / "fahren.py" and pfad.is_file()
+    assert backend in ("sim", "mujoco")
     fenster._oeffne_uebungsfenster("fahren.py")
     assert fenster.uebungsfenster.tastenfahrt.aktiv
     fenster.uebungsfenster.close()
@@ -763,11 +770,11 @@ def test_der_tab_fahren_startet_dasselbe_programm_am_echten_spot(qapp, tmp_path,
     fenster._config = replace(fenster._config or Config(ip="", username="", limits=Limits()),
                               workspace=str(tmp_path))
     gestartet = []
-    monkeypatch.setattr(fenster.ansichten["code"], "starte_skript", lambda pfad, argumente=(): gestartet.append(pfad))
+    monkeypatch.setattr(fenster.ansichten["code"], "starte_skript", _starte_wie_editor(fenster, gestartet))
     fenster.ansichten["fahren"].fahrt_gewuenscht.emit(False)
-    assert gestartet == [tmp_path / "Beispiele" / "fahren.py"]
-    assert fenster.ansichten["code"].gewaehltes_backend() == "real"
+    assert gestartet == [(tmp_path / "Beispiele" / "fahren.py", "real")]
     assert fenster._fahrt_erwartet == "real"
+    fenster.ansichten["code"]._setze_laeuft(False)
 
 
 def _saetze_aus(lauf, datei):
@@ -850,7 +857,7 @@ def test_fahren_ohne_arbeitsordner_sagt_es(qapp, monkeypatch):
     fenster = MainWindow()
     fenster._config = None
     gestartet, meldungen = [], []
-    monkeypatch.setattr(fenster.ansichten["code"], "starte_skript", lambda pfad, argumente=(): gestartet.append(pfad))
+    monkeypatch.setattr(fenster.ansichten["code"], "starte_skript", lambda pfad, argumente=(), backend=None: gestartet.append(pfad))
     monkeypatch.setattr(fenster, "_melde", meldungen.append)
     fenster.ansichten["raumeditor"].fahrt_gewuenscht.emit()
     assert gestartet == [] and meldungen and "Arbeitsordner" in meldungen[0]
@@ -951,14 +958,17 @@ def test_der_karten_tab_startet_navigieren_am_echten_spot_ueber_den_einen_startw
     fenster.ansichten["code"].setze_backend("sim")
     fenster.ansichten["karten"].liste.setCurrentRow(0)
     gestartet = []
-    monkeypatch.setattr(fenster.ansichten["code"], "starte_skript", lambda pfad, argumente=(): gestartet.append(pfad))
+    umgebungen = []
+    monkeypatch.setattr(fenster.ansichten["code"], "starte_skript",
+                        _starte_wie_editor(fenster, gestartet, umgebungen))
     fenster.ansichten["karten"].navigation_gewuenscht.emit()
-    assert gestartet == [tmp_path / "Beispiele" / "navigieren.py"]
+    assert gestartet == [(tmp_path / "Beispiele" / "navigieren.py", "real")]
     assert (tmp_path / "Beispiele" / "navigieren.py").is_file()
-    assert fenster.ansichten["code"].gewaehltes_backend() == "real"
+    assert fenster.ansichten["code"].gewaehltes_backend() == "sim", "die Wahl im Reiter bleibt"
     assert fenster._navigation_erwartet is True, "der Lauf gehoert in den Tab Karten"
     assert fenster._karte_fuer_lauf == "turnhalle"
-    assert fenster._umgebung_fuer_lauf() == {ENV_KARTE: "turnhalle"}
+    assert umgebungen == [{ENV_KARTE: "turnhalle"}], "am echten Spot kein Raum, nur die Karte"
+    fenster.ansichten["code"]._setze_laeuft(False)
 
 
 def test_navigation_ohne_gewaehlte_karte_sagt_es(qapp, tmp_path, monkeypatch):
@@ -971,7 +981,7 @@ def test_navigation_ohne_gewaehlte_karte_sagt_es(qapp, tmp_path, monkeypatch):
                               workspace=str(tmp_path))
     fenster._setze_arbeitsordner(str(tmp_path))
     gestartet, meldungen = [], []
-    monkeypatch.setattr(fenster.ansichten["code"], "starte_skript", lambda pfad, argumente=(): gestartet.append(pfad))
+    monkeypatch.setattr(fenster.ansichten["code"], "starte_skript", lambda pfad, argumente=(), backend=None: gestartet.append(pfad))
     monkeypatch.setattr(fenster, "_melde", meldungen.append)
     fenster.ansichten["karten"].navigation_gewuenscht.emit()
     assert gestartet == [] and meldungen and "Karte" in meldungen[0]
@@ -1076,15 +1086,18 @@ def test_der_knopf_verbessern_startet_das_programm_mit_der_gewaehlten_karte(
     tab = fenster.ansichten["karten"]
     tab.liste.setCurrentRow(0)
     gestartet = []
-    monkeypatch.setattr(fenster.ansichten["code"], "starte_skript", gestartet.append)
+    umgebungen = []
+    monkeypatch.setattr(fenster.ansichten["code"], "starte_skript",
+                        _starte_wie_editor(fenster, gestartet, umgebungen))
     tab.verbessern_gewuenscht.emit()
-    assert gestartet == [tmp_path / "Beispiele" / "karte_verbessern.py"]
+    assert gestartet == [(tmp_path / "Beispiele" / "karte_verbessern.py", "real")]
     assert (tmp_path / "Beispiele" / "karte_verbessern.py").is_file()
-    assert fenster.ansichten["code"].gewaehltes_backend() == "real"
+    assert fenster.ansichten["code"].gewaehltes_backend() == "sim", "die Wahl im Reiter bleibt"
     assert fenster._karte_fuer_lauf == "turnhalle"
-    assert fenster._umgebung_fuer_lauf() == {ENV_KARTE: "turnhalle"}
+    assert umgebungen == [{ENV_KARTE: "turnhalle"}], "am echten Spot kein Raum, nur die Karte"
     assert not fenster._navigation_erwartet, "kein Navigationslauf -- kein Zielklicken"
     assert "turnhalle" in tab.navigation_status.text()
+    fenster.ansichten["code"]._setze_laeuft(False)
 
 
 def test_verbessern_ohne_gewaehlte_karte_sagt_es(qapp, tmp_path, monkeypatch):
@@ -1097,7 +1110,8 @@ def test_verbessern_ohne_gewaehlte_karte_sagt_es(qapp, tmp_path, monkeypatch):
                               workspace=str(tmp_path))
     fenster._setze_arbeitsordner(str(tmp_path))
     gestartet, meldungen = [], []
-    monkeypatch.setattr(fenster.ansichten["code"], "starte_skript", gestartet.append)
+    monkeypatch.setattr(fenster.ansichten["code"], "starte_skript",
+                        lambda pfad, argumente=(), backend=None: gestartet.append(pfad))
     monkeypatch.setattr(fenster, "_melde", meldungen.append)
     fenster.ansichten["karten"].verbessern_gewuenscht.emit()
     assert gestartet == [] and meldungen and "Karte" in meldungen[0]
@@ -1135,18 +1149,21 @@ def test_die_fahrt_kann_das_lease_uebernehmen(qapp, tmp_path, monkeypatch):
     und ohne Uebernahme prallt jeder Start daran ab."""
     fenster = _fenster_mit_arbeitsordner(tmp_path)
     gestartet = []
-    monkeypatch.setattr(fenster.ansichten["code"], "starte_skript",
-                        lambda pfad, argumente=(): gestartet.append((Path(pfad), list(argumente))))
+    code = fenster.ansichten["code"]
+    monkeypatch.setattr(code, "starte_skript",
+                        lambda pfad, argumente=(), backend=None: (
+                            gestartet.append((Path(pfad), list(argumente))), code._setze_laeuft(True)))
     fenster.ansichten["fahren"].fahrt_gewuenscht.emit(True)
     assert gestartet == [(tmp_path / "Beispiele" / "fahren.py", ["--uebernehmen"])]
     assert fenster._fahrt_erwartet == "real"
+    code._setze_laeuft(False)
 
 
 def test_ohne_haekchen_faehrt_die_fahrt_ohne_uebernahme(qapp, tmp_path, monkeypatch):
     fenster = _fenster_mit_arbeitsordner(tmp_path)
     gestartet = []
     monkeypatch.setattr(fenster.ansichten["code"], "starte_skript",
-                        lambda pfad, argumente=(): gestartet.append((Path(pfad), list(argumente))))
+                        lambda pfad, argumente=(), backend=None: gestartet.append((Path(pfad), list(argumente))))
     fenster.ansichten["fahren"].fahrt_gewuenscht.emit(False)
     assert gestartet == [(tmp_path / "Beispiele" / "fahren.py", [])]
 
@@ -1183,12 +1200,16 @@ def test_akku_wechseln_startet_paketcode_mit_seite_laufordner_und_uebernahme(qap
 
     fenster = _fenster_mit_arbeitsordner(tmp_path)
     gestartet = []
+    backends = []
+    fenster.ansichten["code"].setze_backend("sim")
     monkeypatch.setattr(fenster.ansichten["code"], "starte_skript",
-                        lambda pfad, argumente=(): gestartet.append((Path(pfad), list(argumente))))
+                        lambda pfad, argumente=(), backend=None: (
+                            gestartet.append((Path(pfad), list(argumente))), backends.append(backend)))
     fenster.ansichten["fahren"].lage_gewuenscht.emit("akku", "rechts", True)
     assert gestartet == [(lage.SKRIPT, ["akku", "rechts", "--runs", str(tmp_path / "Beispiele" / "runs"),
                                         "--uebernehmen"])]
-    assert fenster.ansichten["code"].gewaehltes_backend() == "real"
+    assert backends == ["real"]
+    assert fenster.ansichten["code"].gewaehltes_backend() == "sim", "die Wahl im Reiter bleibt"
     assert fenster._fahrt_erwartet is False
 
 
@@ -1198,7 +1219,7 @@ def test_aufrichten_ohne_uebernahme(qapp, tmp_path, monkeypatch):
     fenster = _fenster_mit_arbeitsordner(tmp_path)
     gestartet = []
     monkeypatch.setattr(fenster.ansichten["code"], "starte_skript",
-                        lambda pfad, argumente=(): gestartet.append((Path(pfad), list(argumente))))
+                        lambda pfad, argumente=(), backend=None: gestartet.append((Path(pfad), list(argumente))))
     fenster.ansichten["fahren"].lage_gewuenscht.emit("aufrichten", "links", False)
     # Ohne Seite: `lage.aufrichten` liest sie nie, und ein Argument, das niemand
     # liest, stuende sonst in jeder Aufzeichnung mit drin.
@@ -1211,7 +1232,7 @@ def test_lage_waehrend_eines_laufs_wird_abgelehnt(qapp, tmp_path, monkeypatch):
     fenster = _fenster_mit_arbeitsordner(tmp_path)
     gestartet, meldungen = [], []
     monkeypatch.setattr(fenster.ansichten["code"], "starte_skript",
-                        lambda pfad, argumente=(): gestartet.append(pfad))
+                        lambda pfad, argumente=(), backend=None: gestartet.append(pfad))
     monkeypatch.setattr(fenster.ansichten["code"], "laeuft", lambda: True)
     monkeypatch.setattr(fenster, "_melde", meldungen.append)
     fenster.ansichten["fahren"].lage_gewuenscht.emit("akku", "links", False)
@@ -1223,7 +1244,7 @@ def test_lage_ohne_arbeitsordner_sagt_es(qapp, monkeypatch):
     fenster._config = None
     gestartet, meldungen = [], []
     monkeypatch.setattr(fenster.ansichten["code"], "starte_skript",
-                        lambda pfad, argumente=(): gestartet.append(pfad))
+                        lambda pfad, argumente=(), backend=None: gestartet.append(pfad))
     monkeypatch.setattr(fenster, "_melde", meldungen.append)
     fenster.ansichten["fahren"].lage_gewuenscht.emit("akku", "links", False)
     assert gestartet == [] and meldungen and "Arbeitsordner" in meldungen[0]
@@ -1258,3 +1279,65 @@ def test_akku_wechseln_laeuft_wirklich_als_prozess_und_der_tab_zeigt_das_ende(qa
     assert laeufe, "der Lauf liegt dort, wo der Watcher sucht"
     assert json.loads(laeufe[0].read_text(encoding="utf-8"))["backend"] == "dryrun"
     assert fenster.stapel.currentWidget() is tab, "der Tab bleibt vorne"
+
+
+def _starte_wie_editor(fenster, gestartet, umgebungen=None):
+    """Attrappe fuer starte_skript: merkt (pfad, backend), fragt die Zusatzumgebung
+    so wie `EditorView._starte` -- WAEHREND des Starts, mit dessen Backend -- und
+    laeuft dann wirklich, so sieht die App einen gelungenen Start."""
+    code = fenster.ansichten["code"]
+
+    def start(pfad, argumente=(), backend=None):
+        gestartet.append((pfad, backend))
+        code._start_backend = backend
+        try:
+            if umgebungen is not None:
+                umgebungen.append(code.zusatz_umgebung())
+        finally:
+            code._start_backend = None
+        code._setze_laeuft(True)
+
+    return start
+
+
+def test_nach_der_fahrt_am_echten_spot_bleibt_der_code_reiter_virtuell(qapp, tmp_path, monkeypatch):
+    """Pruefung 23.09.2026: nach „Fahren“ stand der Reiter Code auf „Echter Spot“,
+    und das naechste „▶ Starten“ eines Schuelerprogramms fuhr den Roboter."""
+    from dataclasses import replace
+
+    from spotlab.config import Config, Limits
+
+    fenster = MainWindow()
+    fenster._config = replace(fenster._config or Config(ip="", username="", limits=Limits()),
+                              workspace=str(tmp_path))
+    fenster.ansichten["code"].setze_backend("sim")
+    gestartet = []
+    monkeypatch.setattr(fenster.ansichten["code"], "starte_skript", _starte_wie_editor(fenster, gestartet))
+    fenster.ansichten["fahren"].fahrt_gewuenscht.emit(False)
+    assert gestartet == [(tmp_path / "Beispiele" / "fahren.py", "real")]
+    assert fenster.ansichten["code"].gewaehltes_backend() == "sim"
+    fenster.ansichten["code"]._setze_laeuft(False)
+
+
+def test_ein_abgewiesener_start_laesst_keine_merker_stehen(qapp, tmp_path, monkeypatch):
+    """Kommt der Start nicht zustande (Sperre, Fehler), darf der naechste fremde
+    Lauf nicht als Fahrt oder Navigation gelten -- sonst uebernimmt der Tab Fahren
+    ihn samt scharfer Tasten, oder er bekommt die Karte in die Umgebung."""
+    from dataclasses import replace
+
+    from spotlab.config import Config, Limits
+
+    _karte_im_arbeitsordner(tmp_path)
+    fenster = MainWindow()
+    fenster._config = replace(fenster._config or Config(ip="", username="", limits=Limits()),
+                              workspace=str(tmp_path))
+    fenster._setze_arbeitsordner(str(tmp_path))
+    monkeypatch.setattr(fenster.ansichten["code"], "starte_skript",
+                        lambda pfad, argumente=(), backend=None: None)   # verweigert
+    fenster.ansichten["fahren"].fahrt_gewuenscht.emit(False)
+    assert fenster._fahrt_erwartet is False
+    fenster.ansichten["karten"].liste.setCurrentRow(0)
+    fenster.ansichten["karten"].navigation_gewuenscht.emit()
+    assert fenster._navigation_erwartet is False
+    assert fenster._karte_fuer_lauf is None
+    assert fenster._umgebung_fuer_lauf() == {}

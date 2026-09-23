@@ -743,3 +743,29 @@ def test_die_backendliste_stellt_den_echten_spot_ans_ende(qapp):
 def test_eine_frische_ansicht_steht_nicht_auf_dem_echten_spot(qapp, tmp_path):
     ansicht, _ordner, _projekt = _ansicht(tmp_path)
     assert ansicht.gewaehltes_backend() != "real"
+
+
+def test_ein_backend_fuer_einen_start_laesst_die_wahl_stehen(qapp, tmp_path, monkeypatch):
+    """Knöpfe ausserhalb des Editors (Fahren, Lage, Karten, Übungsraum) starten mit
+    einem festen Backend. Frueher stellten sie dafuer die WAHL im Reiter Code um --
+    und nach einer Fahrt am echten Spot fuhr das naechste „▶ Starten“ eines
+    Schuelerprogramms ebenfalls den echten Spot (Pruefung 23.09.2026)."""
+    ansicht, _ordner, projekt = _ansicht(tmp_path)
+    gesehen = _abgefangener_start(ansicht, monkeypatch)
+    ansicht.setze_backend("sim")
+    ansicht.starte_skript(projekt / "hallo_spot.py", backend="real")
+    assert gesehen["backend"] == "real"
+    assert ansicht.gewaehltes_backend() == "sim"
+
+
+def test_die_zusatzumgebung_sieht_das_backend_des_starts(qapp, tmp_path, monkeypatch):
+    """Raum und Startpose nur fuer einen virtuellen Lauf -- entschieden am Backend
+    DIESES Starts, nicht an der Wahl im Reiter."""
+    ansicht, _ordner, projekt = _ansicht(tmp_path)
+    gesehen = _abgefangener_start(ansicht, monkeypatch)
+    beim_start = []
+    ansicht.zusatz_umgebung = lambda: beim_start.append(ansicht.lauf_backend()) or {}
+    ansicht.setze_backend("real")
+    ansicht.starte_skript(projekt / "hallo_spot.py", backend="mujoco")
+    assert beim_start == ["mujoco"] and gesehen["backend"] == "mujoco"
+    assert ansicht.lauf_backend() == "real"      # nach dem Start wieder die Wahl

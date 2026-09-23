@@ -186,6 +186,7 @@ class EditorView(QWidget):
         # VERWEIGERN (Raum nicht auf der Platte): der wird unten wie ein
         # Startfehler gemeldet, und kein Prozess laeuft an.
         self.zusatz_umgebung = dict
+        self._start_backend = None          # nur waehrend eines Starts gesetzt
 
         # -------------------------------------------------- links: Dateien
         self.projektwahl = QComboBox()
@@ -287,6 +288,15 @@ class EditorView(QWidget):
 
     def gewaehltes_backend(self):
         return self.backendwahl.currentData()
+
+    def lauf_backend(self):
+        """Das Backend des Starts, der GERADE geschieht -- sonst die Wahl im Reiter.
+
+        Knoepfe ausserhalb des Editors starten mit einem eigenen Backend, ohne die
+        Wahl umzustellen. Was waehrend des Starts nach dem Backend fragt
+        (`zusatz_umgebung`, das Hauptfenster bei `lauf_gestartet`), fragt hier.
+        """
+        return self._start_backend or self.gewaehltes_backend()
 
     def setze_backend(self, name):
         """Ein UNBEKANNTER Name aendert nichts.
@@ -498,25 +508,34 @@ class EditorView(QWidget):
 
     # ------------------------------------------------------------- Lauf
 
-    def starte_aktuelles(self):
+    def starte_aktuelles(self, backend=None):
         """Startet die offene Datei -- oder haelt an, wenn schon etwas laeuft.
 
         Oeffentlich, damit der Uebungsraum daran delegieren kann. Kein zweiter
         Startweg: genau EIN Lauf ist der, auf den Stopp und NOT-AUS zeigen.
+        `backend` gilt nur fuer DIESEN Start; die Wahl im Reiter bleibt.
         """
-        self._starten_oder_stoppen()
+        self._starten_oder_stoppen_mit(backend)
 
-    def starte_skript(self, pfad, argumente=()):
-        """Ein mitgeliefertes Programm starten (der Fahrmodus des Raumeditors) --
-        ueber denselben Startweg wie die offene Datei, mit dem gewaehlten Backend.
-        `argumente` gehen als Liste an den Prozess (Akku wechseln, Aufrichten)."""
+    def starte_skript(self, pfad, argumente=(), backend=None):
+        """Ein mitgeliefertes Programm starten (Fahrmodus, Lage, Karten) -- ueber
+        denselben Startweg wie die offene Datei. `argumente` gehen als Liste an
+        den Prozess (Akku wechseln, Aufrichten).
+
+        `backend` gilt nur fuer DIESEN Start und stellt die Wahl im Reiter NICHT
+        um. Frueher taten die Knoepfe genau das: nach einer Fahrt am echten Spot
+        stand der Reiter auf „Echter Spot“, und das naechste „▶ Starten“ eines
+        Schuelerprogramms fuhr den Roboter (Pruefung 23.09.2026)."""
         if self._laeuft:
             self.stopp_gewuenscht.emit()
             return
-        self._starte(Path(pfad), argumente)
+        self._starte(Path(pfad), argumente, backend)
 
     def _starten_oder_stoppen(self):
         # Am `clicked`-Signal: Qt reicht `checked` herein, deshalb KEIN Parameter hier.
+        self._starten_oder_stoppen_mit(None)
+
+    def _starten_oder_stoppen_mit(self, backend):
         if self._laeuft:
             # Delegation ans Hauptfenster, das LiveView.stoppe() ruft: der
             # freundliche Stopp haengt am Lauf-Verzeichnis, das nur die
@@ -531,10 +550,17 @@ class EditorView(QWidget):
         # meint das Programm, wie es gerade dasteht — samt seiner Importe.
         if not self.speichere_alle_geaenderten():
             return
-        self._starte(eintrag.pfad)
+        self._starte(eintrag.pfad, (), backend)
 
-    def _starte(self, skript, argumente=()):
-        wo = self.gewaehltes_backend()
+    def _starte(self, skript, argumente=(), backend=None):
+        wo = backend or self.gewaehltes_backend()
+        self._start_backend = wo
+        try:
+            self._starte_mit(skript, argumente, wo)
+        finally:
+            self._start_backend = None
+
+    def _starte_mit(self, skript, argumente, wo):
         try:
             # nur_trocken NUR beim Uebungsraum: `connect(backend="real")` im
             # Skript schlaegt die Umgebungsvariable, und ein Lauf, den der
