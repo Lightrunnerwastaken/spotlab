@@ -1238,6 +1238,20 @@ versionsgepinntes Extra `spotlab[sim]`.
 
 ## Umsetzungsstand
 
+**Qualitätssitzung (23.09.2026, Fassung 0.2.0b3+)** — vier Prüfer (Raumeditor, Editor und
+Hauptfenster, Roboter-Ansichten, Backends/CLI) fanden 48 belegte Fehler, eine UX-Prüfung zwölf
+Bedienpunkte; behoben in vier Arbeitskopien und im Hauptstrang, jeder mit Test. Sicherheit:
+das Backend hing nach Fahren/Lage/Karten auf „real“, Stopp/NOT-AUS griffen in der
+Anlaufphase nicht, ein Tippfehler im Backend-Namen verband mit dem echten Spot, NaN wurde
+Vollgas, die Hindernisschranke im Folgemodus fragte im falschen Rahmen (odom statt vision),
+navigate_to hielt bei Fehlern nicht an, Schliessen liess das Programm verwaist laufen.
+Startzeit warm 5.7 s → 1.2 s bis zum Fenster (`test_gui_startzeit.py`), Ladebild mit
+trabendem Spot (`gui/ladebild.py`, `gui/start.py`). Bedienung: Stylesheet mit Zuständen,
+Fahren-Tab mit Tastenfeld (`gui/tastenfeld.py`), Karten mit Teiler, Raumeditor mit
+Werkzeuggruppe, Zustandszeile, Tastentafel (F1) und Touchpad-Schwenken; Mindestgrösse des
+Fensters 968×649 statt 1229×733 (`gui/kurztext.py`). Am Gerät: A37. Volle Suite danach:
+2688 bestanden, 3 übersprungen (vorher 2347).
+
 **Stufe 23 (10.–11.09.2026): Gehzeit — Spot misst einen Schulversuch mit** — `experiment/`
 (Standardbibliothek: `strecke.py` misst die Strecke aus zwei AprilTags samt Streuung,
 `zeitnahme.py` hält je Person eine Uhr und kennt drei Verwerfungsregeln, `durchgang.py`

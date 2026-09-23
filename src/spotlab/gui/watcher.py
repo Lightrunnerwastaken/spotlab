@@ -28,8 +28,11 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, Qt, QTimer, Signal
 
-from spotlab.laufsuche import laeufe_in, runs_wurzeln
-from spotlab.laufsuche import lauf_verzeichnisse  # noqa: F401  (Re-Export)
+from spotlab.laufsuche import (
+    laeufe_in,
+    lauf_verzeichnisse,  # noqa: F401  (Re-Export)
+    runs_wurzeln,
+)
 from spotlab.record.tail import JsonlTail
 from spotlab.workshop.control import ist_aktiv
 
