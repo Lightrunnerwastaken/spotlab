@@ -71,6 +71,10 @@ class Sicht2D(QWidget):
         self.skala = 60.0             # Pixel je Meter
         self._ursprung = (RAND, 0.0)  # Pixel des Weltpunkts (0, 0); y wird gespiegelt
         self._schwenk = None
+        # Solange niemand zoomt oder schwenkt, passt sich die Ansicht jeder neuen
+        # Groesse an: eingepasst wurde sonst auf 640 x 480, bevor das Fenster
+        # seine Groesse hatte, und der Raum sass klein in der Ecke (23.09.2026).
+        self._einpassen = False
 
     # ------------------------------------------------------------ Fuellen
 
@@ -128,6 +132,7 @@ class Sicht2D(QWidget):
                          max(self.height() - 2 * RAND, 1) / hoehe)
         self._ursprung = ((self.width() - breite * self.skala) / 2 - x0 * self.skala,
                           (self.height() + hoehe * self.skala) / 2 + y0 * self.skala)
+        self._einpassen = True
         self.update()
 
     def zoome(self, faktor, px, py):
@@ -135,7 +140,24 @@ class Sicht2D(QWidget):
         x, y = self.schirm_zu_meter(px, py)
         self.skala = max(5.0, min(2000.0, self.skala * faktor))
         self._ursprung = (px - x * self.skala, py + y * self.skala)
+        self._einpassen = False
         self.update()
+
+    def schwenke(self, dx, dy):
+        """Die Ansicht um (dx, dy) Pixel verschieben."""
+        self._ursprung = (self._ursprung[0] + dx, self._ursprung[1] + dy)
+        self._einpassen = False
+        self.update()
+
+    def resizeEvent(self, ereignis):
+        super().resizeEvent(ereignis)
+        if self._einpassen:
+            self.alles_zeigen()
+
+    def focusNextPrevChild(self, _weiter):
+        # Tab schaltet zwischen 2D und 3D um -- ohne das nahm Qt die Taste fuer
+        # den Fokuswechsel, und sie kam nie an (23.09.2026).
+        return False
 
     # ------------------------------------------------------- Ereignisse
 
@@ -164,9 +186,8 @@ class Sicht2D(QWidget):
         px, py = self._punkt(ereignis)
         if self._schwenk is not None:
             dx, dy = px - self._schwenk[0], py - self._schwenk[1]
-            self._ursprung = (self._ursprung[0] + dx, self._ursprung[1] + dy)
             self._schwenk = (px, py)
-            self.update()
+            self.schwenke(dx, dy)
             return
         self._zeiger = (px, py)
         _shift, ctrl, _alt = self._tasten(ereignis)

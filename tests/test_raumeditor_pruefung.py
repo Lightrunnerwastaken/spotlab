@@ -504,7 +504,90 @@ def test_ein_lauf_im_offenen_raum_laesst_den_verlauf_stehen(qapp, tmp_path):
 # ---------------------------------------------------------- 12. Tab schaltet 3D
 
 
+def test_die_tabtaste_kommt_in_der_sicht_an(qapp):
+    """p04: Qt verbrauchte Tab fuer den Fokuswechsel -- der Umschalter sprang nie."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+
+    from spotlab.gui.raumeditor import RaumeditorView
+    from spotlab.gui.theme import DUNKEL
+
+    tab = RaumeditorView(DUNKEL)
+    tab.resize(1000, 700)
+    tab.show()
+    qapp.processEvents()
+    tab.waehle_raum("moebliert")
+    tab.umschalter.setEnabled(True)                       # als gaebe es OpenGL
+    gemeldet, umgeschaltet = [], []
+    tab.sicht.taste_gedrueckt.connect(lambda *a: gemeldet.append(a[0]))
+    tab.umschalter.toggled.connect(umgeschaltet.append)
+    tab.sicht.setFocus(Qt.OtherFocusReason)
+    qapp.processEvents()
+    QTest.keyClick(tab.sicht, Qt.Key_Tab)
+    assert gemeldet == ["tab"] and umgeschaltet[:1] == [True]
+    tab.close()
+
+
+def test_die_tabtaste_kommt_auch_in_der_3d_sicht_an(qapp):
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QKeyEvent
+    from PySide6.QtWidgets import QApplication, QLineEdit, QVBoxLayout, QWidget
+
+    from spotlab.gui.raumeditor.sicht3d import Sicht3D
+    from spotlab.gui.theme import DUNKEL
+
+    rahmen = QWidget()
+    anordnung = QVBoxLayout(rahmen)
+    sicht = Sicht3D(DUNKEL)
+    anordnung.addWidget(sicht)
+    anordnung.addWidget(QLineEdit())                      # ein Nachbar, der den Fokus nehmen koennte
+    rahmen.show()
+    qapp.processEvents()
+    sicht.setFocus(Qt.OtherFocusReason)
+    gemeldet = []
+    sicht.taste_gedrueckt.connect(lambda *a: gemeldet.append(a[0]))
+    QApplication.sendEvent(sicht, QKeyEvent(QKeyEvent.KeyPress, Qt.Key_Tab, Qt.NoModifier))
+    assert gemeldet == ["tab"] and sicht.hasFocus()
+    rahmen.close()
+
+
 # -------------------------------------------------- 18. Die erste 2D-Ansicht
+
+
+def test_die_erste_ansicht_passt_den_raum_ins_gezeigte_fenster(qapp):
+    """p18: eingepasst wurde auf 640 x 480, bevor das Fenster seine Groesse hatte."""
+    from spotlab.gui.raumeditor import RaumeditorView
+    from spotlab.gui.theme import DUNKEL
+    from spotlab.welt.raum import huelle
+
+    tab = RaumeditorView(DUNKEL)
+    tab.waehle_raum("moebliert")
+    tab.resize(1400, 900)
+    tab.show()
+    qapp.processEvents()
+    s = tab.sicht
+    x0, y0, x1, y1 = huelle(tab.raum())
+    a, b_ = s.meter_zu_schirm(x0, y0), s.meter_zu_schirm(x1, y1)
+    breite, hoehe = b_[0] - a[0], a[1] - b_[1]
+    assert breite > 0.85 * s.width() or hoehe > 0.85 * s.height()
+    assert 0 <= a[0] and b_[0] <= s.width() and 0 <= b_[1] and a[1] <= s.height()
+    tab.close()
+
+
+def test_zoomen_haelt_die_ansicht_auch_bei_neuer_groesse(qapp):
+    from spotlab.gui.raumeditor.sicht2d import Sicht2D
+    from spotlab.gui.theme import DUNKEL
+
+    sicht = Sicht2D(DUNKEL)
+    sicht.resize(400, 300)
+    sicht.zeige(raum_laden("moebliert"))
+    sicht.alles_zeigen()
+    sicht.zoome(2.0, 200, 150)
+    skala = sicht.skala
+    sicht.resize(600, 400)
+    sicht.show()
+    assert sicht.skala == skala                           # wer gezoomt hat, behaelt seinen Blick
+    sicht.close()
 
 
 # --------------------------------------------------------- 3. Zahlenfelder

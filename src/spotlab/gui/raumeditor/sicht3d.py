@@ -458,6 +458,11 @@ class Sicht3D(QOpenGLWidget):
         m = ereignis.modifiers()
         return bool(m & Qt.ShiftModifier), bool(m & Qt.ControlModifier), bool(m & Qt.AltModifier)
 
+    def focusNextPrevChild(self, _weiter):
+        # Tab schaltet zwischen 2D und 3D um -- ohne das nahm Qt die Taste fuer
+        # den Fokuswechsel, und sie kam nie an (23.09.2026).
+        return False
+
     def mousePressEvent(self, ereignis):
         self.setFocus()
         p = ereignis.position()
