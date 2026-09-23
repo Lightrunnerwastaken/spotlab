@@ -143,45 +143,55 @@ def test_mit_jedi_werden_fremde_namen_ergaenzt(qapp):
 # bleibt fuehrerlos zurueck.
 
 
-class _LangsamerWorker:
-    """Ein Arbeiter, der noch laeuft, wenn der Reiter geschlossen wird."""
+def test_schliesse_trennt_und_loest_den_laufenden_arbeiter(qapp, monkeypatch):
+    """Bis zum 23.09.2026 wartete `schliesse()` hoechstens 2 s und liess den
+    Arbeiter danach als Kind des Feldes stehen -- eine kalte `np.`-Anfrage
+    braucht 8.5 s, und `deleteLater` zerstoerte einen laufenden QThread. Jetzt:
+    trennen, vom Feld loesen, nicht warten; der Faden laeuft ohne Eltern zu Ende
+    und raeumt sich ueber `finished` selbst ab."""
+    import threading
+    import time
 
-    def __init__(self):
-        self.getrennt = False
-        self.gewartet = False
-        self._laeuft = True
+    from PySide6.QtCore import QCoreApplication, QEvent
 
-    def isRunning(self):
-        return self._laeuft
+    from tests_zeitgrenzen import TEST_TIMEOUT_S, warte_bis
 
-    @property
-    def fertig(self):
-        arbeiter = self
+    frei, begonnen = threading.Event(), threading.Event()
 
-        class Signalattrappe:
-            def disconnect(self, *a, **kw):
-                arbeiter.getrennt = True
+    def langsam(*_):
+        begonnen.set()
+        frei.wait(TEST_TIMEOUT_S)
+        return [Vorschlag("zu_spaet", "zu_spaet", "")]
 
-        return Signalattrappe()
-
-    def wait(self, ms=None):
-        self.gewartet = True
-        self._laeuft = False
-        return True
-
-    def requestInterruption(self):
-        pass
-
-
-def test_schliesse_trennt_und_wartet_auf_den_arbeiter(qapp):
+    monkeypatch.setattr(modul, "jedi_lesen", langsam)
+    monkeypatch.setattr(modul, "jedi", object())
     feld = _feld()
-    v = Vervollstaendigung(feld)
-    arbeiter = _LangsamerWorker()
-    v._worker = arbeiter
-    v.schliesse()
-    assert arbeiter.getrennt, "die Antwort haette in ein zerstoertes Widget gezeigt"
-    assert arbeiter.gewartet, "der Thread wurde nicht abgewartet"
-    assert v._worker is None
+    v = _hilfe_mit(feld, "import math\nmath.")
+    angekommen = []
+    monkeypatch.setattr(v, "_zeige", lambda *a: angekommen.append(a))
+    try:
+        v.anfordern(erzwungen=True)
+        assert begonnen.wait(TEST_TIMEOUT_S)
+        arbeiter = v._worker
+        t = time.perf_counter()
+        v.schliesse()
+        assert time.perf_counter() - t < 1.0, "schliesse() wartete auf jedi"
+        assert v._worker is None
+        assert arbeiter.parent() is None, "der Arbeiter haengt noch am Feld"
+        assert arbeiter in modul._LOSE_ARBEITER, "niemand haelt den Arbeiter"
+        assert modul.warte_auf_arbeiter(20) is False
+        angekommen.clear()
+    finally:
+        frei.set()
+    assert modul.warte_auf_arbeiter(TEST_TIMEOUT_S * 1000) is True
+    warte_bis(lambda: not modul._LOSE_ARBEITER, "der geloeste Arbeiter raeumt sich ab",
+              zwischendurch=qapp.processEvents)
+    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+    assert angekommen == [], "die Antwort haette in ein zerstoertes Widget gezeigt"
+
+
+def test_warte_auf_arbeiter_ohne_arbeiter_ist_sofort_still():
+    assert modul.warte_auf_arbeiter(0) is True
 
 
 def test_schliesse_ohne_arbeiter_ist_harmlos(qapp):
@@ -328,6 +338,11 @@ def test_mit_echtem_jedi_kommen_vorschlaege_fuer_ein_modul(qapp):
     hilfe.anfordern()
     assert hilfe._worker is not None, "der Arbeiter wurde nie gestartet"
     hilfe.schliesse()
+    # schliesse() wartet nicht mehr: den geloesten Faden hier abwarten, sonst
+    # rechnet er in die naechsten Tests hinein.
+    from tests_zeitgrenzen import TEST_TIMEOUT_S
+
+    assert modul.warte_auf_arbeiter(TEST_TIMEOUT_S * 1000) is True
 
 
 class _Signalattrappe:
@@ -365,6 +380,12 @@ class _Attrappenworker:
     def wait(self, ms=None):
         self.laeuft = False
         return True
+
+    def isFinished(self):
+        return self.gestartet and not self.laeuft
+
+    def setParent(self, eltern):
+        self.eltern = eltern
 
 
 def test_jeder_arbeiter_raeumt_sich_selbst_ab(qapp, monkeypatch):
@@ -467,3 +488,5 @@ def test_nach_dem_schliessen_faengt_kein_wartender_auftrag_mehr_an(qapp, monkeyp
     assert hilfe._auftrag is None
     hilfe._starte_auftrag()
     assert len(erzeugt) == 1
+    assert modul.warte_auf_arbeiter(0) is True      # die Attrappe "endet" in wait()
+    assert not modul._LOSE_ARBEITER

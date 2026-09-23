@@ -6,7 +6,7 @@ from PySide6.QtTest import QTest  # noqa: E402
 
 from spotlab.gui.editor.view import EditorView  # noqa: E402
 from spotlab.gui.theme import DUNKEL  # noqa: E402
-from tests_zeitgrenzen import TEST_TIMEOUT_S  # noqa: E402
+from tests_zeitgrenzen import TEST_TIMEOUT_S, warte_bis  # noqa: E402
 
 
 def _werkstatt(tmp_path):
@@ -296,6 +296,149 @@ def test_reiter_schliessen_beendet_den_jedi_arbeiter(qapp, tmp_path):
     from PySide6.QtCore import QCoreApplication, QEvent
 
     QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+
+
+# ================== Reiter zu, waehrend jedi rechnet (Pruefung 23.09.2026, p06)
+#
+# Eine kalte `np.`-Anfrage brauchte 8.5 s, `schliesse()` wartete hoechstens 2 s,
+# danach zerstoerte `deleteLater` den laufenden QThread: `QThread: Destroyed while
+# thread is still running`, Exit 127 -- das ganze Fenster samt NOT-AUS war weg.
+
+_REITER_ZU_SKRIPT = r'''
+import sys, threading, time
+from pathlib import Path
+from PySide6.QtCore import QCoreApplication, QEvent
+from PySide6.QtGui import QTextCursor
+from PySide6.QtWidgets import QApplication
+from spotlab.gui.editor import completer as modul
+from spotlab.gui.editor.view import EditorView
+from spotlab.gui.theme import DUNKEL
+
+app = QApplication([])
+frei, begonnen = threading.Event(), threading.Event()
+
+def langsam(*_):            # wie die kalte numpy-Anfrage: laenger als jede Frist
+    begonnen.set()
+    frei.wait(60)
+    return []
+
+modul.jedi_lesen = langsam
+modul.jedi = object()       # "jedi ist da" -- ohne echtes jedi zu laden
+projekt = Path(sys.argv[1])
+ansicht = EditorView(DUNKEL)
+ansicht.setze_projekt(projekt)
+ansicht.oeffne(projekt / "a.py")
+feld = ansicht.aktueller_reiter().feld
+feld.moveCursor(QTextCursor.End)
+ansicht.aktueller_reiter().hilfe.anfordern(erzwungen=True)
+assert begonnen.wait(30), "der Arbeiter lief nie an"
+t = time.perf_counter()
+ansicht._schliesse(0)
+print(f"zu nach {time.perf_counter() - t:.2f} s", flush=True)
+QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+print("ueberlebt", flush=True)
+frei.set()
+print("still" if ansicht.schliesse_hintergrund(30000) else "laeuft noch", flush=True)
+'''
+
+
+def test_reiter_zu_waehrend_jedi_rechnet_reisst_das_fenster_nicht_mit(tmp_path):
+    """Im Unterprozess: der Fehler war ein Absturz des ganzen Interpreters."""
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    projekt = tmp_path / "demo"
+    projekt.mkdir()
+    (projekt / "a.py").write_text("import math\nmath.", encoding="utf-8")
+    skript = tmp_path / "reiter_zu.py"
+    skript.write_text(_REITER_ZU_SKRIPT, encoding="utf-8")
+    quelle = Path(__file__).resolve().parents[1] / "src"
+    ergebnis = subprocess.run(
+        [sys.executable, str(skript), str(projekt)],
+        capture_output=True, text=True, timeout=TEST_TIMEOUT_S,
+        env={**os.environ, "PYTHONPATH": str(quelle), "PYTHONUTF8": "1",
+             "QT_QPA_PLATFORM": "offscreen", "HOME": str(tmp_path),
+             "USERPROFILE": str(tmp_path)},
+    )
+    bericht = f"Ausgabe:\n{ergebnis.stdout}\nFehler:\n{ergebnis.stderr}"
+    assert "ueberlebt" in ergebnis.stdout, bericht
+    assert "Destroyed while thread" not in ergebnis.stderr, bericht
+    assert ergebnis.returncode == 0, bericht
+    assert "still" in ergebnis.stdout, bericht
+
+
+def _blockierendes_jedi(monkeypatch):
+    """jedi_lesen, das haengt, bis der Test es freigibt -- ein echter QThread."""
+    import threading
+
+    from spotlab.gui.editor import completer as modul
+
+    frei, begonnen = threading.Event(), threading.Event()
+
+    def langsam(*_):
+        begonnen.set()
+        frei.wait(TEST_TIMEOUT_S)
+        return []
+
+    monkeypatch.setattr(modul, "jedi_lesen", langsam)
+    monkeypatch.setattr(modul, "jedi", object())
+    return frei, begonnen
+
+
+def test_reiter_zu_wartet_nicht_auf_jedi_und_loest_den_arbeiter(qapp, tmp_path, monkeypatch):
+    """Frueher fror das Schliessen bis zu 2 s ein -- in derselben Ereignisschleife
+    wie der NOT-AUS-Knopf. Jetzt wird der Arbeiter vom Feld geloest und laeuft
+    ohne Eltern zu Ende."""
+    import time
+
+    from spotlab.gui.editor import completer as modul
+
+    frei, begonnen = _blockierendes_jedi(monkeypatch)
+    ansicht, _ordner, projekt = _ansicht(tmp_path)
+    ansicht.oeffne(projekt / "hallo_spot.py")
+    hilfe = ansicht.aktueller_reiter().hilfe
+    try:
+        hilfe.anfordern(erzwungen=True)
+        assert begonnen.wait(TEST_TIMEOUT_S)
+        arbeiter = hilfe._worker
+        t = time.perf_counter()
+        ansicht._schliesse(0)
+        assert time.perf_counter() - t < 1.0, "das Schliessen wartete auf jedi"
+        assert arbeiter.parent() is None and arbeiter.isRunning()
+        _arbeite_zerstoerungen_ab()                 # das Feld ist weg, der Faden nicht
+        assert arbeiter.isRunning()
+        assert ansicht.schliesse_hintergrund(20) is False, "jedi rechnet noch"
+    finally:
+        frei.set()
+    assert ansicht.schliesse_hintergrund(TEST_TIMEOUT_S * 1000) is True
+    warte_bis(lambda: not modul._LOSE_ARBEITER, "der geloeste Arbeiter raeumt sich ab",
+              zwischendurch=qapp.processEvents)
+    _arbeite_zerstoerungen_ab()
+
+
+def test_schliesse_hintergrund_wartet_auch_auf_offene_reiter(qapp, tmp_path, monkeypatch):
+    """Das Hauptfenster ruft es beim Schliessen: danach zerstoert Qt alle Reiter,
+    und ein Arbeiter, der noch unter einem offenen Reiter rechnet, risse es mit."""
+    from spotlab.gui.editor import completer as modul
+
+    frei, begonnen = _blockierendes_jedi(monkeypatch)
+    ansicht, _ordner, projekt = _ansicht(tmp_path)
+    ansicht.oeffne(projekt / "hallo_spot.py")
+    hilfe = ansicht.aktueller_reiter().hilfe
+    try:
+        hilfe.anfordern(erzwungen=True)
+        assert begonnen.wait(TEST_TIMEOUT_S)
+        assert ansicht.schliesse_hintergrund(20) is False
+        assert hilfe._worker is None, "der Arbeiter haengt noch am Reiter"
+        hilfe.anfordern(erzwungen=True)
+        assert hilfe._worker is None, "nach dem Schliessen faengt keiner mehr an"
+    finally:
+        frei.set()
+    assert ansicht.schliesse_hintergrund(TEST_TIMEOUT_S * 1000) is True
+    warte_bis(lambda: not modul._LOSE_ARBEITER, "der geloeste Arbeiter raeumt sich ab",
+              zwischendurch=qapp.processEvents)
 
 
 # ============================= S2.2 alle verschmutzten Reiter vor dem Start

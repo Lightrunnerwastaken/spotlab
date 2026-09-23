@@ -32,7 +32,7 @@ from spotlab.editor.syntax import pruefe
 from spotlab.editor.traceback import finde_stellen
 from spotlab.errors import SpotlabError
 from spotlab.gui.editor.codeedit import CodeEdit
-from spotlab.gui.editor.completer import Vervollstaendigung
+from spotlab.gui.editor.completer import Vervollstaendigung, warte_auf_arbeiter
 from spotlab.gui.editor.highlighter import Hervorheber
 from spotlab.gui.editor.tree import Dateibaum
 from spotlab.gui.launcher import start_script
@@ -487,12 +487,26 @@ class EditorView(QWidget):
                 return
         self.reiter.removeTab(index)
         reiter = self._reiter.pop(feld, None)
-        # ERST den jedi-Arbeiter beenden, DANN das Feld zur Zerstörung
+        # ERST den jedi-Arbeiter vom Feld lösen, DANN das Feld zur Zerstörung
         # vormerken. Umgekehrt wird ein arbeitender QThread destruiert, und das
         # reisst das ganze Fenster mit — samt NOT-AUS-Knopf.
         if reiter is not None and reiter.hilfe is not None:
             reiter.hilfe.schliesse()
         feld.deleteLater()
+
+    def schliesse_hintergrund(self, frist_ms):
+        """Beim Schliessen des FENSTERS: alle jedi-Arbeiter abwarten. True = alles still.
+
+        Schliesst die Vervollständigung in JEDEM Reiter (danach gibt es keine
+        Vorschläge mehr — deshalb nur fürs Fenster, nicht für einen Reiter) und
+        wartet höchstens `frist_ms` auf alle Arbeiter, auch auf die längst
+        geschlossener Reiter. Danach zerstört Qt die Reiter und die Anwendung; ein
+        Faden, der dann noch rechnet, reisst den Prozess mit.
+        """
+        for eintrag in list(self._reiter.values()):
+            if eintrag.hilfe is not None:
+                eintrag.hilfe.schliesse()
+        return warte_auf_arbeiter(frist_ms)
 
     def springe_zu(self, pfad, zeile):
         self.oeffne(pfad)
