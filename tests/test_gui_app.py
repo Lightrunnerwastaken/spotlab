@@ -1341,3 +1341,20 @@ def test_ein_abgewiesener_start_laesst_keine_merker_stehen(qapp, tmp_path, monke
     assert fenster._navigation_erwartet is False
     assert fenster._karte_fuer_lauf is None
     assert fenster._umgebung_fuer_lauf() == {}
+
+
+def test_arbeitsordner_merken_behaelt_die_treppensperre_von_der_platte(qapp, tmp_path, monkeypatch):
+    from dataclasses import replace
+
+    from spotlab.config import Config, Limits, load_config, save_config
+
+    pfad = tmp_path / "config.toml"
+    monkeypatch.setattr("spotlab.config.CONFIG_PATH", pfad)
+    save_config(Config(ip="10.0.0.9", username="lehrer", limits=Limits()), pfad)
+    fenster = MainWindow()
+    frisch = load_config(pfad)
+    save_config(replace(frisch, limits=replace(frisch.limits, treppen="aus")), pfad)
+    fenster._merke_arbeitsordner(str(tmp_path))
+    nachher = load_config(pfad)
+    assert nachher.workspace == str(tmp_path)
+    assert nachher.limits.treppen == "aus"

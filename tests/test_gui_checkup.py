@@ -115,3 +115,43 @@ def test_speichern_behaelt_karte_raum_und_treppensperre(qapp, tmp_path, monkeypa
     assert neu.active_map == "Katakomben"
     assert neu.raum == "flur" and neu.raum_start == "1.5,2.0,90"
     assert neu.default_backend == "mujoco" and neu.workspace == "D:/arbeit"
+
+
+def test_speichern_behaelt_was_inzwischen_auf_der_platte_geaendert_wurde(qapp, tmp_path, monkeypatch):
+    """Pruefung 23.09.2026: die Ansicht ergaenzte die Kopie, die sie beim START
+    geladen hatte. Wer inzwischen `treppen = "aus"` gesetzt hatte (Kommandozeile,
+    Hauptfenster), bekam „auto“ zurueck -- ein SICHERHEITSWERT, still ueberschrieben."""
+    from dataclasses import replace
+
+    from spotlab.config import load_config, save_config
+
+    pfad = tmp_path / "config.toml"
+    monkeypatch.setattr("spotlab.config.CONFIG_PATH", pfad)
+    monkeypatch.setattr("spotlab.gui.views.checkup.save_password", lambda *a: None)
+    save_config(Config(ip="10.0.0.9", username="lehrer", limits=Limits()), pfad)
+    ansicht = CheckupView()                      # laedt treppen = auto
+    frisch = load_config(pfad)
+    save_config(replace(frisch, workspace="C:/ws", limits=replace(frisch.limits, treppen="aus")), pfad)
+
+    ansicht.ip.setText("10.0.0.10")
+    ansicht.speichere()
+    nachher = load_config(pfad)
+    assert nachher.ip == "10.0.0.10"
+    assert nachher.limits.treppen == "aus"
+    assert nachher.workspace == "C:/ws"
+
+
+def test_unberuehrte_zahlenfelder_runden_die_grenze_nicht(qapp, tmp_path, monkeypatch):
+    """0.125 m/s stand als 0.13 im Feld -- und wurde beim naechsten Speichern zu 0.13."""
+    from spotlab.config import load_config, save_config
+
+    pfad = tmp_path / "config.toml"
+    monkeypatch.setattr("spotlab.config.CONFIG_PATH", pfad)
+    monkeypatch.setattr("spotlab.gui.views.checkup.save_password", lambda *a: None)
+    save_config(Config(ip="10.0.0.9", username="lehrer",
+                       limits=Limits(max_speed=0.125, max_turn_rate=0.4125)), pfad)
+    ansicht = CheckupView()
+    ansicht.spitzname.setText("Bello")
+    ansicht.speichere()
+    assert load_config(pfad).limits.max_speed == 0.125
+    assert load_config(pfad).limits.max_turn_rate == 0.4125

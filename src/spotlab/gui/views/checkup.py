@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
 
 from spotlab.config import Config, Limits, load_config, save_config, save_password
 from spotlab.errors import SpotlabError
+from spotlab.gui import konfig
 
 
 class CheckupView(QWidget):
@@ -101,6 +102,10 @@ class CheckupView(QWidget):
         self.spitzname.setText(self._config.nickname if self._config else "")
         self.max_tempo.setValue(grenzen.max_speed)
         self.max_drehung.setValue(grenzen.max_turn_rate)
+        # Was die Felder JETZT zeigen (gerundet): daran erkennt speichere(), ob
+        # jemand sie geaendert hat (gui/konfig.unberuehrt).
+        self._tempo_beim_laden = self.max_tempo.value()
+        self._drehung_beim_laden = self.max_drehung.value()
 
     def speichere(self):
         # ERGAENZEN, nicht neu bauen: ein frisches `Config(...)` liess jedes nicht
@@ -108,7 +113,10 @@ class CheckupView(QWidget):
         # Startpose und `treppen` waren nach einer Passwortaenderung weg. `treppen`
         # ist dabei ein SICHERHEITSWERT (`mobility.mit_grenze` -> `stairs_mode`).
         # Auf der Kommandozeile war das in `cli.py::_login` laengst so geloest.
-        alt = self._config or Config(ip="", username="", limits=Limits())
+        # Und FRISCH von der Platte, nicht die Kopie vom Start: sonst kam alles
+        # zurueck, was inzwischen anderswo gesetzt wurde (gui/konfig.py).
+        gezeigt = self._config
+        alt = konfig.frisch(gezeigt) or Config(ip="", username="", limits=Limits())
         cfg = replace(
             alt,
             ip=self.ip.text().strip(),
@@ -116,8 +124,12 @@ class CheckupView(QWidget):
             nickname=self.spitzname.text().strip() or "Spot",
             limits=replace(
                 alt.limits,
-                max_speed=self.max_tempo.value(),
-                max_turn_rate=self.max_drehung.value(),
+                max_speed=konfig.unberuehrt(
+                    self.max_tempo.value(), self._tempo_beim_laden,
+                    gezeigt.limits.max_speed if gezeigt else None),
+                max_turn_rate=konfig.unberuehrt(
+                    self.max_drehung.value(), self._drehung_beim_laden,
+                    gezeigt.limits.max_turn_rate if gezeigt else None),
             ),
         )
         save_config(cfg)

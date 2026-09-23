@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 from spotlab import ENV_KARTE, ENV_RAUM, ENV_RAUM_START
 from spotlab.config import load_config, save_config
 from spotlab.errors import SpotlabError
+from spotlab.gui import konfig
 from spotlab.gui.editor.view import EditorView, verfuegbare_backends
 from spotlab.gui.header import Header
 from spotlab.gui.raumeditor import RaumeditorView
@@ -268,16 +269,19 @@ class MainWindow(QWidget):
 
     def _merke_arbeitsordner(self, pfad):
         self._setze_arbeitsordner(pfad)
-        if self._config is None:
+        # Frisch von der Platte, nur das eigene Feld ersetzen (gui/konfig.py).
+        basis = konfig.frisch(self._config)
+        if basis is None:
             return
-        self._config = replace(self._config, workspace=pfad)
+        self._config = replace(basis, workspace=pfad)
         save_config(self._config)
 
     def _merke_aktive_karte(self, name):
-        if self._config is None:
+        basis = konfig.frisch(self._config)
+        if basis is None:
             self._melde("Der Spot ist noch nicht eingerichtet — Ansicht 'Spot'.")
             return
-        self._config = replace(self._config, active_map=name)
+        self._config = replace(basis, active_map=name)
         save_config(self._config)
         self.ansichten["karten"].setze_config(self._config)
 
