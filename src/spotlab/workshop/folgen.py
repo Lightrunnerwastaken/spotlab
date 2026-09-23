@@ -843,7 +843,8 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
     stehenden Roboter, und der steht aus vielen Gründen. `licht=False` schaltet
     sie ab, `None` baut sie selbst (und lässt sie weg, wo es keine gibt). Ein
     Fehler am Licht hält den Lauf nie an: es wird einmal gesagt und weiter
-    gefolgt.
+    gefolgt. Und das Licht verlangsamt keinen Takt: `Statuslicht` schickt über
+    einen Boten, und am Ende hält Spot ZUERST an, dann gehen die LEDs aus.
 
     `blick_grad` hebt die Nase während der Fahrt, damit die Kameras höher
     schauen — positiv, in Grad. Damit kommt ein stehendes Gesicht schon auf
@@ -901,18 +902,36 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
 
         licht = Statuslicht(spot)
 
-    def zeige(farbe):
-        """Die LEDs sind eine Beigabe: ein Fehler daran haelt nie den Regler an."""
+    def licht_melden(ausnahme=None):
+        """Einen Fehler am Licht EINMAL sagen -- geworfen oder vom Licht gezaehlt."""
         nonlocal licht_stolpern_gemeldet
+        if licht_stolpern_gemeldet:
+            return
+        if ausnahme is not None:
+            grund = f"{type(ausnahme).__name__}: {ausnahme}"
+        elif getattr(licht, "fehler", 0):
+            grund = str(getattr(licht, "letzter_fehler", "") or "Fehler ohne Text")
+        else:
+            return
+        licht_stolpern_gemeldet = True
+        melde(f"Das Licht am Kopf geht nicht ({grund}) — Spot folgt weiter, nur ohne Farbe.")
+
+    def zeige(farbe):
+        """Die LEDs sind eine Beigabe: ein Fehler daran haelt nie den Regler an.
+
+        `Statuslicht` wirft nicht, es ZAEHLT (`fehler`, `letzter_fehler`) -- bis zum
+        22.09.2026 wartete dieser Zweig auf eine Ausnahme, die nie kam, und ein
+        kaputtes Licht blieb stumm (p07). Ein selbstgebautes Licht darf auch werfen.
+        `setze` blockiert nicht: die Anfragen an den Roboter gehen ueber einen Boten.
+        """
         if not licht:
             return
         try:
             licht.setze(farbe)
         except Exception as fehler:
-            if not licht_stolpern_gemeldet:
-                licht_stolpern_gemeldet = True
-                melde(f"Das Licht am Kopf geht nicht ({type(fehler).__name__}: {fehler}) "
-                      f"— Spot folgt weiter, nur ohne Farbe.")
+            licht_melden(fehler)
+            return
+        licht_melden()
     gier_vorher = None          # die Gier beim letzten Befehl: so viel hat er seither gedreht
     seitlich_gedreht = 0.0      # Grad gedreht, seit das Ziel zuletzt VOR ihm war (Kreissperre)
     drehsperre = False
@@ -1077,12 +1096,20 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
                 faehrt = True
             schlaf(_rest(takt_s, takt_beginn, jetzt))
     finally:
+        try:
+            # ZUERST anhalten, DANN das Licht: bis zum 22.09.2026 stand `licht.aus()`
+            # davor, und bei einem langsamen AV-Dienst fuhr Spot mit dem letzten Befehl
+            # weiter, bis dessen Endzeit ablief -- 3.0 s zu spaet gemessen (p08).
+            # `fahren.fahre` macht es seit jeher so herum.
+            spot.stop()
+        finally:
+            if licht:
+                try:
+                    licht.aus()           # wartet hoechstens kurz auf den Boten
+                except Exception:
+                    pass                  # die LEDs erloeschen ohnehin mit der Frist
         if licht:
-            try:
-                licht.aus()
-            except Exception:
-                pass                      # die LEDs erloeschen ohnehin mit der Frist
-        spot.stop()
+            licht_melden()                # ein Fehler aus dem letzten Takt kommt auch noch an
         melde("Folgen beendet.")
 
 

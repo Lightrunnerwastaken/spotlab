@@ -343,6 +343,17 @@ versionsgepinntes Extra `spotlab[sim]`.
   gesagt, dann weiter), und wo es keinen AV-Dienst gibt, wird gar nicht erst gefragt. Anlass:
   ohne Licht sieht der Mensch vor dem Roboter nur, DASS er steht — und das tut er aus vielen
   Gründen. Ob ein Handzeichen angekommen ist, war bis dahin nur am Laptop zu sehen.
+  **„Blockiert nie" heisst: die Anfragen gehen über einen BOTEN** (Hintergrundfaden je Schub,
+  `ausfuehren=` als Testtür), der Takt wartet nie auf den AV-Dienst; ist der Bote unterwegs,
+  gilt nur der neueste Wunsch. Die Prüfung am 22.09.2026 fand die erste Fassung in drei Punkten
+  falsch: sie schickte im Takt der Schleife (bis zu 5 s je Anfrage — p07), sie meldete nie, weil
+  `setze()` jeden Fehler selbst zählt und `folge()` auf eine Ausnahme wartete, und nach einem
+  Fehler fragte sie JEDEN Takt neu (sechs Anfragen in sechs Takten). Jetzt: Rückoff bis zur
+  nächsten Auffrischfrist, `folge()` liest `fehler`/`letzter_fehler` und sagt es einmal, und im
+  `finally` steht **`spot.stop()` VOR `licht.aus()`** (p08: stop kam 3.0 s zu spät, Spot fuhr so
+  lange mit dem letzten Befehl); `aus()` wartet höchstens `LICHT_AUS_WARTE_S` auf den Boten.
+  `test_ein_haengendes_licht_verlaengert_keinen_takt` lässt die Anfrage am Kopf hängen, bis alle
+  Takte durch sind.
 - **Handzeichen gibt es nur beim gefolgten Körper, und ein Zeichen ist kein Fahrbefehl.**
   `backends/real/gesten.py` (MediaPipe-Handfläche und -Handpose aus dem Zoo, ONNX über
   `cv2.dnn`) und `folgen.gesten_leser(finder)`: offene Hand = Halt, Daumen hoch = Weiter.
