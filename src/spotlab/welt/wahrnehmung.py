@@ -33,6 +33,17 @@ GITTER_ZELLE_M = 0.03
 # waeren zu teuer, jede vierte Zelle reicht fuer eine Uebungsumgebung.
 SICHT_RASTER = 4
 
+# Der Koerperschatten: so weit um die Koerpermitte sehen die Kameras nichts,
+# das Gitter ist dort UNBEKANNT -- auch unter einer Wand. Gemessen, nicht
+# geschaetzt: im echten Gitter vom 12.08.2026 (tests/daten/gitter_real_20260812)
+# sind 91 % der Zellen bis 0.3 m unbekannt, 65 % bis 0.5 m, 33 % bis 0.7 m,
+# danach der Grundanteil; in MuJoCo liegt die erste bekannte Zelle je Richtung
+# bei 0.36 bis 0.8 m. Bis zum 23.09.2026 sah der 2D-Sim bis unter die Fuesse,
+# und dasselbe Programm verhielt sich in 2D und 3D verschieden (Beta-Pruefung).
+# Muss unter `backends.base.FREI_AB_M` bleiben (eine Zelle Luft): sonst endete
+# jede freie Strecke am Schattenrand -- `tests/test_welt_wahrnehmung.py`.
+KOERPERSCHATTEN_M = 0.5
+
 
 def sichtbare_tags(raum, pose, z=0.0):
     """[(RaumTag, dx, dy)] im Koerperframe, naechster zuerst.
@@ -170,5 +181,10 @@ def abstandsgitter(raum, pose, z=None, klippen_=None):
     # NICHT `werte < ROBOTER_RADIUS_M`: das machte auch Zellen 30 cm DAHINTER
     # bekannt und widerspraeche genau der Zusicherung, um die es hier geht.
     bekannt |= werte <= 0.0
+
+    # Zuletzt der Koerperschatten, und er schlaegt auch die Regel darueber:
+    # unter und dicht neben dem Koerper sieht keine Kamera etwas, auch keine
+    # Wand (MuJoCo: eine Wand 0.6 m voraus ist dort unbekannt).
+    bekannt &= np.hypot(xs - x, ys - y) >= KOERPERSCHATTEN_M
 
     return werte.tolist(), bekannt.tolist(), ursprung

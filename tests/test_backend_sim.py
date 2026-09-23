@@ -739,6 +739,18 @@ def test_gitter_traegt_die_bekannt_maske():
     assert gitter.cells.shape == gitter.known.shape
 
 
+def test_dicht_vor_dem_koerper_sieht_der_2d_sim_nichts_wie_mujoco(uhr):
+    """p10: `look()` meldete im 2D-Sim „clear“ und „blocked“ ab 0 m, MuJoCo
+    und der echte Spot „unknown“ -- dasselbe Programm verhielt sich in den
+    beiden Uebungsraeumen verschieden. Die freie Strecke ueber den Schatten
+    hinweg bleibt dieselbe."""
+    backend = SimBackend(jetzt=uhr, raum=_uebungsraum(), start=(5.0, 5.0, 0.0))
+    gitter = backend.local_grid()
+    assert gitter.distance_at(5.3, 5.0) is None                    # 0.3 m voraus: Schatten
+    assert gitter.distance_at(5.8, 5.0) is not None                # 0.8 m voraus: gesehen
+    assert gitter.free_distance(5.0, 5.0, 90.0) == pytest.approx(1.8)   # links frei bis zum Deckel
+
+
 def test_anstossen_wird_genau_einmal_gemeldet():
     """Ein Programm, das zehn Sekunden gegen eine Wand drueckt, darf das
     Protokoll nicht mit hundert gleichen Zeilen fluten."""

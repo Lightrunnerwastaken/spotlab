@@ -166,6 +166,9 @@ liefert Abstand oder None; `is_free(x,y,margin=0.3)` liefert bool. Die Koordinat
 sind vision, **nicht state.pose (odom)**. Bestehendes `free_distance(x,y,heading,
 max_distance=1.8,margin=0.3)` verwendet Weltwinkel in Grad und überspringt unbekannte
 Nahzellen unter 0.9 m. Für neue Skripte mit expliziter Unbekannt-Behandlung look nutzen.
+Der Körperschatten ist in jedem Backend unbekannt — auch im 2D-Sim, dort als Kreis von
+0.5 m um die Körpermitte (am echten Gitter und in MuJoCo gemessen: je Richtung etwa
+0.2 bis 0.8 m). Ein Hindernis darin sieht Spot nicht.
 
 ## Licht, Summer, Körperhaltung
 
