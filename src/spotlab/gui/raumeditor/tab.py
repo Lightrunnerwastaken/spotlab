@@ -144,6 +144,8 @@ class RaumeditorView(QWidget):
         self._liste_sperre = False
         self._pauspapier = []        # Punktwolke einer Rekonstruktion, neben dem Raum gespeichert
         self._weg = []               # der gelaufene Weg (x, y, z_boden) derselben Rekonstruktion
+        self._pauspapier_unlesbar = None   # Name des Raums, dessen Pauspapier nicht zu lesen war
+        self._ebenen_memo = None           # (Boeden, Gelaendehoehen, Ebenen)
         self._korrektur_dialog = None
         self.steuerung = Steuerung()
 
@@ -280,6 +282,7 @@ class RaumeditorView(QWidget):
         self._raumname, self._eigen = name, eigen
         self._pauspapier = list(punkte)
         self._weg = list(weg)
+        self._pauspapier_unlesbar = None
         self.steuerung.setze_raum(raum, geaendert=geaendert)
         for sicht in (self.sicht, self.sicht3d):
             sicht.setze_spur([])
@@ -315,14 +318,24 @@ class RaumeditorView(QWidget):
             self.meldung.emit(str(fehler))
             return
         eigen = name in eigene_raeume(self._arbeitsordner)
-        punkte, weg = [], []
+        punkte, weg, unlesbar = [], [], None
         if eigen:
+            pfad = pauspapier.pfad_zu(raum_pfad(self._arbeitsordner, name))
             try:
-                pfad = pauspapier.pfad_zu(raum_pfad(self._arbeitsordner, name))
                 punkte, weg = pauspapier.lies(pfad), pauspapier.lies_weg(pfad)
             except Exception as fehler:
-                self.meldung.emit(str(fehler))
-        self._setze(raum, name, eigen, False, punkte, weg)
+                unlesbar = (pfad, fehler)
+        if not self._setze(raum, name, eigen, False, punkte, weg):
+            return
+        if unlesbar is not None:
+            # Merken, damit das naechste Speichern die Datei NICHT loescht: ohne
+            # Punkte und Weg hielt `_schreibe` sie fuer die Messdaten eines
+            # Vorgaengers -- weg war die ganze Kartenfahrt (23.09.2026).
+            self._pauspapier_unlesbar = name
+            self.meldung.emit(
+                f"Das Pauspapier {unlesbar[0].name} ließ sich nicht lesen ({unlesbar[1]}). "
+                f"Der Raum ist ohne Pauspapier geöffnet; die Datei bleibt unverändert liegen. "
+                f"Für neue Messdaten den Raum aus der Karte neu rekonstruieren.")
 
     def _rekonstruieren(self):
         from spotlab.gui.raumeditor.rekonstruktion_dialog import RekonstruktionsDialog
@@ -453,6 +466,12 @@ class RaumeditorView(QWidget):
         if any(z in name for z in PFADZEICHEN):
             self.meldung.emit(f"Der Name darf keine Pfadzeichen enthalten ({PFADZEICHEN}).")
             return False
+        if name in vorlagen():
+            # Ein eigener Raum geht beim Laden vor: er verdeckte die Vorlage, und ein
+            # Lauf mit `SPOTLAB_RAUM=<name>` waere mehrdeutig (23.09.2026).
+            self.meldung.emit(f"„{name}“ heisst wie eine Vorlage — bitte einen anderen Namen "
+                              f"wählen, z. B. „{name} 2“.")
+            return False
         if raum_pfad(self._arbeitsordner, name).exists():
             wahl = QMessageBox.question(
                 self, "Raum ersetzen?", f"Der Raum „{name}“ existiert bereits. Ersetzen?",
@@ -470,6 +489,8 @@ class RaumeditorView(QWidget):
             raum_speichern(raum, pfad)
             if self._pauspapier or self._weg:
                 pauspapier.schreibe(pauspapier.pfad_zu(pfad), self._pauspapier, weg=self._weg)
+            elif self._pauspapier_unlesbar == name and self._raumname == name:
+                pass            # die unlesbare Datei gehoert genau diesem Raum: liegen lassen
             else:
                 # Sonst laedt ein neuer Raum die Messdaten seines Vorgaengers.
                 pauspapier.pfad_zu(pfad).unlink(missing_ok=True)
@@ -553,7 +574,7 @@ class RaumeditorView(QWidget):
         # Arbeit des Schuelers nicht ueberschreiben.
         if self.steuerung.geaendert:
             return
-        if name:
+        if name and not self._ist_offen(name):
             self.waehle_raum(name)
         spur = []
         for satz in _zeilen(ordner / "zustand.jsonl"):
@@ -563,6 +584,20 @@ class RaumeditorView(QWidget):
         for sicht in (self.sicht, self.sicht3d):
             sicht.setze_spur(spur)
             sicht.setze_anstoesse(anstoesse)
+
+    def _ist_offen(self, name):
+        """Liegt genau DIESER Raum schon offen im Editor, so wie er auf der Platte steht?
+
+        Dann laedt `lade()` ihn nicht neu: `setze_raum` leert den Verlauf, und
+        nach jedem Lauf war Strg+Z weg (23.09.2026). Verglichen wird mit der
+        Datei, nicht nur der Name -- hat jemand sie ausserhalb geaendert, wird
+        neu geladen."""
+        if name != self._raumname or self.steuerung.raum is None:
+            return False
+        try:
+            return raum_laden(name, workspace=self._arbeitsordner) == self.steuerung.raum
+        except Exception:
+            return False
 
     # ------------------------------------------------------- Ereignisse
 

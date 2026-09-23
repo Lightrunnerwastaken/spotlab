@@ -213,7 +213,44 @@ def test_der_speicherknopf_beendet_einen_offenen_zug(qapp, tmp_path):
 # ---------------------------------------------------- 5. Text mit Zeilenumbruch
 
 
+def test_steuerzeichen_im_text_ueberstehen_speichern_und_laden(tmp_path):
+    """p11: ein eingefuegter Zeilenumbruch machte die Raumdatei unladbar."""
+    raum, _ = b.neue_sperrzone(raum_laden("leer"), 2.0, 2.0, 1.0, 1.0,
+                               grund="Glasfront\nnicht sichtbar\tfür die \"Kamera\" \\ \x01\x7f")
+    raum = replace(raum, name="Zeile 1\r\nZeile 2", beschreibung="ä\bö\fü")
+    pfad = tmp_path / "raeume" / "probe.toml"
+    raum_speichern(raum, pfad)
+    from spotlab.welt.raum import raum_laden_pfad
+
+    zurueck = raum_laden_pfad(pfad)
+    assert zurueck.sperrzonen[0].grund == raum.sperrzonen[0].grund
+    assert zurueck.name == raum.name and zurueck.beschreibung == raum.beschreibung
+
+
 # ----------------------------------------------------- 6. Pauspapier unlesbar
+
+
+def test_ein_unlesbares_pauspapier_bleibt_beim_speichern_liegen(qapp, tmp_path):
+    """p14: war das Pauspapier beim Oeffnen nicht lesbar, loeschte das naechste
+    Speichern es -- die Messdaten einer ganzen Kartenfahrt."""
+    from spotlab.gui.raumeditor import RaumeditorView
+    from spotlab.gui.theme import DUNKEL
+    from spotlab.welt import pauspapier
+
+    ws = _arbeitsordner(tmp_path, name="gang")
+    pp = pauspapier.pfad_zu(ws / "raeume" / "gang.toml")
+    pauspapier.schreibe(pp, [(i * 0.01, 1.0) for i in range(500)], weg=[(0, 0, 0), (1, 1, 0)])
+    roh = pp.read_bytes()[:-3]                            # abgeschnitten
+    pp.write_bytes(roh)
+    tab = RaumeditorView(DUNKEL)
+    tab.setze_arbeitsordner(ws)
+    meldungen = []
+    tab.meldung.connect(meldungen.append)
+    tab.waehle_raum("gang")
+    assert any("Pauspapier" in m and "nicht" in m for m in meldungen)
+    tab.steuerung.setze_feld(("start",), "x", 1.5)
+    assert tab.speichern()
+    assert pp.read_bytes() == roh                         # unangetastet
 
 
 # --------------------------------------- 8. Klippen des Gelaendes ohne Boeden
@@ -259,6 +296,31 @@ def _tab_mit_weg(qapp):
 
 
 # ---------------------------------------------------- 11. Rueckgaengig nach Lauf
+
+
+def test_ein_lauf_im_offenen_raum_laesst_den_verlauf_stehen(qapp, tmp_path):
+    """p08: `lade()` lud den offenen Raum neu -- nach jedem Lauf war Strg+Z weg."""
+    import json
+
+    from spotlab.gui.raumeditor import RaumeditorView
+    from spotlab.gui.theme import DUNKEL
+
+    ws = _arbeitsordner(tmp_path)
+    tab = RaumeditorView(DUNKEL)
+    tab.setze_arbeitsordner(ws)
+    tab.waehle_raum("probe")
+    st = tab.steuerung
+    st.setze_feld(("wand", 0), "y1", 0.5)
+    assert tab.speichern() and st.verlauf.kann_zurueck
+    lauf = tmp_path / "lauf"
+    lauf.mkdir()
+    (lauf / "ereignisse.jsonl").write_text(
+        json.dumps({"art": "verbunden", "daten": {"raum": "probe"}}) + "\n", encoding="utf-8")
+    (lauf / "zustand.jsonl").write_text(
+        json.dumps({"daten": {"pose": [1.0, 1.0, 0.0]}}) + "\n", encoding="utf-8")
+    tab.lade(lauf)
+    assert st.verlauf.kann_zurueck and tab.sicht._spur == [(1.0, 1.0)]
+    assert st.rueckgaengig() and st.raum.waende[0].y1 == 0.0
 
 
 # ---------------------------------------------------------- 12. Tab schaltet 3D
@@ -362,3 +424,20 @@ def test_nach_einem_feld_bleiben_die_felder_stehen(qapp, tmp_path):
 # ------------------------------------------------------------- weitere kleine
 
 
+def test_ein_eigener_raum_darf_nicht_wie_eine_vorlage_heissen(qapp, tmp_path, monkeypatch):
+    """p16: ein eigener Raum „leer" verdeckte die Vorlage -- „Vorlage laden… leer"
+    oeffnete ihn, und `SPOTLAB_RAUM=leer` waere mehrdeutig."""
+    from PySide6.QtWidgets import QInputDialog
+
+    from spotlab.gui.raumeditor import RaumeditorView
+    from spotlab.gui.theme import DUNKEL
+
+    tab = RaumeditorView(DUNKEL)
+    tab.setze_arbeitsordner(tmp_path)
+    tab.neu()
+    meldungen = []
+    tab.meldung.connect(meldungen.append)
+    monkeypatch.setattr(QInputDialog, "getText", lambda *a, **k: ("leer", True))
+    assert not tab.speichern_unter()
+    assert not (tmp_path / "raeume" / "leer.toml").exists()
+    assert any("Vorlage" in m for m in meldungen)
