@@ -5,6 +5,7 @@ nach dem Farbschema fragt, ist system_ist_dunkel() — theme.py bleibt dadurch
 Qt-frei und prüfbar.
 """
 
+import collections
 import math
 import sys
 from dataclasses import replace
@@ -57,6 +58,19 @@ def system_ist_dunkel(app=None):
         return app.styleHints().colorScheme() == Qt.ColorScheme.Dark
     except Exception:
         return True
+
+
+# Windows: STATUS_CONTROL_C_EXIT -- Strg+C, kein Absturz.
+ABBRUCH_STRG_C = 0xC000013A
+
+
+def _letzte_fehlerzeile(zeilen):
+    """Die Zeile, die sagt, woran es lag: die letzte nicht-leere. Nach einem Traceback
+    ist das die Ausnahme selbst (`SyntaxError: ...`), sonst die letzte Ausgabe."""
+    for zeile in reversed(zeilen):
+        if zeile.strip():
+            return zeile.strip()
+    return ""
 
 
 # Der Tab „Fahren" erzwingt den echten Spot -- er erbt NICHT die Wahl im Editor.
@@ -336,6 +350,12 @@ class MainWindow(QWidget):
         Senke an, nie mit einem eigenen Leser an den Prozess.
         """
         self._leser = OutputReader(prozess, self)
+        self.ansichten["live"].neuer_prozess()
+        zeilen = collections.deque(maxlen=40)
+        self._leser.zeile.connect(zeilen.append)
+        # Vor pruefe_lauf_lebt: das setzt die Merker zurueck, an denen wir sehen,
+        # welcher Tab auf diesen Lauf wartete.
+        self._leser.ende.connect(lambda code: self._prozess_ende(code, list(zeilen)))
         self._leser.zeile.connect(self.ansichten["live"].zeige_ausgabe)
         self._leser.zeile.connect(self.ansichten["code"].zeige_ausgabe)
         self._leser.zeile.connect(self._zeile_ins_uebungsfenster)
@@ -346,6 +366,24 @@ class MainWindow(QWidget):
         # fuer immer haengen.
         self._leser.ende.connect(lambda _code: self.ansichten["code"].pruefe_lauf_lebt())
         self._leser.start()
+
+    def _prozess_ende(self, code, zeilen):
+        """Ein Programm ist beendet. Mit Fehler: sagen, woran -- dort, wo man hinschaut.
+
+        Stirbt ein Programm, bevor es ein Lauf-Verzeichnis hat (Syntaxfehler,
+        Roboter nicht erreichbar), meldet der Watcher nie etwas. Die Ausgabe
+        stand dann nur im Editor -- und im versteckten Feld der Live-Ansicht,
+        waehrend der Tab Fahren schwieg (Pruefung 23.09.2026). Nach Stopp oder
+        NOT-AUS ist ein Abbruch Absicht, kein Fehler; ebenso Strg+C (0xC000013A).
+        """
+        self.ansichten["live"].prozess_beendet()
+        if code in (0, None, ABBRUCH_STRG_C) or self.ansichten["live"].absichtlich_beendet():
+            return
+        grund = _letzte_fehlerzeile(zeilen)
+        text = f"Das Programm ist abgebrochen (Code {code})" + (f": {grund}" if grund else ".")
+        self._melde(text)
+        if self._fahrt_erwartet == "real" or self.ansichten["fahren"].laeuft():
+            self.ansichten["fahren"].zeige_startfehler(text)
 
     def _lauf_gestartet(self, prozess, skript):
         self._start_aus = "projekte"

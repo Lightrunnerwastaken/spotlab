@@ -324,8 +324,15 @@ class FahrenView(QWidget):
         # gehört dem Lauf. Ohne diese Zeile stünde das Häkchen und der neue Lauf
         # erkennte nichts -- ein Schalter, der lügt.
         self._schreibe_schalter()
+        self._zustand_normal()
         self.zustand.setText(f"{name} läuft — Tasten sind scharf.")
         self._tastatur_greifen()
+
+    def _zustand_normal(self):
+        if self.zustand.objectName() == "Gefahr":
+            self.zustand.setObjectName("")
+            self.zustand.style().unpolish(self.zustand)
+            self.zustand.style().polish(self.zustand)
 
     def lauf_beendet(self):
         self.tastenfahrt.beende()
@@ -388,6 +395,14 @@ class FahrenView(QWidget):
         self.zustand.setText(text)
 
     # -------------------------------------------------------------- Knoepfe
+
+    def zeige_startfehler(self, text):
+        """Der Lauf, auf den der Tab wartete, ist gescheitert, bevor er verbunden war --
+        hier, wo der Knopf gedrueckt wurde, nicht in einer anderen Ansicht."""
+        self.zustand.setObjectName("Gefahr")
+        self.zustand.setText(text)
+        self.zustand.style().unpolish(self.zustand)
+        self.zustand.style().polish(self.zustand)
 
     def _start_geklickt(self):
         # Am `clicked`-Signal: Qt reicht `checked` herein, deshalb kein Parameter.

@@ -54,6 +54,9 @@ class LiveView(QWidget):
         super().__init__(parent)
         self._lauf = None
         self._stopp_vorgemerkt = False
+        # Stopp oder NOT-AUS gedrueckt: dann ist ein Abbruch kein Absturz, und das
+        # Hauptfenster meldet ihn nicht als Fehler. Neu je Prozess (neuer_prozess).
+        self._absichtlich = False
         # Der eigene Prozess ohne Lauf-Verzeichnis (Anlaufphase). Tests setzen eine Attrappe.
         self.prozess_ohne_lauf = laufender_prozess
 
@@ -174,10 +177,30 @@ class LiveView(QWidget):
 
     def zeige_ausgabe(self, zeile):
         self.ausgabe.appendPlainText(zeile)
+        if self._lauf is None and self.inhalt.isHidden():
+            # Ausgabe ohne Lauf: ein Programm, das (noch) nicht verbunden ist -- oft
+            # ein Traceback. Frueher lag er hier im versteckten Feld.
+            self.titel.setText("Programm läuft — noch nicht verbunden")
+            self.leer.hide()
+            self.inhalt.show()
 
     # ------------------------------------------------------------- Stoppen
 
+    def neuer_prozess(self):
+        """Ein Programm startet: was vorher gedrueckt wurde, gilt nicht mehr."""
+        self._absichtlich = False
+
+    def absichtlich_beendet(self):
+        return self._absichtlich
+
+    def prozess_beendet(self):
+        """Der Prozess ist weg. Hatte er nie ein Lauf-Verzeichnis, steht das im Titel."""
+        if self._lauf is None and not self.inhalt.isHidden():
+            self.titel.setText("Programm beendet — es kam nie bis zur Verbindung")
+            self.hart_knopf.hide()
+
     def stoppe(self):
+        self._absichtlich = True
         if self._lauf is None:
             if self.prozess_ohne_lauf() is None:
                 self.meldung.emit("Es läuft gerade kein Programm.")
@@ -215,6 +238,7 @@ class LiveView(QWidget):
         (Rechte, hängender Prozess). Die beiden zu verwechseln hiess, im
         gefährlicheren Fall Entwarnung zu geben, während der Roboter weiterfährt.
         """
+        self._absichtlich = True
         if self._lauf is None:
             return self._notaus_in_der_anlaufphase()
         lief = ist_aktiv(self._lauf)

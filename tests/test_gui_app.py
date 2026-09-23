@@ -1358,3 +1358,66 @@ def test_arbeitsordner_merken_behaelt_die_treppensperre_von_der_platte(qapp, tmp
     nachher = load_config(pfad)
     assert nachher.workspace == str(tmp_path)
     assert nachher.limits.treppen == "aus"
+
+
+class _ProzessMitAusgabe:
+    """Ein Prozess, der Zeilen ausgibt und mit `code` endet -- ohne echten Prozess."""
+
+    def __init__(self, zeilen, code):
+        import io
+
+        self.stdout = io.StringIO("".join(z + "\n" for z in zeilen))
+        self._code = code
+
+    def poll(self):
+        return self._code
+
+    def wait(self, timeout=None):
+        return self._code
+
+
+def _warte_auf_leser(qapp, fenster):
+    import time
+
+    ende = time.monotonic() + 20
+    while fenster._leser is not None and fenster._leser.isRunning() and time.monotonic() < ende:
+        qapp.processEvents()
+        time.sleep(0.01)
+    for _ in range(5):
+        qapp.processEvents()
+
+
+TRACEBACK = [
+    "Traceback (most recent call last):",
+    '  File "hallo.py", line 3, in <module>',
+    "    spot.stand(",
+    "SyntaxError: '(' was never closed",
+]
+
+
+def test_ein_abgestuerztes_programm_sagt_es_in_der_statuszeile(qapp):
+    """Pruefung 23.09.2026: stirbt ein Programm, bevor es ein Lauf-Verzeichnis hat,
+    lag der Traceback in einem versteckten Feld, und die Statuszeile blieb leer."""
+    fenster = MainWindow()
+    fenster._lauf_gestartet(_ProzessMitAusgabe(TRACEBACK, 1), "hallo.py")
+    _warte_auf_leser(qapp, fenster)
+    assert "SyntaxError: '(' was never closed" in fenster.statuszeile.text()
+    assert not fenster.ansichten["live"].inhalt.isHidden(), "die Ausgabe muss zu sehen sein"
+
+
+def test_nach_dem_notaus_ist_der_abbruch_kein_fehler(qapp):
+    fenster = MainWindow()
+    fenster._melde("")
+    fenster.ansichten["live"]._absichtlich = True        # NOT-AUS oder Stopp gedrueckt
+    fenster._prozess_ende(1, TRACEBACK)
+    assert "SyntaxError" not in fenster.statuszeile.text()
+
+
+def test_scheitert_der_start_der_fahrt_steht_es_im_tab_fahren(qapp, tmp_path, monkeypatch):
+    """Der bekannte Fall aus dem Beta-Review: der Start im Tab Fahren scheiterte
+    (Roboter nicht erreichbar), und der Tab zeigte nichts -- der Text stand im
+    versteckten Feld der Live-Ansicht."""
+    fenster = MainWindow()
+    fenster._fahrt_erwartet = "real"
+    fenster._prozess_ende(1, ["spotlab.errors.NotReachable: Ich erreiche 192.168.80.3 nicht."])
+    assert "Ich erreiche 192.168.80.3 nicht" in fenster.ansichten["fahren"].zustand.text()
