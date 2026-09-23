@@ -1050,6 +1050,40 @@ versionsgepinntes Extra `spotlab[sim]`.
   starten.** Python startet über `CreateProcess`; das durchsucht den PATH, hängt aber nur
   `.exe` an und wertet `PATHEXT` nicht aus. `code.cmd` ist damit aus `subprocess` heraus
   unsichtbar, obwohl `code` in jeder Shell funktioniert.
+- **Ein Knopf ausserhalb des Editors startet mit `backend=…` für DIESEN Start und stellt
+  die Wahl im Reiter Code nie um** (`starte_skript(pfad, argumente, backend)`,
+  `app._starte_ueber_editor`). Bis zum 23.09.2026 stand der Reiter nach „Fahren“, „Lage“
+  oder „Karten“ auf „Echter Spot“, und das nächste „▶ Starten“ eines Schülerprogramms
+  fuhr den Roboter. Was während eines Starts nach dem Backend fragt, fragt
+  `EditorView.lauf_backend()`. Kam der Start nicht zustande, fallen die Merker
+  (`_fahrt_erwartet`, `_navigation_erwartet`, `_karte_fuer_lauf`) zurück.
+- **Stopp und NOT-AUS brauchen kein Lauf-Verzeichnis.** In der Anlaufphase
+  (`RealSpot.connect`: Anmeldung, Zeitsync, Not-Aus-Endpunkt, Lease) gilt der eigene
+  Prozess (`gui/launcher.laufender_prozess`, `control.beende_prozess_hart`): NOT-AUS
+  tötet ihn, der Stopp wird vorgemerkt und trifft den Lauf, sobald er sein Verzeichnis
+  hat. Das Schliessen des Fensters fragt, wenn ein Programm lebt, und beendet es —
+  ohne Fenster gibt es keinen NOT-AUS-Knopf.
+- **Das Hauptfenster zeigt EINEN Lauf, und nur dessen Daten kommen durch**
+  (`RunWatcher.zeige_nur`). Vorher zeigte der Tab Fahren das Bild und den Akku eines
+  zweiten Laufs. Beginn und Ende jedes Laufs kommen weiter durch.
+- **Eine GUI-Ansicht schreibt die Konfiguration frisch von der Platte zurück**
+  (`gui/konfig.frisch`), nie ihre Kopie vom Start — sonst kam `treppen = "aus"` als
+  „auto“ zurück. Ein Zahlenfeld, das niemand angefasst hat, schreibt den gespeicherten
+  Wert, nicht seine gerundete Anzeige (`konfig.unberuehrt`).
+- **Wer einen Prozess startet, bekommt einen Leser.** Eine Pipe ohne Leser ist nach
+  rund 4 KB voll, und das Programm steht still (Gehzeit, Sonde). Ansichten melden ihren
+  Prozess (`lauf_gestartet`), das Hauptfenster hängt `_starte_leser` an. Endet ein
+  Programm mit Fehler, steht die letzte Zeile in der Statuszeile — und im Tab Fahren,
+  wenn er darauf wartete; nach Stopp/NOT-AUS nicht.
+- **Kein QLabel ohne Umbruch mit fremd bestimmter Länge** (Pfade, Meldungen): er zieht
+  das Fenster auseinander. `gui/kurztext.Kurztext` kürzt mit „…“, der volle Text steht
+  im Tooltip.
+- **Startzeit:** beim Import der GUI weder `bosdyn.client` noch `keyring` noch `jedi`
+  (`tests/test_gui_startzeit.py`); das Ladebild (`gui/ladebild.py`, `gui/start.py`)
+  steht nach 0.4 s, der schwere Import läuft in einem Faden, gebaut wird im GUI-Thread,
+  und 1.5 s nach dem Fenster wärmt `start.vorwaermen` vor. Gemessen 23.09.2026: warm
+  5.7 s → 1.1 s bis zum Fenster. Wer eine schwere Abhängigkeit oben in ein GUI-Modul
+  importiert, sieht es an diesem Test.
 
 ## Tests
 
