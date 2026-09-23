@@ -280,7 +280,7 @@ def test_ein_boden_wird_gebaut_bewegt_gedreht_skaliert_kopiert_und_geloescht():
     assert raum.boeden[0].x == 3.0
     raum = b.drehe(raum, {s}, 90.0)
     assert raum.boeden[0].drehung == 90.0
-    raum = b.skaliere(raum, {s}, 2.0, 1.0)
+    raum = b.skaliere(raum, {s}, 1.0, 2.0)                       # gedreht: die Breite liegt entlang y
     assert raum.boeden[0].breite == 4.0 and raum.boeden[0].anstieg == 0.8      # der Anstieg bleibt
     kopie, neue = b.dupliziere(raum, {s})
     assert len(kopie.boeden) == 2 and neue == {("boden", 1)} and kopie.boeden[1].name == "Boden 1 Kopie"

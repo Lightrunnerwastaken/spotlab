@@ -685,6 +685,17 @@ def test_nach_einem_feld_bleiben_die_felder_stehen(qapp, tmp_path):
 # ------------------------------------------------------------- weitere kleine
 
 
+def test_s_x_streckt_einen_gedrehten_block_entlang_der_welt_x_achse():
+    """p17: S, X, 2 auf einem um 90 Grad gedrehten Block streckte ihn entlang y."""
+    raum = Raum(name="R", beschreibung="", start=(0.5, 0.5, 0.0), waende=((1.0, 3.0, 3.0, 3.0),))
+    raum, blk = b.neuer_block(raum, 2.0, 2.0, 1.0, 0.4)
+    raum = b.setze_feld(raum, blk, "drehung", 90.0)
+    neu = b.skaliere(raum, frozenset({blk}), 2.0, 1.0, um=(2.0, 2.0))
+    xs = [p[0] for p in neu.bloecke[0].ecken()]
+    ys = [p[1] for p in neu.bloecke[0].ecken()]
+    assert max(xs) - min(xs) == pytest.approx(0.8) and max(ys) - min(ys) == pytest.approx(1.0)
+
+
 def test_ein_eigener_raum_darf_nicht_wie_eine_vorlage_heissen(qapp, tmp_path, monkeypatch):
     """p16: ein eigener Raum „leer" verdeckte die Vorlage -- „Vorlage laden… leer"
     oeffnete ihn, und `SPOTLAB_RAUM=leer` waere mehrdeutig."""

@@ -196,8 +196,19 @@ def drehe(raum, auswahl, grad, um=None):
     return raum
 
 
+def _eigene_faktoren(drehung, fx, fy):
+    """Die Streckung (fx, fy) entlang der WELTachsen, umgerechnet auf Breite und
+    Tiefe eines gedrehten Rechtecks. Bei 90 Grad liegt die Breite entlang y --
+    S, X, 2 streckte sonst die falsche Kante (23.09.2026). Genau bei Vielfachen
+    von 90 Grad; dazwischen die Laenge der gestreckten Achse (ein schraeg
+    gestrecktes Rechteck waere keines mehr)."""
+    c, s = math.cos(math.radians(drehung)), math.sin(math.radians(drehung))
+    return math.hypot(fx * c, fy * s), math.hypot(fx * s, fy * c)
+
+
 def skaliere(raum, auswahl, fx, fy, fz=1.0, um=None):
-    """Lagen um `um` strecken; Bloecke ausserdem in Breite (fx), Tiefe (fy) und Hoehe (fz)."""
+    """Lagen um `um` strecken; Bloecke ausserdem in Breite und Tiefe (entlang x und y
+    der Welt, auch wenn sie gedreht sind) und Hoehe (fz)."""
     um = um if um is not None else mitte(raum, auswahl)
 
     def p(x, y):
@@ -210,13 +221,15 @@ def skaliere(raum, auswahl, fx, fy, fz=1.0, um=None):
             neu = replace(e, x1=a[0], y1=a[1], x2=z[0], y2=z[1])
         elif s[0] == "block":
             x, y = p(e.x, e.y)
-            neu = replace(e, x=x, y=y, breite=_kante(e.breite * fx),
-                          tiefe=_kante(e.tiefe * fy), hoehe=_kante(e.hoehe * fz))
+            fb, ft = _eigene_faktoren(e.drehung, fx, fy)
+            neu = replace(e, x=x, y=y, breite=_kante(e.breite * fb),
+                          tiefe=_kante(e.tiefe * ft), hoehe=_kante(e.hoehe * fz))
         elif s[0] in ("boden", "sperrzone"):
             # Der Anstieg bleibt: eine laengere Rampe wird flacher, nicht hoeher.
             # Eine Sperrzone hat ohnehin keine Hoehe.
             x, y = p(e.x, e.y)
-            neu = replace(e, x=x, y=y, breite=_kante(e.breite * fx), tiefe=_kante(e.tiefe * fy))
+            fb, ft = _eigene_faktoren(e.drehung, fx, fy)
+            neu = replace(e, x=x, y=y, breite=_kante(e.breite * fb), tiefe=_kante(e.tiefe * ft))
         elif s[0] == "tag":
             x, y = p(e.x, e.y)
             neu = replace(e, x=x, y=y)
