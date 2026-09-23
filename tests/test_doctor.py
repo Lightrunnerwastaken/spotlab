@@ -453,3 +453,20 @@ def test_versatz_nicht_ermittelbar_bleibt_gruen():
     pruefung = _stufe(GesunderRobot(), "Zeitsync")
     assert pruefung.ok is True
     assert "nicht ermittelbar" in pruefung.detail
+
+
+def test_ohne_akkumeldung_behauptet_die_pruefung_keine_null_prozent():
+    """Pruefung 23.09.2026: ohne battery_states zeigte die Zeile „0 %“ und riet zur
+    Ladestation -- ein erfundener Messwert und ein falscher Rat. Fehlende Werte
+    sind nicht 0 (CLAUDE.md)."""
+    class OhneAkku(GesunderRobot):
+        def get_robot_state(self):
+            zustand = super().get_robot_state()
+            del zustand.battery_states[:]
+            return zustand
+
+    pruefungen = diagnose(_cfg(), robot_bauen=lambda cfg: OhneAkku(), passwort_lesen=lambda u: "x")
+    akku = next(p for p in pruefungen if p.name == "Akku")
+    assert not akku.ok
+    assert "0 %" not in akku.detail
+    assert "Ladestation" not in akku.rat

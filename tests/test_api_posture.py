@@ -232,3 +232,19 @@ def test_verhaltensfehler_traegt_die_passende_hardware():
     [fehler] = verhaltensfehler(_abweisend_mit(_zustand_mit_hardwarefehler()))
     assert fehler["ursache"] == "CAUSE_HARDWARE"
     assert fehler["hardware"] == ["spot.fl.kna.mc.fault: Current error"]
+
+
+@pytest.mark.parametrize("hoehe", [float("nan"), float("inf"), "hoch"])
+def test_stand_weist_eine_ungueltige_hoehe_ab_bevor_ein_kommando_geht(hoehe):
+    """Pruefung 23.09.2026: der Sim wies `stand(height=nan)` ab, der Weg zum echten
+    Roboter reichte es ungeprueft ins Kommando."""
+    from spotlab.api.posture import stand
+    from spotlab.backends.dryrun import DryRunBackend
+
+    backend = DryRunBackend()
+    backend.power_on()
+    gesendet = []
+    backend.send_command = lambda kommando: gesendet.append(kommando)
+    with pytest.raises(ValueError):
+        stand(backend, None, height=hoehe)
+    assert gesendet == []

@@ -78,8 +78,13 @@ def _protokolliere(recorder, name, **daten):
 
 def stand(backend, recorder, height=0.0, timeout=10.0, schlaf=time.sleep):
     require(backend, Capability.POSTURE, "aufstehen")
-    kommando = RobotCommandBuilder.synchro_stand_command(body_height=float(height))
-    _protokolliere(recorder, "stand", height=float(height))
+    # NaN/inf nie ins Kommando: der Sim wies es ab, der Weg zum echten Roboter
+    # reichte es durch (Pruefung 23.09.2026). Dieselbe Pruefung wie bei walk/move.
+    from spotlab.api.motion import _endlich
+
+    height = _endlich(height, "height")
+    kommando = RobotCommandBuilder.synchro_stand_command(body_height=height)
+    _protokolliere(recorder, "stand", height=height)
     kennung = backend.send_command(kommando)
     warte_auf(backend, kennung, timeout, "aufstehen", schlaf)
     if recorder is not None:

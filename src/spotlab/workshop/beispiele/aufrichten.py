@@ -24,5 +24,5 @@ import spotlab
 from spotlab.workshop import lage
 
 with spotlab.connect(take="--uebernehmen" in sys.argv) as spot:
-    print(f"Akku: {spot.battery:.0f} %")
+    print(f"Akku: {spot.battery:.0f} %" if spot.battery is not None else "Akku: unbekannt")
     print("Fertig: " + lage.aufrichten(spot))

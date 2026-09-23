@@ -234,16 +234,21 @@ def diagnose(cfg=None, robot_bauen=None, passwort_lesen=None,
         from bosdyn.client.robot_state import RobotStateClient
 
         zustand = robot.ensure_client(RobotStateClient.default_service_name).get_robot_state()
-        prozent = (
-            zustand.battery_states[0].charge_percentage.value
-            if zustand.battery_states
-            else 0.0
-        )
-        genug = prozent >= 20.0
-        pruefungen.append(
-            Check("Akku", genug, f"{prozent:.0f} %",
-                  "" if genug else "Auf die Ladestation stellen.")
-        )
+        if not zustand.battery_states:
+            # Kein Akku gemeldet ist NICHT „0 %“: ein erfundener Messwert samt Rat
+            # zur Ladestation schickte auf die falsche Faehrte (Pruefung 23.09.2026).
+            pruefungen.append(
+                Check("Akku", False, "keine Akkumeldung",
+                      "Der Roboter meldet keinen Akku. Sitzt er richtig? Neu verbinden; "
+                      "hält es an, den Roboter neu starten.")
+            )
+        else:
+            prozent = zustand.battery_states[0].charge_percentage.value
+            genug = prozent >= 20.0
+            pruefungen.append(
+                Check("Akku", genug, f"{prozent:.0f} %",
+                      "" if genug else "Auf die Ladestation stellen.")
+            )
     except Exception as fehler:
         pruefungen.append(_fehler("Akku", fehler, cfg.ip))
 

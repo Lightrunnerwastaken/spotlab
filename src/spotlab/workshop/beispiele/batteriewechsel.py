@@ -33,5 +33,5 @@ from spotlab.workshop import lage
 seite = next((a for a in sys.argv[1:] if a in lage.SEITEN), "links")
 
 with spotlab.connect(take="--uebernehmen" in sys.argv) as spot:
-    print(f"Akku: {spot.battery:.0f} %")
+    print(f"Akku: {spot.battery:.0f} %" if spot.battery is not None else "Akku: unbekannt")
     print("Fertig: " + lage.umlegen(spot, seite))
