@@ -471,8 +471,10 @@ versionsgepinntes Extra `spotlab[sim]`.
   `deleteLater()` auf einem `CodeEdit` erst `Vervollstaendigung.schliesse()` — sonst wird
   ein laufender `JediWorker`-QThread destruiert und reisst das ganze Fenster mit, samt
   NOT-AUS-Knopf. Dieselbe Regel gilt für `MapsView._worker` beim Fensterschliessen. Erst
-  trennen, dann warten: eine Antwort, die eine Millisekunde zu spät kommt, darf das
-  zerstörte Widget nicht mehr anfassen. **Und wer nach dem Warten noch läuft, wird nicht
+  trennen, dann LÖSEN: `schliesse()` wartet nicht mehr (eine kalte `np.`-Anfrage brauchte
+  8.5 s), der laufende Arbeiter wird vom Feld gelöst und rechnet ohne Eltern zu Ende; eine
+  Antwort, die zu spät kommt, fasst das zerstörte Widget nicht mehr an. Beim Schliessen des
+  FENSTERS wartet `EditorView.schliesse_hintergrund(20000)` auf alle Arbeiter (23.09.2026). **Und wer nach dem Warten noch läuft, wird nicht
   vergessen.** `_beende_worker(warte_ms)` gab den Arbeiter bis zum 22.09.2026 nach 3 s auf,
   auch wenn er noch verband — er blieb Kind des Widgets, und beim Zerstören brach Qt den
   Prozess ab („QThread: Destroyed while thread is still running", p05). Jetzt löst es ihn

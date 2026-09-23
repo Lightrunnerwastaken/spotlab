@@ -885,6 +885,11 @@ class MainWindow(QWidget):
         if self._film is not None and self._film.state() != QProcess.NotRunning:
             self._film.kill()
             self._film.waitForFinished(frist_ms)
+        # jedi-Arbeiter aller Reiter, auch geschlossener: eine kalte Anfrage braucht
+        # ueber 10 s, und ein Faden, der beim Abraeumen noch rechnet, reisst den
+        # Prozess mit (Exit 127, Pruefung 23.09.2026).
+        if not self.ansichten["code"].schliesse_hintergrund(20000):
+            print("Ein jedi-Vorschlag rechnet noch.", file=sys.stderr)
         for faden in (self._leser, self._doctor):
             if faden is None or not faden.isRunning():
                 continue
