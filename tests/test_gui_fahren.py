@@ -403,3 +403,32 @@ def test_der_notaus_hinweis_kommt_nur_wenn_wirklich_etwas_getoetet_wurde(qapp, t
     assert ansicht.notaus_hinweis.isHidden()
     ansicht.nach_notaus(getoetet=True)
     assert not ansicht.notaus_hinweis.isHidden()
+
+
+def test_die_uebernahme_gilt_nur_fuer_den_einen_start(qapp, tmp_path):
+    """Pruefung 23.09.2026: das Haekchen blieb nach dem Lauf gesetzt, und jede
+    spaetere Fahrt, jeder Akkuwechsel nahm dem Tablet das Lease wortlos weg.
+    Uebernehmen ist eine bewusste Handlung -- einmal, nicht als Vorgabe."""
+    ansicht = FahrenView()
+    ansicht.uebernehmen.setChecked(True)
+    ansicht.lauf_beginnt(tmp_path)
+    assert not ansicht.uebernehmen.isChecked()
+    ansicht.lauf_beendet()
+    ansicht.uebernehmen.setChecked(True)
+    ansicht.lage_beginnt("akku")
+    assert not ansicht.uebernehmen.isChecked()
+
+
+def test_waehrend_akkuwechsel_und_aufrichten_geht_der_stopp(qapp):
+    """Der Text verwies auf einen „Stopp im Kopf“, den es nicht gibt -- im Kopf
+    ist nur der NOT-AUS. Uebrig blieb der harte Abbruch mitten im Rollen."""
+    gewuenscht = []
+    ansicht = FahrenView()
+    ansicht.stopp_gewuenscht.connect(lambda: gewuenscht.append(1))
+    ansicht.lage_beginnt("aufrichten")
+    assert ansicht.stopp.isEnabled()
+    assert "Stopp im Kopf" not in ansicht.lage_zustand.text()
+    ansicht.stopp.click()
+    assert gewuenscht == [1]
+    ansicht.lage_beendet()
+    assert not ansicht.stopp.isEnabled()

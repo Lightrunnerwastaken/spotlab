@@ -251,3 +251,35 @@ def test_ohne_fahrmodus_schreiben_die_tasten_nichts(qapp, tmp_path):
     assert fenster.fahrt_zeile.isHidden()
     QTest.keyPress(fenster, Qt.Key_W)
     assert not (tmp_path / fahrt.DATEI).exists()
+
+
+def test_schliessen_oder_alt_tab_mit_gehaltener_taste_haelt_spot_an(qapp, tmp_path):
+    """Pruefung 23.09.2026: W gehalten, dann Alt-Tab oder Fenster zu -- der Takt
+    schrieb weiter 0.4 m/s, bis der Lauf endete. Im Tab „Fahren“ war das laengst
+    geloest; hier fehlte es."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+
+    from spotlab.record import fahrt
+
+    fenster = Uebungsfenster(DUNKEL)
+    fenster.beginne(raum_laden("leer"), (1.0, 1.0, 0.0), "fahren.py", lauf_dir=tmp_path, fahrt=True)
+    QTest.keyPress(fenster, Qt.Key_W)
+    assert fahrt.lies(tmp_path)[0] > 0
+    fenster._app_zustand(Qt.ApplicationInactive)
+    assert fahrt.lies(tmp_path) == (0.0, 0.0, 0.0)
+    assert not fenster.tastenfahrt.takt.isActive()
+
+    QTest.keyPress(fenster, Qt.Key_W)
+    fenster.show()
+    fenster.close()
+    assert fahrt.lies(tmp_path) == (0.0, 0.0, 0.0)
+    assert not fenster.tastenfahrt.takt.isActive()
+
+
+def test_nach_dem_ende_verschwindet_der_fahrhinweis(qapp, tmp_path):
+    fenster = Uebungsfenster(DUNKEL)
+    fenster.beginne(raum_laden("leer"), (1.0, 1.0, 0.0), "fahren.py", lauf_dir=tmp_path, fahrt=True)
+    assert not fenster.fahrt_zeile.isHidden()
+    fenster.beendet("fertig")
+    assert fenster.fahrt_zeile.isHidden()

@@ -19,6 +19,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QPixmap
 from PySide6.QtWidgets import (
+    QApplication,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -87,6 +88,10 @@ class Uebungsfenster(QWidget):
         # Fahrmodus (Knopf „Fahren" im Raumeditor): die Tasten hier werden
         # fahrt.json im Lauf-Verzeichnis, fahren.py liest sie (gui/tastenfahrt.py).
         self.tastenfahrt = Tastenfahrt(self)
+        app = QApplication.instance()
+        if app is not None:
+            # Alt-Tab mit gehaltener Taste: kein KeyRelease mehr -- also alle los.
+            app.applicationStateChanged.connect(self._app_zustand)
         self.fahrt_zeile = QLabel(FAHRT_HINWEIS)
         self.fahrt_zeile.setObjectName("Gedaempft")
         self.fahrt_zeile.hide()
@@ -294,12 +299,21 @@ class Uebungsfenster(QWidget):
         self._tastatur_greifen()
 
     def hideEvent(self, ereignis):
+        # Versteckt oder geschlossen: Tasten los, Spot steht. Sonst schrieb der Takt
+        # nach dem Schliessen weiter den letzten Fahrbefehl (Pruefung 23.09.2026).
         self._tastatur_loslassen()
+        if self.tastenfahrt.aktiv:
+            self.tastenfahrt.alle_los()
         super().hideEvent(ereignis)
+
+    def _app_zustand(self, zustand):
+        if zustand != Qt.ApplicationActive and self.tastenfahrt.aktiv:
+            self.tastenfahrt.alle_los()
 
     def beendet(self, text="", lauf=None):
         self.tastenfahrt.beende()
         self._tastatur_loslassen()
+        self.fahrt_zeile.hide()
         self.stopp.setEnabled(False)
         self.kopf.setText("Fertig.")
         if text:

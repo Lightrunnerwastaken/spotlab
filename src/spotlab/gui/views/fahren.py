@@ -313,6 +313,9 @@ class FahrenView(QWidget):
         self.tastenfahrt.beginne(lauf_dir)
         self.start.setText("■ Fahrt beenden")
         self.stopp.setEnabled(True)
+        # Die Übernahme ist verbraucht: sie gilt für EINEN Start, nie als Vorgabe --
+        # sonst nahm jede spätere Fahrt dem Tablet das Lease wortlos weg.
+        self.uebernehmen.setChecked(False)
         self.notaus_hinweis.hide()          # es läuft wieder etwas: erledigt
         self._lageknoepfe(False)          # waehrend der Fahrt legt er sich nicht hin
         self.gesicht.setEnabled(True)
@@ -425,8 +428,12 @@ class FahrenView(QWidget):
         self._lage_laeuft = True
         self.start.setEnabled(False)
         self._lageknoepfe(False)
+        self.uebernehmen.setChecked(False)          # verbraucht, wie bei der Fahrt
+        # Der Stopp hier: im Kopf gibt es nur den NOT-AUS, und der bricht hart ab --
+        # mitten im Rollen. Der Stopp lässt das Programm sauber enden.
+        self.stopp.setEnabled(True)
         name = "Akku wechseln" if aktion == "akku" else "Aufrichten"
-        self.lage_zustand.setText(f"{name} läuft — Spot bewegt sich. Stopp im Kopf, Not-Aus am Tablet.")
+        self.lage_zustand.setText(f"{name} läuft — Spot bewegt sich. „■ Stopp“ hier, Not-Aus am Tablet.")
         self.zustand.setText(f"{name} läuft.")
 
     def zeige_lage_zeile(self, zeile):
@@ -442,6 +449,7 @@ class FahrenView(QWidget):
             return
         self._lage_laeuft = False
         self.start.setEnabled(True)
+        self.stopp.setEnabled(self._laeuft)
         self._lageknoepfe(not self._laeuft)
         self.zustand.setText("Kein Lauf.")
 
