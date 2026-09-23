@@ -341,7 +341,13 @@ class Steuerung:
             if name == "escape":
                 self.raum = self.modus.abbruch()
                 return True
-            return self.modus.taste(name)
+            if not self.modus.taste(name):
+                return False
+            # Achse und getippte Zahl wirken SOFORT, nicht erst bei der naechsten
+            # Mausbewegung -- sonst sagte die Zustandszeile „getippt 1 m", und der
+            # Block stand, wo die Maus war (23.09.2026).
+            self.raum = self.modus.vorschau()
+            return True
         if self._zug is not None:
             # Waehrend die Maus zieht, gehoert der Raum der Geste: Entf loeschte
             # sonst aus der Vorschau, und die naechste Bewegung rechnete aus dem
@@ -431,12 +437,20 @@ class Steuerung:
         ist oder was getippt wurde; wer Blender nicht kannte, sah nur einen Block,
         der der Maus folgte, und wusste nicht, wie er ihn loswird.
         """
+        links, rechts = self.beschreibung_teile()
+        return f"{links}{TRENNER}{rechts}" if rechts else links
+
+    def beschreibung_teile(self):
+        """(links, rechts): was gerade geht -- und Zeiger mit Raster, das die Sicht
+        rechtsbuendig zeigt (eine lange Zeile wurde bei 1080 px mitten abgeschnitten)."""
         if self.raum is None:
-            return "Kein Raum geöffnet."
+            return "Kein Raum geöffnet.", ""
         teile = []
         m = self.modus
         if m.aktiv:
+            # Wie man herauskommt, steht vorn: bei 1080 px wird hinten abgeschnitten.
             teile.append(MODUS_NAMEN[m.art])
+            teile.append("Enter bestätigt · Esc bricht ab")
             if m.achse and not (m.art == b.Modus.DREHEN):
                 teile.append(f"nur {m.achse.upper()}")
             if m.zahl:
@@ -445,16 +459,13 @@ class Steuerung:
                 teile.append(f"getippt {vor}{m.zahl}{einheit}")
             else:
                 teile.append(m.anzeige())
-            teile.append("Enter bestätigt · Esc bricht ab")
         elif self._zug is not None:
             teile += self._zug_text()
         else:
             teile.append(WERKZEUG_NAMEN[self.werkzeug])
             teile.append(self._werkzeug_text())
         x, y = self.zeiger
-        teile.append(f"x {x:.2f} m  y {y:.2f} m")
-        teile.append(RASTER_TEXT)
-        return TRENNER.join(teile)
+        return TRENNER.join(teile), f"x {x:.2f} m  y {y:.2f} m{TRENNER}{RASTER_TEXT}"
 
     def _zug_text(self):
         art = self._zug["art"]

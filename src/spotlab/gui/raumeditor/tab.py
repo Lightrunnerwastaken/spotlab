@@ -309,14 +309,23 @@ class RaumeditorView(QWidget):
         self.stapel.addWidget(self.sicht3d)
         # Die Zustandszeile: Werkzeug oder Geste, was jetzt geht, Zeiger, Raster --
         # der Text kommt aus `Steuerung.beschreibung()`.
+        # Zwei Teile: links, was gerade geht (darf abgeschnitten werden), rechts
+        # Zeiger und Raster (immer ganz).
         self.zustand = QLabel("")
         self.zustand.setObjectName("Statuszeile")
         self.zustand.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self.zustand_ort = QLabel("")
+        self.zustand_ort.setObjectName("Statuszeile")
+        self.zustand_ort.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        zustand = QHBoxLayout()
+        zustand.setSpacing(0)
+        zustand.addWidget(self.zustand, 1)
+        zustand.addWidget(self.zustand_ort)
         mitte = QVBoxLayout()
         mitte.setSpacing(4)
         mitte.addLayout(kopf)
         mitte.addWidget(self.stapel, 1)
-        mitte.addWidget(self.zustand)
+        mitte.addLayout(zustand)
 
         # -- rechts, FESTE Breite: sonst wurde die Sicht bei jeder Auswahl mit
         # langem Namen schmaler und sprang (UX-Pruefung 23.09.2026).
@@ -985,7 +994,9 @@ class RaumeditorView(QWidget):
                          ueber=st.ueber, achse=st.achslinie())
         self.sicht3d.zeige(st.raum, st.auswahl)
         self.stapel.currentWidget().setze_zeigerart(st.zeigerart())
-        self.zustand.setText(st.beschreibung())
+        links, rechts = st.beschreibung_teile()
+        self.zustand.setText(links)
+        self.zustand_ort.setText(rechts)
         if nur_sicht or st.raum is None:
             return
         self._fuelle_ebenen()

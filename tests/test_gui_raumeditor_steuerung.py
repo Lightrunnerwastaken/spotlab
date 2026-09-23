@@ -120,7 +120,7 @@ def test_tasten_g_x_zahl_enter_und_rueckgaengig():
     assert st.taste("g") and st.modus.aktiv
     for name in "x 1 . 5".split():
         assert st.taste(name)
-    assert st.raum.bloecke[0].x == 2.0                    # Vorschau erst nach bewege()
+    assert st.raum.bloecke[0].x == 3.5                    # die getippte Zahl wirkt sofort
     st.bewege(2.0, 2.0)
     assert st.raum.bloecke[0].x == 3.5
     assert st.taste("return") and not st.modus.aktiv and st.raum.bloecke[0].x == 3.5

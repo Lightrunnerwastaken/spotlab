@@ -78,6 +78,33 @@ def test_die_zustandszeile_zeigt_die_groesse_beim_aufziehen():
     assert "Block" in st.beschreibung() and "1.00 × 0.50 m" in st.beschreibung()
 
 
+def test_die_zustandszeile_hat_zwei_teile_ort_und_raster_rechts():
+    """Links, was gerade geht; rechts Zeiger und Raster -- bei 1080 px Breite wurde
+    die eine lange Zeile mitten im Raster abgeschnitten."""
+    st = Steuerung(RAUM)
+    st.bewege(1.0, 2.0)
+    links, rechts = st.beschreibung_teile()
+    assert links.startswith("Auswählen") and "x" not in links.split("·")[0]
+    assert rechts == "x 1.00 m  y 2.00 m  ·  Raster 5 cm (Strg: frei)"
+    assert st.beschreibung() == f"{links}  ·  {rechts}"
+
+
+def test_eine_getippte_zahl_wirkt_sofort():
+    """Die Zustandszeile sagte „getippt 1 m", der Block stand aber, wo die Maus war --
+    bis zur naechsten Bewegung."""
+    st = Steuerung(RAUM)
+    st.auswahl = frozenset({("block", 0)})
+    st.zeiger = (2.0, 2.0)
+    st.taste("g")
+    st.bewege(2.7, 2.4)
+    st.taste("x")
+    assert st.raum.bloecke[0].x == pytest.approx(2.7) and st.raum.bloecke[0].y == 2.0
+    st.taste("1")
+    assert st.raum.bloecke[0].x == pytest.approx(3.0)
+    st.taste("backspace")
+    assert st.raum.bloecke[0].x == pytest.approx(2.7)
+
+
 def test_die_gesperrte_achse_ist_eine_linie_durch_die_mitte():
     st = Steuerung(RAUM)
     st.auswahl = frozenset({("block", 0)})
@@ -260,9 +287,15 @@ def test_der_titel_nennt_vorlage_eigenen_raum_und_aenderungen(tab, tmp_path, mon
 
 
 def test_der_editor_passt_in_ein_kleines_fenster(tab):
-    """1080 x 720 abzueglich Kopf (70), Seitenleiste (150) und Statuszeile (30)."""
-    groesse = tab.minimumSizeHint()
-    assert groesse.width() <= 930 and groesse.height() <= 600
+    """1080 x 720 abzueglich Kopf (70), Seitenleiste (150) und Statuszeile (30).
+
+    Die Breite wird aus den festen Spalten und der Mindestbreite der Sicht
+    gerechnet: offscreen gibt es keine Schriften (CLAUDE.md), jeder Buchstabe
+    ist dort ein breites Kaestchen, und Textbreiten waeren erfunden. Mit echten
+    Schriften pruefen es die Bildschirmfotos bei 1080 x 720."""
+    breite = (tab.links.minimumWidth() + tab.rechts.minimumWidth()
+              + tab.stapel.minimumSizeHint().width() + 2 * 10 + 2 * 11)
+    assert breite <= 930 and tab.minimumSizeHint().height() <= 600
 
 
 # ------------------------------------------------------------ Tasten finden
@@ -390,7 +423,7 @@ def test_die_zustandszeile_unter_der_sicht_folgt_maus_und_geste(tab, qapp):
     _gezeigt(tab, qapp)
     assert tab.zustand.objectName() == "Statuszeile"
     tab._bewegt(1.23, 2.5, False)
-    assert "x 1.23 m  y 2.50 m" in tab.zustand.text()
+    assert "x 1.23 m  y 2.50 m" in tab.zustand_ort.text()
     tab.steuerung.auswahl = frozenset({("block", 0)})
     tab._taste("g", False, False, False)
     tab._taste("x", False, False, False)
