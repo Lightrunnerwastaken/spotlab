@@ -19,3 +19,24 @@ def test_eine_beta_ist_als_solche_erkennbar():
     ein Teammitglied nicht, was es installiert hat."""
     assert FASSUNG.match("0.2.0b1") and not FASSUNG.match("0.2.0beta")
     assert FASSUNG.match("1.0.0")
+
+
+def test_spotlab_steht_unter_mit_und_das_paket_sagt_es():
+    """Das Repository ist oeffentlich. Ohne Lizenzdatei darf es niemand verwenden,
+    auch das Team nicht -- und die Paketmetadaten muessen dasselbe sagen."""
+    import tomllib
+    from pathlib import Path
+
+    wurzel = Path(__file__).resolve().parents[1]
+    text = (wurzel / "LICENSE").read_text(encoding="utf-8")
+    assert text.startswith("MIT License") and "Permission is hereby granted" in text
+    projekt = tomllib.loads((wurzel / "pyproject.toml").read_text(encoding="utf-8"))
+    assert projekt["project"]["license"] == "MIT"
+
+
+def test_das_release_packt_die_lizenz_ins_wheel_und_ins_zip():
+    from pathlib import Path
+
+    werkzeug = (Path(__file__).resolve().parents[1] / "tools/schueler_release.py").read_text(encoding="utf-8")
+    assert "repo/'LICENSE', app/'LICENSE'" in werkzeug
+    assert "repo/'LICENSE', bundle/'LICENSE.txt'" in werkzeug

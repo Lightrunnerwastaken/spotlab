@@ -743,7 +743,7 @@ versionsgepinntes Extra `spotlab[sim]`.
   ein gleichnamiges Release wird nicht überschrieben. Lizenz des Modells und SHA-256 der
   Sim-Quellen liegen im Wheel. **Runtime-Wheel und editierbare Forschungsinstallation nie in
   derselben Umgebung** — beide heissen `spotsim`.
-- **Die fünf Erkennermodelle reisen im ZIP mit (seit 0.2.0b2), neben den Wheels, nicht darin.**
+- **Die fünf Erkennermodelle reisen im ZIP mit (seit 0.2.0b2; Lizenz MIT als `LICENSE.txt` seit 0.2.0b3), neben den Wheels, nicht darin.**
   `schueler_release.py --modelle` (Vorgabe `~/.spotlab/modelle`) nimmt nur Dateien mit der
   Prüfsumme aus `MODELLE` — der OpenCV-Zoo führt sie über git-lfs, ein 132-Byte-Zeiger sähe
   sonst wie ein Modell aus. Lizenzen (YuNet MIT, die vier MediaPipe-Modelle Apache 2.0) stehen

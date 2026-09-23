@@ -161,6 +161,7 @@ def build(repo, research, output, modell_quelle):
         shutil.copytree(repo/'src/spotlab', app/'src/spotlab',
                         ignore=shutil.ignore_patterns('__pycache__', '*.pyc', 'runs'))
         shutil.copyfile(repo/'pyproject.toml', app/'pyproject.toml')
+        shutil.copyfile(repo/'LICENSE', app/'LICENSE')
         runtime(research, work/'runtime', release_version)
         bundle = work/f'spotlab-{release_version}'
         wheels = bundle/'wheels'
@@ -171,6 +172,7 @@ def build(repo, research, output, modell_quelle):
         for name in ('einrichten.ps1', 'einrichten.cmd', 'starten.ps1', 'verknuepfung.ps1', 'spotlab.ico'):
             shutil.copyfile(repo/name, bundle/name)
         shutil.copyfile(repo/'docs/INSTALLATION_SCHULE.md', bundle/'ANLEITUNG.md')
+        shutil.copyfile(repo/'LICENSE', bundle/'LICENSE.txt')
         shutil.copyfile(repo/'tools/pruefe_schueler.py', bundle/'pruefe_schueler.py')
         # Ohne Modelle findet der Folgemodus niemanden; einrichten.cmd legt sie
         # nach ~/.spotlab/modelle. Die Lizenzen reisen mit (MIT und Apache 2.0).

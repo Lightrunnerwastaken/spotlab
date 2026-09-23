@@ -1,5 +1,6 @@
 [build-system]
-requires = ["setuptools>=68"]
+# 77: ab da versteht setuptools `license = "MIT"` (PEP 639).
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,6 +9,7 @@ name = "spotlab"
 # Stellen, und zwei davon haetten beim naechsten Sprung stumm gelogen.
 dynamic = ["version"]
 description = "Spot programmieren an der Kantonsschule"
+license = "MIT"
 # Obergrenze aus PySide6 (deklariert <3.15) — nicht geraten, sondern die
 # engste Schranke, die eine der Abhaengigkeiten selbst zieht. Untergrenze 3.11,
 # weil der Code `tomllib` aus der Standardbibliothek nutzt.

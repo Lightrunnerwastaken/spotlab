@@ -798,3 +798,11 @@ Grenzen und Messwerte: [docs/PHYSICS.md](docs/PHYSICS.md).
 Neu: `physik_treppe_3stufen.py` mit Raum `physik_treppe_3stufen`,
 Physik 3D und Start `(0,0,0)`: drei niedrige 4-cm-Stufen vorwärts hinauf und
 rückwärts herunter. Etwa 7–12 Minuten; Grenzen und Messwerte in `docs/PHYSICS.md`.
+
+
+## Lizenz
+
+Spotlab steht unter der [MIT-Lizenz](LICENSE). Ausgenommen sind die unverändert
+übernommenen Dateien aus dem OpenCV Model Zoo in `src/spotlab/backends/real/zoo/`
+(Apache 2.0, Lizenz im selben Ordner). Die Erkennermodelle im Schüler-ZIP stehen
+unter MIT beziehungsweise Apache 2.0; siehe `tools/modelle_lizenzen.txt`.
