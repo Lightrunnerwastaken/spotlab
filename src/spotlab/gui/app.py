@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMessageBox,
+    QSizePolicy,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -29,7 +30,7 @@ from spotlab.gui.header import Header
 from spotlab.gui.raumeditor import RaumeditorView
 from spotlab.gui.sidebar import Sidebar
 from spotlab.gui.symbol import symbol
-from spotlab.gui.theme import palette_fuer, stylesheet
+from spotlab.gui.theme import palette_fuer
 from spotlab.gui.uebungsfenster import Uebungsfenster
 from spotlab.gui.views.anbindungen import AnbindungenView
 from spotlab.gui.views.checkup import CheckupView
@@ -93,7 +94,10 @@ class MainWindow(QWidget):
         self.kopf = Header()
         self.leiste = Sidebar()
         self.statuszeile = QLabel("")
-        self.statuszeile.setObjectName("Gedaempft")
+        self.statuszeile.setObjectName("Statuszeile")
+        # Ignored: sonst verlangt eine lange Meldung ihre ganze Breite und zieht
+        # das Hauptfenster auseinander. Der volle Text steht im Tooltip.
+        self.statuszeile.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
 
         self.ansichten = {
             "projekte": ProjectsView(
@@ -260,6 +264,7 @@ class MainWindow(QWidget):
 
     def _melde(self, text):
         self.statuszeile.setText(text)
+        self.statuszeile.setToolTip(text)
 
     def _merke_arbeitsordner(self, pfad):
         self._setze_arbeitsordner(pfad)
@@ -687,7 +692,7 @@ class MainWindow(QWidget):
             self.uebungsfenster.setze_lauf_dir(verzeichnis)
         # Skriptnamen aus lauf.json holen: „hallo_spot.py" sagt mehr als eine
         # Zeitstempel-Kennung.
-        skript = read_run(verzeichnis).skript
+        skript = read_run(verzeichnis, zaehlen=False).skript
         name = Path(skript).name if skript else Path(verzeichnis).name
         self.ansichten["live"].setze_lauf(verzeichnis, name)
         if self._fahrt_erwartet == "real":
@@ -811,12 +816,7 @@ class MainWindow(QWidget):
 
 
 def main(argv=None):
-    app = QApplication(argv if argv is not None else sys.argv)
-    app.setApplicationName("spotlab")
-    # Auch an der Anwendung: sonst tragen Dialoge und das Uebungsfenster unter
-    # Windows das Standardbild von Qt.
-    app.setWindowIcon(symbol())
-    app.setStyleSheet(stylesheet(palette_fuer(system_ist_dunkel(app))))
-    fenster = MainWindow()
-    fenster.show()
-    return app.exec()
+    """Ein Startweg: über das Ladebild (`gui/start.py`)."""
+    from spotlab.gui.start import main as start_main
+
+    return start_main(argv)

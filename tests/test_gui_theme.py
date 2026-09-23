@@ -69,3 +69,23 @@ def test_mische_liegt_dazwischen():
     assert mische("#000000", "#ffffff", 0.5) == "#808080"
     assert mische("#102030", "#102030", 0.7) == "#102030"
     assert mische("#000000", "#ffffff", 0.0) == "#000000"
+
+
+def test_das_haekchen_der_kaestchen_liegt_im_paket():
+    """Fehlt die Datei, zeigt ein angekreuztes Kästchen nur eine blaue Fläche --
+    ausgerechnet bei „Kontrolle übernehmen“. `pyproject.toml` nimmt sie als
+    package-data mit (`bilder/*.svg`)."""
+    import pathlib
+
+    from spotlab.gui.theme import HAKEN
+
+    assert pathlib.Path(HAKEN).is_file()
+    assert HAKEN in stylesheet(DUNKEL)
+
+
+def test_zustaende_der_knoepfe_sind_sichtbar():
+    """Ein aktives Werkzeug muss anders aussehen als ein inaktives (UX-Pruefung 23.09.2026)."""
+    text = stylesheet(DUNKEL)
+    for regel in ("QPushButton:checked", "QPushButton:pressed", "QCheckBox::indicator:checked",
+                  "QPushButton#Primaer", "QScrollBar", "QToolTip", "QSpinBox"):
+        assert regel in text, regel

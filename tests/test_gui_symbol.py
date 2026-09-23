@@ -19,8 +19,10 @@ def test_das_symbol_liegt_im_paket():
     """Neben dem Modul, nicht neben der Wurzel: nur so ueberlebt es ein
     `pip install .` (package-data in pyproject.toml)."""
     assert DATEI.is_file() and DATEI.parent.name == "gui"
-    inhalt = (WURZEL / "pyproject.toml").read_text(encoding="utf-8")
-    assert '"spotlab.gui" = ["spotlab.png"]' in inhalt
+    import tomllib
+
+    projekt = tomllib.loads((WURZEL / "pyproject.toml").read_text(encoding="utf-8"))
+    assert "spotlab.png" in projekt["tool"]["setuptools"]["package-data"]["spotlab.gui"]
 
 
 def test_das_symbol_ist_quadratisch_und_freigestellt():

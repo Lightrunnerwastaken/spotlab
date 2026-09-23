@@ -7,6 +7,11 @@ für Farben ist dieses Modul.
 """
 
 from dataclasses import dataclass
+from pathlib import Path
+
+# Das Häkchen der Kästchen. Ein Bild, weil Qt-Stylesheets kein Häkchen
+# zeichnen; weiss auf Akzent, in beiden Themen gleich.
+HAKEN = (Path(__file__).resolve().parent / "bilder" / "haken.svg").as_posix()
 
 
 @dataclass(frozen=True)
@@ -17,6 +22,11 @@ class Palette:
     text: str
     gedaempft: str
     akzent: str
+    # Aktive Flächen (gedrückte Werkzeuge, Auswahl in Listen): der Akzent,
+    # stark zurückgenommen -- sichtbar, ohne zu schreien.
+    akzent_flaeche: str
+    # Schrift auf einem Knopf in Akzentfarbe (der Hauptknopf einer Ansicht).
+    auf_akzent: str
     ok: str
     warnung: str
     gefahr: str
@@ -39,6 +49,8 @@ DUNKEL = Palette(
     text="#d7dae0",
     gedaempft="#868d97",
     akzent="#579dff",
+    akzent_flaeche="#1f3354",
+    auf_akzent="#ffffff",
     ok="#3fb950",
     warnung="#d29922",
     gefahr="#e5484d",
@@ -57,6 +69,8 @@ HELL = Palette(
     text="#1f2328",
     gedaempft="#6b7280",
     akzent="#0b5cd5",
+    akzent_flaeche="#e2ecfb",
+    auf_akzent="#ffffff",
     ok="#1a7f37",
     warnung="#9a6700",
     gefahr="#d1372f",
@@ -96,13 +110,27 @@ QWidget {{
     font-family: "Segoe UI", system-ui, sans-serif;
     font-size: 13px;
 }}
-QFrame#Flaeche, QListWidget, QTableWidget, QPlainTextEdit, QLineEdit, QDoubleSpinBox {{
+QFrame#Flaeche, QListWidget, QTableWidget, QPlainTextEdit, QLineEdit, QDoubleSpinBox,
+QSpinBox {{
     background: {p.flaeche};
     border: 1px solid {p.rand};
     border-radius: 8px;
 }}
-QLineEdit, QDoubleSpinBox {{ padding: 6px 8px; }}
+QLineEdit, QDoubleSpinBox, QSpinBox {{ padding: 6px 8px; }}
+QLineEdit:focus, QDoubleSpinBox:focus, QSpinBox:focus, QComboBox:focus,
+QPlainTextEdit:focus {{ border-color: {p.akzent}; }}
+QListWidget::item, QTableWidget::item {{ padding: 3px 4px; }}
+QListWidget::item:selected, QTableWidget::item:selected {{
+    background: {p.akzent_flaeche};
+    color: {p.text};
+}}
+QListWidget::item:hover {{ background: {p.rand}; }}
 QLabel#Gedaempft {{ color: {p.gedaempft}; }}
+QLabel#Statuszeile {{
+    color: {p.gedaempft};
+    border-top: 1px solid {p.rand};
+    padding: 5px 14px 6px 14px;
+}}
 QLabel#Titel {{ font-size: 16px; font-weight: 600; }}
 QLabel#Kachelwert {{ font-family: Consolas, monospace; font-size: 17px; font-weight: 600; }}
 QLabel#Kachelname {{ color: {p.gedaempft}; font-size: 10px; }}
@@ -116,7 +144,42 @@ QPushButton {{
     padding: 7px 14px;
 }}
 QPushButton:hover {{ border-color: {p.akzent}; }}
-QPushButton:disabled {{ color: {p.gedaempft}; }}
+QPushButton:pressed {{ background: {p.rand}; }}
+QPushButton:checked {{
+    background: {p.akzent_flaeche};
+    border-color: {p.akzent};
+    font-weight: 600;
+}}
+QPushButton:disabled {{ color: {p.gedaempft}; border-color: {p.rand}; }}
+QPushButton#Primaer {{
+    background: {p.akzent};
+    color: {p.auf_akzent};
+    border: 1px solid {p.akzent};
+    font-weight: 600;
+}}
+QPushButton#Primaer:hover {{ border-color: {p.text}; }}
+QPushButton#Primaer:disabled {{
+    background: {p.rand};
+    color: {p.gedaempft};
+    border-color: {p.rand};
+}}
+QCheckBox {{ spacing: 8px; background: transparent; }}
+QCheckBox:disabled {{ color: {p.gedaempft}; }}
+QCheckBox::indicator {{
+    width: 16px;
+    height: 16px;
+    border: 1px solid {p.gedaempft};
+    border-radius: 4px;
+    background: {p.flaeche};
+}}
+QCheckBox::indicator:hover {{ border-color: {p.akzent}; }}
+QCheckBox::indicator:checked {{
+    background: {p.akzent};
+    border-color: {p.akzent};
+    image: url("{HAKEN}");
+}}
+QCheckBox::indicator:disabled {{ background: {p.hintergrund}; border-color: {p.rand}; }}
+QCheckBox::indicator:checked:disabled {{ background: {p.rand}; }}
 QPushButton#Notaus {{
     background: {p.gefahr};
     color: {p.flaeche};
@@ -162,7 +225,49 @@ QComboBox {{
     border-radius: 7px;
     padding: 5px 8px;
 }}
+QComboBox::drop-down {{ border: none; width: 22px; }}
+QComboBox QAbstractItemView {{
+    background: {p.flaeche};
+    border: 1px solid {p.rand};
+    selection-background-color: {p.akzent_flaeche};
+    selection-color: {p.text};
+    outline: none;
+}}
 QSplitter::handle {{ background: {p.rand}; }}
+QScrollBar:vertical {{ background: transparent; width: 10px; margin: 2px; }}
+QScrollBar:horizontal {{ background: transparent; height: 10px; margin: 2px; }}
+QScrollBar::handle:vertical {{ background: {p.rand}; border-radius: 3px; min-height: 28px; }}
+QScrollBar::handle:horizontal {{ background: {p.rand}; border-radius: 3px; min-width: 28px; }}
+QScrollBar::handle:hover {{ background: {p.gedaempft}; }}
+QScrollBar::add-line, QScrollBar::sub-line {{ width: 0; height: 0; }}
+QScrollBar::add-page, QScrollBar::sub-page {{ background: none; }}
+QToolTip {{
+    background: {p.flaeche};
+    color: {p.text};
+    border: 1px solid {p.rand};
+    padding: 6px 8px;
+}}
+QMenu {{
+    background: {p.flaeche};
+    border: 1px solid {p.rand};
+    padding: 4px;
+}}
+QMenu::item {{ padding: 6px 22px 6px 12px; border-radius: 4px; }}
+QMenu::item:selected {{ background: {p.akzent_flaeche}; }}
+QMenu::item:disabled {{ color: {p.gedaempft}; }}
+QMenu::separator {{ height: 1px; background: {p.rand}; margin: 4px 8px; }}
+QGroupBox {{
+    border: 1px solid {p.rand};
+    border-radius: 8px;
+    margin-top: 16px;
+    padding: 10px 8px 8px 8px;
+}}
+QGroupBox::title {{
+    subcontrol-origin: margin;
+    left: 10px;
+    padding: 0 4px;
+    color: {p.gedaempft};
+}}
 QListView#Vorschlaege {{
     background: {p.flaeche};
     border: 1px solid {p.rand};

@@ -244,7 +244,8 @@ def _record_map(name, leeren):
 
 def _gui():
     try:
-        from spotlab.gui.app import main as gui_main
+        # Über das Ladebild: es steht, bevor der schwere Teil der GUI geladen ist.
+        from spotlab.gui.start import main as gui_main
     except ImportError:
         print(
             f"{ROT}Die Oberfläche braucht PySide6.{AUS}\n"

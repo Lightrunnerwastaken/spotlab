@@ -62,6 +62,18 @@ def test_fehlermeldungen_landen_in_der_statuszeile(qapp):
     assert "Beobachter kaputt" in fenster.statuszeile.text()
 
 
+def test_eine_lange_meldung_macht_das_fenster_nicht_breiter(qapp):
+    """Ein QLabel verlangt so viel Breite wie sein Text. Eine lange Fehlermeldung
+    zog so das ganze Hauptfenster auseinander -- auf einem kleinen Laptop ueber
+    den Bildschirmrand hinaus. Der volle Text steht im Tooltip."""
+    fenster = MainWindow()
+    vorher = fenster.minimumSizeHint().width()
+    lang = "Die Verbindung ist abgebrochen, weil " + "sehr " * 80 + "lange Gruende."
+    fenster._melde(lang)
+    assert fenster.minimumSizeHint().width() <= vorher
+    assert fenster.statuszeile.toolTip() == lang
+
+
 def test_fremd_gestarteter_lauf_schaltet_zur_live_ansicht(qapp, tmp_path):
     """Der F5-Fall aus Abnahmepunkt A11: der Schüler soll sehen, dass es läuft."""
     from spotlab.record.run import RunRecorder

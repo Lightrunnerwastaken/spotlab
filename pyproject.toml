@@ -71,7 +71,7 @@ where = ["src"]
 "spotlab.kalibrierung" = ["daten/*.json"]
 # Das Fenstersymbol: ohne diese Zeile traegt ein installiertes spotlab das
 # Standardbild von Qt -- auf dem Schullaptop, nicht hier.
-"spotlab.gui" = ["spotlab.png"]
+"spotlab.gui" = ["spotlab.png", "bilder/*.svg"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
