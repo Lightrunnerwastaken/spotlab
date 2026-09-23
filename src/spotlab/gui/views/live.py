@@ -3,6 +3,13 @@
 Der freundliche Stopp schreibt nur eine Markierung — der Abtaster des Laufs
 holt sie ab. Reagiert der Lauf nach ESKALATION_MS nicht, bietet die Ansicht
 das harte Beenden an, statt kommentarlos zu erschlagen oder ewig zu warten.
+
+Die ANLAUFPHASE hat noch kein Lauf-Verzeichnis: am echten Spot die Sekunden in
+`connect()` -- Anmeldung, Zeitsync, Not-Aus-Endpunkt, Lease. Bis zum 23.09.2026
+sagten Stopp und NOT-AUS dann „Es läuft gerade kein Programm.“, und das
+Programm stand danach auf. Jetzt gilt dort der Prozess, den spotlab selbst
+gestartet hat (`gui/launcher.laufender_prozess`): der NOT-AUS toetet ihn, der
+Stopp wird vorgemerkt und trifft den Lauf, sobald er sein Verzeichnis hat.
 """
 
 from pathlib import Path
@@ -20,7 +27,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from spotlab.workshop.control import beende_hart, ist_aktiv, stoppe_freundlich
+from spotlab.gui.launcher import laufender_prozess
+from spotlab.workshop.control import beende_hart, beende_prozess_hart, ist_aktiv, stoppe_freundlich
 
 ESKALATION_MS = 3000
 
@@ -45,6 +53,9 @@ class LiveView(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._lauf = None
+        self._stopp_vorgemerkt = False
+        # Der eigene Prozess ohne Lauf-Verzeichnis (Anlaufphase). Tests setzen eine Attrappe.
+        self.prozess_ohne_lauf = laufender_prozess
 
         self.leer = QLabel(
             "Gerade läuft kein Programm.\n\n"
@@ -117,9 +128,16 @@ class LiveView(QWidget):
         self.hart_knopf.hide()
         self.leer.hide()
         self.inhalt.show()
+        if self._stopp_vorgemerkt:
+            # Der Stopp kam in der Anlaufphase -- jetzt hat er eine Adresse.
+            self._stopp_vorgemerkt = False
+            stoppe_freundlich(self._lauf)
+            self.titel.setText(f"{skript} — wird gestoppt")
+            self._eskalation.start()
 
     def lauf_beendet(self):
         self._eskalation.stop()
+        self._stopp_vorgemerkt = False
         self.hart_knopf.hide()
         if self._lauf is not None:
             self.titel.setText(
@@ -161,7 +179,15 @@ class LiveView(QWidget):
 
     def stoppe(self):
         if self._lauf is None:
-            self.meldung.emit("Es läuft gerade kein Programm.")
+            if self.prozess_ohne_lauf() is None:
+                self.meldung.emit("Es läuft gerade kein Programm.")
+                return
+            self._stopp_vorgemerkt = True
+            self.meldung.emit(
+                "Das Programm verbindet sich noch — der Stopp gilt, sobald es läuft. "
+                "Hängt es, erscheint „hart beenden“."
+            )
+            self._eskalation.start()
             return
         stoppe_freundlich(self._lauf)
         self.titel.setText(self.titel.text().replace("läuft", "wird gestoppt"))
@@ -169,6 +195,12 @@ class LiveView(QWidget):
 
     def _pruefe_eskalation(self):
         if self._lauf is not None and ist_aktiv(self._lauf):
+            self.hart_knopf.show()
+        elif self._lauf is None and self._stopp_vorgemerkt and self.prozess_ohne_lauf() is not None:
+            # Noch immer kein Lauf: der Knopf sitzt im Inhalt, also den zeigen.
+            self.titel.setText("Programm verbindet sich noch — Stopp vorgemerkt")
+            self.leer.hide()
+            self.inhalt.show()
             self.hart_knopf.show()
 
     def notaus(self):
@@ -184,8 +216,7 @@ class LiveView(QWidget):
         gefährlicheren Fall Entwarnung zu geben, während der Roboter weiterfährt.
         """
         if self._lauf is None:
-            self.meldung.emit("Es läuft gerade kein Programm.")
-            return False
+            return self._notaus_in_der_anlaufphase()
         lief = ist_aktiv(self._lauf)
         if beende_hart(self._lauf):
             self.hart_knopf.hide()
@@ -199,4 +230,20 @@ class LiveView(QWidget):
             return False
         self.meldung.emit("Der Lauf läuft nicht mehr.")
         self.hart_knopf.hide()
+        return False
+
+    def _notaus_in_der_anlaufphase(self):
+        prozess = self.prozess_ohne_lauf()
+        if prozess is None:
+            self.meldung.emit("Es läuft gerade kein Programm.")
+            return False
+        if beende_prozess_hart(prozess):
+            self._stopp_vorgemerkt = False
+            self.hart_knopf.hide()
+            self.meldung.emit("Das Programm wurde beendet, bevor es fertig verbunden war.")
+            return True
+        self.meldung.emit(
+            "Das Programm liess sich NICHT beenden. Drücke sofort den "
+            "physischen Not-Aus am Tablet."
+        )
         return False

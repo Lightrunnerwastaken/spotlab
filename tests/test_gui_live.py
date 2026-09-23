@@ -135,3 +135,54 @@ def test_notaus_auf_totem_lauf_meldet_das_weiterhin(qapp, tmp_path, monkeypatch)
     ansicht.setze_lauf(rec.dir, "x.py")
     ansicht.notaus()
     assert meldungen and "läuft nicht mehr" in meldungen[-1].lower()
+
+
+class _Haengt:
+    """Ein Prozess, der noch lebt (poll() None) -- ohne echten Prozess dahinter."""
+    pid = 0
+
+    def poll(self):
+        return None
+
+
+def test_notaus_in_der_anlaufphase_toetet_den_eigenen_prozess(qapp):
+    """Pruefung 23.09.2026: waehrend RealSpot.connect (Anmeldung, Zeitsync,
+    Not-Aus-Endpunkt, Lease) gibt es noch kein Lauf-Verzeichnis. Der NOT-AUS
+    sagte „Es läuft gerade kein Programm.“ -- und das Programm stand danach auf."""
+    import subprocess
+    import sys
+
+    prozess = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"])
+    try:
+        meldungen = []
+        ansicht = LiveView()
+        ansicht.prozess_ohne_lauf = lambda: prozess if prozess.poll() is None else None
+        ansicht.meldung.connect(meldungen.append)
+        assert ansicht.notaus() is True
+        assert prozess.poll() is not None
+        assert meldungen and "beendet" in meldungen[-1]
+    finally:
+        if prozess.poll() is None:
+            prozess.kill()
+
+
+def test_stopp_in_der_anlaufphase_wird_vorgemerkt_und_trifft_den_lauf(qapp, tmp_path):
+    meldungen = []
+    ansicht = LiveView()
+    ansicht.prozess_ohne_lauf = lambda: _Haengt()
+    ansicht.meldung.connect(meldungen.append)
+    ansicht.stoppe()
+    assert meldungen and "verbindet" in meldungen[-1]
+    rec = _lauf(tmp_path)
+    ansicht.setze_lauf(rec.dir, "hallo.py")
+    assert (rec.dir / STOPP_DATEI).exists()
+    assert "gestoppt" in ansicht.titel.text()
+
+
+def test_haengt_die_anlaufphase_erscheint_hart_beenden(qapp):
+    ansicht = LiveView()
+    ansicht.prozess_ohne_lauf = lambda: _Haengt()
+    ansicht.stoppe()
+    ansicht._pruefe_eskalation()
+    assert not ansicht.hart_knopf.isHidden()
+    assert not ansicht.inhalt.isHidden(), "der Knopf sitzt im Inhalt -- der muss dann sichtbar sein"

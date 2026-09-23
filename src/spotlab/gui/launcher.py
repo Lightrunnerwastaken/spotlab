@@ -10,6 +10,17 @@ _prozess = None
 _skript = None
 
 
+def laufender_prozess():
+    """Der Prozess des letzten Starts, solange er lebt -- sonst None.
+
+    Fuer Stopp und NOT-AUS in der Anlaufphase, bevor der Lauf ein Verzeichnis hat.
+    """
+    with _sperre:
+        if _prozess is not None and _prozess.poll() is None:
+            return _prozess
+        return None
+
+
 def start_script(pfad, **kwargs):
     global _prozess, _skript
     # Prozessstatus statt Telemetrie-Alter: Start und Abbau gehoeren zum Lauf.

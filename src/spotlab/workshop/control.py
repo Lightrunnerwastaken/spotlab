@@ -109,6 +109,25 @@ def _standard_killer(pid):
     return True
 
 
+def beende_prozess_hart(prozess, killer=None, frist_s=5.0):
+    """Einen Prozess toeten, dessen Popen-Handle wir HALTEN. True, wenn er danach weg ist.
+
+    Der Weg fuer die Anlaufphase: vor `connect()` gibt es kein Lauf-Verzeichnis
+    und keine Prozess-ID in lauf.json -- aber der Editor hat den Prozess selbst
+    gestartet. Solange sein Handle offen ist, vergibt Windows die ID nicht neu;
+    anders als bei `beende_hart` kann das Toeten hier keinen fremden Prozess
+    treffen. `/T` nimmt Kindprozesse mit.
+    """
+    if prozess is None or prozess.poll() is not None:
+        return False
+    (killer or _standard_killer)(prozess.pid)
+    try:
+        prozess.wait(timeout=frist_s)
+    except subprocess.TimeoutExpired:
+        return False
+    return True
+
+
 def beende_hart(run_dir, killer=None):
     """Prozess des Laufs töten. Gibt zurück, ob der Prozess wirklich weg ist.
 

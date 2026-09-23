@@ -174,3 +174,35 @@ def test_finish_raeumt_die_abbau_markierung_weg(tmp_path):
     assert (rec.dir / ABBAU_DATEI).exists()
     rec.finish("ok")
     assert not (rec.dir / ABBAU_DATEI).exists()
+
+
+def _schlaefer():
+    import subprocess
+    import sys
+
+    return subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"])
+
+
+def test_beende_prozess_hart_trifft_einen_echten_prozess():
+    """Der NOT-AUS in der Anlaufphase: noch kein Lauf-Verzeichnis, also keine
+    Prozess-ID aus lauf.json -- aber das Popen-Handle des Editors. Solange es
+    offen ist, vergibt Windows die ID nicht neu; das Toeten trifft sicher ihn."""
+    from spotlab.workshop.control import beende_prozess_hart
+
+    prozess = _schlaefer()
+    try:
+        assert beende_prozess_hart(prozess) is True
+        assert prozess.poll() is not None
+    finally:
+        if prozess.poll() is None:
+            prozess.kill()
+
+
+def test_beende_prozess_hart_auf_einem_toten_prozess_ist_false():
+    from spotlab.workshop.control import beende_prozess_hart
+
+    prozess = _schlaefer()
+    prozess.kill()
+    prozess.wait(10)
+    assert beende_prozess_hart(prozess) is False
+    assert beende_prozess_hart(None) is False
