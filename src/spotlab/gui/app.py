@@ -17,9 +17,7 @@ from PySide6.QtCore import QProcess, Qt
 from PySide6.QtWidgets import (
     QApplication,
     QHBoxLayout,
-    QLabel,
     QMessageBox,
-    QSizePolicy,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -31,6 +29,7 @@ from spotlab.errors import SpotlabError
 from spotlab.gui import konfig
 from spotlab.gui.editor.view import EditorView, verfuegbare_backends
 from spotlab.gui.header import Header
+from spotlab.gui.kurztext import Kurztext
 from spotlab.gui.launcher import laufender_prozess
 from spotlab.gui.raumeditor import RaumeditorView
 from spotlab.gui.sidebar import Sidebar
@@ -111,11 +110,10 @@ class MainWindow(QWidget):
 
         self.kopf = Header()
         self.leiste = Sidebar()
-        self.statuszeile = QLabel("")
+        # Kurztext: eine lange Meldung zieht das Fenster nicht auseinander, sie
+        # endet mit „…“; der volle Text steht im Tooltip.
+        self.statuszeile = Kurztext("")
         self.statuszeile.setObjectName("Statuszeile")
-        # Ignored: sonst verlangt eine lange Meldung ihre ganze Breite und zieht
-        # das Hauptfenster auseinander. Der volle Text steht im Tooltip.
-        self.statuszeile.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
 
         self.ansichten = {
             "projekte": ProjectsView(
@@ -291,7 +289,6 @@ class MainWindow(QWidget):
 
     def _melde(self, text):
         self.statuszeile.setText(text)
-        self.statuszeile.setToolTip(text)
 
     def _merke_arbeitsordner(self, pfad):
         self._setze_arbeitsordner(pfad)

@@ -90,3 +90,18 @@ def test_starten_ohne_auswahl_meldet_klartext(qapp, tmp_path):
 
     ansicht.starte_aktuelles()
     assert gemeldet and "Skript" in gemeldet[0]
+
+
+def test_ein_langer_arbeitsordner_macht_das_fenster_nicht_breiter(qapp, tmp_path):
+    """Ein OneDrive-Pfad („C:/Users/…/OneDrive - Kantonsschule …/Dokumente/Spotlab“)
+    verlangte als QLabel seine ganze Breite: die Ansicht wurde 1043 px breit, das
+    Fenster 1229 px (23.09.2026). Der volle Pfad steht im Tooltip."""
+    from spotlab.gui.views.projects import ProjectsView
+
+    ansicht = ProjectsView()
+    vorher = ansicht.minimumSizeHint().width()
+    lang = tmp_path / ("sehr_langer_ordnername_" * 8)
+    lang.mkdir()
+    ansicht.setze_arbeitsordner(lang)
+    assert ansicht.minimumSizeHint().width() <= vorher + 5
+    assert str(lang) in ansicht.pfadanzeige.toolTip()

@@ -6,7 +6,7 @@ die niemand findet — Üben ohne Roboter soll man sehen können.
 
 from pathlib import Path
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QFileDialog,
@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from spotlab.errors import SpotlabError
+from spotlab.gui.kurztext import Kurztext
 from spotlab.gui.launcher import start_script
 from spotlab.workshop.editor import open_in_editor
 from spotlab.workshop.project import create_project
@@ -50,7 +51,8 @@ class ProjectsView(QWidget):
         self._ordner = None
         self._editor = editor_command
 
-        self.pfadanzeige = QLabel("Kein Arbeitsordner gewählt")
+        # Kurztext: ein langer Pfad (OneDrive) zog sonst das ganze Fenster auseinander.
+        self.pfadanzeige = Kurztext("Kein Arbeitsordner gewählt", Qt.ElideMiddle)
         self.pfadanzeige.setObjectName("Gedaempft")
         self.waehlen_knopf = QPushButton("Arbeitsordner wählen…")
         self.waehlen_knopf.clicked.connect(self._waehle_ordner)

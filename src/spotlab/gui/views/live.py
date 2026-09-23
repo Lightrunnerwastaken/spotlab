@@ -14,7 +14,7 @@ Stopp wird vorgemerkt und trifft den Lauf, sobald er sein Verzeichnis hat.
 
 from pathlib import Path
 
-from PySide6.QtCore import QTimer, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QFrame,
@@ -66,6 +66,7 @@ class LiveView(QWidget):
             "Beides wird hier angezeigt."
         )
         self.leer.setObjectName("Gedaempft")
+        self.leer.setAlignment(Qt.AlignCenter)
 
         self.titel = QLabel("—")
         self.titel.setObjectName("Titel")
