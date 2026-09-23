@@ -81,6 +81,24 @@ def schreibe_text(pfad, text):
     Path(pfad).write_text(text, encoding="utf-8", newline="\n")
 
 
+def _unterhalb(pfad, wurzel):
+    """Der Rest von `pfad` unter `wurzel` (`Path(".")` fuer denselben), sonst None.
+
+    Erst woertlich, dann aufgeloest: ein Reiter aus einem Traceback-Klick traegt
+    den aufgeloesten Pfad, der Baum den, den er anzeigt. Die Gross-/Klein-
+    schreibung zaehlt unter Windows ohnehin nicht (`Path` vergleicht dort so).
+    """
+    pfad, wurzel = Path(pfad), Path(wurzel)
+    try:
+        return pfad.relative_to(wurzel)
+    except ValueError:
+        pass
+    try:
+        return pfad.resolve().relative_to(wurzel.resolve())
+    except (OSError, ValueError):
+        return None
+
+
 def stempel(pfad):
     zustand = Path(pfad).stat()
     return zustand.st_mtime, zustand.st_size
@@ -194,6 +212,7 @@ class EditorView(QWidget):
         self.baum = Dateibaum()
         self.baum.datei_gewaehlt.connect(self.oeffne)
         self.baum.datei_entfernt.connect(self.schliesse_pfad)
+        self.baum.datei_umbenannt.connect(self.pfad_umbenannt)
         self.baum.meldung.connect(self.meldung)
 
         links = QWidget()
@@ -467,29 +486,51 @@ class EditorView(QWidget):
         self._titel(eintrag)
 
     def schliesse_pfad(self, pfad):
-        """Den Reiter zu `pfad` schliessen, falls einer offen ist.
+        """Die Reiter zu `pfad` schliessen -- bei einem Ordner alle darunter.
 
         Geht ueber `_schliesse`, damit die Rueckfrage bei ungespeicherten
         Aenderungen gilt: die geloeschte Datei liegt im Papierkorb und ist
-        wiederherstellbar, ein ungespeicherter Puffer nicht.
+        wiederherstellbar, ein ungespeicherter Puffer nicht. Bis zum 23.09.2026
+        ging nur ein Reiter mit genau diesem Pfad zu; die Reiter eines
+        geloeschten Ordners blieben offen und legten ihn beim Speichern wieder an.
         """
-        pfad = Path(pfad)
         for feld, eintrag in list(self._reiter.items()):
-            if eintrag.pfad == pfad:
+            if _unterhalb(eintrag.pfad, pfad) is not None:
                 self._schliesse(self.reiter.indexOf(feld))
-                return
+
+    def pfad_umbenannt(self, alt, neu):
+        """Der Baum hat `alt` in `neu` umbenannt: die Reiter darauf gehen mit.
+
+        Bei einem Ordner alle darunter. Nachgefuehrt werden Pfad, Titel und der
+        Pfad fuer jedi. Die Zeitmarke NICHT: sie gehoert zum Inhalt, und
+        Umbenennen aendert weder Aenderungszeit noch Groesse. Am neuen Ort neu
+        gelesen, verdeckte sie eine Aenderung aus VS Code von VOR dem
+        Umbenennen, und das naechste Speichern ueberschriebe sie ohne Frage.
+        """
+        for eintrag in self._reiter.values():
+            rest = _unterhalb(eintrag.pfad, alt)
+            if rest is None:
+                continue
+            eintrag.pfad = Path(neu) / rest
+            if eintrag.hilfe is not None:
+                eintrag.hilfe.setze_pfad(eintrag.pfad)
+            self._titel(eintrag)
+
+    def frage_schliessen(self, pfad):
+        """True = trotz ungespeicherter Aenderungen schliessen. Ersetzbar im Test."""
+        antwort = QMessageBox.question(
+            self,
+            "spotlab",
+            f"{Path(pfad).name} hat ungespeicherte Änderungen. Trotzdem schliessen?",
+            QMessageBox.Yes | QMessageBox.No,
+        )
+        return antwort == QMessageBox.Yes
 
     def _schliesse(self, index):
         feld = self.reiter.widget(index)
         eintrag = self._reiter.get(feld)
         if eintrag is not None and eintrag.verschmutzt:
-            antwort = QMessageBox.question(
-                self,
-                "spotlab",
-                f"{eintrag.pfad.name} hat ungespeicherte Änderungen. Trotzdem schliessen?",
-                QMessageBox.Yes | QMessageBox.No,
-            )
-            if antwort != QMessageBox.Yes:
+            if not self.frage_schliessen(eintrag.pfad):
                 return
         self.reiter.removeTab(index)
         reiter = self._reiter.pop(feld, None)

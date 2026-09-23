@@ -626,6 +626,120 @@ def test_unbekannter_pfad_schliesst_nichts(qapp, tmp_path):
     _arbeite_zerstoerungen_ab()
 
 
+# ============== Umbenennen und Loeschen im Baum (Pruefung 23.09.2026, p03/p16)
+#
+# Nach dem Umbenennen einer offenen Datei zeigte der Reiter weiter auf den alten
+# Pfad: Speichern legte die alte Datei neu an, die umbenannte behielt den alten
+# Stand. Beim Loeschen eines Ordners blieben dessen Reiter offen.
+
+
+def _kein_konflikt(ansicht):
+    gefragt = []
+    ansicht.frage_bei_konflikt = lambda pfad: gefragt.append(pfad) or "abbrechen"
+    return gefragt
+
+
+def test_umbenannte_offene_datei_wird_am_neuen_ort_gespeichert(qapp, tmp_path):
+    ansicht, _ordner, projekt = _ansicht(tmp_path)
+    alt = projekt / "hallo_spot.py"
+    ansicht.oeffne(alt)
+    ansicht.reiter.currentWidget().insertPlainText("# neu\n")    # wie getippt
+    gefragt = _kein_konflikt(ansicht)
+
+    neu = ansicht.baum.umbenennen(alt, "gruss.py")
+    eintrag = ansicht.aktueller_reiter()
+    assert eintrag.pfad == neu
+    assert ansicht.reiter.tabText(0) == "● gruss.py"
+    assert ansicht.speichere_aktuellen() is True
+    assert gefragt == [], "Umbenennen ist keine fremde Aenderung"
+    assert not alt.exists(), "Speichern hat die alte Datei wieder angelegt"
+    assert neu.read_text(encoding="utf-8") == "# neu\nx = 1\n"
+
+
+def test_umbenannter_ordner_fuehrt_die_reiter_darunter_nach(qapp, tmp_path):
+    ansicht, _ordner, projekt = _ansicht(tmp_path)
+    (projekt / "lib").mkdir()
+    helfer = projekt / "lib" / "helfer.py"
+    helfer.write_text("y = 2\n", encoding="utf-8")
+    ansicht.oeffne(helfer)
+    ansicht.oeffne(projekt / "hallo_spot.py")
+
+    ansicht.baum.umbenennen(projekt / "lib", "werkzeug")
+    pfade = sorted(e.pfad for e in ansicht._reiter.values())
+    assert pfade == sorted([projekt / "hallo_spot.py", projekt / "werkzeug" / "helfer.py"])
+    verschoben = next(e for e in ansicht._reiter.values() if e.pfad.name == "helfer.py")
+    assert verschoben.hilfe._pfad == str(projekt / "werkzeug" / "helfer.py")
+    assert ansicht.speichere_alle_geaenderten() is True
+    assert not (projekt / "lib").exists()
+
+
+def test_umbenennen_nur_in_gross_kleinschreibung_fuehrt_den_reiter_nach(qapp, tmp_path):
+    ansicht, _ordner, projekt = _ansicht(tmp_path)
+    alt = projekt / "Hallo.py"
+    alt.write_text("x = 1\n", encoding="utf-8")
+    ansicht.oeffne(alt)
+    neu = ansicht.baum.umbenennen(alt, "hallo.py")
+    assert neu is not None
+    assert ansicht.aktueller_reiter().pfad.name == "hallo.py"
+    assert ansicht.reiter.tabText(ansicht.reiter.currentIndex()) == "hallo.py"
+
+
+def test_eine_fremde_aenderung_vor_dem_umbenennen_bleibt_erkannt(qapp, tmp_path):
+    """Die Zeitmarke gehoert zum Inhalt, nicht zum Namen: Umbenennen aendert weder
+    Aenderungszeit noch Groesse. Wer sie am neuen Ort neu laese, verdeckte eine
+    Aenderung aus VS Code von VOR dem Umbenennen -- und Speichern ueberschriebe sie."""
+    ansicht, _ordner, projekt = _ansicht(tmp_path)
+    alt = projekt / "hallo_spot.py"
+    ansicht.oeffne(alt)
+    alt.write_text("von VS Code geschrieben\n", encoding="utf-8")
+    ansicht.baum.umbenennen(alt, "gruss.py")
+    assert ansicht.fremd_geaendert(ansicht.aktueller_reiter()) is True
+
+
+def _papierkorb_attrappe(monkeypatch, tmp_path):
+    import shutil
+
+    from spotlab.gui.editor import tree
+
+    korb = tmp_path / "papierkorb"
+    korb.mkdir()
+    monkeypatch.setattr(tree, "in_den_papierkorb",
+                        lambda p: shutil.move(str(p), str(korb / p.name)))
+
+
+def test_geloeschter_ordner_schliesst_alle_reiter_darunter(qapp, tmp_path, monkeypatch):
+    _papierkorb_attrappe(monkeypatch, tmp_path)
+    ansicht, _ordner, projekt = _ansicht(tmp_path)
+    (projekt / "lib").mkdir()
+    for name in ("a.py", "b.py"):
+        (projekt / "lib" / name).write_text("z = 3\n", encoding="utf-8")
+        ansicht.oeffne(projekt / "lib" / name)
+    ansicht.oeffne(projekt / "hallo_spot.py")
+
+    ansicht.baum.loeschen(projekt / "lib")
+    assert [e.pfad.name for e in ansicht._reiter.values()] == ["hallo_spot.py"]
+    assert ansicht.reiter.count() == 1
+    _arbeite_zerstoerungen_ab()
+
+
+def test_geloeschter_ordner_fragt_bei_ungespeicherten_aenderungen(qapp, tmp_path, monkeypatch):
+    """Die Datei liegt im Papierkorb und ist wiederherstellbar, der Puffer nicht."""
+    _papierkorb_attrappe(monkeypatch, tmp_path)
+    ansicht, _ordner, projekt = _ansicht(tmp_path)
+    (projekt / "lib").mkdir()
+    datei = projekt / "lib" / "a.py"
+    datei.write_text("z = 3\n", encoding="utf-8")
+    ansicht.oeffne(datei)
+    ansicht.reiter.currentWidget().insertPlainText("# ungespeichert\n")
+    gefragt = []
+    ansicht.frage_schliessen = lambda pfad: gefragt.append(pfad) or False
+
+    ansicht.baum.loeschen(projekt / "lib")
+    assert gefragt == [datei]
+    assert ansicht.reiter.count() == 1, "der ungespeicherte Puffer ist weg"
+    _arbeite_zerstoerungen_ab()
+
+
 def test_starte_aktuelles_ohne_offene_datei_meldet_klartext(qapp, tmp_path):
     """Der Uebungsraum delegiert hierher -- schweigen waere dort ein toter Knopf."""
     from spotlab.gui.editor.view import EditorView
