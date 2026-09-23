@@ -798,6 +798,11 @@ versionsgepinntes Extra `spotlab[sim]`.
   den Tab änderbar (`maps/store.py::benenne_wegpunkt`, atomar, bereinigt wie bei der
   Aufnahme) und EINDEUTIG — `Map.id_fuer` nähme bei zwei gleichen Namen stillschweigend den
   ersten, und Spot führe woandershin. Keine Nebenliste mit Namen: der Graph ist die Wahrheit.
+  **`MapsView.aktualisiere()` behält die Auswahl — nach NAMEN, samt gewähltem Wegpunkt** — und
+  zeichnet die Karte neu von der Platte; ist sie weg, ist auch die Zeichnung weg. Die App ruft
+  es nach JEDEM Lauf (`_lauf_beendet`); bis zum 22.09.2026 leerte es die Liste, die Zeichnung
+  blieb, „Wegpunkt benennen" war aktiv und tat still nichts (p14). Nach Namen, weil die Liste
+  nach Änderungszeit sortiert ist.
 - **`einrichten.cmd` ist der eine Einstieg, und ohne `-Entwickler` installiert er nur aus
   dem ZIP.** Er ruft `einrichten.ps1`; ohne `-Entwickler` verlangt das Skript
   `schueler-requirements.txt` (liegt nur im Release) und installiert `--only-binary=:all:`

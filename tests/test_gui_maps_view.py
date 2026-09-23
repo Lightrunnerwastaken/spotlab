@@ -246,6 +246,70 @@ def _karte_ordner(tmp_path):
     return karten_wurzel(tmp_path) / "turnhalle"
 
 
+# ------------------------------------------------ Auswahl nach einem Lauf (p14)
+
+
+def test_nach_einem_lauf_bleibt_die_auswahl(qapp, tmp_path, monkeypatch):
+    """Befund p14 (22.09.2026): `app.py::_lauf_beendet` ruft nach JEDEM Lauf `aktualisiere()`,
+    und das leerte die Liste. Die Zeichnung blieb stehen, „Wegpunkt benennen" war aktiv und
+    tat still nichts, „Zu Wegpunkten fahren" sagte „Waehle zuerst eine Karte"."""
+    from spotlab.gui.views import maps as maps_modul
+
+    ansicht = _mit_karte(tmp_path)
+    ansicht.plot.wegpunkt_geklickt.emit("wp1")
+    ansicht.aktualisiere()
+    assert ansicht.karte_fuer_navigation() == "turnhalle"
+    assert len(ansicht.plot.grundriss.punkte) == 2
+    assert ansicht.plot.ziel == "wp1" and ansicht.benennen_knopf.isEnabled()
+    gefragt = []
+    monkeypatch.setattr(maps_modul.QInputDialog, "getText",
+                        staticmethod(lambda *a, **k: (gefragt.append(1), ("", False))[1]))
+    ansicht.benennen_knopf.click()
+    assert gefragt == [1], "der Knopf tut, was er verspricht"
+
+
+def test_die_auswahl_folgt_dem_namen_nicht_der_zeile(qapp, tmp_path):
+    """Die Liste ist nach Aenderungszeit sortiert -- nach „Karte verbessern" rutscht eine
+    Karte nach oben, und die Zeile von vorher waere eine andere Karte."""
+    import os
+
+    _karte(tmp_path, "flur")
+    _karte(tmp_path)
+    ansicht = MapsView()
+    ansicht.setze_arbeitsordner(tmp_path)
+    zeile = next(i for i in range(ansicht.liste.count()) if "turnhalle" in ansicht.liste.item(i).text())
+    ansicht.liste.setCurrentRow(zeile)
+    flur = karten_wurzel(tmp_path) / "flur"
+    spaeter = max(p.stat().st_mtime for p in karten_wurzel(tmp_path).iterdir()) + 100
+    os.utime(flur, (spaeter, spaeter))
+    ansicht.aktualisiere()
+    assert ansicht.karte_fuer_navigation() == "turnhalle"
+    assert "turnhalle" in ansicht.liste.currentItem().text()
+
+
+def test_nach_dem_lauf_zeigt_die_zeichnung_den_neuen_stand(qapp, tmp_path):
+    """Nach einer Kartenarbeit liegt eine andere Karte auf der Platte -- dafuer ruft die App
+    `aktualisiere()` ueberhaupt."""
+    from spotlab.maps.store import benenne_wegpunkt
+
+    ansicht = _mit_karte(tmp_path)
+    benenne_wegpunkt(_karte_ordner(tmp_path), "wp1", "Fenster")
+    ansicht.aktualisiere()
+    assert {p.id: p.name for p in ansicht.plot.grundriss.punkte}["wp1"] == "Fenster"
+
+
+def test_eine_verschwundene_karte_wird_auch_nicht_mehr_gezeichnet(qapp, tmp_path):
+    import shutil
+
+    ansicht = _mit_karte(tmp_path)
+    ansicht.plot.wegpunkt_geklickt.emit("wp1")
+    shutil.rmtree(_karte_ordner(tmp_path))
+    ansicht.aktualisiere()
+    assert ansicht.karte_fuer_navigation() is None
+    assert ansicht.plot.grundriss.punkte == [] and ansicht.plot.ziel is None
+    assert not ansicht.benennen_knopf.isEnabled()
+
+
 def test_nach_einem_fehlgeschlagenen_verbinden_ist_der_reiter_wieder_benutzbar(qapp, tmp_path):
     """Befund 22.09.2026: `_aufnahme_fehler` meldete nur und setzte nichts zurueck.
     Der Knopf blieb fuer immer grau, und ein zweiter Versuch antwortete 'Es laeuft

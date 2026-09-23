@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (
 from spotlab.errors import SpotlabError
 from spotlab.gui.mapplot import MapPlot
 from spotlab.gui.theme import DUNKEL
-from spotlab.maps.geometry import grundriss, lage_im_grundriss
+from spotlab.maps.geometry import Grundriss, grundriss, lage_im_grundriss
 from spotlab.maps.store import (
     benenne_wegpunkt,
     karten,
@@ -193,13 +193,45 @@ class MapsView(QWidget):
         self._config = cfg
 
     def aktualisiere(self):
-        self.liste.clear()
-        self._karten = karten(self._ordner) if self._ordner else []
-        for eintrag in self._karten:
-            self.liste.addItem(
-                f"{eintrag.name}  ·  {eintrag.wegpunkte} Wegpunkte, "
-                f"{eintrag.kanten} Kanten"
-            )
+        """Liste neu von der Platte -- die AUSWAHL bleibt, nach Namen, samt gewaehltem Wegpunkt.
+
+        Befund p14 (22.09.2026): `app.py::_lauf_beendet` ruft das nach JEDEM Lauf, und
+        es leerte die Liste. Die Zeichnung blieb stehen, „Wegpunkt benennen" war aktiv
+        und tat still nichts, „Zu Wegpunkten fahren" sagte „Waehle zuerst eine Karte" --
+        obwohl sie zu sehen war. Nach Namen, nicht nach Zeile: die Liste ist nach
+        Aenderungszeit sortiert, und nach einer Kartenarbeit rutscht eine Karte nach
+        oben. Die Zeichnung kommt neu von der Platte (dafuer ruft die App das ja); ist
+        die Karte weg, verschwindet auch die Zeichnung. Waehrend einer Navigation
+        bleibt die Zeichnung, wie sie ist -- sie zeigt die Karte des Laufs.
+        """
+        vorher = self._gewaehlte()
+        name = vorher.name if vorher is not None else None
+        wegpunkt = self.plot.ziel
+        self.liste.blockSignals(True)
+        try:
+            self.liste.clear()
+            self._karten = karten(self._ordner) if self._ordner else []
+            for eintrag in self._karten:
+                self.liste.addItem(
+                    f"{eintrag.name}  ·  {eintrag.wegpunkte} Wegpunkte, "
+                    f"{eintrag.kanten} Kanten"
+                )
+            zeile = next((i for i, e in enumerate(self._karten) if e.name == name), -1)
+            if zeile >= 0:
+                self.liste.setCurrentRow(zeile)
+        finally:
+            self.liste.blockSignals(False)
+        if name is None or self.laeuft():
+            return
+        if zeile < 0:
+            self.plot.setze_grundriss(Grundriss([], [], "leer", "Keine Karte gewählt."))
+            self.plot_hinweis.setText("")
+            self.benennen_knopf.setEnabled(False)
+            return
+        self._zeige_karte(zeile)
+        if wegpunkt is not None and any(p.id == wegpunkt for p in self.plot.grundriss.punkte):
+            self.plot.setze_ziel(wegpunkt)
+            self.benennen_knopf.setEnabled(True)
 
     def _gewaehlte(self):
         zeile = self.liste.currentRow()
