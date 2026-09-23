@@ -11,7 +11,13 @@ import math
 from spotlab.welt import bearbeitung as b
 
 WERKZEUGE = ("auswahl", "wand", "block", "boden", "sperrzone", "tag", "start")
+WERKZEUG_NAMEN = {"auswahl": "Auswählen", "wand": "Wand", "block": "Block", "boden": "Boden",
+                  "sperrzone": "Sperrzone", "tag": "Tag", "start": "Start"}
 TOLERANZ_M = 0.12        # Treffer um den Zeiger; die Sicht rechnet 8 px um
+TRENNER = "  ·  "
+RASTER_TEXT = f"Raster {round(b.RASTER_M * 100)} cm (Strg: frei)"
+MODUS_NAMEN = {b.Modus.BEWEGEN: "G bewegen", b.Modus.DREHEN: "R drehen",
+               b.Modus.SKALIEREN: "S skalieren"}
 
 
 class Steuerung:
@@ -35,17 +41,66 @@ class Steuerung:
         self.kette = None          # Anfang der naechsten Wand (Wandwerkzeug)
         self.rahmen = None         # (x1, y1, x2, y2) waehrend Rahmenauswahl oder Blockziehen
         self.zeiger = (0.0, 0.0)
+        self.frei = False          # Strg bei der letzten Bewegung: ohne Raster
+        self.ueber = None          # das Element unter dem Zeiger (Hervorhebung beim Ueberfahren)
+        self.ueber_griff = False   # liegt der Zeiger auf einem Griff?
         self._zug = None
 
     # ------------------------------------------------------------ innen
 
     def uebernimm(self, raum):
-        """Eine bestaetigte Aenderung: in den Verlauf, als geaendert merken.
-        Auch der Korrigierer uebergibt sein Ergebnis so -- als EINEN Schritt."""
+        """Eine bestaetigte Aenderung: in den Verlauf, als geaendert merken."""
         self.raum = raum
         self.revision += 1
         self.verlauf.merke(raum)
         self.geaendert = True
+
+    def ersetze_raum(self, raum):
+        """Ein ganzer neuer Raum von aussen (der Korrigierer) -- als EIN Schritt.
+
+        Die Auswahl wird geleert wie bei `loesche`: ihre Indizes gelten fuer den
+        alten Raum. Nach einer Korrektur, die eine Wand loeschte, warf sonst jede
+        Mausbewegung IndexError, und Entf traf eine ANDERE Wand (23.09.2026).
+        Eine offene Geste endet vorher -- ihr Abbruch holte sonst den alten Raum
+        zurueck.
+        """
+        self._beende_geste()
+        self.auswahl = frozenset()
+        self.uebernimm(raum)
+
+    def breche_ab(self):
+        """Eine offene Geste (G/R/S oder Ziehen mit der Maus) verwerfen.
+
+        Vor dem Speichern: auf die Platte kommt nur, was bestaetigt ist. Sonst
+        stand die Vorschau in der Datei, der Editor zeigte nach Esc etwas anderes,
+        und `geaendert` war falsch. Die Wandkette bleibt -- sie steht noch nicht
+        im Raum. True, wenn es etwas abzubrechen gab.
+        """
+        if self.modus.aktiv:
+            self.raum = self.modus.abbruch()
+            return True
+        if self._zug is not None:
+            if "raum" in self._zug:
+                self.raum = self._zug["raum"]
+            self._zug = None
+            self.rahmen = None
+            return True
+        return False
+
+    @property
+    def zieht(self):
+        """Wahr, solange die Maustaste gedrueckt ist und etwas gezogen wird."""
+        return self._zug is not None
+
+    @property
+    def vorschau_basis(self):
+        """Der bestaetigte Raum unter einer laufenden Vorschau (G/R/S oder Ziehen) --
+        sonst None. Die Sicht darf teure Ableitungen davon mitschieben."""
+        if self.modus.aktiv:
+            return self.modus.basis
+        if self._zug is not None:
+            return self._zug.get("raum")
+        return None
 
     @staticmethod
     def _rast(wert, frei):
@@ -106,6 +161,7 @@ class Steuerung:
         self.werkzeug = name
         self.kette = None
         self._zug = None
+        self.ueber, self.ueber_griff = None, False
 
     # -------------------------------------------------------------- Maus
 
@@ -181,14 +237,17 @@ class Steuerung:
         self.auswahl = frozenset({s})
         self.kette = (px, py)
 
-    def bewege(self, x, y, ctrl=False):
+    def bewege(self, x, y, ctrl=False, toleranz=TOLERANZ_M):
         self.zeiger = (x, y)
+        self.frei = ctrl
+        self.ueber, self.ueber_griff = None, False
         if self.modus.aktiv:
             self.modus.zeiger(x, y, frei=ctrl)
             self.raum = self.modus.vorschau()
             return
         z = self._zug
         if z is None:
+            self._ueberfahre(x, y, toleranz)
             return
         art = z["art"]
         if art == "rahmen":
@@ -220,6 +279,18 @@ class Steuerung:
             sx, sy = z["von"]
             if math.hypot(x - sx, y - sy) >= 0.05:
                 self.raum = b.setze_start(z["raum"], sx, sy, self._winkel(sx, sy, x, y, ctrl))
+
+    def _ueberfahre(self, x, y, toleranz):
+        """Was unter dem Zeiger liegt, wenn nichts gezogen wird: ein Griff (Zeiger
+        „verschieben") oder ein Element (hervorgehoben). Nur im Auswahlwerkzeug --
+        beim Zeichnen gibt es nichts anzufassen."""
+        if self.raum is None or self.werkzeug != "auswahl":
+            return
+        for _s, _art, gx, gy in b.griffe(self.raum, self.auswahl):
+            if math.hypot(gx - x, gy - y) <= toleranz:
+                self.ueber_griff = True
+                return
+        self.ueber = b.treffer(self.raum, x, y, toleranz, self.auswaehlbare())
 
     def lasse_los(self, x, y, shift=False, ctrl=False):
         z, self._zug = self._zug, None
@@ -270,7 +341,19 @@ class Steuerung:
             if name == "escape":
                 self.raum = self.modus.abbruch()
                 return True
-            return self.modus.taste(name)
+            if not self.modus.taste(name):
+                return False
+            # Achse und getippte Zahl wirken SOFORT, nicht erst bei der naechsten
+            # Mausbewegung -- sonst sagte die Zustandszeile „getippt 1 m", und der
+            # Block stand, wo die Maus war (23.09.2026).
+            self.raum = self.modus.vorschau()
+            return True
+        if self._zug is not None:
+            # Waehrend die Maus zieht, gehoert der Raum der Geste: Entf loeschte
+            # sonst aus der Vorschau, und die naechste Bewegung rechnete aus dem
+            # Schnappschuss -- der Block war wieder da (23.09.2026). Esc bricht
+            # das Ziehen ab, alles andere wartet aufs Loslassen.
+            return name == "escape" and self.breche_ab()
         if name == "escape":
             self.kette = None
             self.auswahl = frozenset()
@@ -340,3 +423,127 @@ class Steuerung:
 
     def hinweise(self):
         return b.pruefe(self.raum) if self.raum is not None else []
+
+    def befunde(self):
+        return b.befunde(self.raum) if self.raum is not None else []
+
+    # ------------------------------------------------------ Zustandszeile
+
+    def beschreibung(self):
+        """Die Zustandszeile unter der Sicht: Werkzeug oder Geste, was jetzt geht,
+        Zeiger in Metern, Raster. Ohne Qt -- die Sicht zeigt nur den Text.
+
+        Bis zum 23.09.2026 stand nirgends, dass G laeuft, welche Achse gesperrt
+        ist oder was getippt wurde; wer Blender nicht kannte, sah nur einen Block,
+        der der Maus folgte, und wusste nicht, wie er ihn loswird.
+        """
+        links, rechts = self.beschreibung_teile()
+        return f"{links}{TRENNER}{rechts}" if rechts else links
+
+    def beschreibung_teile(self):
+        """(links, rechts): was gerade geht -- und Zeiger mit Raster, das die Sicht
+        rechtsbuendig zeigt (eine lange Zeile wurde bei 1080 px mitten abgeschnitten)."""
+        if self.raum is None:
+            return "Kein Raum geöffnet.", ""
+        teile = []
+        m = self.modus
+        if m.aktiv:
+            # Wie man herauskommt, steht vorn: bei 1080 px wird hinten abgeschnitten.
+            teile.append(MODUS_NAMEN[m.art])
+            teile.append("Enter bestätigt · Esc bricht ab")
+            if m.achse and not (m.art == b.Modus.DREHEN):
+                teile.append(f"nur {m.achse.upper()}")
+            if m.zahl:
+                einheit = {b.Modus.BEWEGEN: " m", b.Modus.DREHEN: "°"}.get(m.art, "")
+                vor = "×" if m.art == b.Modus.SKALIEREN else ""
+                teile.append(f"getippt {vor}{m.zahl}{einheit}")
+            else:
+                teile.append(m.anzeige())
+        elif self._zug is not None:
+            teile += self._zug_text()
+        else:
+            teile.append(WERKZEUG_NAMEN[self.werkzeug])
+            teile.append(self._werkzeug_text())
+        x, y = self.zeiger
+        return TRENNER.join(teile), f"x {x:.2f} m  y {y:.2f} m{TRENNER}{RASTER_TEXT}"
+
+    def _zug_text(self):
+        art = self._zug["art"]
+        if art in ("block", "boden", "sperrzone") and self.rahmen is not None:
+            x1, y1, x2, y2 = self.rahmen
+            return [WERKZEUG_NAMEN[art], f"{abs(x2 - x1):.2f} × {abs(y2 - y1):.2f} m",
+                    "loslassen setzt ab · Esc bricht ab"]
+        if art == "rahmen":
+            return ["Rahmen", "loslassen wählt, was darin liegt · Umschalt ergänzt"]
+        if art == "start_richtung":
+            return ["Start", "ziehen gibt die Blickrichtung · loslassen setzt ab"]
+        return ["Ziehen", "loslassen setzt ab · Esc bricht ab"]
+
+    def _werkzeug_text(self):
+        w = self.werkzeug
+        if w == "auswahl":
+            if self.auswahl:
+                return (f"{len(self.auswahl)} gewählt — G bewegen · R drehen · S skalieren · "
+                        f"Entf löscht")
+            return "Klick wählt · Rahmen ziehen wählt mehrere · A wählt alles"
+        if w == "wand":
+            if self.kette is None:
+                return "Klick setzt den ersten Punkt"
+            x, y = self.zeiger
+            if not self.frei:
+                x, y = b.raste(x), b.raste(y)
+            x, y = b.fange_ende(self.raum, x, y, erlaubt=self.auswaehlbare())
+            dx, dy = x - self.kette[0], y - self.kette[1]
+            winkel = math.degrees(math.atan2(dy, dx))
+            return (f"Länge {math.hypot(dx, dy):.2f} m · Winkel {winkel:.0f}°"
+                    f"{TRENNER}Klick setzt den nächsten Punkt · Esc beendet")
+        if w in ("block", "boden", "sperrzone"):
+            return "Rechteck aufziehen"
+        if w == "tag":
+            return "Klick setzt einen Tag"
+        return "Klick setzt den Start · Ziehen gibt die Blickrichtung"
+
+    def achslinie(self):
+        """(achse, (x, y)) waehrend G oder S mit gesperrter x- oder y-Achse -- die
+        2D-Sicht zeichnet sie durch die Mitte der Auswahl. Sonst None."""
+        m = self.modus
+        if m.aktiv and m.art != b.Modus.DREHEN and m.achse in ("x", "y"):
+            return (m.achse, m.mitte)
+        return None
+
+    def zeigerart(self):
+        """Wie der Mauszeiger aussehen soll: "bewegen" (Griff oder laufende Geste),
+        "element" (etwas zum Anklicken), "zeichnen" (Zeichenwerkzeug) oder None."""
+        if self.modus.aktiv:
+            return "bewegen"
+        if self._zug is not None:
+            return "zeichnen" if self._zug["art"] in ("block", "boden", "sperrzone") else "bewegen"
+        if self.werkzeug != "auswahl":
+            return "zeichnen"
+        if self.ueber_griff:
+            return "bewegen"
+        return "element" if self.ueber is not None else None
+
+    def auswahl_huelle(self):
+        """(x0, y0, x1, y1) um die Auswahl -- F rahmt sie ein. Leer: None."""
+        if self.raum is None or not self.auswahl:
+            return None
+        punkte = []
+        for s in self.auswahl:
+            e = b.element(self.raum, s)
+            if s[0] == "wand":
+                punkte += [(e.x1, e.y1), (e.x2, e.y2)]
+            elif s[0] in ("block", "boden", "sperrzone"):
+                punkte += list(e.ecken())
+            elif s[0] == "gelaende" and e is not None:
+                u = b.umriss(e)
+                if u is not None:
+                    punkte += [(u[0], u[1]), (u[2], u[3])]
+            else:
+                x, y = b.lage(self.raum, s)
+                punkte += [(x - 0.5, y - 0.5), (x + 0.5, y + 0.5)]
+        if not punkte:
+            return None
+        xs, ys = [p[0] for p in punkte], [p[1] for p in punkte]
+        rand = 0.3
+        return (min(xs) - rand, min(ys) - rand, max(xs) + rand, max(ys) + rand)

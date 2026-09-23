@@ -9,7 +9,7 @@ dass es auffiele -- deshalb gibt es genau einen.
 
 import math
 
-from PySide6.QtCore import QPointF, Qt
+from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QBrush, QColor, QImage, QPen, QPolygonF
 
 from spotlab.gui.theme import mische
@@ -19,6 +19,9 @@ from spotlab.welt.kollision import ROBOTER_RADIUS_M
 TAG_KANTE_M = 0.15
 PFEIL_M = 0.4
 ZACKE_PX = 4               # Kammlinie der Klippen
+SPOT_MIN_PX = 10           # kleinster Radius des Spot-Kreises: herausgezoomt ein Punkt waere unauffindbar
+BLOCK_FUELLUNG = 0.25      # Anteil `gedaempft` in der Blockflaeche
+BESCHRIFTUNG_PX = 150      # halbe Breite des Kastens, in dem ein Name mittig steht
 
 
 def _auf(element, raum, ebene):
@@ -123,15 +126,21 @@ def zeichne_raum(maler, raum, meter_zu_schirm, skala, palette, auswahl=frozenset
         maler.setPen(farbe)
         maler.drawText(int(px) + 4, int(py) + 14, zone.name)
 
+    # Bloecke: Flaeche zwischen `flaeche` und `gedaempft`, Rand `gedaempft` -- im
+    # hellen Thema waren sie weiss mit hellgrauem Rand auf hellgrauem Grund und
+    # kaum zu sehen (UX-Pruefung 23.09.2026). Der Name steht in der Mitte.
+    fuellung = QColor(mische(palette.flaeche, palette.gedaempft, BLOCK_FUELLUNG))
     for i, block in enumerate(raum.bloecke):
         gewaehlt = ("block", i) in auswahl
         blass = not _auf(block, raum, ebene)
-        maler.setPen(QPen(QColor(palette.akzent if gewaehlt else (palette.blass if blass else palette.rand)), 2))
-        maler.setBrush(QBrush(QColor(palette.blass if blass else palette.flaeche)))
+        rand = palette.akzent if gewaehlt else (palette.blass if blass else palette.gedaempft)
+        maler.setPen(QPen(QColor(rand), 2 if gewaehlt else 1))
+        maler.setBrush(QBrush(QColor(palette.blass) if blass else fuellung))
         maler.drawPolygon(_polygon(block.ecken(), meter_zu_schirm))
         px, py = meter_zu_schirm(block.x, block.y)
-        maler.setPen(QColor(palette.blass if blass else palette.gedaempft))
-        maler.drawText(int(px) + 4, int(py) - 4, block.name)
+        maler.setPen(QColor(palette.blass if blass else palette.text))
+        maler.drawText(QRectF(px - BESCHRIFTUNG_PX, py - 10, 2 * BESCHRIFTUNG_PX, 20),
+                       int(Qt.AlignCenter), block.name)
 
     for i, wand in enumerate(raum.waende):
         gewaehlt = ("wand", i) in auswahl
@@ -155,6 +164,49 @@ def zeichne_raum(maler, raum, meter_zu_schirm, skala, palette, auswahl=frozenset
                                  tag.y + PFEIL_M * math.sin(math.radians(tag.grad)))
         maler.drawLine(QPointF(px, py), QPointF(sx, sy))
         maler.drawText(int(px + halb) + 3, int(py) + 4, str(tag.id))
+
+
+def zeichne_hervorhebung(maler, raum, schluessel, meter_zu_schirm, skala, palette):
+    """Der Umriss des Elements unter dem Zeiger -- vor dem Klick sieht man, was er trifft."""
+    if schluessel is None:
+        return
+    art = schluessel[0]
+    farbe = QColor(mische(palette.text, palette.akzent, 0.55))
+    maler.setPen(QPen(farbe, 2))
+    maler.setBrush(Qt.NoBrush)
+    try:
+        if art == "wand":
+            wand = raum.waende[schluessel[1]]
+            dicke = max(raum.wand_dicke, 6.0 / max(skala, 1e-6))
+            maler.drawPolygon(_polygon(wand_polygon(wand, dicke), meter_zu_schirm))
+        elif art in ("block", "boden", "sperrzone"):
+            element = {"block": raum.bloecke, "boden": raum.boeden,
+                       "sperrzone": raum.sperrzonen}[art][schluessel[1]]
+            maler.drawPolygon(_polygon(element.ecken(), meter_zu_schirm))
+        elif art == "tag":
+            tag = raum.tags[schluessel[1]]
+            px, py = meter_zu_schirm(tag.x, tag.y)
+            halb = max(6.0, TAG_KANTE_M / 2 * skala) + 3
+            maler.drawRect(int(px - halb), int(py - halb), int(2 * halb), int(2 * halb))
+        elif art == "start":
+            px, py = meter_zu_schirm(raum.start[0], raum.start[1])
+            r = max(SPOT_MIN_PX, ROBOTER_RADIUS_M * skala) + 3
+            maler.drawEllipse(QPointF(px, py), r, r)
+    except IndexError:
+        return                      # die Hervorhebung gehoerte zu einem aelteren Raum
+
+
+def zeichne_achse(maler, achse, meter_zu_schirm, breite, hoehe, palette):
+    """Die gesperrte Achse bei G oder S (Blender-Farben: x rot, y gruen), quer durchs Bild."""
+    if achse is None:
+        return
+    name, (x, y) = achse
+    px, py = meter_zu_schirm(x, y)
+    maler.setPen(QPen(QColor(palette.gefahr if name == "x" else palette.ok), 1))
+    if name == "x":
+        maler.drawLine(QPointF(0, round(py)), QPointF(breite, round(py)))
+    else:
+        maler.drawLine(QPointF(round(px), 0), QPointF(round(px), hoehe))
 
 
 def zeichne_spur(maler, spur, meter_zu_schirm, palette):
@@ -196,7 +248,7 @@ def zeichne_anstoesse(maler, punkte, meter_zu_schirm, palette):
 
 def zeichne_spot(maler, px, py, blick_grad, skala, palette, gewaehlt=False):
     """Spot als Kreis mit Blickstrich -- `px, py` schon in Pixeln."""
-    r = max(4.0, ROBOTER_RADIUS_M * skala)
+    r = max(SPOT_MIN_PX, ROBOTER_RADIUS_M * skala)
     maler.setPen(QPen(QColor(palette.akzent if gewaehlt else palette.funktion), 2))
     maler.setBrush(Qt.NoBrush)
     maler.drawEllipse(QPointF(px, py), r, r)

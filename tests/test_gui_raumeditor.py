@@ -74,7 +74,7 @@ def test_zahlenfeld_aendert_das_modell_und_setzt_den_stern(qapp):
     feld.setValue(30.0)
     feld.editingFinished.emit()
     assert ansicht.raum().bloecke[tisch].drehung == 30.0
-    assert ansicht.steuerung.geaendert and "*" in ansicht.titel.text()
+    assert ansicht.steuerung.geaendert and "●" in ansicht.titel.text()
 
 
 def test_speichern_unter_schreibt_die_datei_und_die_konfiguration(qapp, tmp_path, monkeypatch):

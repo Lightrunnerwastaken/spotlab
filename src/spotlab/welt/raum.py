@@ -514,8 +514,23 @@ def _zahl(wert):
     return text if "." in text else text + ".0"
 
 
+# Was in einer TOML-Zeichenkette nicht roh stehen darf. Ein eingefuegter Grund
+# mit Zeilenumbruch machte die Raumdatei unladbar (23.09.2026) -- und
+# ein Raum, der sich nicht mehr oeffnen laesst, ist verloren.
+_MASKEN = {"\\": "\\\\", '"': '\\"', "\b": "\\b", "\t": "\\t", "\n": "\\n", "\f": "\\f",
+           "\r": "\\r"}
+
+
 def _text(wert):
-    return '"' + str(wert).replace("\\", "\\\\").replace('"', '\\"') + '"'
+    aus = []
+    for zeichen in str(wert):
+        if zeichen in _MASKEN:
+            aus.append(_MASKEN[zeichen])
+        elif ord(zeichen) < 0x20 or ord(zeichen) == 0x7F:
+            aus.append(f"\\u{ord(zeichen):04X}")
+        else:
+            aus.append(zeichen)
+    return '"' + "".join(aus) + '"'
 
 
 def _liste(werte):

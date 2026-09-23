@@ -8,6 +8,7 @@ und uebergibt dem Tab EIN Ergebnis (`Korrektur`) -- ein Verlaufsschritt.
 Scheitert das Gelaende, sind die Waende trotzdem angewendet.
 """
 
+import threading
 from dataclasses import dataclass
 
 from PySide6.QtCore import Qt, QThread, Signal
@@ -42,6 +43,23 @@ class Korrektur:
     bericht: dict        # waende_verbunden, durchgaenge, geloescht, gelaende (Bericht | None)
 
 
+# Arbeiter, die noch rechnen. Sie haben KEINEN Eltern-Dialog: ein abgebrochener
+# Dialog darf zu sein (und abgeraeumt werden), waehrend der Arbeiter noch zu
+# Ende laeuft -- ein QThread, der mit seinem Elternobjekt stirbt, nimmt das
+# ganze Fenster mit (CLAUDE.md, JediWorker). Freigegeben wird erst, wenn er
+# nicht mehr laeuft.
+_LAUFENDE = []
+
+
+def _behalte(arbeiter):
+    _LAUFENDE[:] = [a for a in _LAUFENDE if a.isRunning()]
+    _LAUFENDE.append(arbeiter)
+
+
+class _Abgebrochen(Exception):
+    pass
+
+
 class GelaendeArbeiter(QThread):
     fortschritt = Signal(str)
     fertig = Signal(object)          # maps.gelaende_bau.Ergebnis
@@ -51,18 +69,29 @@ class GelaendeArbeiter(QThread):
         super().__init__(parent)
         self._raum, self._weg, self._pauspapier = raum, list(weg), list(pauspapier)
         self._einstellungen = einstellungen
+        # Abbrechen heisst: beim naechsten Zwischenstand aufhoeren. Mitten in
+        # einer numpy-Rechnung laesst sich ein Faden nicht anhalten.
+        self.abbruch = threading.Event()
+
+    def _melde(self, text):
+        if self.abbruch.is_set():
+            raise _Abgebrochen()
+        self.fortschritt.emit(text)
 
     def run(self):
         try:
             ergebnis = baue_gelaende(self._raum, self._weg, self._pauspapier,
-                                     self._einstellungen, fortschritt=self.fortschritt.emit)
+                                     self._einstellungen, fortschritt=self._melde)
+        except _Abgebrochen:
+            return
         except SpotlabError as fehler:
             self.fehler.emit(str(fehler))
             return
         except Exception as fehler:
             self.fehler.emit(f"{type(fehler).__name__}: {fehler}")
             return
-        self.fertig.emit(ergebnis)
+        if not self.abbruch.is_set():
+            self.fertig.emit(ergebnis)
 
 
 def _anzahl(n, einzahl, mehrzahl):
@@ -81,6 +110,7 @@ class KorrekturDialog(QDialog):
         self._raum, self._weg, self._pauspapier = raum, list(weg), list(pauspapier)
         self._luecken = finde_luecken(raum, self._weg, self._pauspapier)
         self._arbeiter = None
+        self._abgebrochen = False
         self._korrigierter_raum = None
         self._teilbericht = {}
         mit_weg = len(self._weg) >= 2
@@ -190,21 +220,41 @@ class KorrekturDialog(QDialog):
             self._fertig(raum, [], None)
             return
         self.anwenden.setEnabled(False)
+        self.schliessen.setText("Abbrechen")
         self.fortschritt.setText("Gelände: Sperren")
         self._arbeiter = GelaendeArbeiter(raum, self._weg, self._pauspapier,
-                                          Einstellungen(abstand=self.abstand.value()), self)
-        self._arbeiter.fortschritt.connect(lambda text: self.fortschritt.setText(f"Gelände: {text}"))
+                                          Einstellungen(abstand=self.abstand.value()))
+        _behalte(self._arbeiter)
+        self._arbeiter.fortschritt.connect(self._zeige_fortschritt)
         self._arbeiter.fertig.connect(self._gelaende_fertig)
         self._arbeiter.fehler.connect(self._gelaende_fehler)
         self._arbeiter.start()
 
+    def rechnet(self):
+        return self._arbeiter is not None and self._arbeiter.isRunning()
+
+    @property
+    def abgebrochen(self):
+        """Wahr, wenn waehrend des Gelaendebaus abgebrochen wurde -- nichts uebernommen."""
+        return self._abgebrochen
+
+    def _zeige_fortschritt(self, text):
+        if not self._abgebrochen:
+            self.fortschritt.setText(f"Gelände: {text}")
+
     def _gelaende_fertig(self, ergebnis):
+        if self._abgebrochen:                    # schon unterwegs, als abgebrochen wurde
+            return
+        self.schliessen.setText("Schliessen")
         raum = uebernimm_gelaende(self._korrigierter_raum, ergebnis.gelaende,
                                   self.boeden_aufloesen.isChecked())
         self._fertig(raum, ergebnis.offene_raender, ergebnis.bericht)
 
     def _gelaende_fehler(self, text):
+        if self._abgebrochen:
+            return
         # Die Waende sind angewendet; das Gelaende nicht -- der Dialog bleibt offen und sagt es.
+        self.schliessen.setText("Schliessen")
         self.fortschritt.setText(f"Gelände scheiterte: {text}")
         self.anwenden.setEnabled(True)
         self._fertig(self._korrigierter_raum, [], None, schliessen=False)
@@ -216,7 +266,17 @@ class KorrekturDialog(QDialog):
         if schliessen:
             self.accept()
 
-    def closeEvent(self, ereignis):
-        if self._arbeiter is not None and self._arbeiter.isRunning():
-            self._arbeiter.wait()
-        super().closeEvent(ereignis)
+    def reject(self):
+        """Esc, „Abbrechen", „Schliessen" und das Fensterkreuz: rechnet das Gelaende
+        noch, wird NICHTS uebernommen -- auch nicht die Waende. Bis zum 23.09.2026
+        versteckte Esc nur den Dialog, und das Ergebnis kam trotzdem an; das
+        Kreuz wartete dagegen im GUI-Thread, bis der Arbeiter fertig war.
+        Gewartet wird hier nie: der Arbeiter laeuft ohne Eltern zu Ende
+        (`_LAUFENDE`) und meldet sich bei niemandem mehr."""
+        if self.rechnet():
+            self._abgebrochen = True
+            self._arbeiter.abbruch.set()
+            self._arbeiter.fortschritt.disconnect(self._zeige_fortschritt)
+            self._arbeiter.fertig.disconnect(self._gelaende_fertig)
+            self._arbeiter.fehler.disconnect(self._gelaende_fehler)
+        super().reject()
