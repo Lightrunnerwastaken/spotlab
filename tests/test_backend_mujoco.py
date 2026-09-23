@@ -235,6 +235,29 @@ def test_die_wahrnehmung_rendert_keine_ansicht_mehr_nebenbei(uhr, tmp_path, monk
 # ------------------------------------------------------------------ Bericht
 
 
+@pytest.mark.parametrize("gewuenscht, erwartet", [(-0.1, -0.1), (0.1, 0.1), (-1.0, -0.15)])
+def test_die_standhoehe_gilt_auch_in_3d_mit_den_fuessen_am_boden(uhr, gewuenscht, erwartet):
+    """Beta-Prüfung 23.09.2026 (p04): MuJoCo ignorierte `stand(height=...)` ganz.
+    Jetzt senkt oder hebt sich der Koerper -- ueber gebeugte oder gestreckte
+    Beine, nicht durch Versinken: die Fuesse bleiben auf dem Boden, und der
+    Bereich ist derselbe wie im 2D-Sim."""
+    from bosdyn.client.robot_command import RobotCommandBuilder
+
+    backend = _backend(uhr, (1.0, 2.0, 0.0), raum="leer")
+    backend.send_command(RobotCommandBuilder.synchro_stand_command())
+    normal = backend.puppe.pose()[3]
+    knie = backend.puppe.gelenke()["fl.kn"]
+
+    backend.send_command(RobotCommandBuilder.synchro_stand_command(body_height=gewuenscht))
+    backend.robot_state()
+    hoehe = backend.puppe.pose()[3]
+    assert hoehe == pytest.approx(normal + erwartet, abs=0.002)
+    # Die Hoehe, bei der der tiefste Fuss den Boden beruehrt, IST die Koerperhoehe.
+    assert backend.puppe.standhoehe(backend.puppe.gelenke()) == pytest.approx(hoehe, abs=1e-4)
+    beuge = backend.puppe.gelenke()["fl.kn"]
+    assert (beuge < knie) if erwartet < 0 else (beuge > knie)   # Knie beugt sich beim Ducken
+
+
 def test_der_bericht_nennt_die_standhoehe_der_kinematik(uhr):
     bericht = _backend(uhr, (1.0, 2.0, 0.0)).bericht()
     puppe = bericht["puppe"]

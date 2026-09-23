@@ -63,6 +63,13 @@ NACHLAUF_S = 1.0
 ZIEL_TOLERANZ_M = 0.001
 ZIEL_TOLERANZ_RAD = math.radians(0.1)
 
+# Wie weit die Koerperhoehe von der Standhoehe abweichen darf -- derselbe
+# Bereich, den `pose()` an der Fassade zusichert (api/body.py, ±0.15 m).
+# Darueber hinaus klemmt der Sim: `stand(height=-1)` steckte den Koerper bis
+# zum 23.09.2026 einen halben Meter in den Boden, `height=2` hob ihn auf
+# 2.5 m. Was der echte Spot bei groesseren Werten tut, ist NICHT gemessen.
+HOEHE_BEREICH_M = 0.15
+
 HINWEIS = (
     "Dieser Lauf ist NICHT am Roboter erprobt. Das Sim-Backend interpoliert "
     "gemessene Gangarten — es kennt keine Physik: nichts kann umfallen, "
@@ -136,7 +143,10 @@ class SimBackend:
         self._phase = 0.0
         self._soll = (0.0, 0.0, 0.0)
         self._gueltig_bis = 0.0
-        self._sitzt = False
+        # Spot beginnt, wie er abgestellt wird: sitzend, Motoren aus. Bis zum
+        # 23.09.2026 stand hier False, und der Sim meldete vor `power_on()`
+        # STANDING -- ein Programm, das auf den Stand wartet, lief am Sim durch.
+        self._sitzt = True
         self._ziel = None
         self._hoehe = self._modell.hoehe_m
         # Stufe 13: Hoehe. `_z` ist der Boden unter der Koerpermitte, `_nick_grad`
@@ -426,6 +436,7 @@ class SimBackend:
         mobil = kommando.synchronized_command.mobility_command
         if mobil.WhichOneof("command") == "se2_trajectory_request":
             self._ziel_aus(mobil.se2_trajectory_request)  # vor jeder Zustandsaenderung pruefen
+        self._hoehenversatz(mobil)                         # ebenso: NaN wird abgewiesen
         self.gesendet.append(kommando)
         self._fortschreiben()
         self._beende_ziel("ersetzt (Sim)", rejected=True)
@@ -473,6 +484,11 @@ class SimBackend:
         # abwechselnd in `_soll`.
         if art != "se2_trajectory_request":
             self._ziel = None
+        if art in ("se2_velocity_request", "se2_trajectory_request", "stand_request"):
+            # Jedes dieser Kommandos traegt seine Koerperhoehe in den params --
+            # ohne eigene Angabe baut das SDK sie mit body_height=0. Wie am
+            # Roboter geht also normal hoch, wer geduckt stand und losfaehrt.
+            self._hoehe = self._modell.hoehe_m + self._hoehenversatz(mobil)
         if art == "se2_velocity_request":
             # `angular` ist bei SE2Velocity ein SKALAR, kein Vektor — anders als
             # bei der Geschwindigkeit im RobotState, wo `angular.z` steht.
@@ -485,7 +501,6 @@ class SimBackend:
         elif art == "stand_request":
             self._soll = (0.0, 0.0, 0.0)
             self._sitzt = False
-            self._hoehe = self._modell.hoehe_m + self._hoehenversatz(mobil)
         elif art == "sit_request":
             self._soll = (0.0, 0.0, 0.0)
             self._sitzt = True
@@ -612,13 +627,16 @@ class SimBackend:
 
     @staticmethod
     def _hoehenversatz(mobil):
-        """Die Körperhöhe aus `synchro_stand_command(body_height=...)`.
+        """Die Körperhöhe aus `synchro_stand_command(body_height=...)`, geklemmt.
 
         Sie steht nicht im `stand_request`, sondern in den `params` des
         Mobility-Kommandos — einem `Any`, das erst als `MobilityParams`
         ausgepackt werden muss. Der Weg dorthin ist lang und versionsabhängig;
         scheitert er, gilt die gemessene Standhöhe. Eine falsche Höhe ist ein
         Schönheitsfehler, ein Absturz beim `spot.stand()` eines Schülers nicht.
+
+        Geklemmt auf ±HOEHE_BEREICH_M. Ein NaN oder inf ist keine Höhe, die
+        man klemmen könnte: CommandRejected, bevor sich etwas ändert.
         """
         try:
             from bosdyn.api.spot import robot_command_pb2 as spot_pb2
@@ -628,9 +646,16 @@ class SimBackend:
             params = spot_pb2.MobilityParams()
             mobil.params.Unpack(params)
             punkte = params.body_control.base_offset_rt_footprint.points
-            return punkte[0].pose.position.z if punkte else 0.0
+            versatz = float(punkte[0].pose.position.z) if punkte else 0.0
         except Exception:
             return 0.0
+        if not math.isfinite(versatz):
+            raise CommandRejected(
+                f"Die Körperhöhe {versatz} ist keine endliche Zahl -- Spot bleibt, wie er "
+                f"ist. `stand(height=...)` nimmt Meter zwischen -{HOEHE_BEREICH_M} und "
+                f"+{HOEHE_BEREICH_M}."
+            )
+        return max(-HOEHE_BEREICH_M, min(HOEHE_BEREICH_M, versatz))
 
     @synchronisiert
     def command_feedback(self, command_id):

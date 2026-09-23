@@ -203,6 +203,74 @@ def test_sitzen_haelt_an(uhr):
     assert zustand.kinematic_state.velocity_of_body_in_odom.linear.x == 0.0
 
 
+def _verhalten(backend):
+    from bosdyn.api import robot_state_pb2
+
+    return robot_state_pb2.BehaviorState.State.Name(backend.robot_state().behavior_state.state)
+
+
+def test_vor_power_on_steht_spot_nicht(uhr):
+    """Beta-Prüfung 23.09.2026 (p02): vor `power_on()` meldete der Sim
+    `STANDING` -- mit ausgeschalteten Motoren. Ein Programm, das auf den
+    Stand wartet, lief damit am Sim durch und hing am Roboter."""
+    from bosdyn.client.robot_command import RobotCommandBuilder
+
+    backend = SimBackend(jetzt=uhr)
+    assert _verhalten(backend) == "STATE_NOT_READY"
+    backend.power_on()
+    assert _verhalten(backend) == "STATE_NOT_READY"          # Motoren an heisst nicht stehen
+    backend.send_command(RobotCommandBuilder.synchro_stand_command())
+    assert _verhalten(backend) == "STATE_STANDING"
+
+
+def _koerperhoehe(backend):
+    from bosdyn.client.frame_helpers import BODY_FRAME_NAME, ODOM_FRAME_NAME, get_a_tform_b
+
+    return get_a_tform_b(backend.frame_tree_snapshot(), ODOM_FRAME_NAME, BODY_FRAME_NAME).position.z
+
+
+@pytest.mark.parametrize("gewuenscht, erwartet", [
+    (0.1, 0.1), (-0.1, -0.1), (2.0, 0.15), (-1.0, -0.15), (0.15, 0.15),
+])
+def test_die_standhoehe_bleibt_im_bereich_des_spot(uhr, gewuenscht, erwartet):
+    """p04: `stand(height=-1)` steckte den Koerper einen halben Meter in den
+    Boden, `height=2` hob ihn auf 2.5 m. Der Sim klemmt auf den Bereich, den
+    `pose()` an der Fassade zusichert (±0.15 m)."""
+    from bosdyn.client.robot_command import RobotCommandBuilder
+
+    backend = _sim(uhr)
+    normal = backend._modell.hoehe_m
+    backend.send_command(RobotCommandBuilder.synchro_stand_command(body_height=gewuenscht))
+    assert _koerperhoehe(backend) == pytest.approx(normal + erwartet)
+    fuss = backend.robot_state().foot_state[0].foot_position_rt_body.z
+    assert fuss == pytest.approx(-(normal + erwartet))
+
+
+@pytest.mark.parametrize("wert", [float("nan"), float("inf")])
+def test_eine_nicht_endliche_standhoehe_wird_abgewiesen(uhr, wert):
+    from bosdyn.client.robot_command import RobotCommandBuilder
+
+    backend = _sim(uhr)
+    vorher = _koerperhoehe(backend)
+    with pytest.raises(CommandRejected, match="endlich"):
+        backend.send_command(RobotCommandBuilder.synchro_stand_command(body_height=wert))
+    assert _koerperhoehe(backend) == pytest.approx(vorher)
+
+
+def test_gehen_nimmt_die_hoehe_aus_dem_fahrkommando(uhr):
+    """Wie am Roboter: ein Fahrkommando traegt seine eigene Koerperhoehe
+    (`mobility_params(body_height=0)` als Vorgabe des SDK). Wer geduckt steht
+    und losgeht, geht in normaler Hoehe."""
+    from bosdyn.client.robot_command import RobotCommandBuilder
+
+    backend = _sim(uhr)
+    normal = backend._modell.hoehe_m
+    backend.send_command(RobotCommandBuilder.synchro_stand_command(body_height=-0.1))
+    assert _koerperhoehe(backend) == pytest.approx(normal - 0.1)
+    _fahre(backend, uhr, vx=0.3, sekunden=0.5)
+    assert _koerperhoehe(backend) == pytest.approx(normal)
+
+
 # --------------------------------------------------------------- Es erfindet nichts
 
 

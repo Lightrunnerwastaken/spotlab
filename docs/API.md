@@ -54,8 +54,8 @@ normalerweise weglassen.
 | `power_on()` | Schaltet die Motoren ein. Spot steht davon noch nicht auf. |
 | `power_off(safe=True)` | Schaltet die Motoren ab; mit safe=True setzt Spot sich vorher hin. |
 | `is_powered` | True, solange die Motoren eingeschaltet sind. |
-| `battery` | Ladestand des Akkus in Prozent. |
-| `stand(height=0.0, timeout=10.0, schlaf=None)` | Steht auf. height hebt oder senkt den Körper in Metern. |
+| `battery` | Ladestand des Akkus in Prozent; `None`, wenn das Backend keinen Akku meldet (Physikmodus). |
+| `stand(height=0.0, timeout=10.0, schlaf=None)` | Steht auf. height hebt oder senkt den Körper in Metern (±0.15 m wie bei `pose()`; Sim und MuJoCo klemmen darauf, was der Roboter jenseits davon tut, ist nicht gemessen). |
 | `sit(timeout=10.0, schlaf=None)` | Setzt sich hin. |
 | `move(forward=0.0, left=0.0, turn=0.0, timeout=30.0)` | Geht eine feste Strecke in Metern und dreht sich um turn in Grad. |
 | `walk(vx=0.0, vy=0.0, wz=0.0, duration=1.0, stop=True, nick_grad=0.0)` | Fährt duration Sekunden lang mit den angegebenen Geschwindigkeiten. `nick_grad` neigt den Körper während der Fahrt (negativ hebt die Nase, die Kameras schauen dann höher); nur am echten Roboter. |
@@ -100,7 +100,9 @@ normalerweise weglassen.
 - `walk()` und `move()` weisen NaN, `inf` und Nicht-Zahlen mit `ValueError` ab, bevor
   ein Kommando gebaut ist — ein NaN wird nie geklemmt oder zu 0 umgedeutet.
   `move(timeout=...)` muss grösser als 0 sein.
-- `is_powered`: bool; `battery`: Prozent; `state`: neue State-Momentaufnahme;
+- `is_powered`: bool; `battery`: Prozent oder `None`; `state`: neue State-Momentaufnahme
+  (vor `power_on()` und im Sitzen meldet der Sim `behavior` „NOT_READY“, erst `stand()`
+  oder eine Fahrt macht „STANDING“/„STEPPING“);
   `robot`: SDK-Robot nur am echten Backend, sonst `None`.
 - `cameras()`: Liste bekannter Kurznamen; `camera(name)`: Image. Kurznamen:
   frontleft, frontright, left, right, back. Auch exakte gemeldete SDK-Quellnamen

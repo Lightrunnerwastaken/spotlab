@@ -37,6 +37,23 @@ def test_abtastung_ist_flach_und_json_faehig():
     assert probe["feet"] == [True, True, True, True]
 
 
+def test_ohne_akku_ist_der_ladestand_none_nicht_null():
+    """Beta-Prüfung 23.09.2026 (p21): der Physikmodus meldet keinen Akku, und
+    `spot.state.battery` war 0.0 -- ein leerer Akku, den es nicht gibt.
+    Fehlende Messwerte sind None, nie 0 (CLAUDE.md)."""
+    z = robot_state_pb2.RobotState()
+    assert from_proto(z).battery is None
+    assert as_sample(z)["battery"] is None
+    z.battery_states.add()                                   # Akku da, Ladestand nicht
+    assert from_proto(z).battery is None
+
+
+def test_ein_gemessener_leerer_akku_bleibt_null():
+    z = robot_state_pb2.RobotState()
+    z.battery_states.add().charge_percentage.CopyFrom(wrappers_pb2.DoubleValue(value=0.0))
+    assert from_proto(z).battery == 0.0
+
+
 # --------------------------------------------------------- Kalibrierfelder (Stufe 7)
 
 
