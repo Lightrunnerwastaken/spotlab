@@ -128,3 +128,20 @@ def test_gleiches_skript_zweimal_kollidiert_nicht(tmp_path):
     erster = RunRecorder(tmp_path / "runs", skript, backend="dryrun")
     zweiter = RunRecorder(tmp_path / "runs", skript, backend="dryrun")
     assert erster.dir != zweiter.dir
+
+
+def test_das_lauf_verzeichnis_wird_atomar_belegt(tmp_path, monkeypatch):
+    """Beta-Prüfung 23.09.2026 (p18): zwei PROZESSE in derselben Sekunde (zweimal
+    `skript_starten` über MCP) fragten erst `exists()` und legten dann an --
+    dazwischen passte der andere, und beide schrieben in dasselbe Verzeichnis.
+    Nachgestellt, ohne Prozesse: `exists()` sieht den anderen Lauf nicht."""
+    from pathlib import Path
+
+    from spotlab.record import run
+
+    monkeypatch.setattr(run, "run_id", lambda skript, jetzt: "20260923T120000Z_interakt")
+    monkeypatch.setattr(Path, "exists", lambda self: False)
+    erster = RunRecorder(tmp_path, None, backend="dryrun")
+    zweiter = RunRecorder(tmp_path, None, backend="dryrun")
+    assert erster.dir != zweiter.dir
+    assert zweiter.id == "20260923T120000Z_interakt-2"
