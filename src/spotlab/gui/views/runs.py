@@ -190,6 +190,15 @@ class RunsView(QWidget):
         # Arbeitsordners. Wo Laeufe liegen, entscheidet genau eine Stelle --
         # zwei Suchen mit verschiedenen Ergebnissen waren der Fehler aus
         # Stufe 3, und er ist hier unbemerkt wiedergekommen.
+        #
+        # Die AUSWAHL ueberlebt das Auffrischen am Lauf, nicht an der Zeile. Das
+        # laeuft bei jedem Laufende; vorher blieb die Markierung auf ihrer Zeile
+        # stehen, dort stand dann der neue Lauf, das Detail zeigte weiter den
+        # alten, und der Video-Knopf renderte den markierten (Pruefung 23.09.2026).
+        # Gemerkt wird das Verzeichnis: eine `id` aus lauf.json kann bei einem
+        # kopierten Lauf doppelt vorkommen, ein Verzeichnis nicht.
+        vorher = self.gewaehlter_lauf()
+        gemerkt = vorher.dir if vorher is not None else None
         self._laeufe = []
         if self._ordner is not None:
             # Ohne Zeilenzahlen: die Tabelle zeigt sie nicht, und sie zu zaehlen
@@ -197,12 +206,24 @@ class RunsView(QWidget):
             self._laeufe = [read_run(p, zaehlen=False) for p in lauf_verzeichnisse(self._ordner)]
         self._laeufe.sort(key=lambda lauf: lauf.id, reverse=True)
 
-        self.tabelle.setRowCount(len(self._laeufe))
-        for zeile, lauf in enumerate(self._laeufe):
-            skript = Path(lauf.skript).name if lauf.skript else ""
-            werte = (lauf.id, lauf.ergebnis, f"{lauf.dauer_s:.1f} s", lauf.backend, skript)
-            for spalte, wert in enumerate(werte):
-                self.tabelle.setItem(zeile, spalte, QTableWidgetItem(str(wert)))
+        self.tabelle.blockSignals(True)          # ein Detail am Ende, nicht je Zeile
+        try:
+            self.tabelle.clearSelection()
+            self.tabelle.setRowCount(len(self._laeufe))
+            for zeile, lauf in enumerate(self._laeufe):
+                skript = Path(lauf.skript).name if lauf.skript else ""
+                werte = (lauf.id, lauf.ergebnis, f"{lauf.dauer_s:.1f} s", lauf.backend, skript)
+                for spalte, wert in enumerate(werte):
+                    self.tabelle.setItem(zeile, spalte, QTableWidgetItem(str(wert)))
+            wieder = [i for i, lauf in enumerate(self._laeufe)
+                      if gemerkt is not None and lauf.dir == gemerkt]
+            if wieder:
+                self.tabelle.selectRow(wieder[0])
+        finally:
+            self.tabelle.blockSignals(False)
+        # Ist der gemerkte Lauf weg, bleibt nichts markiert -- und das Detail leer,
+        # statt einen Lauf zu zeigen, den es nicht mehr gibt.
+        self._zeige_detail()
 
     def gewaehlter_lauf(self):
         zeilen = {i.row() for i in self.tabelle.selectedIndexes()}
@@ -218,9 +239,10 @@ class RunsView(QWidget):
     def _zeige_detail(self):
         lauf = self.gewaehlter_lauf()
         self.video.setEnabled(lauf is not None)
-        if lauf is None:
-            return
         self.ereignisliste.clear()
+        if lauf is None:
+            self.kurve.setze_daten([], [])
+            return
         for satz in read_jsonl(lauf.dir / "ereignisse.jsonl"):
             self.ereignisliste.addItem(
                 f"{satz.get('t', 0.0):7.2f} s  {satz.get('art', ''):<14} "

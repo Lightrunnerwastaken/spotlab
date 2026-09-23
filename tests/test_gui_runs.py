@@ -165,6 +165,81 @@ def test_die_ereignisliste_zeigt_das_ergebnis(qapp, tmp_path):
     assert "000.png" in zusammen, zusammen
 
 
+# ============ Auswahl ueber das Auffrischen hinweg (Pruefung 23.09.2026, p09)
+#
+# `aktualisiere()` laeuft bei jedem Laufende. Die Tabelle wurde neu gefuellt,
+# die Markierung blieb auf ihrer ZEILE stehen -- dort stand jetzt der neue Lauf,
+# das Detail zeigte weiter den alten, und der Video-Knopf renderte den markierten.
+
+
+def _lauf(runs, kennung, text):
+    import json
+
+    verzeichnis = runs / kennung
+    verzeichnis.mkdir(parents=True)
+    (verzeichnis / "lauf.json").write_text(json.dumps(
+        {"id": kennung, "ergebnis": "ok", "dauer_s": 1.0, "backend": "dryrun",
+         "skript": f"{text}.py"}), encoding="utf-8")
+    (verzeichnis / "ereignisse.jsonl").write_text(json.dumps(
+        {"t": 0.1, "art": "fehler", "daten": {"text": f"Ereignis von {text}"}}) + "\n",
+        encoding="utf-8")
+    return verzeichnis
+
+
+def _markierte_skripte(ansicht):
+    return [ansicht.tabelle.item(i.row(), 4).text()
+            for i in ansicht.tabelle.selectionModel().selectedRows()]
+
+
+def _detail(ansicht):
+    return [ansicht.ereignisliste.item(i).text() for i in range(ansicht.ereignisliste.count())]
+
+
+def test_auffrischen_behaelt_den_gewaehlten_lauf(qapp, tmp_path):
+    runs = tmp_path / "P" / "runs"
+    _lauf(runs, "20260923T100000Z_aaaa", "A")
+    b = _lauf(runs, "20260923T110000Z_bbbb", "B")
+    ansicht = RunsView(DUNKEL)
+    ansicht.setze_arbeitsordner(tmp_path)
+    ansicht.tabelle.selectRow(0)
+    assert _markierte_skripte(ansicht) == ["B.py"]
+
+    _lauf(runs, "20260923T120000Z_cccc", "C")          # ein Lauf ist fertig geworden
+    ansicht.aktualisiere()
+    assert _markierte_skripte(ansicht) == ["B.py"], "die Markierung sprang auf den neuen Lauf"
+    assert ansicht.gewaehlter_lauf().dir == b, "der Video-Knopf rendert einen anderen Lauf"
+    assert any("Ereignis von B" in z for z in _detail(ansicht))
+    assert ansicht.video.isEnabled()
+
+
+def test_ein_verschwundener_lauf_leert_auswahl_und_detail(qapp, tmp_path):
+    import shutil
+
+    runs = tmp_path / "P" / "runs"
+    _lauf(runs, "20260923T100000Z_aaaa", "A")
+    b = _lauf(runs, "20260923T110000Z_bbbb", "B")
+    ansicht = RunsView(DUNKEL)
+    ansicht.setze_arbeitsordner(tmp_path)
+    ansicht.tabelle.selectRow(0)
+    shutil.rmtree(b)
+
+    ansicht.aktualisiere()
+    assert _markierte_skripte(ansicht) == []
+    assert ansicht.gewaehlter_lauf() is None
+    assert _detail(ansicht) == [], "das Detail zeigt einen Lauf, den es nicht mehr gibt"
+    assert not ansicht.video.isEnabled()
+
+
+def test_ohne_auswahl_waehlt_das_auffrischen_nichts_aus(qapp, tmp_path):
+    runs = tmp_path / "P" / "runs"
+    _lauf(runs, "20260923T100000Z_aaaa", "A")
+    ansicht = RunsView(DUNKEL)
+    ansicht.setze_arbeitsordner(tmp_path)
+    _lauf(runs, "20260923T110000Z_bbbb", "B")
+    ansicht.aktualisiere()
+    assert _markierte_skripte(ansicht) == [] and not ansicht.video.isEnabled()
+
+
 def test_auffrischen_zaehlt_keine_zeilen(qapp, tmp_path, monkeypatch):
     import spotlab.record.read as lesen
 
