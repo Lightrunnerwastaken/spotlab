@@ -155,6 +155,7 @@ class MainWindow(QWidget):
         self._setze_arbeitsordner(self._config.workspace if self._config else "")
         self.kopf.zeige_config(self._config)
         self.ansichten["karten"].setze_config(self._config)
+        self._datei_an_raumeditor()
 
         if self._config is None:
             self._wechsle("spot")
@@ -171,7 +172,9 @@ class MainWindow(QWidget):
         self.ansichten["projekte"].arbeitsordner_geaendert.connect(self._merke_arbeitsordner)
         self.ansichten["spot"].config_gespeichert.connect(self._config_gespeichert)
         self.ansichten["raumeditor"].meldung.connect(self._melde)
-        self.ansichten["raumeditor"].config_gespeichert.connect(self._config_gespeichert)
+        self.ansichten["raumeditor"].config_gespeichert.connect(self._raum_gemerkt)
+        # Der Startknopf im Raumeditor nennt die Datei, die im Reiter Code offen ist.
+        self.ansichten["code"].reiter.currentChanged.connect(self._datei_an_raumeditor)
         # Delegation, kein zweiter Startweg: genau EIN Lauf ist der, auf den
         # Stopp und NOT-AUS zeigen.
         # An den EDITOR, nicht an "Projekte": der Knopf soll die offene Datei
@@ -285,6 +288,8 @@ class MainWindow(QWidget):
     # ------------------------------------------------------------- Reaktionen
 
     def _wechsle(self, schluessel):
+        if schluessel == "raumeditor":
+            self._datei_an_raumeditor()        # auch nach „Speichern unter“ im Reiter Code
         self.stapel.setCurrentWidget(self.ansichten[schluessel])
 
     def _melde(self, text):
@@ -327,6 +332,23 @@ class MainWindow(QWidget):
         """
         if cfg is not None:
             self.ansichten["code"].setze_backend(cfg.default_backend)
+
+    def _raum_gemerkt(self, cfg):
+        """Raum und Startpose aus dem Raumeditor auf die Platte -- NUR diese zwei Felder,
+        frisch geladen: der Raumeditor haelt eine Kopie vom Start. Vorher speicherte
+        niemand sie; sie kamen nur zufaellig mit, wenn danach etwas anderes
+        geschrieben wurde. Gebraucht werden sie beim naechsten Start des Raumeditors
+        und von F5 in VS Code (`cfg.raum`)."""
+        basis = konfig.frisch(self._config)
+        if basis is None:
+            return
+        neu = replace(basis, raum=cfg.raum, raum_start=cfg.raum_start)
+        save_config(neu)
+        self._config_gespeichert(neu)
+
+    def _datei_an_raumeditor(self, *_):
+        eintrag = self.ansichten["code"].aktueller_reiter()
+        self.ansichten["raumeditor"].setze_datei(eintrag.pfad.name if eintrag else None)
 
     def _config_gespeichert(self, cfg):
         self._config = cfg

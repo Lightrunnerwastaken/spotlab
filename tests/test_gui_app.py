@@ -580,6 +580,7 @@ def test_der_startknopf_im_uebungsraum_erzwingt_das_sim_backend(qapp):
     fenster.ansichten["code"].setze_backend("real")
     gestartet = []
     fenster.ansichten["code"].starte_aktuelles = lambda backend=None: gestartet.append(backend)
+    fenster.ansichten["raumeditor"].setze_datei("hallo_spot.py")     # ohne Datei ist er gesperrt
     fenster.ansichten["raumeditor"].starten.click()
     # 2D oder 3D, je nachdem, was auf diesem Laptop laeuft -- nie der Roboter.
     assert gestartet and gestartet[0] in ("sim", "mujoco")
@@ -646,6 +647,7 @@ def test_der_uebungsraum_knopf_nimmt_3d_wenn_es_da_ist(qapp, monkeypatch):
     fenster = MainWindow()
     gestartet = []
     fenster.ansichten["code"].starte_aktuelles = lambda backend=None: gestartet.append(backend)
+    fenster.ansichten["raumeditor"].setze_datei("hallo_spot.py")     # ohne Datei ist er gesperrt
     fenster.ansichten["raumeditor"].starten.click()
     assert gestartet == ["mujoco"]
 
@@ -657,6 +659,7 @@ def test_der_uebungsraum_knopf_nimmt_2d_ohne_spotsim(qapp, monkeypatch):
     fenster = MainWindow()
     gestartet = []
     fenster.ansichten["code"].starte_aktuelles = lambda backend=None: gestartet.append(backend)
+    fenster.ansichten["raumeditor"].setze_datei("hallo_spot.py")     # ohne Datei ist er gesperrt
     fenster.ansichten["raumeditor"].starten.click()
     assert gestartet == ["sim"]
 
@@ -1463,3 +1466,38 @@ def test_schliessen_mit_ja_beendet_das_programm(qapp, eigener_prozess):
     fenster.closeEvent(ereignis)
     assert ereignis.isAccepted()
     assert eigener_prozess.poll() is not None, "das Programm darf nicht verwaist weiterlaufen"
+
+
+def test_der_raum_aus_dem_raumeditor_landet_auf_der_platte(qapp, tmp_path, monkeypatch):
+    """Der Raumeditor meldet Raum und Startpose, speichert aber nie selbst. Sie kamen
+    nur zufaellig auf die Platte, wenn danach der Arbeitsordner gespeichert wurde --
+    und seit dort frisch geladen wird (gui/konfig.py), gar nicht mehr. Gebraucht
+    werden sie: der Raumeditor stellt beim Start den letzten Raum her, und F5 in VS
+    Code faehrt in cfg.raum."""
+    from dataclasses import replace
+
+    from spotlab.config import Config, Limits, load_config, save_config
+
+    pfad = tmp_path / "config.toml"
+    monkeypatch.setattr("spotlab.config.CONFIG_PATH", pfad)
+    save_config(Config(ip="10.0.0.9", username="lehrer", limits=Limits(treppen="aus")), pfad)
+    fenster = MainWindow()
+    veraltet = replace(load_config(pfad), limits=Limits(treppen="auto"))
+    fenster.ansichten["raumeditor"].config_gespeichert.emit(
+        replace(veraltet, raum="durchgang", raum_start="2.00,3.00,90.0")
+    )
+    nachher = load_config(pfad)
+    assert (nachher.raum, nachher.raum_start) == ("durchgang", "2.00,3.00,90.0")
+    assert nachher.limits.treppen == "aus", "nur Raum und Start, nie die Kopie des Raumeditors"
+
+
+def test_der_startknopf_im_raumeditor_nennt_die_offene_datei(qapp, tmp_path):
+    from spotlab.workshop.project import create_project
+
+    fenster = MainWindow()
+    knopf = fenster.ansichten["raumeditor"].starten
+    assert not knopf.isEnabled(), "ohne offene Datei gibt es nichts zu starten"
+    projekt = create_project("demo", tmp_path)
+    fenster.ansichten["code"].setze_arbeitsordner(tmp_path)
+    fenster.ansichten["code"].oeffne(projekt / "hallo_spot.py")
+    assert "hallo_spot.py" in knopf.text() and knopf.isEnabled()
