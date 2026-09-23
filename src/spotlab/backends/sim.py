@@ -54,11 +54,14 @@ from spotlab.welt.kollision import MAX_SCHRITT_M
 # Sim ewig weiter, das am Roboter nach einer Sekunde stehenbliebe.
 NACHLAUF_S = 1.0
 
-# Wann ein Ziel als erreicht gilt. Grosszügiger als die Rechengenauigkeit, weil
-# sonst um den Zielpunkt herum gependelt würde: der Schritt je Takt ist bei
-# 0.2 m/s und 20 ms rund 4 mm.
-ZIEL_TOLERANZ_M = 0.02
-ZIEL_TOLERANZ_RAD = 0.03
+# Wann ein Ziel als erreicht gilt. Gependelt wird nicht: das Bremsprofil
+# (`antwort.tempo`, v <= sqrt(2 b rest)) laeuft bis zum Rest 0, und der letzte
+# Schritt ist in `_zum_ziel` auf den Rest gedeckelt (`abstand / dt`). Bis zum
+# 23.09.2026 standen hier 2 cm und 0.03 rad (1.7 Grad): Spot hielt ANGEKOMMEN,
+# sobald er so nahe war, noch mitten im Bremsen -- `move(forward=0.05)` fuhr
+# 3 cm, `move(turn=2)` 0.3 Grad, zehnmal 0.1 m ergaben 0.8 m (Beta-Pruefung).
+ZIEL_TOLERANZ_M = 0.001
+ZIEL_TOLERANZ_RAD = math.radians(0.1)
 
 HINWEIS = (
     "Dieser Lauf ist NICHT am Roboter erprobt. Das Sim-Backend interpoliert "

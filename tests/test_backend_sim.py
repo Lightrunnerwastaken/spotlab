@@ -388,6 +388,51 @@ def test_move_dreht_auf_den_zielwinkel(uhr):
     assert yaw == pytest.approx(math.pi / 2, abs=0.05)
 
 
+def _move_mit_spur(backend, uhr, vor=0.0, drehen=0.0, schritt=0.01):
+    """Wie `_move`, merkt sich aber jede Pose -- fuer die Frage nach dem Ueberschiessen."""
+    from bosdyn.client.robot_command import RobotCommandBuilder
+
+    kennung = backend.send_command(
+        RobotCommandBuilder.synchro_trajectory_command_in_body_frame(
+            vor, 0.0, drehen, backend.frame_tree_snapshot()),
+        end_time_secs=uhr.t + 30.0,
+    )
+    spur = []
+    while not backend.command_feedback(kennung).done:
+        assert len(spur) < 3000, "nicht angekommen"
+        spur.append(_pose(backend))
+        uhr.weiter(schritt)
+    spur.append(_pose(backend))
+    return spur
+
+
+@pytest.mark.parametrize("vor", [1.0, 0.5, 0.2, 0.05, -0.3])
+def test_move_kommt_auf_den_millimeter_an_ohne_ueberschiessen(uhr, vor):
+    """Beta-Prüfung 23.09.2026 (p03): `move()` blieb im Sim um die Toleranz von
+    2 cm zu kurz -- `move(forward=0.05)` fuhr 3 cm, zehnmal 0.1 m ergaben
+    0.8 m. Das Bremsprofil reicht bis zum Rest 0; die Toleranz ist nur noch
+    ein Millimeter. Und der letzte Schritt ist auf den Rest gedeckelt: kein
+    Pendeln um das Ziel, kein Ueberschiessen."""
+    backend = _sim(uhr)
+    spur = _move_mit_spur(backend, uhr, vor=vor)
+    x, y, _ = spur[-1]
+    assert x == pytest.approx(vor, abs=0.0011)
+    assert y == pytest.approx(0.0, abs=1e-6)
+    weiteste = max(abs(p[0]) for p in spur)
+    assert weiteste <= abs(vor) + 1e-9, f"ueber das Ziel hinaus: {weiteste:.5f} m"
+
+
+@pytest.mark.parametrize("grad", [90.0, 2.0, -45.0, 0.5])
+def test_move_dreht_auf_das_zehntelgrad_ohne_ueberschiessen(uhr, grad):
+    """p03: `move(turn=2)` drehte 0.3 Grad, `move(turn=90)` 88.3 -- die Toleranz
+    war 1.7 Grad. Jetzt 0.1 Grad."""
+    backend = _sim(uhr)
+    spur = _move_mit_spur(backend, uhr, drehen=math.radians(grad))
+    gedreht = [math.degrees(p[2]) for p in spur]
+    assert gedreht[-1] == pytest.approx(grad, abs=0.11)
+    assert max(abs(g) for g in gedreht) <= abs(grad) + 1e-6
+
+
 def test_move_faehrt_im_koerperframe(uhr):
     """Nach einer Vierteldrehung muss „vorwaerts" nach +y zeigen, nicht +x.
     Die Geschwindigkeit ist koerperfest, das Ziel steht in odom."""
