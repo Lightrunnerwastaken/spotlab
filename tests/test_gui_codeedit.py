@@ -42,6 +42,69 @@ def test_shift_tab_rueckt_aus(qapp):
     assert feld.toPlainText() == "    x = 1"
 
 
+# ================ Tab und Shift+Tab mit Markierung (Pruefung 23.09.2026, p01)
+#
+# Tab ersetzte die markierten Zeilen durch vier Leerzeichen -- der Code war weg.
+# Shift+Tab rueckte nur die Zeile mit dem Cursor aus.
+
+
+def _markiere(feld, von_block, von_spalte, bis_block, bis_spalte):
+    dokument = feld.document()
+    cursor = feld.textCursor()
+    cursor.setPosition(dokument.findBlockByNumber(von_block).position() + von_spalte)
+    cursor.setPosition(dokument.findBlockByNumber(bis_block).position() + bis_spalte,
+                       QTextCursor.KeepAnchor)
+    feld.setTextCursor(cursor)
+
+
+def test_tab_mit_markierten_zeilen_rueckt_alle_ein_und_ein_rueckgaengig_genuegt(qapp):
+    feld = CodeEdit(DUNKEL)
+    vorher = "def f():\nx = 1\ny = 2\nprint(x, y)\n"
+    feld.setPlainText(vorher)
+    _markiere(feld, 1, 0, 2, 5)
+    QTest.keyClick(feld, Qt.Key_Tab)
+    assert feld.toPlainText() == "def f():\n    x = 1\n    y = 2\nprint(x, y)\n"
+    feld.undo()
+    assert feld.toPlainText() == vorher
+
+
+def test_shift_tab_mit_markierten_zeilen_rueckt_alle_aus_und_ein_rueckgaengig_genuegt(qapp):
+    feld = CodeEdit(DUNKEL)
+    vorher = "    a = 1\n    b = 2\n    c = 3\n"
+    feld.setPlainText(vorher)
+    _markiere(feld, 0, 0, 2, 3)
+    QTest.keyClick(feld, Qt.Key_Backtab, Qt.ShiftModifier)
+    assert feld.toPlainText() == "a = 1\nb = 2\nc = 3\n"
+    feld.undo()
+    assert feld.toPlainText() == vorher
+
+
+def test_eine_markierung_bis_zum_zeilenanfang_nimmt_die_zeile_nicht_mit(qapp):
+    """Wer ganze Zeilen mit Shift+Pfeil markiert, steht am Ende am Anfang der
+    naechsten -- die gehoert nicht dazu."""
+    feld = CodeEdit(DUNKEL)
+    feld.setPlainText("a\nb\nc\n")
+    _markiere(feld, 0, 0, 2, 0)
+    QTest.keyClick(feld, Qt.Key_Tab)
+    assert feld.toPlainText() == "    a\n    b\nc\n"
+
+
+def test_tab_mit_markierung_in_einer_zeile_loescht_nichts(qapp):
+    feld = CodeEdit(DUNKEL)
+    feld.setPlainText("x = spot\n")
+    _markiere(feld, 0, 4, 0, 8)
+    QTest.keyClick(feld, Qt.Key_Tab)
+    assert feld.toPlainText() == "    x = spot\n"
+
+
+def test_leere_zeilen_bekommen_keine_leerzeichen(qapp):
+    feld = CodeEdit(DUNKEL)
+    feld.setPlainText("a\n\nb\n")
+    _markiere(feld, 0, 0, 2, 1)
+    QTest.keyClick(feld, Qt.Key_Tab)
+    assert feld.toPlainText() == "    a\n\n    b\n"
+
+
 def test_ctrl_s_meldet_speicherwunsch(qapp):
     feld = CodeEdit(DUNKEL)
     gerufen = []

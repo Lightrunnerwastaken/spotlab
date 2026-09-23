@@ -257,6 +257,58 @@ def test_hilfekasten_verschwindet_mit_dem_popup(qapp, monkeypatch):
     assert not hilfe.hilfekasten.isVisible()
 
 
+# ============ Enter/Tab bei offener Liste (Pruefung 23.09.2026, p02/p02b)
+#
+# Das Feld verarbeitete Enter und Tab selbst -- Zeilenumbruch bzw. vier
+# Leerzeichen --, und der QCompleter sah die Taste nie. Der Vorschlag wurde nie
+# uebernommen, obwohl die Liste offen war.
+
+
+def _offene_liste(monkeypatch, text):
+    from PySide6.QtWidgets import QApplication
+
+    monkeypatch.setattr(modul, "jedi", None)
+    feld = CodeEdit(DUNKEL)
+    feld.resize(600, 300)
+    feld.show()
+    hilfe = _hilfe_mit(feld, text)
+    hilfe.anfordern()
+    popup = hilfe.completer.popup()
+    assert popup.isVisible(), "die Liste ging gar nicht auf"
+    return feld, hilfe, QApplication.activePopupWidget() or popup
+
+
+@pytest.mark.parametrize("taste", ["Key_Return", "Key_Enter", "Key_Tab"])
+def test_enter_und_tab_uebernehmen_den_vorschlag(qapp, monkeypatch, taste):
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+
+    feld, hilfe, ziel = _offene_liste(monkeypatch, "spot.navi")
+    QTest.keyClick(ziel, getattr(Qt, taste))
+    assert feld.toPlainText() == "spot.navigate_to"
+    assert not hilfe.completer.popup().isVisible()
+    feld.close()
+
+
+def test_shift_tab_schliesst_nur_die_liste(qapp, monkeypatch):
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+
+    feld, hilfe, ziel = _offene_liste(monkeypatch, "    spot.navi")
+    QTest.keyClick(ziel, Qt.Key_Backtab, Qt.ShiftModifier)
+    assert feld.toPlainText() == "    spot.navi", "Shift+Tab rueckte aus, statt die Liste zu schliessen"
+    assert not hilfe.completer.popup().isVisible()
+    feld.close()
+
+
+def test_der_erste_vorschlag_ist_vorgewaehlt(qapp, monkeypatch):
+    """Sonst schloesse Enter die Liste nur -- ohne Vorschlag und ohne Umbruch."""
+    feld, hilfe, _ziel = _offene_liste(monkeypatch, "spot.")
+    assert hilfe.completer.popup().currentIndex().row() == 0
+    hilfe.completer.popup().hide()
+    feld.close()
+
+
 def test_liste_faellt_nicht_auf_scrollbalkenbreite_zusammen(qapp, monkeypatch):
     """Ein sizeHint, das option.rect.width() zurueckgibt, ist bei der
     Spaltenmessung null -- das Popup war 70 px breit, jeder Name abgeschnitten."""

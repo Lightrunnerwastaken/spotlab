@@ -362,6 +362,10 @@ class Vervollstaendigung(QObject):
         popup.setItemDelegate(VorschlagDelegate(palette, popup))
         popup.setUniformItemSizes(True)
         popup.installEventFilter(self)
+        # Das Feld muss wissen, wann die Liste offen ist: dann gehoeren ihr Enter,
+        # Tab und Shift+Tab (`CodeEdit.keyPressEvent`).
+        if hasattr(editor, "setze_vorschlagsliste"):
+            editor.setze_vorschlagsliste(popup)
 
         # Der Hilfekasten rechts neben der Liste, wie in VS Code. Kind des
         # Editors, damit er mit ihm verschwindet; ToolTip-Flag, damit er als
@@ -456,6 +460,9 @@ class Vervollstaendigung(QObject):
             popup.sizeHintForColumn(0) + popup.verticalScrollBar().sizeHint().width() + 60,
         ))
         self.completer.complete(rechteck)
+        # Der erste Vorschlag ist vorgewaehlt, wie in VS Code: sonst schloesse
+        # Enter die Liste nur -- ohne Vorschlag und ohne Zeilenumbruch.
+        popup.setCurrentIndex(self.completer.completionModel().index(0, 0))
 
     def schliesse(self):
         """Vor dem Zerstören des Editors aufrufen. Läuft immer durch und wartet nicht.

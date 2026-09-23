@@ -29,6 +29,9 @@ from spotlab.editor.indent import EINRUECKUNG, ausruecken, naechste_einrueckung
 
 RUHE_MS = 150
 
+# Solange die Vorschlagsliste offen ist, gehoeren diese Tasten ihr.
+LISTENTASTEN = (Qt.Key_Return, Qt.Key_Enter, Qt.Key_Tab, Qt.Key_Backtab)
+
 ABSATZ = "\u2029"       # so trennt QTextDocument seine Bloecke
 
 
@@ -67,6 +70,7 @@ class CodeEdit(QPlainTextEdit):
         self._palette = palette
         self._fehlerzeile = None
         self.suchleiste = None
+        self._vorschlagsliste = None       # das Popup der Vervollstaendigung
         self.setLineWrapMode(QPlainTextEdit.NoWrap)
         self.setTabStopDistance(4 * self.fontMetrics().horizontalAdvance(" "))
 
@@ -87,6 +91,18 @@ class CodeEdit(QPlainTextEdit):
     def rohtext(self):
         """Der Inhalt fuer Datei, Syntaxpruefung und jedi (siehe `rohtext`)."""
         return rohtext(self.document())
+
+    def setze_vorschlagsliste(self, liste):
+        """Das Popup der Vervollstaendigung: solange es offen ist, gehoeren ihm
+        Enter, Tab und Shift+Tab (siehe `keyPressEvent`)."""
+        self._vorschlagsliste = liste
+
+    def _liste_offen(self):
+        liste = self._vorschlagsliste
+        try:
+            return liste is not None and liste.isVisible()
+        except RuntimeError:            # schon abgeraeumt
+            return False
 
     # ------------------------------------------------------------ Zeilenleiste
 
@@ -167,6 +183,13 @@ class CodeEdit(QPlainTextEdit):
     # ------------------------------------------------------------ Tasten
 
     def keyPressEvent(self, ereignis):
+        if ereignis.key() in LISTENTASTEN and self._liste_offen():
+            # Die offene Vorschlagsliste entscheidet: der QCompleter schickt die
+            # Taste zuerst hierher und uebernimmt den Vorschlag nur, wenn das
+            # Feld sie NICHT annimmt. Vorher fuegte Enter einen Umbruch und Tab
+            # vier Leerzeichen ein, und der Vorschlag kam nie an (p02/p02b).
+            ereignis.ignore()
+            return
         if ereignis.matches(QKeySequence.Save):
             self.speichern_gewuenscht.emit()
             return
@@ -177,7 +200,7 @@ class CodeEdit(QPlainTextEdit):
             self.vervollstaendigung_gewuenscht.emit(True)
             return
         if ereignis.key() == Qt.Key_Tab and not ereignis.modifiers():
-            self.insertPlainText(EINRUECKUNG)
+            self._einruecken()
             return
         if ereignis.key() == Qt.Key_Backtab:
             self._ausruecken()
@@ -196,14 +219,71 @@ class CodeEdit(QPlainTextEdit):
         cursor.insertText("\n" + naechste_einrueckung(vor_dem_cursor))
         self.setTextCursor(cursor)
 
-    def _ausruecken(self):
-        block = self.textCursor().block()
-        weg = ausruecken(block.text())
-        if weg <= 0:
+    def _markierte_bloecke(self):
+        """Erste und letzte Blocknummer, die die Markierung beruehrt.
+
+        Endet sie am Anfang einer Zeile (ganze Zeilen mit Shift+Pfeil markiert),
+        gehoert diese Zeile nicht dazu -- so machen es alle Editoren.
+        """
+        cursor = self.textCursor()
+        dokument = self.document()
+        erster = dokument.findBlock(cursor.selectionStart())
+        letzter = dokument.findBlock(cursor.selectionEnd())
+        if (letzter.blockNumber() > erster.blockNumber()
+                and cursor.selectionEnd() == letzter.position()):
+            letzter = letzter.previous()
+        return erster.blockNumber(), letzter.blockNumber()
+
+    def _je_block(self, arbeit):
+        """`arbeit(block, bearbeiter)` fuer jeden markierten Block (ohne
+        Markierung: die Zeile des Cursors) -- in EINEM Bearbeitungsschritt, damit
+        ein Strg+Z alles zuruecknimmt."""
+        if self.textCursor().hasSelection():
+            erster, letzter = self._markierte_bloecke()
+        else:
+            erster = letzter = self.textCursor().blockNumber()
+        bearbeiter = QTextCursor(self.document())
+        bearbeiter.beginEditBlock()
+        try:
+            for nummer in range(erster, letzter + 1):
+                block = self.document().findBlockByNumber(nummer)
+                arbeit(block, bearbeiter, erster == letzter)
+        finally:
+            bearbeiter.endEditBlock()
+
+    def _einruecken(self):
+        """Tab: ohne Markierung vier Leerzeichen am Cursor, MIT Markierung eine
+        Ebene fuer jede markierte Zeile.
+
+        Bis zum 23.09.2026 ersetzte Tab die Markierung durch vier Leerzeichen --
+        wer drei Zeilen einruecken wollte, hatte sie geloescht (p01).
+        """
+        if not self.textCursor().hasSelection():
+            self.insertPlainText(EINRUECKUNG)
             return
-        loeschen = QTextCursor(block)
-        loeschen.movePosition(QTextCursor.Right, QTextCursor.KeepAnchor, weg)
-        loeschen.removeSelectedText()
+
+        def eine_ebene(block, bearbeiter, nur_eine_zeile):
+            if not block.text() and not nur_eine_zeile:
+                return              # leere Zeilen bekommen keinen Leerraum am Ende
+            bearbeiter.setPosition(block.position())
+            bearbeiter.insertText(EINRUECKUNG)
+
+        self._je_block(eine_ebene)
+
+    def _ausruecken(self):
+        """Shift+Tab: eine Ebene weniger -- fuer JEDE markierte Zeile, nicht nur
+        fuer die mit dem Cursor."""
+
+        def eine_ebene(block, bearbeiter, _nur_eine_zeile):
+            weg = ausruecken(block.text())
+            if weg <= 0:
+                return
+            # Leerraum ist ASCII: `weg` Zeichen sind `weg` Positionen.
+            bearbeiter.setPosition(block.position())
+            bearbeiter.setPosition(block.position() + weg, QTextCursor.KeepAnchor)
+            bearbeiter.removeSelectedText()
+
+        self._je_block(eine_ebene)
 
     # ------------------------------------------------------------ Suchen
 
