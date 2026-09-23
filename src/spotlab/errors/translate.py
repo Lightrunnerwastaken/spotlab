@@ -21,6 +21,7 @@ def translate(exc, *, ip=None):
         return None
     from bosdyn.client.auth import InvalidLoginError, TemporarilyLockedOutError
     from bosdyn.client.exceptions import (
+        InvalidRequestError,
         LeaseUseError,
         ProxyConnectionError,
         RetryableUnavailableError,
@@ -141,9 +142,81 @@ def translate(exc, *, ip=None):
             exc,
         )
 
+    motoren = _motorfreigabe(exc, E)
+    if motoren is not None:
+        return _mit_ursache(motoren, exc)
+
+    if isinstance(exc, InvalidRequestError):
+        # Laut SDK: die Argumente sind falsch, UNABHÄNGIG vom Zustand des
+        # Roboters. Neustarten hilft also nicht -- und das sagt die Meldung.
+        grund = getattr(exc, "error_message", "") or type(exc).__name__
+        return _mit_ursache(
+            E.CommandRejected(
+                f"Der Roboter hat die Anfrage als ungültig abgewiesen ({grund}). Das liegt "
+                "an den Werten des Kommandos, nicht am Zustand des Roboters: bei einem "
+                "Rohkommando über `spot.send()` die Felder prüfen, sonst ist es ein "
+                "Fehler in spotlab -- bitte mit dieser Meldung melden."
+            ),
+            exc,
+        )
+
     if isinstance(exc, RpcError):
         return _mit_ursache(E.NotReachable(f"Die Verbindung zu {ziel} ist abgebrochen."), exc)
 
+    return None
+
+
+def _motorfreigabe(exc, E):
+    """Warum die Motoren nicht angehen -- oder aus sind. None, wenn es nicht darum geht.
+
+    Der häufigste Fehler am Gerät: `power_on()` bei ausgelöstem Not-Aus. Die
+    Texte sagen, was zu tun ist, und behaupten nicht, WER den Not-Aus hält:
+    neben dem Tablet kann es ein zurückgelassener Endpunkt sein (CLAUDE.md,
+    E-Stop-Abgabe) -- das zeigt `spotlab doctor`.
+    """
+    from bosdyn.client.power import (
+        BatteryMissingError,
+        EstoppedError,
+        FaultedError,
+        KeepaliveMotorsOffError,
+        ShorePowerConnectedError,
+    )
+    from bosdyn.client.robot_command import NotPoweredOnError
+
+    if isinstance(exc, EstoppedError):
+        return E.EstopEngaged(
+            "Ein Not-Aus ist ausgelöst, deshalb gehen die Motoren nicht an. Am Tablet "
+            "nachsehen und den Not-Aus freigeben, dann das Programm erneut starten. "
+            "Wer den Not-Aus hält, zeigt `spotlab doctor`."
+        )
+    if isinstance(exc, FaultedError):
+        return E.NotPowered(
+            "Spot meldet einen Fehler (etwa an einem Motor) und lässt die Motoren nicht "
+            "an. Auf dem Tablet steht, welcher: dort ansehen und quittieren, dann das "
+            "Programm erneut starten."
+        )
+    if isinstance(exc, BatteryMissingError):
+        return E.BatteryEmpty(
+            "Spot erkennt keinen Akku, ohne ihn gehen die Motoren nicht an. Akku "
+            "einsetzen und einrasten lassen, dann das Programm erneut starten."
+        )
+    if isinstance(exc, ShorePowerConnectedError):
+        return E.NotPowered(
+            "Spot hängt am Ladekabel, so gehen die Motoren nicht an. Kabel abziehen, "
+            "dann das Programm erneut starten."
+        )
+    if isinstance(exc, KeepaliveMotorsOffError):
+        return E.NotPowered(
+            "Eine Keepalive-Regel auf dem Roboter verlangt gerade „Motoren aus“, deshalb "
+            "gehen sie nicht an. Am Tablet nachsehen, wer sie gesetzt hat; hilft das "
+            "nicht, Spot neu starten."
+        )
+    if isinstance(exc, NotPoweredOnError):
+        return E.NotPowered(
+            "Die Motoren sind aus, so nimmt Spot kein Bewegungskommando an. Im Programm "
+            "vorher `spot.power_on()` aufrufen. Waren sie schon an, hat sie jemand "
+            "ausgeschaltet (Not-Aus oder Tablet) -- dort nachsehen."
+        )
     return None
 
 

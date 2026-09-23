@@ -54,3 +54,65 @@ def test_verhaltensfehler_sagt_was_zu_tun_ist():
     assert isinstance(fehler, CommandRejected)
     assert "Verhaltensfehler" in str(fehler)
     assert "Tablet" in str(fehler)
+
+
+# ---------------------------------------- power_on und die Motorfreigabe
+#
+# Beta-Prüfung 23.09.2026 (p20, p20b): der häufigste Fehler am Gerät --
+# power_on() bei gedrücktem Not-Aus am Tablet -- kam roh und englisch durch
+# („EstoppedError: Cannot power on while estopped“). `EstopEngaged` und
+# `BatteryEmpty` gab es, benutzt hat sie niemand.
+
+
+def _power(name):
+    from bosdyn.client import power
+
+    return getattr(power, name)(response=None, error_message="roh")
+
+
+def _fall(klasse, ziel, *woerter):
+    return pytest.param(klasse, ziel, woerter, id=klasse)
+
+
+@pytest.mark.parametrize("klasse, ziel, woerter", [
+    _fall("EstoppedError", "EstopEngaged", "Not-Aus", "freigeben", "spotlab doctor"),
+    _fall("FaultedError", "NotPowered", "Tablet", "quittieren"),
+    _fall("BatteryMissingError", "BatteryEmpty", "Akku", "einsetzen"),
+    _fall("ShorePowerConnectedError", "NotPowered", "Ladekabel", "abziehen"),
+    _fall("KeepaliveMotorsOffError", "NotPowered", "Keepalive", "Tablet"),
+])
+def test_power_fehler_sagen_was_zu_tun_ist(klasse, ziel, woerter):
+    import spotlab.errors as E
+
+    ursprung = _power(klasse)
+    fehler = translate(ursprung)
+    assert type(fehler).__name__ == ziel
+    assert isinstance(fehler, SpotlabError)
+    assert fehler.__cause__ is ursprung
+    for wort in woerter:
+        assert wort in str(fehler), (wort, str(fehler))
+    assert "Cannot" not in str(fehler)                          # deutsch, nicht roh
+    assert isinstance(fehler, getattr(E, ziel))
+
+
+def test_kommando_ohne_motoren_nennt_power_on():
+    from bosdyn.client.robot_command import NotPoweredOnError
+
+    from spotlab.errors import NotPowered
+
+    fehler = translate(NotPoweredOnError(response=None, error_message="roh"))
+    assert isinstance(fehler, NotPowered)
+    assert "spot.power_on()" in str(fehler)
+
+
+def test_eine_ungueltige_anfrage_nennt_den_grund_und_behauptet_keinen_roboterfehler():
+    """`InvalidRequestError` heisst laut SDK: die Argumente sind falsch, unabhängig
+    vom Zustand des Roboters. Neustarten hilft also nicht -- das muss die Meldung sagen."""
+    from bosdyn.client.exceptions import InvalidRequestError
+
+    from spotlab.errors import CommandRejected
+
+    fehler = translate(InvalidRequestError(response=None, error_message="body_height out of range"))
+    assert isinstance(fehler, CommandRejected)
+    assert "body_height out of range" in str(fehler)
+    assert "spot.send()" in str(fehler)
