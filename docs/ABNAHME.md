@@ -1203,7 +1203,9 @@ vom Tablet übernehmen" — sonst bricht der Lauf mit der Lease-Meldung ab.
    Lage-Laufs ist „Fahrt beginnen" grau; ein Lauf aus „Code" läuft, „Akku wechseln" meldet
    „erst beenden".
 5. Ohne Häkchen bei belegtem Lease drücken.
-6. Abbruch: einmal während des Rollens „Stopp" im Kopf — beobachten und notieren.
+6. Abbruch: einmal während des Rollens „■ Stopp" im Tab (seit 23.09.2026 dort aktiv; im
+   Kopf gibt es nur den NOT-AUS) — beobachten und notieren. Und einmal den Not-Aus am
+   Tablet, solange der Rollwinkel unter 80° ist.
 
 **Erwartung**
 - (1) Die Zustandszeile unter den Knöpfen zeigt „Rolle nach links …", dann den Rollwinkel in
@@ -1229,6 +1231,38 @@ Stopp kann nur der Roboter liefern.
 **Ergebnis** _(offen)_
 
 ---
+
+## A37 — Die Sicherheitsfixes vom 23.09.2026 am Gerät
+
+**Voraussetzung** A1, A29, A34. Die Fixes sind in der Suite belegt, aber mit Attrappen —
+was der ECHTE Roboter tut, steht erst hier.
+
+**Vorgehen und Erwartung**
+1. **NOT-AUS in der Anlaufphase.** Tab „Fahren“, „🎮 Fahrt beginnen“, und innerhalb der
+   ersten zwei Sekunden (während „verbindet“) NOT-AUS im Kopf. Erwartung: der Prozess
+   ist weg, Spot steht NICHT auf, die Statuszeile sagt „beendet, bevor es fertig
+   verbunden war“. Danach wie A29 (7): Häkchen „Kontrolle übernehmen“, neu starten.
+2. **Der Reiter Code bleibt virtuell.** Nach einer Fahrt aus (1) oder A29 im Reiter „Code“
+   `hallo_spot.py` starten. Erwartung: der Lauf geht in den Übungsraum (Backend im Lauf:
+   `mujoco` oder `sim`), der Roboter rührt sich nicht.
+3. **Schliessen während einer Fahrt.** Fahrt starten, Fenster mit X schliessen.
+   Erwartung: Rückfrage; „Abbrechen“ lässt alles, wie es ist; „Ja“ — Spot setzt sich, gibt
+   das Lease ab (Tablet kann übernehmen), dann schliesst das Fenster.
+4. **Zwei Läufe.** Fahrt am echten Spot, dazu in VS Code F5 auf ein MuJoCo-Programm.
+   Erwartung: der Tab „Fahren“ zeigt weiter den Blick und den Akku des Roboters.
+5. **Folgen, Hindernisschranke im Rahmen „vision“.** Zwei Minuten folgen lassen (Drift
+   zwischen odom und vision), dann eine Kiste in den Weg. Erwartung: „Stehen geblieben:
+   nur X m frei voraus“ vor der Kiste. **Notieren:** Abstand beim Halt.
+6. **Statuslicht.** Gelb/blau/rot wie in A34; nach dem Stopp sind die LEDs aus. Das
+   Programmende wartet höchstens 1 s auf das Licht.
+7. **Lage mit Not-Aus.** A36 (6) mit dem Not-Aus am Tablet unter 80° Rollwinkel.
+   Erwartung: „Motoren unerwartet aus bei Rollwinkel …° — Spot liegt NICHT auf der Seite …“
+   statt einer Seitenlage.
+8. **Navigation scheitert.** A32 mit einem Ziel, das Spot nicht erreichen kann (Weg
+   versperrt) oder mit kurzer Frist. Erwartung: Spot hält sofort an, nicht erst nach
+   1.5 s.
+9. **Umwelt.** „Umgebung abfragen“ im Reiter „Umwelt“. Erwartung: Liste und Gitter
+   erscheinen nach dem Lauf; der Lauf liegt unter `Beispiele/runs/`.
 
 ## Nach der Abnahme
 
