@@ -200,8 +200,7 @@ class RaumeditorView(QWidget):
         self._ebenen_memo = None           # (Boeden, Gelaendehoehen, Ebenen)
         self._korrektur_dialog = None
         self.steuerung = Steuerung()
-
-        self._datei = _UNBEKANNT
+        self._datei = _UNBEKANNT         # die Datei im Reiter „Code" (`setze_datei`)
 
         # -- links: Werkzeuge (eine Gruppe, genau eines gedrueckt), Datei, Karte.
         # Kompakt und in fester Breite: vierzehn gleich grosse Knoepfe passten bei
@@ -307,10 +306,8 @@ class RaumeditorView(QWidget):
         self.stapel = QStackedWidget()
         self.stapel.addWidget(self.sicht)
         self.stapel.addWidget(self.sicht3d)
-        # Die Zustandszeile: Werkzeug oder Geste, was jetzt geht, Zeiger, Raster --
-        # der Text kommt aus `Steuerung.beschreibung()`.
-        # Zwei Teile: links, was gerade geht (darf abgeschnitten werden), rechts
-        # Zeiger und Raster (immer ganz).
+        # Die Zustandszeile aus `Steuerung.beschreibung_teile()`: links, was gerade
+        # geht (darf abgeschnitten werden), rechts Zeiger und Raster (immer ganz).
         self.zustand = QLabel("")
         self.zustand.setObjectName("Statuszeile")
         self.zustand.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
@@ -325,7 +322,6 @@ class RaumeditorView(QWidget):
         mitte.setSpacing(4)
         mitte.addLayout(kopf)
         mitte.addWidget(self.stapel, 1)
-        mitte.addLayout(zustand)
 
         # -- rechts, FESTE Breite: sonst wurde die Sicht bei jeder Auswahl mit
         # langem Namen schmaler und sprang (UX-Pruefung 23.09.2026).
@@ -380,6 +376,9 @@ class RaumeditorView(QWidget):
         oben.addWidget(self.rechts)
         aussen = QVBoxLayout(self)
         aussen.addLayout(oben, 1)
+        # Ueber die ganze Breite: unter der Sicht allein wurde sie bei 1080 px
+        # schon nach „Enter bestätigt" abgeschnitten.
+        aussen.addLayout(zustand)
         knoepfe = QHBoxLayout()
         knoepfe.addWidget(self.starten, 1)
         knoepfe.addWidget(self.fahren)
