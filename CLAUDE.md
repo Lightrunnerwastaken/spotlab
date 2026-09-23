@@ -1059,7 +1059,12 @@ versionsgepinntes Extra `spotlab[sim]`.
   unter `Beispiele/runs`, wo der Watcher sucht. Motoren müssen VOR dem Verbinden aus sein
   (`MotorsOnError` beim Not-Aus-Eintrag), und die Lease-Übernahme ist ein Häkchen, nie Vorgabe.
   `starte_skript(pfad, argumente=())` reicht die Aktion als Liste an den Prozess, nie über
-  eine Shell. Am Gerät: A36.
+  eine Shell. Am Gerät: A36. **Ein Motor-Aus ist nur mit dem Rollwinkel ein Befund**: ab
+  `AUF_DER_SEITE_GRAD` heisst es „liegt auf der Seite, Akku wechseln" (die Seite aus dem
+  VORZEICHEN, nicht aus dem Wunsch), darunter ist es ein Fehler „Motoren unerwartet aus — liegt
+  NICHT auf der Seite" (Not-Aus am Tablet, Fehler). Bis zum 22.09.2026 galt jedes Motor-Aus als
+  Seitenlage — bei 2° Rollwinkel (p12). Und eine Fehlermeldung sagt, was mit den Motoren
+  GESCHIEHT (`NACH_DEM_FEHLER`: der Abbau schaltet sie sicher aus), nicht „noch an".
 - **Das Fenstersymbol ist FREIGESTELLT und liegt im Paket** (`gui/spotlab.png`, runde
   Ecken mit Transparenz aussen, dazu `package-data`). Ein Symbol mit eigenem
   Hintergrund sitzt in der Taskleiste in einem grauen Kasten, und ohne den

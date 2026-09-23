@@ -117,6 +117,41 @@ def test_kippt_er_nicht_ist_das_ein_fehler_mit_rat():
     assert ("power_off", True) not in spot.kommandos, "aufrecht und unter Strom: nichts abschalten, der Mensch sieht nach"
 
 
+@pytest.mark.parametrize("roll", [2.0, -30.0, 60.0, -79.0])
+def test_motoren_aus_im_aufrechten_ist_keine_seitenlage(roll):
+    """Befund p12 (22.09.2026): JEDES Motor-Aus galt als Seitenlage -- auch der Not-Aus
+    am Tablet oder ein Fehler, der die Motoren abschaltet. Bei Rollwinkel 2 Grad hiess es
+    „liegt auf der linken Seite. Akku wechseln", und der Mensch ging zum Akku eines
+    Roboters, der aufrecht stand. Seitenlage erst ab AUF_DER_SEITE_GRAD."""
+    spot = _Spot(rollen=[roll], powered=[True, False])
+    with pytest.raises(SpotlabError) as fehler:
+        _lauf(spot, "akku", seite="links")
+    text = str(fehler.value)
+    assert "unerwartet aus" in text and "NICHT auf der Seite" in text, text
+    assert "Akku wechseln" not in text, text
+    assert "Tablet" in text, "was zu tun ist: nachsehen, woher das Motor-Aus kam"
+    assert ("power_off", True) not in spot.kommandos
+
+
+def test_die_seite_im_befund_ist_die_gemessene():
+    """Gesagt wird, wo er LIEGT (Vorzeichen des Rollwinkels), nicht, wohin er rollen sollte."""
+    spot = _Spot(rollen=[0.0, 113.0], powered=[True, False])
+    text, _ = _lauf(spot, "akku", seite="links")
+    assert "rechten Seite" in text, text
+
+
+@pytest.mark.parametrize("aktion, rollen", [("akku", [0.0]), ("aufrichten", [-130.0])])
+def test_die_fehlermeldung_behauptet_keine_laufenden_motoren(aktion, rollen):
+    """Nach dem Fehler endet der Lauf, und `RealSpot.close()` schickt gleich danach
+    `power_off` -- „die Motoren sind noch an" schickte den Menschen auf eine falsche Faehrte."""
+    spot = _Spot(rollen=rollen, powered=[True])
+    with pytest.raises(SpotlabError) as fehler:
+        _lauf(spot, aktion, warte_s=3.0)
+    text = str(fehler.value)
+    assert "noch an" not in text, text
+    assert "Beenden des Laufs" in text and "Motoren" in text, text
+
+
 def test_eine_unbekannte_seite_wird_vor_dem_einschalten_abgelehnt():
     spot = _Spot()
     with pytest.raises(SpotlabError):
