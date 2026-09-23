@@ -7,15 +7,20 @@ Karte in der Konfiguration.
 
 from pathlib import Path
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
+    QFrame,
+    QGridLayout,
+    QGroupBox,
     QHBoxLayout,
     QInputDialog,
     QLabel,
     QListWidget,
     QMessageBox,
     QPushButton,
+    QScrollArea,
+    QSplitter,
     QVBoxLayout,
     QWidget,
 )
@@ -63,6 +68,32 @@ STAND_TEXTE = {
     "gescheitert": "Nicht geschafft: {text}",
     "beendet": "Navigation beendet.",
 }
+
+
+# Die kurzen Zeilen stehen immer; der volle Hinweis klappt darunter auf. Kein Text
+# ist weg -- untereinander verlangte die Ansicht sonst mehr Hoehe, als ein
+# Schul-Laptop hat, und die Navigation lag unter dem Rand (23.09.2026).
+AUFNAHME_KURZ = "Spot muss ein Fiducial sehen. Gefahren wird mit dem TABLET — spotlab zeichnet mit."
+NAVIGATION_KURZ = ("Wegpunkt in der Zeichnung anklicken — Spot fährt autonom hin. ⚠ Echter Spot: "
+                   "Freifläche, Aufsicht, Tablet mit Not-Aus in Reichweite.")
+
+
+def _klappbar(kurz, lang, warnung=False):
+    """Eine kurze Zeile mit „Hinweise ▾“, darunter der volle Text, eingeklappt."""
+    zeile = QLabel(kurz)
+    zeile.setObjectName("Warnung" if warnung else "Gedaempft")
+    zeile.setWordWrap(True)
+    mehr = QPushButton("Hinweise ▾")
+    mehr.setCheckable(True)
+    lang.hide()
+    mehr.toggled.connect(lang.setVisible)
+    oben = QHBoxLayout()
+    oben.addWidget(zeile, 1)
+    oben.addWidget(mehr, 0, Qt.AlignTop)
+    block = QVBoxLayout()
+    block.addLayout(oben)
+    block.addWidget(lang)
+    return block
 
 
 class MapsView(QWidget):
@@ -154,34 +185,79 @@ class MapsView(QWidget):
         aufnahme.addWidget(self.wegpunkt_knopf)
         aufnahme.addWidget(self.speichern_knopf)
         aufnahme.addStretch(1)
-        aufnahme.addWidget(self.aufnahme_status)
 
-        kartenknoepfe = QHBoxLayout()
-        kartenknoepfe.addWidget(self.aktiv_knopf)
-        kartenknoepfe.addWidget(self.loeschen_knopf)
-        kartenknoepfe.addWidget(self.benennen_knopf)
-        kartenknoepfe.addWidget(self.verbessern_knopf)
-        kartenknoepfe.addStretch(1)
+        kartenknoepfe = QGridLayout()
+        kartenknoepfe.addWidget(self.aktiv_knopf, 0, 0)
+        kartenknoepfe.addWidget(self.loeschen_knopf, 0, 1)
+        kartenknoepfe.addWidget(self.benennen_knopf, 1, 0)
+        kartenknoepfe.addWidget(self.verbessern_knopf, 1, 1)
+        kartenknoepfe.setColumnStretch(2, 1)
 
         navigation = QHBoxLayout()
         navigation.addWidget(self.navigation_knopf)
         navigation.addWidget(self.navigation_stopp)
         navigation.addStretch(1)
 
+        # Links die Bedienung in drei Gruppen, rechts die Karte: untereinander
+        # gestapelt verlangte die Ansicht 614 px Hoehe und liess der Karte den Rest
+        # (UX-Pruefung 23.09.2026).
+        aufnahme_gruppe = QGroupBox("Aufnahme")
+        innen = QVBoxLayout(aufnahme_gruppe)
+        innen.addLayout(_klappbar(AUFNAHME_KURZ, self.hinweis))
+        innen.addWidget(self.graph_leeren)
+        innen.addLayout(aufnahme)
+        innen.addWidget(self.aufnahme_status)
+
+        karten_gruppe = QGroupBox("Karten")
+        innen = QVBoxLayout(karten_gruppe)
+        # Eine Handvoll Karten -- die Liste soll die Navigation nicht aus dem Bild schieben.
+        self.liste.setMaximumHeight(150)
+        innen.addWidget(self.liste)
+        innen.addLayout(kartenknoepfe)
+
+        navigation_gruppe = QGroupBox("Navigation")
+        innen = QVBoxLayout(navigation_gruppe)
+        innen.addLayout(_klappbar(NAVIGATION_KURZ, self.navigation_hinweis, warnung=True))
+        innen.addLayout(navigation)
+        innen.addWidget(self.navigation_status)
+
+        links = QWidget()
+        spalte = QVBoxLayout(links)
+        spalte.setContentsMargins(0, 0, 0, 0)
+        spalte.addWidget(aufnahme_gruppe)
+        spalte.addWidget(karten_gruppe)
+        spalte.addWidget(navigation_gruppe)
+        spalte.addStretch(1)
+
+        rechts = QWidget()
+        karte = QVBoxLayout(rechts)
+        karte.setContentsMargins(0, 0, 0, 0)
+        karte.addWidget(self.plot, 1)
+        karte.addWidget(self.plot_hinweis)
+
+        # Die Bedienung scrollt, wenn das Fenster niedrig ist: jeder Hinweis bleibt
+        # ganz (vorher schnitt das Layout die letzte Zeile ab), und die Ansicht
+        # zwingt dem Fenster keine Hoehe auf.
+        rollbar = QScrollArea()
+        rollbar.setWidget(links)
+        rollbar.setWidgetResizable(True)
+        rollbar.setFrameShape(QFrame.NoFrame)
+        rollbar.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        rollbar.setMinimumWidth(links.minimumSizeHint().width() + 14)
+
+        teiler = QSplitter(Qt.Horizontal)
+        teiler.addWidget(rollbar)
+        teiler.addWidget(rechts)
+        teiler.setStretchFactor(0, 2)
+        teiler.setStretchFactor(1, 3)
+        teiler.setChildrenCollapsible(False)
+        # Die langen Hinweise links melden eine grosse Wunschbreite an -- ohne feste
+        # Aufteilung schrumpfte die Karte rechts auf einen Streifen.
+        rechts.setMinimumWidth(300)
+        teiler.setSizes([460, 540])
+
         anordnung = QVBoxLayout(self)
-        anordnung.addWidget(QLabel("Aufnahme"))
-        anordnung.addWidget(self.hinweis)
-        anordnung.addWidget(self.graph_leeren)
-        anordnung.addLayout(aufnahme)
-        anordnung.addWidget(QLabel("Karten"))
-        anordnung.addWidget(self.liste, 1)
-        anordnung.addLayout(kartenknoepfe)
-        anordnung.addWidget(QLabel("Navigation"))
-        anordnung.addWidget(self.navigation_hinweis)
-        anordnung.addLayout(navigation)
-        anordnung.addWidget(self.navigation_status)
-        anordnung.addWidget(self.plot, 3)
-        anordnung.addWidget(self.plot_hinweis)
+        anordnung.addWidget(teiler)
 
     # ------------------------------------------------------------- Zustand
 
