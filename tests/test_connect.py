@@ -99,3 +99,82 @@ def test_eine_konfiguration_ohne_defaults_faehrt_nicht_den_echten_spot(
     assert kein_roboter == []
     (lauf,) = _laeufe(runs)
     assert json.loads((lauf / "lauf.json").read_text(encoding="utf-8"))["backend"] == "mujoco"
+
+
+# --------------------------------- ein Aufbau, der scheitert, sagt warum
+
+
+def _lauf_json(runs):
+    (lauf,) = _laeufe(runs)
+    return json.loads((lauf / "lauf.json").read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize("art", ["sim", "mujoco", "physics"])
+def test_ein_raum_tippfehler_beendet_den_lauf_mit_grund(tmp_path, kein_roboter, art):
+    """Beta-Prüfung 23.09.2026 (p01): `raum="moebeliert"` warf zwar eine gute
+    Meldung, aber `lauf.json` blieb für immer auf „läuft“ -- ohne Fehler, und
+    das Protokollziel zeigte weiter in den toten Lauf."""
+    from spotlab import protokoll
+
+    runs = tmp_path / "runs"
+    with pytest.raises(SpotlabError, match="moebeliert"):
+        with spotlab.connect(backend=art, raum="moebeliert", runs_dir=runs,
+                             config_path=_konfiguration(tmp_path)):
+            pass
+    meta = _lauf_json(runs)
+    assert meta["ergebnis"] == "fehler"
+    assert "moebeliert" in meta["fehler"]
+    assert protokoll.ziel() is None
+
+
+def test_fehlt_die_simulation_steht_das_im_lauf(tmp_path, kein_roboter, monkeypatch):
+    from spotlab.backends import mujoco
+
+    def fehlt():
+        raise SpotlabError("Die Simulation fehlt. einrichten.cmd erneut ausführen.")
+
+    monkeypatch.setattr(mujoco, "_puppe_laden", fehlt)
+    runs = tmp_path / "runs"
+    with pytest.raises(SpotlabError):
+        with spotlab.connect(backend="mujoco", runs_dir=runs, config_path=_konfiguration(tmp_path)):
+            pass
+    meta = _lauf_json(runs)
+    assert meta["ergebnis"] == "fehler" and "Simulation fehlt" in meta["fehler"]
+
+
+def test_strg_c_beim_laden_heisst_abgebrochen(tmp_path, kein_roboter, monkeypatch):
+    from spotlab.backends import sim
+
+    def unterbrochen(self, *argumente, **benannt):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(sim.SimBackend, "__init__", unterbrochen)
+    runs = tmp_path / "runs"
+    with pytest.raises(KeyboardInterrupt):
+        with spotlab.connect(backend="sim", runs_dir=runs, config_path=_konfiguration(tmp_path)):
+            pass
+    assert _lauf_json(runs)["ergebnis"] == "abgebrochen"
+
+
+# ------------------------------------------ sys.exit ist kein Absturz
+
+
+@pytest.mark.parametrize("code", [0, None])
+def test_sys_exit_mit_null_ist_ein_ordentliches_ende(tmp_path, kein_roboter, code):
+    """p08: ein Schüler beendet sein Programm mit `sys.exit(0)`, weil der Akku
+    nicht voll ist -- und der Lauf stand als „fehler: SystemExit: 0“ da."""
+    runs = tmp_path / "runs"
+    with pytest.raises(SystemExit):
+        with spotlab.connect(backend="dryrun", runs_dir=runs):
+            raise SystemExit(code)
+    meta = _lauf_json(runs)
+    assert meta["ergebnis"] == "ok" and meta["fehler"] is None
+
+
+def test_sys_exit_mit_fehlercode_bleibt_ein_fehler(tmp_path, kein_roboter):
+    runs = tmp_path / "runs"
+    with pytest.raises(SystemExit):
+        with spotlab.connect(backend="dryrun", runs_dir=runs):
+            raise SystemExit(2)
+    meta = _lauf_json(runs)
+    assert meta["ergebnis"] == "fehler" and "sys.exit(2)" in meta["fehler"]

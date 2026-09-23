@@ -36,7 +36,10 @@ Programm sie unterlässt. Übrig bleiben die Lesedienste — `world_objects()`,
 `tags()`, `stairs()`, `obstacles()`, `camera()` und der Zustand. So arbeitet
 `workshop/sonde.py` hinter dem Knopf „Umgebung abfragen". In den Trockenläufen
 und Sims ändert die Angabe nichts; die halten ohnehin nie ein Lease. Der Context Manager beendet Abtastung,
-Roboterverbindung und Aufzeichnung auch bei Ausnahmen.
+Roboterverbindung und Aufzeichnung auch bei Ausnahmen. `sys.exit(0)` (oder `sys.exit()`)
+im Programm gilt als ordentliches Ende (`ergebnis: ok`), jeder andere Code als Fehler.
+Scheitert schon der Aufbau (Raum unbekannt, Simulation fehlt, Strg-C beim Laden),
+steht der Grund in `lauf.json`.
 
 ## Alle Befehle
 
