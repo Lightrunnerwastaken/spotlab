@@ -16,7 +16,7 @@ aus dem sie stammen: `loesche` gibt deshalb die leere Auswahl zurueck.
 """
 
 import math
-from dataclasses import replace
+from dataclasses import dataclass, replace
 
 from spotlab.welt.gelaende import umriss, verschoben
 from spotlab.welt.kollision import abstand_block, hindernis_bei, klippen_von, zone_bei
@@ -506,11 +506,30 @@ def ziehe_ecke(raum, schluessel, ecke, x, y):
 # ---------------------------------------------------------------- Pruefung
 
 
+@dataclass(frozen=True)
+class Befund:
+    """Ein Hinweis mit dem Element, das er meint -- der Editor waehlt es beim Klick.
+
+    `gruppe` fasst gleiche Befunde zusammen („Wände ohne Länge"): sechzehn Zeilen
+    „Wand n hat keine Laenge." fuellten die ganze Spalte (Katakomben, 23.09.2026).
+    Ohne Gruppe (None) steht der Befund immer einzeln -- der Start zum Beispiel.
+    """
+
+    text: str
+    schluessel: tuple | None = None
+    gruppe: str | None = None
+
+
 def pruefe(raum):
     """Hinweise auf Unstimmiges -- als Liste, die der Editor zeigt."""
+    return [befund.text for befund in befunde(raum)]
+
+
+def befunde(raum):
+    """[Befund]: dasselbe wie `pruefe`, mit Element und Gruppe."""
     from spotlab.welt.hoehe import boden_bei
 
-    hinweise = []
+    aus = []
     z_start, _ = boden_bei(raum, raum.start[0], raum.start[1])
     # Klippen gibt es an Boeden UND am Gelaende -- ein korrigierter Raum hat oft
     # nur noch das Gelaende (Rampen und Podeste gingen darin auf). Gemerkt je
@@ -520,44 +539,52 @@ def pruefe(raum):
                               klippen_=klippen_von(raum) if mit_hoehe else None)
     zone = zone_bei(raum, raum.start[0], raum.start[1])
     if zone is not None:
-        hinweise.append(f"Der Start liegt in der Sperrzone „{zone}“. Verschiebe ihn.")
+        aus.append(Befund(f"Der Start liegt in der Sperrzone „{zone}“. Verschiebe ihn.", START))
     if getroffen == "Kante":
-        hinweise.append("Der Start steht an einer Kante. Verschiebe ihn oder setze einen Boden davor.")
+        aus.append(Befund("Der Start steht an einer Kante. Verschiebe ihn oder setze einen "
+                          "Boden davor.", START))
     elif getroffen is not None:
         was = "einer Wand" if getroffen == "Wand" else f"„{getroffen}“"
-        hinweise.append(f"Der Start steht in {was}. Verschiebe ihn im Raumeditor.")
-    for boden in raum.boeden:
+        aus.append(Befund(f"Der Start steht in {was}. Verschiebe ihn im Raumeditor.", START))
+    for i, boden in enumerate(raum.boeden):
+        s = ("boden", i)
         if min(boden.breite, boden.tiefe) < MINDESTKANTE_M:
-            hinweise.append(f"Boden „{boden.name}“ hat keine Fläche.")
+            aus.append(Befund(f"Boden „{boden.name}“ hat keine Fläche.", s, "Böden ohne Fläche"))
         if boden.stufen > 0 and abs(boden.anstieg) / boden.stufen > MAX_STUFE_M:
-            hinweise.append(
+            aus.append(Befund(
                 f"Treppe „{boden.name}“: {abs(boden.anstieg) / boden.stufen:.2f} m je Stufe ist "
-                f"höher als {MAX_STUFE_M:.2f} m — mehr Stufen oder weniger Anstieg."
-            )
+                f"höher als {MAX_STUFE_M:.2f} m — mehr Stufen oder weniger Anstieg.", s,
+                "Treppen mit zu hohen Stufen"))
         if min(boden.z, boden.z_oben) < 0.0:
-            hinweise.append(
-                f"Boden „{boden.name}“ liegt unter dem Grundboden — der tiefste Boden ist die Höhe 0."
-            )
+            aus.append(Befund(
+                f"Boden „{boden.name}“ liegt unter dem Grundboden — der tiefste Boden ist "
+                f"die Höhe 0.", s, "Böden unter dem Grundboden"))
     for i, wand in enumerate(raum.waende):
+        s = ("wand", i)
         if wand.laenge < MINDESTKANTE_M:
-            hinweise.append(f"Wand {i + 1} hat keine Länge.")
+            aus.append(Befund(f"Wand {i + 1} hat keine Länge.", s, "Wände ohne Länge"))
         grund = raum.gelaende.hoehe_bei(*wand.mitte) if raum.gelaende is not None else None
         if grund is not None and wand.z - grund > MAX_STUFE_M:
-            hinweise.append(f"Wand {i + 1} schwebt {wand.z - grund:.1f} m über dem Gelände.")
+            aus.append(Befund(f"Wand {i + 1} schwebt {wand.z - grund:.1f} m über dem Gelände.",
+                              s, "Wände über dem Gelände"))
         elif grund is not None and grund - wand.z > MAX_STUFE_M:
-            hinweise.append(f"Wand {i + 1} steckt {grund - wand.z:.1f} m im Gelände.")
-    for block in raum.bloecke:
+            aus.append(Befund(f"Wand {i + 1} steckt {grund - wand.z:.1f} m im Gelände.",
+                              s, "Wände im Gelände"))
+    for i, block in enumerate(raum.bloecke):
         if min(block.breite, block.tiefe, block.hoehe) < MINDESTKANTE_M:
-            hinweise.append(f"„{block.name}“ hat eine Kante unter {MINDESTKANTE_M} m.")
+            aus.append(Befund(f"„{block.name}“ hat eine Kante unter {MINDESTKANTE_M} m.",
+                              ("block", i), "Blöcke mit zu kurzer Kante"))
     gesehen = set()
-    for tag in raum.tags:
+    for i, tag in enumerate(raum.tags):
+        s = ("tag", i)
         if tag.id in gesehen:
-            hinweise.append(f"Tag {tag.id} ist doppelt vergeben.")
+            aus.append(Befund(f"Tag {tag.id} ist doppelt vergeben.", s, "Tags doppelt vergeben"))
         gesehen.add(tag.id)
         for block in raum.bloecke:
             if abstand_block(block, tag.x, tag.y) == 0.0:
-                hinweise.append(f"Tag {tag.id} steckt in „{block.name}“.")
-    return hinweise
+                aus.append(Befund(f"Tag {tag.id} steckt in „{block.name}“.", s,
+                                  "Tags in einem Block"))
+    return aus
 
 
 # ---------------------------------------------------------------- Verlauf
@@ -676,9 +703,14 @@ class Modus:
         except ValueError:
             return None
 
-    def vorschau(self):
-        if not self.aktiv:
-            return self._raum
+    @property
+    def mitte(self):
+        """Drehpunkt und Bezugspunkt der Geste (Mitte der Auswahl)."""
+        return self._um
+
+    def groesse(self):
+        """Was die Geste gerade tut -- dieselbe Rechnung fuer Vorschau und Anzeige:
+        ("bewegen", dx, dy), ("heben", dz), ("drehen", grad) oder ("skalieren", fx, fy, fz)."""
         wert = self._wert()
         if self.art == self.BEWEGEN:
             if self.achse == "z":
@@ -686,7 +718,7 @@ class Modus:
                 dz = wert if wert is not None else self._zeiger[1] - self._start[1]
                 if wert is None and not self._frei:
                     dz = raste(dz)
-                return hebe(self._raum, self._auswahl, dz)
+                return ("heben", dz)
             if wert is not None:
                 dx, dy = (0.0, wert) if self.achse == "y" else (wert, 0.0)
             else:
@@ -698,7 +730,7 @@ class Modus:
                     dy = 0.0
                 elif self.achse == "y":
                     dx = 0.0
-            return verschiebe(self._raum, self._auswahl, dx, dy)
+            return ("bewegen", dx, dy)
         if self.art == self.DREHEN:
             if wert is not None:
                 grad = wert
@@ -708,7 +740,7 @@ class Modus:
                 grad = math.degrees(a1 - a0)
                 if not self._frei:
                     grad = raste(grad, RASTER_GRAD)
-            return drehe(self._raum, self._auswahl, grad, um=self._um)
+            return ("drehen", grad)
         if wert is not None:
             f = wert
         else:
@@ -719,14 +751,36 @@ class Modus:
                 f = raste(f, 0.05)
         f = max(f, 0.01)
         if self.achse == "x":
-            fx, fy, fz = f, 1.0, 1.0
-        elif self.achse == "y":
-            fx, fy, fz = 1.0, f, 1.0
-        elif self.achse == "z":
-            fx, fy, fz = 1.0, 1.0, f
-        else:
-            fx, fy, fz = f, f, 1.0
-        return skaliere(self._raum, self._auswahl, fx, fy, fz, um=self._um)
+            return ("skalieren", f, 1.0, 1.0)
+        if self.achse == "y":
+            return ("skalieren", 1.0, f, 1.0)
+        if self.achse == "z":
+            return ("skalieren", 1.0, 1.0, f)
+        return ("skalieren", f, f, 1.0)
+
+    def anzeige(self):
+        """Der Wert der Geste als Text fuer die Zustandszeile, z. B. „Δx +0.50 m  Δy 0.00 m"."""
+        g = self.groesse()
+        if g[0] == "bewegen":
+            return f"Δx {g[1]:+.2f} m  Δy {g[2]:+.2f} m"
+        if g[0] == "heben":
+            return f"Δz {g[1]:+.2f} m"
+        if g[0] == "drehen":
+            return f"{g[1]:+.1f}°"
+        faktoren = {"x": g[1], "y": g[2], "z": g[3]}
+        return f"×{faktoren[self.achse]:.2f}" if self.achse else f"×{g[1]:.2f}"
+
+    def vorschau(self):
+        if not self.aktiv:
+            return self._raum
+        g = self.groesse()
+        if g[0] == "heben":
+            return hebe(self._raum, self._auswahl, g[1])
+        if g[0] == "bewegen":
+            return verschiebe(self._raum, self._auswahl, g[1], g[2])
+        if g[0] == "drehen":
+            return drehe(self._raum, self._auswahl, g[1], um=self._um)
+        return skaliere(self._raum, self._auswahl, g[1], g[2], g[3], um=self._um)
 
     def bestaetige(self):
         raum = self.vorschau()
