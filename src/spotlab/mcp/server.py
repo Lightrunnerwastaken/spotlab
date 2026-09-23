@@ -26,8 +26,9 @@ WERKZEUGE = (
     (werkzeuge.panel_entfernen,
      "Entfernt ein Panel eines angebundenen Projekts."),
     (werkzeuge.skript_starten,
-     "Startet ein im Manifest registriertes Skript. Der Lauf ist IMMER ein Trockenlauf "
-     "ohne Roboter; Skripte mit roboter=true werden abgelehnt."),
+     "Startet ein im Manifest registriertes Skript. Der Lauf ist IMMER ohne Roboter: "
+     "ein Trockenlauf, ausser das Skript waehlt selbst eine Simulation; Skripte mit "
+     "roboter=true werden abgelehnt."),
     (werkzeuge.lauf_stoppen,
      "Beendet einen laufenden Lauf freundlich — der Spot setzt sich hin."),
     (werkzeuge.laeufe_auflisten,

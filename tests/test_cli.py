@@ -63,6 +63,27 @@ def test_run_mit_dryrun_setzt_die_variable(tmp_path, monkeypatch):
     assert main(["run", "x.py", "--dryrun"]) == 0
 
 
+def test_run_dryrun_haelt_auch_ein_backend_im_skript_vom_roboter_fern(tmp_path, monkeypatch, capfd):
+    """p06: ein aus einem Beispiel kopiertes `connect(backend="real")` fuhr unter
+    `spotlab run --dryrun` den echten Spot -- das Argument schlaegt SPOTLAB_BACKEND.
+    Echter Kindprozess: nur so zeigt sich, ob die Schranke dort ankommt."""
+    skript = tmp_path / "x.py"
+    skript.write_text(
+        "import spotlab\nwith spotlab.connect(backend='real') as s:\n    print('FAEHRT')\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    # Ein leeres Zuhause fuer den Kindprozess: OHNE Konfiguration kann er den
+    # Roboter nie erreichen, auch nicht, wenn die Schranke einmal fehlt -- dann
+    # scheitert er an „Keine Konfiguration“ statt im WLAN nach dem Spot zu suchen.
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    monkeypatch.setenv("HOME", str(tmp_path))
+    assert main(["run", "x.py", "--dryrun"]) != 0
+    ausgabe = capfd.readouterr()
+    assert "FAEHRT" not in ausgabe.out
+    assert "ohne Roboter" in ausgabe.out + ausgabe.err
+
+
 def test_doctor_gibt_stufen_aus(monkeypatch, capsys):
     from spotlab.workshop.doctor import Check
 

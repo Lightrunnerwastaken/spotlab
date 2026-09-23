@@ -220,6 +220,27 @@ def test_backend_schlaegt_dryrun(tmp_path):
     assert umgebung["SPOTLAB_BACKEND"] == "sim"
 
 
+def test_dryrun_ist_eine_obergrenze_nicht_nur_eine_vorgabe(tmp_path):
+    """Beta-Prüfung 23.09.2026 (p06): `spotlab run --dryrun` setzte nur
+    SPOTLAB_BACKEND -- und `connect(backend=...)` im Skript schlägt die
+    Variable. Ein aus einem Beispiel kopiertes `backend="real"` fuhr den
+    Roboter, obwohl die Kommandozeile „ohne Roboter“ versprach."""
+    assert _umgebung_von(tmp_path, dryrun=True)["SPOTLAB_NUR_TROCKEN"] == "1"
+    # auch der blockierende Weg der Kommandozeile
+    skript = tmp_path / "x.py"
+    skript.write_text("print(1)", encoding="utf-8")
+    aufrufe = []
+    run_script(skript, dryrun=True,
+               starter=lambda argumente, **kw: aufrufe.append(kw) or FakeProzess())
+    assert aufrufe[0]["env"]["SPOTLAB_NUR_TROCKEN"] == "1"
+
+
+def test_ohne_dryrun_keine_obergrenze(tmp_path, monkeypatch):
+    """Die Gegenprobe: wer den Roboter startet, bekommt keine Schranke untergeschoben."""
+    monkeypatch.delenv("SPOTLAB_NUR_TROCKEN", raising=False)
+    assert "SPOTLAB_NUR_TROCKEN" not in _umgebung_von(tmp_path, backend="real")
+
+
 def test_zusatzumgebung_wird_mitgegeben(tmp_path):
     """Damit die GUI Raum und Startpose durchreichen kann, ohne den Umweg ueber
     die Konfigurationsdatei."""

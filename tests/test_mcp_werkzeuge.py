@@ -266,6 +266,21 @@ def test_unter_der_grenze_wird_gestartet(welt, monkeypatch):
     assert len(gestartet) == 1
 
 
+def test_skript_starten_ist_wirklich_ein_trockenlauf(welt, monkeypatch):
+    """p15: die Antwort sagt „im Trockenlauf“, gestartet wurde aber ohne Backend --
+    ein Skript ohne eigene Angabe fuhr damit `default_backend` (mujoco, bei
+    manchen Lehrern „real“ und dann nur von der Schranke gestoppt)."""
+    werkzeuge.projekt_anbinden(str(welt[1]))
+    gestartet = []
+    monkeypatch.setattr(werkzeuge, "start_script", lambda *a, **kw: gestartet.append(kw))
+
+    antwort = werkzeuge.skript_starten("matura-spot", "Baseline")
+    assert antwort["gestartet"] is True
+    (benannt,) = gestartet
+    assert benannt["backend"] == "dryrun"
+    assert benannt["nur_trocken"] is True
+
+
 def test_ein_geschwaetziges_skript_bleibt_nicht_stehen(welt, tmp_path):
     """S4.5 -- der Server liest die Pipe nirgends leer.
 

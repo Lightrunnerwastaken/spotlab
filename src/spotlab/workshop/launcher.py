@@ -29,7 +29,12 @@ def _umgebung(dryrun, nur_trocken=False, backend=None, zusatz=None):
     name = backend or ("dryrun" if dryrun else None)
     if name:
         umgebung[ENV_BACKEND] = name
-    if nur_trocken:
+    # `dryrun=True` verspricht „ohne Roboter“ -- und SPOTLAB_BACKEND allein
+    # haelt das nicht: `connect(backend="real")` im Skript schlaegt die
+    # Variable (Beta-Pruefung 23.09.2026, `spotlab run --dryrun`). Deshalb
+    # setzt der Schalter auch die Obergrenze. `backend="dryrun"` (der Weg des
+    # Editors) bleibt davon unberuehrt, siehe gui/editor/view.py::_starte.
+    if nur_trocken or dryrun:
         # Obergrenze: connect() weist damit auch ein explizites backend="real" ab.
         umgebung[ENV_NUR_TROCKEN] = "1"
 
@@ -67,7 +72,8 @@ def start_script(
     zusammengesetzt. `nur_trocken` setzt die Obergrenze aus __init__.py.
 
     `backend` nennt das Backend beim Namen ("real", "dryrun", "sim") und ist
-    der Weg der GUI; `dryrun=True` bleibt die Kurzform für "dryrun".
+    der Weg der GUI; `dryrun=True` ist die Kurzform für "dryrun" UND setzt die
+    Obergrenze -- ein Backend im Skript kann den Roboter dann nicht anfordern.
 
     `umgebung` sind zusätzliche Variablen für den Kindprozess — die GUI
     reicht damit Raum und Startpose des Übungsraums durch.

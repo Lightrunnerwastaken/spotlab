@@ -40,7 +40,9 @@ def build_parser():
     starten = unter.add_parser("run", help="Skript starten und aufzeichnen")
     starten.add_argument("datei")
     starten.add_argument(
-        "--dryrun", action="store_true", help="ohne Roboter, nur Kommandos prüfen"
+        "--dryrun", action="store_true",
+        help="ohne Roboter, nur Kommandos prüfen -- auch ein backend im Skript "
+             "darf den Roboter dann nicht anfordern",
     )
 
     laeufe = unter.add_parser("runs", help="Läufe auflisten")

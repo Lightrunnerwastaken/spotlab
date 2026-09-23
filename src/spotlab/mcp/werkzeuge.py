@@ -210,9 +210,15 @@ def skript_starten(projekt, name):
     protokolle.mkdir(parents=True, exist_ok=True)
     marke = datetime.now().strftime("%Y%m%d-%H%M%S")
     ausgabedatei = protokolle / f"{marke}-{sicherer_name(name, ersatz='skript')}.log"
+    # `backend="dryrun"` UND die Obergrenze: ohne Backend fuhr ein Skript, das
+    # selbst keines nennt, `default_backend` aus der Konfiguration -- die
+    # Antwort unten versprach trotzdem einen Trockenlauf (Beta-Pruefung
+    # 23.09.2026). Nennt das Skript selbst eine Simulation, bleibt es dabei;
+    # den Roboter kann es wegen `nur_trocken` nicht anfordern.
     with open(ausgabedatei, "w", encoding="utf-8", errors="replace") as strom:
         start_script(
-            skript.datei, argumente=skript.argumente, nur_trocken=True, ausgabe=strom
+            skript.datei, argumente=skript.argumente, backend="dryrun",
+            nur_trocken=True, ausgabe=strom,
         )
     # Der eigene Griff geht hier zu; der Kindprozess haelt seinen eigenen.
 
@@ -222,7 +228,8 @@ def skript_starten(projekt, name):
         "argumente": list(skript.argumente),
         "ausgabe": str(ausgabedatei),
         "hinweis": (
-            "Der Lauf läuft im Trockenlauf. Die Kennung erscheint in "
+            "Der Lauf läuft ohne Roboter: im Trockenlauf, ausser das Skript wählt "
+            "selbst eine Simulation. Die Kennung erscheint in "
             "`laeufe_auflisten`, sobald die Aufzeichnung angelegt ist. "
             "Ausgabe und Traceback stehen in der Datei unter `ausgabe`."
         ),
