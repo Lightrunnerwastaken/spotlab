@@ -262,18 +262,30 @@ def _gui():
 def _login():
     from dataclasses import replace
 
-    from spotlab.config import Config, load_config, save_config, save_password
+    from spotlab.config import Config, rette_config, save_config, save_password
+    from spotlab.errors import ConfigBroken, ConfigMissing
 
+    # `rette_config`, nicht `load_config`: login ist der Reparaturweg, auf den
+    # jede ConfigBroken-Meldung zeigt. Nach EINEM Tippfehler baute es bis zum
+    # 23.09.2026 alles neu -- Treppensperre, Tempo, Arbeitsordner, Karte und
+    # Raum fielen still auf die Vorgaben. Einen kaputten Sicherheitswert
+    # uebernimmt es gar nicht erst, statt ihn zu ueberschreiben.
     try:
-        alt = load_config()
-    except SpotlabError:
-        alt = None
-    ip = input(f"IP des Spot [{alt.ip if alt else '192.168.80.3'}]: ").strip() or (
-        alt.ip if alt else "192.168.80.3"
-    )
-    benutzer = input(f"Benutzername [{alt.username if alt else 'user'}]: ").strip() or (
-        alt.username if alt else "user"
-    )
+        alt, ersetzt = rette_config()
+    except ConfigMissing:
+        alt, ersetzt = None, []
+    except ConfigBroken as fehler:
+        raise ConfigBroken(
+            f"{fehler} `spotlab login` ändert daran nichts: ein Sicherheitswert wird "
+            "nie still auf die Vorgabe zurückgesetzt. Erst die Zeile korrigieren "
+            "(oder die Datei löschen), dann erneut `spotlab login`."
+        ) from fehler
+    for eintrag in ersetzt:
+        print(f"{GRAU}Ungültig in der alten Konfiguration, ersetzt: {eintrag}{AUS}")
+    ip_vorher = alt.ip if alt and alt.ip else "192.168.80.3"
+    benutzer_vorher = alt.username if alt and alt.username else "user"
+    ip = input(f"IP des Spot [{ip_vorher}]: ").strip() or ip_vorher
+    benutzer = input(f"Benutzername [{benutzer_vorher}]: ").strip() or benutzer_vorher
     spitzname = input(f"Spitzname [{alt.nickname if alt else 'Spot'}]: ").strip() or (
         alt.nickname if alt else "Spot"
     )

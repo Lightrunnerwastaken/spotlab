@@ -136,15 +136,14 @@ def _treppenmodus(limits, pfad):
     return wert
 
 
-def load_config(path=None):
-    path = Path(path) if path else CONFIG_PATH
+def _roh_lesen(path):
     if not path.exists():
         raise ConfigMissing(
             f"Keine Konfiguration unter {path}. Einmalig einrichten mit `spotlab login`."
         )
     try:
         with path.open("rb") as datei:
-            roh = tomllib.load(datei)
+            return tomllib.load(datei)
     except (tomllib.TOMLDecodeError, UnicodeDecodeError, OSError) as fehler:
         # Ohne diesen Fang sperrt eine halb geschriebene Datei die GUI, das CLI
         # und den Reparaturweg `spotlab login` gleichzeitig — mit rohem Traceback.
@@ -152,11 +151,50 @@ def load_config(path=None):
             f"{path} ist nicht lesbar ({fehler.__class__.__name__}). Datei "
             f"korrigieren oder löschen und neu einrichten mit `spotlab login`."
         ) from fehler
+
+
+def load_config(path=None):
+    path = Path(path) if path else CONFIG_PATH
+    roh = _roh_lesen(path)
     robot = roh.get("robot", {})
     if "ip" not in robot or "username" not in robot:
         raise ConfigMissing(
             f"In {path} fehlen IP oder Benutzername. Neu einrichten mit `spotlab login`."
         )
+    return _aus_roh(roh, path)
+
+
+def rette_config(path=None):
+    """Für `spotlab login` nach einem Tippfehler: was gültig ist, bleibt.
+
+    Eine Konfiguration wird ERGÄNZT, nie neu gebaut (CLAUDE.md) -- auch dann
+    nicht, wenn EIN Eintrag kaputt ist. Bis zum 23.09.2026 baute login nach
+    jedem ConfigBroken alles neu: ein `backend = "Mujoco"` kostete die
+    Treppensperre, das Tempo, den Arbeitsordner, die Karte und den Raum.
+
+    Rückgabe `(Config, [ersetzte Einträge als Text])`. Ersetzt wird nur, was
+    kein Sicherheitswert ist: ein unbekanntes Backend bekommt die Vorgabe (die
+    fährt nie den Roboter), fehlende IP und Benutzername bleiben leer -- login
+    fragt beides ohnehin. Ist ein SICHERHEITSWERT kaputt (`max_speed`,
+    `max_turn_rate`, `treppen`) oder die Datei gar nicht lesbar, wirft sie
+    ConfigBroken: ihn still auf die Vorgabe zu setzen, hiesse eine Sperre
+    aufzuheben, die jemand bewusst gesetzt hat. ConfigMissing ohne Datei.
+    """
+    path = Path(path) if path else CONFIG_PATH
+    roh = _roh_lesen(path)
+    ersetzt = []
+    defaults = roh.get("defaults", {})
+    backend = defaults.get("backend", Config.default_backend)
+    if backend not in BACKENDS:
+        ersetzt.append(f"backend = {backend!r}, jetzt {Config.default_backend!r} (Vorgabe)")
+        roh = {**roh, "defaults": {**defaults, "backend": Config.default_backend}}
+    robot = roh.get("robot", {})
+    roh = {**roh, "robot": {"ip": "", "username": "", **robot}}
+    return _aus_roh(roh, path), ersetzt
+
+
+def _aus_roh(roh, path):
+    robot = roh["robot"]
     limits = roh.get("limits", {})
     # Ohne Eintrag die Vorgabe von `Config`, nie "real": wer nichts einstellt,
     # faehrt NICHT den echten Spot -- auch nicht mit einer Datei, in der die
@@ -166,7 +204,8 @@ def load_config(path=None):
         raise ConfigBroken(
             f"In {path} ist `backend = {backend!r}` unbekannt. Erlaubt: "
             + ", ".join(sorted(BACKENDS))
-            + "."
+            + ". Die Zeile korrigieren -- oder `spotlab login`, das setzt die "
+            f"Vorgabe {Config.default_backend!r} und behält alles andere."
         )
     return Config(
         ip=robot["ip"],

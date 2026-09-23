@@ -216,6 +216,66 @@ def test_login_behaelt_arbeitsordner_und_karte(tmp_path, monkeypatch):
     assert neu.limits.max_speed == 0.25
 
 
+def _login_mit_enter(monkeypatch):
+    """`spotlab login`, bei jeder Frage Enter -- die Vorgaben bleiben."""
+    monkeypatch.setattr("builtins.input", lambda *a: "")
+    monkeypatch.setattr("getpass.getpass", lambda *a: "")
+    from spotlab.cli import _login
+
+    return _login()
+
+
+VERSTELLT = (
+    '[robot]\nip = "192.168.80.3"\nusername = "lehrer"\nnickname = "Schulspot"\n'
+    '[limits]\nmax_speed = 0.3\nmax_turn_rate = 0.5\ntreppen = "aus"\n'
+    '[defaults]\nbackend = "Mujoco"\n'
+    '[gui]\nworkspace = "D:/spotProjects"\n[maps]\nactive = "flur"\n'
+    '[uebungsraum]\nraum = "moebliert"\nstart = "1,1,0"\n'
+)
+
+
+def test_login_nach_einem_tippfehler_behaelt_die_sicherheitswerte(tmp_path, monkeypatch, capsys):
+    """p14: EIN Tippfehler (`backend = "Mujoco"`) machte die Datei zu
+    ConfigBroken, die Meldung schickte zu `spotlab login` -- und login baute
+    alles neu: Treppen wieder „auto“, Tempo 0.6 statt 0.3, Arbeitsordner,
+    Karte und Raum weg. `treppen` ist ein SICHERHEITSWERT (CLAUDE.md)."""
+    from spotlab.config import load_config
+
+    pfad = tmp_path / "config.toml"
+    pfad.write_text(VERSTELLT, encoding="utf-8")
+    monkeypatch.setattr("spotlab.config.CONFIG_PATH", pfad)
+
+    assert _login_mit_enter(monkeypatch) == 0
+    neu = load_config(pfad)
+    assert neu.limits.treppen == "aus"
+    assert neu.limits.max_speed == 0.3 and neu.limits.max_turn_rate == 0.5
+    assert (neu.ip, neu.username, neu.nickname) == ("192.168.80.3", "lehrer", "Schulspot")
+    assert neu.workspace == "D:/spotProjects" and neu.active_map == "flur"
+    assert neu.raum == "moebliert" and neu.raum_start == "1,1,0"
+    assert neu.default_backend == "mujoco"                   # der Tippfehler, ersetzt ...
+    assert "Mujoco" in capsys.readouterr().out               # ... und gesagt
+
+
+@pytest.mark.parametrize("kaputt", [
+    VERSTELLT.replace('treppen = "aus"', 'treppen = "vielleicht"'),
+    VERSTELLT.replace("max_speed = 0.3", "max_speed = -0.3"),
+    VERSTELLT.replace("[limits]", "[limits"),                 # gar nicht lesbar
+], ids=["treppen", "tempo_negativ", "unlesbar"])
+def test_login_setzt_einen_kaputten_sicherheitswert_nicht_still_zurueck(tmp_path, monkeypatch, kaputt):
+    """Was login nicht sicher uebernehmen kann, lehnt es ab -- die Datei bleibt,
+    wie sie ist, und die Meldung sagt, welche Zeile zu korrigieren ist."""
+    from spotlab.errors import ConfigBroken
+
+    pfad = tmp_path / "config.toml"
+    pfad.write_text(kaputt, encoding="utf-8")
+    monkeypatch.setattr("spotlab.config.CONFIG_PATH", pfad)
+
+    with pytest.raises(ConfigBroken) as fehler:
+        _login_mit_enter(monkeypatch)
+    assert "spotlab login" in str(fehler.value)
+    assert pfad.read_text(encoding="utf-8") == kaputt
+
+
 # ================ S4.5 auch die Wege am connect() vorbei sprechen deutsch
 
 
