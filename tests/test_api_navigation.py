@@ -290,3 +290,36 @@ def test_ohne_graph_nav_wird_gar_nicht_erst_gerechnet(tmp_path):
     with pytest.raises(UnsupportedCapability):
         process_map(backend, None, karte)
     assert not any(e.startswith("process:") for e in backend.protokoll)
+
+
+def _merke_stopp(monkeypatch):
+    import spotlab.api.navigation as modul
+
+    gestoppt = []
+    monkeypatch.setattr(modul.motion, "stop", lambda backend, recorder: gestoppt.append(True))
+    return gestoppt
+
+
+def test_zeitablauf_haelt_spot_an_bevor_er_meldet(tmp_path, monkeypatch):
+    """Pruefung 23.09.2026: navigate_to warf bei Zeitablauf, ohne stop() zu senden,
+    und navigieren.py fing den Fehler und machte weiter -- Spot fuehrte den letzten
+    Navigationsbefehl noch bis zu KOMMANDO_GUELTIGKEIT_S aus."""
+    gestoppt = _merke_stopp(monkeypatch)
+    unterwegs = NavStatus(fertig=False, status="Unterwegs.", gescheitert=False)
+    backend = FakeBackend(folge=[unterwegs] * 50)
+    karte = Map("turnhalle", _karte_auf_platte(tmp_path), _graph())
+    uhr = iter([0.0, 0.0, 5.0, 500.0, 900.0])
+    with pytest.raises(NavigationError):
+        navigate_to(backend, None, karte, "kueche", Limits(), timeout=10.0,
+                    schlaf=lambda _: None, jetzt=lambda: next(uhr))
+    assert gestoppt == [True]
+
+
+def test_ein_gemeldetes_scheitern_haelt_spot_an(tmp_path, monkeypatch):
+    gestoppt = _merke_stopp(monkeypatch)
+    kaputt = NavStatus(fertig=False, status="Weg versperrt.", gescheitert=True)
+    backend = FakeBackend(folge=[kaputt])
+    karte = Map("turnhalle", _karte_auf_platte(tmp_path), _graph())
+    with pytest.raises(NavigationError):
+        navigate_to(backend, None, karte, "kueche", Limits(), schlaf=lambda _: None)
+    assert gestoppt == [True]

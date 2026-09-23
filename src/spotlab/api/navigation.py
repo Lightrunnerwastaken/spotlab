@@ -114,6 +114,20 @@ def process_map(backend, recorder, karte, melde=None, fiducial=True, odometrie=T
     return bericht
 
 
+def _halte_an(backend, recorder):
+    """Anhalten, bevor ein Navigationsfehler geworfen wird.
+
+    Ohne das fuehrte Spot den letzten Navigationsbefehl noch bis zu
+    KOMMANDO_GUELTIGKEIT_S aus, waehrend das Programm den Fehler schon fing und
+    weitermachte (Pruefung 23.09.2026). Scheitert der Stopp selbst, bleibt der
+    Navigationsfehler die Meldung -- er sagt, was los war.
+    """
+    try:
+        motion.stop(backend, recorder)
+    except Exception:
+        pass
+
+
 def navigate_to(
     backend,
     recorder,
@@ -158,6 +172,7 @@ def navigate_to(
                 recorder.event("rückmeldung", name="navigate_to", status=zustand.status)
 
         if zustand.gescheitert:
+            _halte_an(backend, recorder)
             raise NavigationError(zustand.status)
         if zustand.fertig:
             return True
@@ -167,6 +182,7 @@ def navigate_to(
                 recorder.event("rückmeldung", name="navigate_to", status="abgebrochen")
             return False
         if jetzt() >= ende:
+            _halte_an(backend, recorder)
             raise NavigationError(
                 f"Der Spot hat '{ziel}' nicht innerhalb von {timeout:.0f} s erreicht "
                 f"(zuletzt: {zustand.status})."
