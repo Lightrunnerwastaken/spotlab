@@ -53,3 +53,45 @@ def test_traceback_stellen_zeigen_weiterhin_richtig(qapp, tmp_path):
     assert ausschnitt.startswith('File "'), ausschnitt
     assert str(skript) in ausschnitt
     assert pfad == skript.resolve() and zeile == 3
+
+
+# ================= Emojis ausserhalb der BMP (Pruefung 23.09.2026, p12)
+#
+# Python zaehlt ein Emoji wie den Roboter als EIN Zeichen, Qt als ZWEI
+# UTF-16-Einheiten. Der laufende Offset rechnete in Python-Zeichen: nach zwoelf
+# Zeilen mit zwei Emojis sass jede anklickbare Stelle 24 Positionen zu frueh --
+# unterstrichen war das Falsche, und ein Klick auf das Ende des Links ging ins Leere.
+
+ROBOTER, SPIEL = chr(0x1F916), chr(0x1F3AE)
+
+
+def test_emojis_verschieben_die_anklickbaren_stellen_nicht(qapp, tmp_path):
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QTextCursor
+    from PySide6.QtTest import QTest
+
+    skript = tmp_path / "fehler.py"
+    skript.write_text("x = 1\ny = 2\nraise ValueError\n", encoding="utf-8")
+    feld = _ausgabefeld()
+    feld.resize(900, 400)
+    feld.show()
+    feld.setze_wurzel(tmp_path)
+    geklickt = []
+    feld.stelle_geklickt.connect(lambda pfad, zeile: geklickt.append(zeile))
+    for i in range(12):
+        feld.haenge_an(f"{ROBOTER} Schritt {i} {SPIEL}")
+    feld.haenge_an(f'  File "{skript}", line 3, in <module>')
+
+    assert feld._laenge == feld.document().characterCount() - 1
+    von, bis, _pfad, zeile = feld.stellen()[0]
+    auswahl = QTextCursor(feld.document())
+    auswahl.setPosition(von)
+    auswahl.setPosition(bis, QTextCursor.KeepAnchor)
+    assert auswahl.selectedText() == f'File "{skript}", line 3'
+
+    ende = QTextCursor(feld.document())
+    ende.setPosition(bis - 1)                     # das letzte Zeichen des Links
+    QTest.mouseClick(feld.viewport(), Qt.LeftButton, Qt.NoModifier,
+                     feld.cursorRect(ende).center())
+    assert geklickt == [3]
+    feld.close()

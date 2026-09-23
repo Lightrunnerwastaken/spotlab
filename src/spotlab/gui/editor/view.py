@@ -31,8 +31,8 @@ from PySide6.QtWidgets import (
 from spotlab.editor.syntax import pruefe
 from spotlab.editor.traceback import finde_stellen
 from spotlab.errors import SpotlabError
-from spotlab.gui.editor.codeedit import CodeEdit
-from spotlab.gui.editor.completer import Vervollstaendigung
+from spotlab.gui.editor.codeedit import ABSATZ, CodeEdit, utf16_laenge
+from spotlab.gui.editor.completer import Vervollstaendigung, warte_auf_arbeiter
 from spotlab.gui.editor.highlighter import Hervorheber
 from spotlab.gui.editor.tree import Dateibaum
 from spotlab.gui.launcher import start_script
@@ -81,6 +81,24 @@ def schreibe_text(pfad, text):
     Path(pfad).write_text(text, encoding="utf-8", newline="\n")
 
 
+def _unterhalb(pfad, wurzel):
+    """Der Rest von `pfad` unter `wurzel` (`Path(".")` fuer denselben), sonst None.
+
+    Erst woertlich, dann aufgeloest: ein Reiter aus einem Traceback-Klick traegt
+    den aufgeloesten Pfad, der Baum den, den er anzeigt. Die Gross-/Klein-
+    schreibung zaehlt unter Windows ohnehin nicht (`Path` vergleicht dort so).
+    """
+    pfad, wurzel = Path(pfad), Path(wurzel)
+    try:
+        return pfad.relative_to(wurzel)
+    except ValueError:
+        pass
+    try:
+        return pfad.resolve().relative_to(wurzel.resolve())
+    except (OSError, ValueError):
+        return None
+
+
 def stempel(pfad):
     zustand = Path(pfad).stat()
     return zustand.st_mtime, zustand.st_size
@@ -112,7 +130,7 @@ class Ausgabefeld(QPlainTextEdit):
         self._palette = palette
         self._wurzel = None
         self._stellen = []          # (von, bis, pfad, zeile), absolut im Dokument
-        self._laenge = 0            # Dokumentlänge in Zeichen, laufend geführt
+        self._laenge = 0            # Dokumentlänge in Qt-Positionen (UTF-16), laufend
 
     def setze_wurzel(self, pfad):
         self._wurzel = Path(pfad) if pfad else None
@@ -135,13 +153,19 @@ class Ausgabefeld(QPlainTextEdit):
         # Die Zahl MUSS stimmen: an ihr hängen die Zeichenpositionen der
         # anklickbaren Traceback-Stellen. Ein Fehler hier schickt den Schüler in
         # die falsche Datei, deshalb prüft ein Test sie gegen toPlainText().
+        #
+        # Gezählt wird in UTF-16-Einheiten wie in Qt, nicht in Python-Zeichen:
+        # ein Emoji ausserhalb der BMP ist für Qt ZWEI Positionen, und nach
+        # zwölf Zeilen mit zwei Emojis sass jeder Link 24 Positionen zu früh
+        # (Prüfung 23.09.2026). `finde_stellen` zählt in Zeichen der Zeile.
         basis = self._laenge + (1 if self._laenge else 0)  # append setzt ein \n davor
         self.appendPlainText(zeile)
-        self._laenge = basis + len(zeile)
+        self._laenge = basis + utf16_laenge(zeile)
         if self._wurzel is None:
             return
         for stelle in finde_stellen(zeile, self._wurzel):
-            von, bis = basis + stelle.von, basis + stelle.bis
+            von = basis + utf16_laenge(zeile[: stelle.von])
+            bis = basis + utf16_laenge(zeile[: stelle.bis])
             self._stellen.append((von, bis, stelle.pfad, stelle.zeile))
             self._male_link(von, bis)
 
@@ -194,6 +218,7 @@ class EditorView(QWidget):
         self.baum = Dateibaum()
         self.baum.datei_gewaehlt.connect(self.oeffne)
         self.baum.datei_entfernt.connect(self.schliesse_pfad)
+        self.baum.datei_umbenannt.connect(self.pfad_umbenannt)
         self.baum.meldung.connect(self.meldung)
 
         links = QWidget()
@@ -353,7 +378,7 @@ class EditorView(QWidget):
         eintrag = self._reiter.get(feld)
         if eintrag is None:
             return
-        feld.zeige_fehler(pruefe(feld.toPlainText(), name=str(eintrag.pfad)))
+        feld.zeige_fehler(pruefe(feld.rohtext(), name=str(eintrag.pfad)))
 
     def _verschmutzt(self, feld, geaendert=True):
         eintrag = self._reiter.get(feld)
@@ -418,8 +443,14 @@ class EditorView(QWidget):
         """
         if eintrag.verschmutzt:
             return True
+        # Rohtext, nicht toPlainText(): jenes machte aus U+00A0 und U+2028 etwas
+        # anderes, die Datei galt als geaendert, und das blosse „Starten" schrieb
+        # sie kaputt (Pruefung 23.09.2026). U+2029 in der Datei kann das Feld gar
+        # nicht halten -- es wird beim Laden zur Zeilengrenze --, also zaehlt es
+        # hier als eine; umgeschrieben wird erst, wer wirklich etwas aendert.
         try:
-            return lade_text(eintrag.pfad) != eintrag.feld.toPlainText()
+            datei = lade_text(eintrag.pfad).replace(ABSATZ, "\n")
+            return datei != eintrag.feld.rohtext()
         except (OSError, SpotlabError):
             return True
 
@@ -438,7 +469,7 @@ class EditorView(QWidget):
                 self._neu_laden(eintrag)
                 return False
         try:
-            schreibe_text(eintrag.pfad, eintrag.feld.toPlainText())
+            schreibe_text(eintrag.pfad, eintrag.feld.rohtext())
             eintrag.mtime, eintrag.groesse = stempel(eintrag.pfad)
         except OSError as fehler:
             self.meldung.emit(f"{eintrag.pfad.name} liess sich nicht speichern: {fehler}")
@@ -461,38 +492,74 @@ class EditorView(QWidget):
         self._titel(eintrag)
 
     def schliesse_pfad(self, pfad):
-        """Den Reiter zu `pfad` schliessen, falls einer offen ist.
+        """Die Reiter zu `pfad` schliessen -- bei einem Ordner alle darunter.
 
         Geht ueber `_schliesse`, damit die Rueckfrage bei ungespeicherten
         Aenderungen gilt: die geloeschte Datei liegt im Papierkorb und ist
-        wiederherstellbar, ein ungespeicherter Puffer nicht.
+        wiederherstellbar, ein ungespeicherter Puffer nicht. Bis zum 23.09.2026
+        ging nur ein Reiter mit genau diesem Pfad zu; die Reiter eines
+        geloeschten Ordners blieben offen und legten ihn beim Speichern wieder an.
         """
-        pfad = Path(pfad)
         for feld, eintrag in list(self._reiter.items()):
-            if eintrag.pfad == pfad:
+            if _unterhalb(eintrag.pfad, pfad) is not None:
                 self._schliesse(self.reiter.indexOf(feld))
-                return
+
+    def pfad_umbenannt(self, alt, neu):
+        """Der Baum hat `alt` in `neu` umbenannt: die Reiter darauf gehen mit.
+
+        Bei einem Ordner alle darunter. Nachgefuehrt werden Pfad, Titel und der
+        Pfad fuer jedi. Die Zeitmarke NICHT: sie gehoert zum Inhalt, und
+        Umbenennen aendert weder Aenderungszeit noch Groesse. Am neuen Ort neu
+        gelesen, verdeckte sie eine Aenderung aus VS Code von VOR dem
+        Umbenennen, und das naechste Speichern ueberschriebe sie ohne Frage.
+        """
+        for eintrag in self._reiter.values():
+            rest = _unterhalb(eintrag.pfad, alt)
+            if rest is None:
+                continue
+            eintrag.pfad = Path(neu) / rest
+            if eintrag.hilfe is not None:
+                eintrag.hilfe.setze_pfad(eintrag.pfad)
+            self._titel(eintrag)
+
+    def frage_schliessen(self, pfad):
+        """True = trotz ungespeicherter Aenderungen schliessen. Ersetzbar im Test."""
+        antwort = QMessageBox.question(
+            self,
+            "spotlab",
+            f"{Path(pfad).name} hat ungespeicherte Änderungen. Trotzdem schliessen?",
+            QMessageBox.Yes | QMessageBox.No,
+        )
+        return antwort == QMessageBox.Yes
 
     def _schliesse(self, index):
         feld = self.reiter.widget(index)
         eintrag = self._reiter.get(feld)
         if eintrag is not None and eintrag.verschmutzt:
-            antwort = QMessageBox.question(
-                self,
-                "spotlab",
-                f"{eintrag.pfad.name} hat ungespeicherte Änderungen. Trotzdem schliessen?",
-                QMessageBox.Yes | QMessageBox.No,
-            )
-            if antwort != QMessageBox.Yes:
+            if not self.frage_schliessen(eintrag.pfad):
                 return
         self.reiter.removeTab(index)
         reiter = self._reiter.pop(feld, None)
-        # ERST den jedi-Arbeiter beenden, DANN das Feld zur Zerstörung
+        # ERST den jedi-Arbeiter vom Feld lösen, DANN das Feld zur Zerstörung
         # vormerken. Umgekehrt wird ein arbeitender QThread destruiert, und das
         # reisst das ganze Fenster mit — samt NOT-AUS-Knopf.
         if reiter is not None and reiter.hilfe is not None:
             reiter.hilfe.schliesse()
         feld.deleteLater()
+
+    def schliesse_hintergrund(self, frist_ms):
+        """Beim Schliessen des FENSTERS: alle jedi-Arbeiter abwarten. True = alles still.
+
+        Schliesst die Vervollständigung in JEDEM Reiter (danach gibt es keine
+        Vorschläge mehr — deshalb nur fürs Fenster, nicht für einen Reiter) und
+        wartet höchstens `frist_ms` auf alle Arbeiter, auch auf die längst
+        geschlossener Reiter. Danach zerstört Qt die Reiter und die Anwendung; ein
+        Faden, der dann noch rechnet, reisst den Prozess mit.
+        """
+        for eintrag in list(self._reiter.values()):
+            if eintrag.hilfe is not None:
+                eintrag.hilfe.schliesse()
+        return warte_auf_arbeiter(frist_ms)
 
     def springe_zu(self, pfad, zeile):
         self.oeffne(pfad)

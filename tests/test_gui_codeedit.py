@@ -42,6 +42,84 @@ def test_shift_tab_rueckt_aus(qapp):
     assert feld.toPlainText() == "    x = 1"
 
 
+# ================ Tab und Shift+Tab mit Markierung (Pruefung 23.09.2026, p01)
+#
+# Tab ersetzte die markierten Zeilen durch vier Leerzeichen -- der Code war weg.
+# Shift+Tab rueckte nur die Zeile mit dem Cursor aus.
+
+
+def _markiere(feld, von_block, von_spalte, bis_block, bis_spalte):
+    dokument = feld.document()
+    cursor = feld.textCursor()
+    cursor.setPosition(dokument.findBlockByNumber(von_block).position() + von_spalte)
+    cursor.setPosition(dokument.findBlockByNumber(bis_block).position() + bis_spalte,
+                       QTextCursor.KeepAnchor)
+    feld.setTextCursor(cursor)
+
+
+def test_tab_mit_markierten_zeilen_rueckt_alle_ein_und_ein_rueckgaengig_genuegt(qapp):
+    feld = CodeEdit(DUNKEL)
+    vorher = "def f():\nx = 1\ny = 2\nprint(x, y)\n"
+    feld.setPlainText(vorher)
+    _markiere(feld, 1, 0, 2, 5)
+    QTest.keyClick(feld, Qt.Key_Tab)
+    assert feld.toPlainText() == "def f():\n    x = 1\n    y = 2\nprint(x, y)\n"
+    feld.undo()
+    assert feld.toPlainText() == vorher
+
+
+def test_shift_tab_mit_markierten_zeilen_rueckt_alle_aus_und_ein_rueckgaengig_genuegt(qapp):
+    feld = CodeEdit(DUNKEL)
+    vorher = "    a = 1\n    b = 2\n    c = 3\n"
+    feld.setPlainText(vorher)
+    _markiere(feld, 0, 0, 2, 3)
+    QTest.keyClick(feld, Qt.Key_Backtab, Qt.ShiftModifier)
+    assert feld.toPlainText() == "a = 1\nb = 2\nc = 3\n"
+    feld.undo()
+    assert feld.toPlainText() == vorher
+
+
+def test_eine_markierung_bis_zum_zeilenanfang_nimmt_die_zeile_nicht_mit(qapp):
+    """Wer ganze Zeilen mit Shift+Pfeil markiert, steht am Ende am Anfang der
+    naechsten -- die gehoert nicht dazu."""
+    feld = CodeEdit(DUNKEL)
+    feld.setPlainText("a\nb\nc\n")
+    _markiere(feld, 0, 0, 2, 0)
+    QTest.keyClick(feld, Qt.Key_Tab)
+    assert feld.toPlainText() == "    a\n    b\nc\n"
+
+
+def test_tab_mit_markierung_in_einer_zeile_loescht_nichts(qapp):
+    feld = CodeEdit(DUNKEL)
+    feld.setPlainText("x = spot\n")
+    _markiere(feld, 0, 4, 0, 8)
+    QTest.keyClick(feld, Qt.Key_Tab)
+    assert feld.toPlainText() == "    x = spot\n"
+
+
+def test_leere_zeilen_bekommen_keine_leerzeichen(qapp):
+    feld = CodeEdit(DUNKEL)
+    feld.setPlainText("a\n\nb\n")
+    _markiere(feld, 0, 0, 2, 1)
+    QTest.keyClick(feld, Qt.Key_Tab)
+    assert feld.toPlainText() == "    a\n\n    b\n"
+
+
+def test_enter_nach_einem_emoji_sieht_nur_den_text_vor_dem_cursor(qapp):
+    """positionInBlock() zaehlt UTF-16-Einheiten, block.text() Python-Zeichen:
+    nach einem Emoji nahm der Schnitt ein Zeichen HINTER dem Cursor mit -- hier
+    den Doppelpunkt, und die neue Zeile wurde eingerueckt (Pruefung 23.09.2026)."""
+    roboter = chr(0x1F916)
+    feld = CodeEdit(DUNKEL)
+    zeile = f'if s == "{roboter}":'
+    feld.setPlainText(zeile)
+    cursor = feld.textCursor()
+    cursor.setPosition(len(zeile.encode("utf-16-le")) // 2 - 1)     # vor dem ':'
+    feld.setTextCursor(cursor)
+    QTest.keyClick(feld, Qt.Key_Return)
+    assert feld.toPlainText() == f'if s == "{roboter}"\n:'
+
+
 def test_ctrl_s_meldet_speicherwunsch(qapp):
     feld = CodeEdit(DUNKEL)
     gerufen = []
@@ -144,3 +222,62 @@ def test_alle_ersetzen_in_der_offenen_datei(qapp):
     feld.suchleiste.ersatzfeld.setText("z")
     assert feld.suchleiste.ersetze_alle() == 3
     assert feld.toPlainText() == "z = 1\nb = z\nc = z\n"
+
+
+# ============ Suchen und Ersetzen nach DENSELBEN Regeln (Pruefung 23.09.2026, p01)
+#
+# Die Suche fand ohne Haekchen Spot, spot und SPOT; „Ersetzen" verglich die
+# Markierung exakt und tat nichts, „Alle ersetzen" zaehlte mit str.count und
+# erwischte nur die genaue Schreibweise.
+
+
+def _leiste(text, suchen, ersetzen, gross_klein=False):
+    feld = CodeEdit(DUNKEL)
+    feld.setPlainText(text)
+    feld.suchleiste_umschalten()
+    leiste = feld.suchleiste
+    leiste.suchfeld.setText(suchen)
+    leiste.ersatzfeld.setText(ersetzen)
+    leiste.gross_klein.setChecked(gross_klein)
+    return feld, leiste
+
+
+def test_alle_ersetzen_ohne_haekchen_trifft_was_die_suche_findet(qapp):
+    vorher = "Spot = 1\nspot = 2\nSPOT = 3\n"
+    feld, leiste = _leiste(vorher, "spot", "robo")
+    assert leiste.ersetze_alle() == 3
+    assert feld.toPlainText() == "robo = 1\nrobo = 2\nrobo = 3\n"
+    feld.undo()
+    assert feld.toPlainText() == vorher, "ein Strg+Z nimmt alle Ersetzungen zurueck"
+
+
+def test_alle_ersetzen_mit_haekchen_nur_die_genaue_schreibweise(qapp):
+    feld, leiste = _leiste("Spot = 1\nspot = 2\nSPOT = 3\n", "spot", "robo", gross_klein=True)
+    assert leiste.ersetze_alle() == 1
+    assert feld.toPlainText() == "Spot = 1\nrobo = 2\nSPOT = 3\n"
+
+
+def test_alle_ersetzen_endet_auch_wenn_der_ersatz_den_suchtext_enthaelt(qapp):
+    feld, leiste = _leiste("a a\n", "a", "aa")
+    assert leiste.ersetze_alle() == 2
+    assert feld.toPlainText() == "aa aa\n"
+
+
+def test_ersetzen_nimmt_den_gefundenen_treffer_jeder_schreibweise(qapp):
+    feld, leiste = _leiste("Spot = 1\n", "spot", "robo")
+    feld.moveCursor(QTextCursor.Start)
+    assert leiste.suche() is True
+    assert feld.textCursor().selectedText() == "Spot"
+    leiste.ersetze()
+    assert feld.toPlainText() == "robo = 1\n"
+
+
+def test_ersetzen_mit_haekchen_laesst_eine_andere_schreibweise_stehen(qapp):
+    feld, leiste = _leiste("Spot = spot\n", "spot", "robo", gross_klein=True)
+    cursor = feld.textCursor()
+    cursor.setPosition(0)
+    cursor.setPosition(4, QTextCursor.KeepAnchor)          # „Spot" von Hand markiert
+    feld.setTextCursor(cursor)
+    leiste.ersetze()
+    assert feld.toPlainText() == "Spot = spot\n"
+    assert feld.textCursor().selectedText() == "spot", "weiter zum naechsten Treffer"

@@ -29,6 +29,49 @@ from spotlab.editor.indent import EINRUECKUNG, ausruecken, naechste_einrueckung
 
 RUHE_MS = 150
 
+# Solange die Vorschlagsliste offen ist, gehoeren diese Tasten ihr.
+LISTENTASTEN = (Qt.Key_Return, Qt.Key_Enter, Qt.Key_Tab, Qt.Key_Backtab)
+
+ABSATZ = "\u2029"       # so trennt QTextDocument seine Bloecke
+
+
+def rohtext(dokument):
+    """Der Text, wie er in der Datei steht -- NICHT `toPlainText()`.
+
+    `toPlainText()` macht aus U+00A0 (geschütztes Leerzeichen) ein Leerzeichen
+    und aus U+2028 (Zeilentrenner) einen Zeilenumbruch. Beides steht in Code
+    aus dem Netz oder aus Word; ein U+2028 in einer Zeichenkette wurde so beim
+    blossen „Starten" zum Umbruch, und die Datei kompilierte danach nicht mehr
+    (Prüfung 23.09.2026). Der Rohtext trägt beide unverändert; nur die
+    Blockgrenzen sind U+2029 und werden hier zu dem, was sie in der Datei sind.
+    """
+    return dokument.toRawText().replace(ABSATZ, "\n")
+
+
+def utf16_laenge(text):
+    """Wie viele Qt-Positionen `text` belegt: UTF-16-Einheiten, keine Zeichen.
+
+    Python zaehlt ein Emoji ausserhalb der BMP (Roboter, Gamepad) als EIN
+    Zeichen, Qt -- Cursor, Blockspalten, Formate -- als ZWEI. Wer beides
+    mischt, verschiebt alles hinter dem Emoji: Traceback-Links sassen daneben,
+    Farben verrutschten (Pruefung 23.09.2026).
+    """
+    if text.isascii():
+        return len(text)
+    return len(text.encode("utf-16-le")) // 2
+
+
+def bis_position(text, position):
+    """Der Anfang von `text` bis zur Qt-Position `position` (UTF-16-Einheiten)."""
+    if text.isascii():
+        return text[:position]
+    return text.encode("utf-16-le")[: 2 * position].decode("utf-16-le", "ignore")
+
+
+def vor_dem_cursor(cursor):
+    """Der Text der Zeile vor dem Cursor -- `positionInBlock()` zaehlt UTF-16."""
+    return bis_position(cursor.block().text(), cursor.positionInBlock())
+
 
 class Zeilenleiste(QWidget):
     def __init__(self, editor):
@@ -52,6 +95,7 @@ class CodeEdit(QPlainTextEdit):
         self._palette = palette
         self._fehlerzeile = None
         self.suchleiste = None
+        self._vorschlagsliste = None       # das Popup der Vervollstaendigung
         self.setLineWrapMode(QPlainTextEdit.NoWrap)
         self.setTabStopDistance(4 * self.fontMetrics().horizontalAdvance(" "))
 
@@ -68,6 +112,22 @@ class CodeEdit(QPlainTextEdit):
 
         self._setze_rand()
         self._markiere()
+
+    def rohtext(self):
+        """Der Inhalt fuer Datei, Syntaxpruefung und jedi (siehe `rohtext`)."""
+        return rohtext(self.document())
+
+    def setze_vorschlagsliste(self, liste):
+        """Das Popup der Vervollstaendigung: solange es offen ist, gehoeren ihm
+        Enter, Tab und Shift+Tab (siehe `keyPressEvent`)."""
+        self._vorschlagsliste = liste
+
+    def _liste_offen(self):
+        liste = self._vorschlagsliste
+        try:
+            return liste is not None and liste.isVisible()
+        except RuntimeError:            # schon abgeraeumt
+            return False
 
     # ------------------------------------------------------------ Zeilenleiste
 
@@ -148,6 +208,13 @@ class CodeEdit(QPlainTextEdit):
     # ------------------------------------------------------------ Tasten
 
     def keyPressEvent(self, ereignis):
+        if ereignis.key() in LISTENTASTEN and self._liste_offen():
+            # Die offene Vorschlagsliste entscheidet: der QCompleter schickt die
+            # Taste zuerst hierher und uebernimmt den Vorschlag nur, wenn das
+            # Feld sie NICHT annimmt. Vorher fuegte Enter einen Umbruch und Tab
+            # vier Leerzeichen ein, und der Vorschlag kam nie an (p02/p02b).
+            ereignis.ignore()
+            return
         if ereignis.matches(QKeySequence.Save):
             self.speichern_gewuenscht.emit()
             return
@@ -158,7 +225,7 @@ class CodeEdit(QPlainTextEdit):
             self.vervollstaendigung_gewuenscht.emit(True)
             return
         if ereignis.key() == Qt.Key_Tab and not ereignis.modifiers():
-            self.insertPlainText(EINRUECKUNG)
+            self._einruecken()
             return
         if ereignis.key() == Qt.Key_Backtab:
             self._ausruecken()
@@ -173,18 +240,75 @@ class CodeEdit(QPlainTextEdit):
 
     def _neue_zeile(self):
         cursor = self.textCursor()
-        vor_dem_cursor = cursor.block().text()[: cursor.positionInBlock()]
-        cursor.insertText("\n" + naechste_einrueckung(vor_dem_cursor))
+        davor = vor_dem_cursor(cursor)
+        cursor.insertText("\n" + naechste_einrueckung(davor))
         self.setTextCursor(cursor)
 
-    def _ausruecken(self):
-        block = self.textCursor().block()
-        weg = ausruecken(block.text())
-        if weg <= 0:
+    def _markierte_bloecke(self):
+        """Erste und letzte Blocknummer, die die Markierung beruehrt.
+
+        Endet sie am Anfang einer Zeile (ganze Zeilen mit Shift+Pfeil markiert),
+        gehoert diese Zeile nicht dazu -- so machen es alle Editoren.
+        """
+        cursor = self.textCursor()
+        dokument = self.document()
+        erster = dokument.findBlock(cursor.selectionStart())
+        letzter = dokument.findBlock(cursor.selectionEnd())
+        if (letzter.blockNumber() > erster.blockNumber()
+                and cursor.selectionEnd() == letzter.position()):
+            letzter = letzter.previous()
+        return erster.blockNumber(), letzter.blockNumber()
+
+    def _je_block(self, arbeit):
+        """`arbeit(block, bearbeiter)` fuer jeden markierten Block (ohne
+        Markierung: die Zeile des Cursors) -- in EINEM Bearbeitungsschritt, damit
+        ein Strg+Z alles zuruecknimmt."""
+        if self.textCursor().hasSelection():
+            erster, letzter = self._markierte_bloecke()
+        else:
+            erster = letzter = self.textCursor().blockNumber()
+        bearbeiter = QTextCursor(self.document())
+        bearbeiter.beginEditBlock()
+        try:
+            for nummer in range(erster, letzter + 1):
+                block = self.document().findBlockByNumber(nummer)
+                arbeit(block, bearbeiter, erster == letzter)
+        finally:
+            bearbeiter.endEditBlock()
+
+    def _einruecken(self):
+        """Tab: ohne Markierung vier Leerzeichen am Cursor, MIT Markierung eine
+        Ebene fuer jede markierte Zeile.
+
+        Bis zum 23.09.2026 ersetzte Tab die Markierung durch vier Leerzeichen --
+        wer drei Zeilen einruecken wollte, hatte sie geloescht (p01).
+        """
+        if not self.textCursor().hasSelection():
+            self.insertPlainText(EINRUECKUNG)
             return
-        loeschen = QTextCursor(block)
-        loeschen.movePosition(QTextCursor.Right, QTextCursor.KeepAnchor, weg)
-        loeschen.removeSelectedText()
+
+        def eine_ebene(block, bearbeiter, nur_eine_zeile):
+            if not block.text() and not nur_eine_zeile:
+                return              # leere Zeilen bekommen keinen Leerraum am Ende
+            bearbeiter.setPosition(block.position())
+            bearbeiter.insertText(EINRUECKUNG)
+
+        self._je_block(eine_ebene)
+
+    def _ausruecken(self):
+        """Shift+Tab: eine Ebene weniger -- fuer JEDE markierte Zeile, nicht nur
+        fuer die mit dem Cursor."""
+
+        def eine_ebene(block, bearbeiter, _nur_eine_zeile):
+            weg = ausruecken(block.text())
+            if weg <= 0:
+                return
+            # Leerraum ist ASCII: `weg` Zeichen sind `weg` Positionen.
+            bearbeiter.setPosition(block.position())
+            bearbeiter.setPosition(block.position() + weg, QTextCursor.KeepAnchor)
+            bearbeiter.removeSelectedText()
+
+        self._je_block(eine_ebene)
 
     # ------------------------------------------------------------ Suchen
 
@@ -276,22 +400,50 @@ class Suchleiste(QWidget):
         self._editor.setTextCursor(cursor)
         return self._editor.find(text, self._flags(rueckwaerts))
 
-    def ersetze(self):
+    # Suchen, Ersetzen und Alle ersetzen fragen ALLE `document().find()` mit
+    # denselben Flags. Bis zum 23.09.2026 fand die Suche ohne Haekchen Spot, spot
+    # und SPOT, „Ersetzen" verglich die Markierung aber exakt und tat nichts, und
+    # „Alle ersetzen" zaehlte mit str.count nur die genaue Schreibweise (p01).
+
+    def _markierung_ist_treffer(self):
+        """Ist die Markierung genau ein Treffer -- nach den Regeln der Suche?"""
         cursor = self._editor.textCursor()
-        if cursor.hasSelection() and cursor.selectedText() == self.suchfeld.text():
-            cursor.insertText(self.ersatzfeld.text())
+        text = self.suchfeld.text()
+        if not text or not cursor.hasSelection():
+            return False
+        treffer = self._editor.document().find(text, cursor.selectionStart(),
+                                               self._flags(False))
+        return (not treffer.isNull()
+                and treffer.selectionStart() == cursor.selectionStart()
+                and treffer.selectionEnd() == cursor.selectionEnd())
+
+    def ersetze(self):
+        if self._markierung_ist_treffer():
+            self._editor.textCursor().insertText(self.ersatzfeld.text())
         return self.suche(rueckwaerts=False)
 
     def ersetze_alle(self):
+        """Ersetzt jeden Treffer der Suche. EIN Bearbeitungsschritt: ein Strg+Z
+        nimmt alle zurueck. Rueckgabe: die Zahl der Ersetzungen."""
         suchen, ersetzen = self.suchfeld.text(), self.ersatzfeld.text()
         if not suchen:
             return 0
-        text = self._editor.toPlainText()
-        anzahl = text.count(suchen)
-        if anzahl:
-            cursor = self._editor.textCursor()
-            cursor.beginEditBlock()
-            cursor.select(QTextCursor.Document)
-            cursor.insertText(text.replace(suchen, ersetzen))
-            cursor.endEditBlock()
+        dokument = self._editor.document()
+        flags = self._flags(False)
+        bearbeiter = QTextCursor(dokument)
+        anzahl = 0
+        bearbeiter.beginEditBlock()
+        try:
+            while True:
+                # Weiter HINTER der letzten Ersetzung: ein Ersatz, der den
+                # Suchtext enthaelt („a" -> „aa"), wird nie erneut getroffen.
+                treffer = dokument.find(suchen, bearbeiter, flags)
+                if treffer.isNull():
+                    break
+                bearbeiter.setPosition(treffer.selectionStart())
+                bearbeiter.setPosition(treffer.selectionEnd(), QTextCursor.KeepAnchor)
+                bearbeiter.insertText(ersetzen)
+                anzahl += 1
+        finally:
+            bearbeiter.endEditBlock()
         return anzahl

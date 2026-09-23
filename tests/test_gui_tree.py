@@ -212,6 +212,65 @@ def test_umbenennen_auf_vorhandenen_namen_wird_abgewiesen(qapp, tmp_path):
     assert gemeldet
 
 
+def test_umbenennen_meldet_alt_und_neu(qapp, tmp_path):
+    """Damit ein offener Reiter mitgeht: sonst legte sein naechstes Speichern die
+    alte Datei wortlos wieder an (Pruefung 23.09.2026, p03)."""
+    baum = Dateibaum()
+    projekt = tmp_path / "demo"
+    projekt.mkdir()
+    (projekt / "alt.py").write_text("x\n", encoding="utf-8")
+    baum.setze_projekt(projekt)
+    gemeldet = []
+    baum.datei_umbenannt.connect(lambda alt, neu: gemeldet.append((alt, neu)))
+
+    neu = baum.umbenennen(projekt / "alt.py", "neu.py")
+    assert gemeldet == [(projekt / "alt.py", projekt / "neu.py")] and neu == projekt / "neu.py"
+
+
+def test_ordner_umbenennen_meldet_alt_und_neu(qapp, tmp_path):
+    baum = Dateibaum()
+    projekt = tmp_path / "demo"
+    (projekt / "lib").mkdir(parents=True)
+    baum.setze_projekt(projekt)
+    gemeldet = []
+    baum.datei_umbenannt.connect(lambda alt, neu: gemeldet.append((alt, neu)))
+
+    baum.umbenennen(projekt / "lib", "werkzeug")
+    assert gemeldet == [(projekt / "lib", projekt / "werkzeug")]
+    assert (projekt / "werkzeug").is_dir()
+
+
+def test_umbenennen_nur_in_der_gross_kleinschreibung(qapp, tmp_path):
+    """Unter Windows „gibt es" hallo.py schon, wenn Hallo.py da ist -- es ist
+    dieselbe Datei. Abgewiesen wurde es trotzdem (p16)."""
+    baum = Dateibaum()
+    projekt = tmp_path / "demo"
+    projekt.mkdir()
+    (projekt / "Hallo.py").write_text("x = 1\n", encoding="utf-8")
+    baum.setze_projekt(projekt)
+    gemeldet, umbenannt = [], []
+    baum.meldung.connect(gemeldet.append)
+    baum.datei_umbenannt.connect(lambda alt, neu: umbenannt.append(neu))
+
+    assert baum.umbenennen(projekt / "Hallo.py", "hallo.py") == projekt / "hallo.py"
+    assert gemeldet == []
+    assert [p.name for p in projekt.iterdir()] == ["hallo.py"]
+    assert [p.name for p in umbenannt] == ["hallo.py"]
+
+
+def test_umbenennen_auf_den_eigenen_namen_aendert_nichts(qapp, tmp_path):
+    """Der Dialog schlaegt den alten Namen vor; OK ohne Aenderung ist kein Fehler."""
+    baum = Dateibaum()
+    projekt = tmp_path / "demo"
+    projekt.mkdir()
+    (projekt / "a.py").write_text("a\n", encoding="utf-8")
+    baum.setze_projekt(projekt)
+    gemeldet = []
+    baum.meldung.connect(gemeldet.append)
+    assert baum.umbenennen(projekt / "a.py", "a.py") == projekt / "a.py"
+    assert gemeldet == []
+
+
 def test_loeschen_geht_in_den_papierkorb_nicht_endgueltig(qapp, tmp_path, monkeypatch):
     """Ein Schueler, der aus Versehen loescht, soll es zurueckholen koennen.
     Deshalb send2trash und NICHT Path.unlink."""

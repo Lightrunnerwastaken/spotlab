@@ -13,6 +13,8 @@ from pygments.lexers import PythonLexer
 from pygments.token import Comment, Keyword, Name, Number, String
 from PySide6.QtGui import QColor, QSyntaxHighlighter, QTextCharFormat
 
+from spotlab.gui.editor.codeedit import rohtext, utf16_laenge
+
 
 def _formate(palette):
     def format_mit(farbe):
@@ -59,12 +61,19 @@ def _nach_zeilen(index, wert):
 
 
 def spannen(text, palette, lexer=None):
-    """Blocknummer -> [(spalte, laenge, QTextCharFormat)]. Ohne Widget prüfbar."""
+    """Blocknummer -> [(spalte, laenge, QTextCharFormat)]. Ohne Widget prüfbar.
+
+    Spalte und Laenge in UTF-16-Einheiten, wie `setFormat` sie erwartet --
+    pygments zaehlt Python-Zeichen, und nach einem Emoji ausserhalb der BMP
+    sass jede Farbe der Zeile zu weit vorn (Pruefung 23.09.2026). Ohne solche
+    Zeichen sind beide Zaehlungen gleich, dann bleibt es bei der billigen.
+    """
     if not text:
         return {}
     lexer = lexer or PythonLexer()
     formate = _formate(palette)
     anfaenge = _zeilenanfaenge(text)
+    breit = not text.isascii() and any(ord(z) > 0xFFFF for z in text)
     karte = {}
     for index, art, wert in lexer.get_tokens_unprocessed(text):
         fmt = _passendes(art, formate)
@@ -72,9 +81,11 @@ def spannen(text, palette, lexer=None):
             continue
         for teil_index, teil in _nach_zeilen(index, wert):
             nummer = bisect.bisect_right(anfaenge, teil_index) - 1
-            karte.setdefault(nummer, []).append(
-                (teil_index - anfaenge[nummer], len(teil), fmt)
-            )
+            spalte, laenge = teil_index - anfaenge[nummer], len(teil)
+            if breit:
+                spalte = utf16_laenge(text[anfaenge[nummer]:teil_index])
+                laenge = utf16_laenge(teil)
+            karte.setdefault(nummer, []).append((spalte, laenge, fmt))
     return karte
 
 
@@ -89,7 +100,7 @@ class Hervorheber(QSyntaxHighlighter):
 
         Ein rehighlight() direkt im Aenderungssignal loeste sich selbst wieder aus.
         """
-        self._karte = spannen(self.document().toPlainText(), self._palette)
+        self._karte = spannen(rohtext(self.document()), self._palette)
         self.rehighlight()
 
     def highlightBlock(self, text):

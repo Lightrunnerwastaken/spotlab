@@ -31,6 +31,22 @@ else:
         send2trash(str(pfad))
 
 
+def _nur_schreibweise(pfad, ziel):
+    """Ist `ziel` nur `pfad` in anderer Gross-/Kleinschreibung?
+
+    Unter Windows „gibt es" hallo.py schon, sobald Hallo.py da ist -- es ist
+    dieselbe Datei. `exists()` allein wies deshalb jede reine Aenderung der
+    Schreibweise ab. Beides muss gelten: derselbe Name bis auf die Schreibweise
+    UND dieselbe Datei; zwei harte Links auf eine Datei sind kein Freibrief.
+    """
+    if pfad.name.casefold() != ziel.name.casefold():
+        return False
+    try:
+        return pfad.samefile(ziel)
+    except OSError:
+        return False
+
+
 class KeineLaeufe(QSortFilterProxyModel):
     """Blendet runs/ auf oberster Ebene aus.
 
@@ -73,6 +89,10 @@ class Dateibaum(QWidget):
 
     datei_gewaehlt = Signal(object)
     datei_entfernt = Signal(object)
+    # (alt, neu) -- fuer Dateien UND Ordner. Ein offener Reiter muss mitgehen:
+    # sonst legte sein naechstes Speichern die alte Datei wortlos wieder an, und
+    # die umbenannte behielt den alten Stand (Pruefung 23.09.2026).
+    datei_umbenannt = Signal(object, object)
     meldung = Signal(str)
 
     def __init__(self, parent=None):
@@ -183,8 +203,10 @@ class Dateibaum(QWidget):
             self.meldung.emit(grund)
             return None
         pfad = Path(pfad)
+        if name == pfad.name:
+            return pfad             # der Dialog schlaegt den alten Namen vor
         ziel = pfad.parent / name
-        if ziel.exists():
+        if ziel.exists() and not _nur_schreibweise(pfad, ziel):
             self.meldung.emit(f"'{name}' gibt es schon.")
             return None
         try:
@@ -192,6 +214,7 @@ class Dateibaum(QWidget):
         except OSError as fehler:
             self.meldung.emit(f"Umbenennen ging nicht: {fehler}")
             return None
+        self.datei_umbenannt.emit(pfad, ziel)
         return ziel
 
     def loeschen(self, pfad):
@@ -207,8 +230,9 @@ class Dateibaum(QWidget):
         except Exception as fehler:
             self.meldung.emit(f"Löschen ging nicht: {fehler}")
             return None
-        # Damit ein offener Reiter zugeht: sonst zeigte er auf eine
-        # verschwundene Datei, und das naechste Speichern legte sie wieder an.
+        # Damit offene Reiter zugehen -- bei einem Ordner alle darunter: sonst
+        # zeigten sie auf verschwundene Dateien, und das naechste Speichern
+        # legte sie wieder an.
         self.datei_entfernt.emit(pfad)
         return pfad
 

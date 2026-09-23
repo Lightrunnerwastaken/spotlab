@@ -24,6 +24,7 @@ beschwert, ist laestiger als einer, der leise weniger kann.
 """
 
 import threading
+import time
 
 from PySide6.QtCore import (
     QAbstractListModel,
@@ -48,6 +49,7 @@ from spotlab.editor.verbs import (
     spotlab_verben,
     teilwort,
 )
+from spotlab.gui.editor.codeedit import bis_position, rohtext, vor_dem_cursor
 from spotlab.gui.theme import DUNKEL
 
 # jedi wird erst im JediWorker geladen, beim ersten Vorschlag: der Import kostet
@@ -262,6 +264,52 @@ class VorschlagDelegate(QStyledItemDelegate):
         painter.restore()
 
 
+# Arbeiter, deren Reiter schon zu ist. Ein laufender QThread darf nicht mit dem
+# Feld zerstoert werden (siehe `Vervollstaendigung.schliesse`); er wird deshalb
+# vom Feld geloest, und DIESE Menge haelt ihn am Leben, bis `finished` kommt.
+# Ohne Eltern gehoert er Python -- ohne Referenz raeumte der naechste
+# Garbage-Collector-Lauf einen laufenden Faden ab, derselbe Absturz.
+_LOSE_ARBEITER = set()
+
+
+def _loese(arbeiter):
+    """Den Arbeiter vom Feld loesen und halten, bis er zu Ende ist."""
+    try:
+        arbeiter.setParent(None)
+        _LOSE_ARBEITER.add(arbeiter)
+        # Erst verbinden, dann fragen: kommt `finished` genau dazwischen, faende
+        # die Menge den Arbeiter sonst nie wieder frei. `deleteLater` haengt schon
+        # seit `_starte_auftrag` daran.
+        arbeiter.finished.connect(lambda: _LOSE_ARBEITER.discard(arbeiter))
+        if not arbeiter.isRunning():
+            # Fertig oder im Abschluss: `~QThread` wartet den Abschluss selbst ab.
+            _LOSE_ARBEITER.discard(arbeiter)
+    except RuntimeError:
+        _LOSE_ARBEITER.discard(arbeiter)          # schon abgeraeumt
+
+
+def warte_auf_arbeiter(frist_ms):
+    """Wartet hoechstens `frist_ms` auf alle geloesten Arbeiter. True = alles still.
+
+    Fuer das Schliessen des Fensters (`EditorView.schliesse_hintergrund`): danach
+    zerstoert Qt die Anwendung, und ein Faden, der dann noch rechnet, reisst den
+    Prozess mit -- auch einen, der laengst von seinem Reiter geloest ist.
+    """
+    ende = time.monotonic() + max(0, frist_ms) / 1000.0
+    still = True
+    for arbeiter in list(_LOSE_ARBEITER):
+        rest = max(0, int((ende - time.monotonic()) * 1000))
+        try:
+            fertig = arbeiter.isFinished() or arbeiter.wait(rest)
+        except RuntimeError:
+            fertig = True                        # schon abgeraeumt
+        if fertig:
+            _LOSE_ARBEITER.discard(arbeiter)
+        else:
+            still = False
+    return still
+
+
 class JediWorker(QThread):
     fertig = Signal(int, list)
 
@@ -314,6 +362,10 @@ class Vervollstaendigung(QObject):
         popup.setItemDelegate(VorschlagDelegate(palette, popup))
         popup.setUniformItemSizes(True)
         popup.installEventFilter(self)
+        # Das Feld muss wissen, wann die Liste offen ist: dann gehoeren ihr Enter,
+        # Tab und Shift+Tab (`CodeEdit.keyPressEvent`).
+        if hasattr(editor, "setze_vorschlagsliste"):
+            editor.setze_vorschlagsliste(popup)
 
         # Der Hilfekasten rechts neben der Liste, wie in VS Code. Kind des
         # Editors, damit er mit ihm verschwindet; ToolTip-Flag, damit er als
@@ -373,8 +425,10 @@ class Vervollstaendigung(QObject):
             if not stelle_passt(vor):
                 self.completer.popup().hide()
                 return
-            quelltext = self._editor.toPlainText()
-            if not im_code(quelltext[: self._editor.textCursor().position()]):
+            quelltext = rohtext(self._editor.document())
+            # position() zaehlt UTF-16; ein Python-Schnitt nahm nach jedem Emoji
+            # ein Zeichen HINTER dem Cursor mit -- etwa ein Anfuehrungszeichen.
+            if not im_code(bis_position(quelltext, self._editor.textCursor().position())):
                 self.completer.popup().hide()
                 return
         self._nummer += 1
@@ -382,8 +436,7 @@ class Vervollstaendigung(QObject):
         self._frage_jedi(self._nummer, quelltext)
 
     def _vor_dem_cursor(self):
-        cursor = self._editor.textCursor()
-        return cursor.block().text()[: cursor.positionInBlock()]
+        return vor_dem_cursor(self._editor.textCursor())
 
     def _zeige(self, vorschlaege, praefixwort):
         self.modell.setze(vorschlaege)
@@ -408,18 +461,24 @@ class Vervollstaendigung(QObject):
             popup.sizeHintForColumn(0) + popup.verticalScrollBar().sizeHint().width() + 60,
         ))
         self.completer.complete(rechteck)
+        # Der erste Vorschlag ist vorgewaehlt, wie in VS Code: sonst schloesse
+        # Enter die Liste nur -- ohne Vorschlag und ohne Zeilenumbruch.
+        popup.setCurrentIndex(self.completer.completionModel().index(0, 0))
 
     def schliesse(self):
-        """Vor dem Zerstören des Editors aufrufen. Läuft immer durch.
+        """Vor dem Zerstören des Editors aufrufen. Läuft immer durch und wartet nicht.
 
-        `deleteLater()` auf dem CodeEdit nimmt den Vervollständiger und den
-        darunter hängenden `JediWorker`-QThread mit. Läuft der noch, wird ein
-        arbeitender QThread destruiert — das reisst das ganze Fenster mit,
-        samt NOT-AUS-Knopf, und ein laufendes Roboterprogramm im Kindprozess
-        bleibt führerlos zurück.
+        `deleteLater()` auf dem CodeEdit nimmt den Vervollständiger mit — und
+        alles, was darunter hängt. Hing dort ein arbeitender `JediWorker`-QThread,
+        wurde er destruiert: das reisst das ganze Fenster mit, samt NOT-AUS-Knopf,
+        und ein laufendes Roboterprogramm im Kindprozess bleibt führerlos zurück.
 
-        Erst trennen, dann warten: die Antwort darf das zerstörte Widget nicht
-        mehr anfassen, auch wenn sie eine Millisekunde zu spät kommt.
+        Bis zum 23.09.2026 wartete diese Methode dafür höchstens 2 s. Eine kalte
+        `np.`-Anfrage braucht 8.5 s — danach starb der Prozess mit Exit 127, und
+        die 2 s stand die Ereignisschleife still, in der auch der NOT-AUS wartet.
+        Jetzt: erst trennen, dann den Arbeiter vom Feld LÖSEN (`_loese`). Er
+        rechnet ohne Eltern zu Ende und räumt sich über `finished` selbst ab; beim
+        Schliessen des Fensters wartet `warte_auf_arbeiter` auf ihn.
         """
         self._geschlossen = True
         self._auftrag = None            # nach dem Schliessen faengt nichts mehr an
@@ -427,19 +486,18 @@ class Vervollstaendigung(QObject):
         arbeiter, self._worker = self._worker, None
         if arbeiter is None:
             return
-        # NUR die eigene Verbindung trennen. `arbeiter.disconnect()` ohne
+        # NUR die eigenen Verbindungen trennen. `arbeiter.disconnect()` ohne
         # Argument kappt ALLE Signale des QThread — auch `finished` und
         # `destroyed`, an denen Qt seine eigene Aufräumarbeit hängt. Das hat
         # beim ersten Versuch prompt den Interpreter abgestürzt, und zwar erst
         # mehrere Testdateien später.
-        try:
-            arbeiter.fertig.disconnect(self._jedi_fertig)
-        except (RuntimeError, TypeError):
-            pass          # war nie verbunden oder ist schon weg
-        try:
-            arbeiter.wait(2000)
-        except RuntimeError:
-            pass
+        for trennen in (lambda: arbeiter.fertig.disconnect(self._jedi_fertig),
+                        lambda: arbeiter.finished.disconnect(self._starte_auftrag)):
+            try:
+                trennen()
+            except (RuntimeError, TypeError):
+                pass      # war nie verbunden oder ist schon weg
+        _loese(arbeiter)
 
     def _frage_jedi(self, nummer, quelltext=None):
         if self._geschlossen:
@@ -449,9 +507,9 @@ class Vervollstaendigung(QObject):
         cursor = self._editor.textCursor()
         self._auftrag = (
             nummer,
-            self._editor.toPlainText() if quelltext is None else quelltext,
+            rohtext(self._editor.document()) if quelltext is None else quelltext,
             cursor.blockNumber() + 1,
-            cursor.positionInBlock(),
+            len(vor_dem_cursor(cursor)),          # jedi zaehlt Zeichen, nicht UTF-16
             self._pfad,
         )
         self._starte_auftrag()

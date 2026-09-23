@@ -143,45 +143,55 @@ def test_mit_jedi_werden_fremde_namen_ergaenzt(qapp):
 # bleibt fuehrerlos zurueck.
 
 
-class _LangsamerWorker:
-    """Ein Arbeiter, der noch laeuft, wenn der Reiter geschlossen wird."""
+def test_schliesse_trennt_und_loest_den_laufenden_arbeiter(qapp, monkeypatch):
+    """Bis zum 23.09.2026 wartete `schliesse()` hoechstens 2 s und liess den
+    Arbeiter danach als Kind des Feldes stehen -- eine kalte `np.`-Anfrage
+    braucht 8.5 s, und `deleteLater` zerstoerte einen laufenden QThread. Jetzt:
+    trennen, vom Feld loesen, nicht warten; der Faden laeuft ohne Eltern zu Ende
+    und raeumt sich ueber `finished` selbst ab."""
+    import threading
+    import time
 
-    def __init__(self):
-        self.getrennt = False
-        self.gewartet = False
-        self._laeuft = True
+    from PySide6.QtCore import QCoreApplication, QEvent
 
-    def isRunning(self):
-        return self._laeuft
+    from tests_zeitgrenzen import TEST_TIMEOUT_S, warte_bis
 
-    @property
-    def fertig(self):
-        arbeiter = self
+    frei, begonnen = threading.Event(), threading.Event()
 
-        class Signalattrappe:
-            def disconnect(self, *a, **kw):
-                arbeiter.getrennt = True
+    def langsam(*_):
+        begonnen.set()
+        frei.wait(TEST_TIMEOUT_S)
+        return [Vorschlag("zu_spaet", "zu_spaet", "")]
 
-        return Signalattrappe()
-
-    def wait(self, ms=None):
-        self.gewartet = True
-        self._laeuft = False
-        return True
-
-    def requestInterruption(self):
-        pass
-
-
-def test_schliesse_trennt_und_wartet_auf_den_arbeiter(qapp):
+    monkeypatch.setattr(modul, "jedi_lesen", langsam)
+    monkeypatch.setattr(modul, "jedi", object())
     feld = _feld()
-    v = Vervollstaendigung(feld)
-    arbeiter = _LangsamerWorker()
-    v._worker = arbeiter
-    v.schliesse()
-    assert arbeiter.getrennt, "die Antwort haette in ein zerstoertes Widget gezeigt"
-    assert arbeiter.gewartet, "der Thread wurde nicht abgewartet"
-    assert v._worker is None
+    v = _hilfe_mit(feld, "import math\nmath.")
+    angekommen = []
+    monkeypatch.setattr(v, "_zeige", lambda *a: angekommen.append(a))
+    try:
+        v.anfordern(erzwungen=True)
+        assert begonnen.wait(TEST_TIMEOUT_S)
+        arbeiter = v._worker
+        t = time.perf_counter()
+        v.schliesse()
+        assert time.perf_counter() - t < 1.0, "schliesse() wartete auf jedi"
+        assert v._worker is None
+        assert arbeiter.parent() is None, "der Arbeiter haengt noch am Feld"
+        assert arbeiter in modul._LOSE_ARBEITER, "niemand haelt den Arbeiter"
+        assert modul.warte_auf_arbeiter(20) is False
+        angekommen.clear()
+    finally:
+        frei.set()
+    assert modul.warte_auf_arbeiter(TEST_TIMEOUT_S * 1000) is True
+    warte_bis(lambda: not modul._LOSE_ARBEITER, "der geloeste Arbeiter raeumt sich ab",
+              zwischendurch=qapp.processEvents)
+    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+    assert angekommen == [], "die Antwort haette in ein zerstoertes Widget gezeigt"
+
+
+def test_warte_auf_arbeiter_ohne_arbeiter_ist_sofort_still():
+    assert modul.warte_auf_arbeiter(0) is True
 
 
 def test_schliesse_ohne_arbeiter_ist_harmlos(qapp):
@@ -245,6 +255,58 @@ def test_hilfekasten_verschwindet_mit_dem_popup(qapp, monkeypatch):
     hilfe._markiert(hilfe.modell.index(0, 0))
     hilfe.completer.popup().hide()
     assert not hilfe.hilfekasten.isVisible()
+
+
+# ============ Enter/Tab bei offener Liste (Pruefung 23.09.2026, p02/p02b)
+#
+# Das Feld verarbeitete Enter und Tab selbst -- Zeilenumbruch bzw. vier
+# Leerzeichen --, und der QCompleter sah die Taste nie. Der Vorschlag wurde nie
+# uebernommen, obwohl die Liste offen war.
+
+
+def _offene_liste(monkeypatch, text):
+    from PySide6.QtWidgets import QApplication
+
+    monkeypatch.setattr(modul, "jedi", None)
+    feld = CodeEdit(DUNKEL)
+    feld.resize(600, 300)
+    feld.show()
+    hilfe = _hilfe_mit(feld, text)
+    hilfe.anfordern()
+    popup = hilfe.completer.popup()
+    assert popup.isVisible(), "die Liste ging gar nicht auf"
+    return feld, hilfe, QApplication.activePopupWidget() or popup
+
+
+@pytest.mark.parametrize("taste", ["Key_Return", "Key_Enter", "Key_Tab"])
+def test_enter_und_tab_uebernehmen_den_vorschlag(qapp, monkeypatch, taste):
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+
+    feld, hilfe, ziel = _offene_liste(monkeypatch, "spot.navi")
+    QTest.keyClick(ziel, getattr(Qt, taste))
+    assert feld.toPlainText() == "spot.navigate_to"
+    assert not hilfe.completer.popup().isVisible()
+    feld.close()
+
+
+def test_shift_tab_schliesst_nur_die_liste(qapp, monkeypatch):
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+
+    feld, hilfe, ziel = _offene_liste(monkeypatch, "    spot.navi")
+    QTest.keyClick(ziel, Qt.Key_Backtab, Qt.ShiftModifier)
+    assert feld.toPlainText() == "    spot.navi", "Shift+Tab rueckte aus, statt die Liste zu schliessen"
+    assert not hilfe.completer.popup().isVisible()
+    feld.close()
+
+
+def test_der_erste_vorschlag_ist_vorgewaehlt(qapp, monkeypatch):
+    """Sonst schloesse Enter die Liste nur -- ohne Vorschlag und ohne Umbruch."""
+    feld, hilfe, _ziel = _offene_liste(monkeypatch, "spot.")
+    assert hilfe.completer.popup().currentIndex().row() == 0
+    hilfe.completer.popup().hide()
+    feld.close()
 
 
 def test_liste_faellt_nicht_auf_scrollbalkenbreite_zusammen(qapp, monkeypatch):
@@ -328,6 +390,11 @@ def test_mit_echtem_jedi_kommen_vorschlaege_fuer_ein_modul(qapp):
     hilfe.anfordern()
     assert hilfe._worker is not None, "der Arbeiter wurde nie gestartet"
     hilfe.schliesse()
+    # schliesse() wartet nicht mehr: den geloesten Faden hier abwarten, sonst
+    # rechnet er in die naechsten Tests hinein.
+    from tests_zeitgrenzen import TEST_TIMEOUT_S
+
+    assert modul.warte_auf_arbeiter(TEST_TIMEOUT_S * 1000) is True
 
 
 class _Signalattrappe:
@@ -365,6 +432,86 @@ class _Attrappenworker:
     def wait(self, ms=None):
         self.laeuft = False
         return True
+
+    def isFinished(self):
+        return self.gestartet and not self.laeuft
+
+    def setParent(self, eltern):
+        self.eltern = eltern
+
+
+def test_jedi_bekommt_den_rohtext_samt_zeilentrenner(qapp, monkeypatch):
+    """toPlainText() macht aus U+2028 einen Zeilenumbruch; jedi zaehlte dann eine
+    Zeile mehr als Qt und vervollstaendigte an der falschen Stelle."""
+    erzeugt = []
+
+    class _Worker(_Attrappenworker):
+        def __init__(self, *args, **kw):
+            super().__init__(*args, **kw)
+            erzeugt.append(self)
+
+    monkeypatch.setattr(modul, "JediWorker", _Worker)
+    monkeypatch.setattr(modul, "jedi", object())
+    feld = CodeEdit(DUNKEL)
+    hilfe = _hilfe_mit(feld, 's = "a\u2028b"\nimport math\nmath.')
+    hilfe.anfordern()
+    _nummer, quelltext, zeile, spalte, _pfad = erzeugt[0].args[:5]
+    assert quelltext.split("\n")[zeile - 1][:spalte] == "math."
+
+
+# Emojis ausserhalb der BMP: Qt zaehlt UTF-16-Einheiten, Python Zeichen. Jeder
+# Schnitt „Text bis zum Cursor" nahm nach einem Emoji Zeichen HINTER dem Cursor mit.
+
+ROBOTER = chr(0x1F916)
+
+
+def _u16(text):
+    return len(text.encode("utf-16-le")) // 2
+
+
+def _cursor_nach(feld, text_davor):
+    cursor = feld.textCursor()
+    cursor.setPosition(_u16(text_davor))
+    feld.setTextCursor(cursor)
+
+
+def test_text_vor_dem_cursor_endet_am_cursor_auch_nach_einem_emoji(qapp, monkeypatch):
+    monkeypatch.setattr(modul, "jedi", None)
+    feld = CodeEdit(DUNKEL)
+    hilfe = Vervollstaendigung(feld)
+    feld.setPlainText(f'print("{ROBOTER}"); spot.st')
+    _cursor_nach(feld, f'print("{ROBOTER}"); spot.')
+    assert hilfe._vor_dem_cursor() == f'print("{ROBOTER}"); spot.'
+
+
+def test_ein_emoji_im_kommentar_davor_haelt_jedi_nicht_ab(qapp, monkeypatch):
+    """Der Schnitt fuer `im_code` nahm das Anfuehrungszeichen hinter dem Cursor
+    mit -- und hielt die Stelle fuer das Innere einer Zeichenkette."""
+    feld = CodeEdit(DUNKEL)
+    hilfe = Vervollstaendigung(feld)
+    feld.setPlainText(f'# {ROBOTER}\nmath."')
+    _cursor_nach(feld, f'# {ROBOTER}\nmath.')
+    protokoll = _gefragt(hilfe, monkeypatch)
+    hilfe.anfordern()
+    assert protokoll, "jedi wurde nicht gefragt"
+
+
+def test_jedi_bekommt_die_spalte_in_zeichen(qapp, monkeypatch):
+    """jedi zaehlt Python-Zeichen, nicht UTF-16-Einheiten."""
+    erzeugt = []
+
+    class _Worker(_Attrappenworker):
+        def __init__(self, *args, **kw):
+            super().__init__(*args, **kw)
+            erzeugt.append(self)
+
+    monkeypatch.setattr(modul, "JediWorker", _Worker)
+    monkeypatch.setattr(modul, "jedi", object())
+    feld = CodeEdit(DUNKEL)
+    hilfe = _hilfe_mit(feld, f'import math\nx = "{ROBOTER}"; math.')
+    hilfe.anfordern()
+    _nummer, _quelltext, zeile, spalte, _pfad = erzeugt[0].args[:5]
+    assert (zeile, spalte) == (2, len(f'x = "{ROBOTER}"; math.'))
 
 
 def test_jeder_arbeiter_raeumt_sich_selbst_ab(qapp, monkeypatch):
@@ -467,3 +614,5 @@ def test_nach_dem_schliessen_faengt_kein_wartender_auftrag_mehr_an(qapp, monkeyp
     assert hilfe._auftrag is None
     hilfe._starte_auftrag()
     assert len(erzeugt) == 1
+    assert modul.warte_auf_arbeiter(0) is True      # die Attrappe "endet" in wait()
+    assert not modul._LOSE_ARBEITER

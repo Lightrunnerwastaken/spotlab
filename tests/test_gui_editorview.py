@@ -2,11 +2,12 @@ import pytest
 
 pytest.importorskip("PySide6.QtWidgets")
 
+from PySide6.QtGui import QTextCursor  # noqa: E402
 from PySide6.QtTest import QTest  # noqa: E402
 
 from spotlab.gui.editor.view import EditorView  # noqa: E402
 from spotlab.gui.theme import DUNKEL  # noqa: E402
-from tests_zeitgrenzen import TEST_TIMEOUT_S  # noqa: E402
+from tests_zeitgrenzen import TEST_TIMEOUT_S, warte_bis  # noqa: E402
 
 
 def _werkstatt(tmp_path):
@@ -84,6 +85,62 @@ def test_speichern_schreibt_lf_und_utf8(qapp, tmp_path):
     assert b"\r\n" not in roh
     assert roh.decode("utf-8") == "s = 'grün'\n"
     assert not ansicht.reiter.tabText(0).startswith("●")
+
+
+# ================= Sonderzeichen: blosses Starten schrieb die Datei um (p07)
+#
+# toPlainText() macht aus U+00A0 ein Leerzeichen und aus U+2028 einen
+# Zeilenumbruch. `_weicht_ab` meldete deshalb eine Aenderung, „Starten"
+# speicherte -- und danach kompilierte die Datei nicht mehr.
+
+_SONDERZEICHEN = ('hinweis = "Abstand:\u00a010\u00a0m"\n'
+                  'trenner = "a\u2028b"\n'
+                  'print(repr(hinweis), repr(trenner))\n')
+
+
+def test_blosses_starten_veraendert_die_datei_nicht(qapp, tmp_path):
+    ansicht, _ordner, projekt = _ansicht(tmp_path)
+    ziel = projekt / "texte.py"
+    ziel.write_bytes(_SONDERZEICHEN.encode("utf-8"))
+    ansicht.oeffne(ziel)
+    assert ansicht._weicht_ab(ansicht.aktueller_reiter()) is False
+    assert ansicht.speichere_alle_geaenderten() is True
+    assert ziel.read_bytes() == _SONDERZEICHEN.encode("utf-8")
+
+
+def test_speichern_behaelt_geschuetzte_leerzeichen_und_zeilentrenner(qapp, tmp_path):
+    ansicht, _ordner, projekt = _ansicht(tmp_path)
+    ziel = projekt / "texte.py"
+    ziel.write_bytes(_SONDERZEICHEN.encode("utf-8"))
+    ansicht.oeffne(ziel)
+    feld = ansicht.reiter.currentWidget()
+    feld.moveCursor(QTextCursor.Start)
+    feld.insertPlainText("# neu\n")
+    assert ansicht.speichere_aktuellen() is True
+    gespeichert = ziel.read_bytes().decode("utf-8")
+    assert gespeichert == "# neu\n" + _SONDERZEICHEN
+    compile(gespeichert, "texte.py", "exec")
+
+
+def test_die_syntaxpruefung_sieht_den_zeilentrenner_nicht_als_umbruch(qapp, tmp_path):
+    """Sonst stuende ein Kringel „unterminated string literal" unter Code, der laeuft."""
+    ansicht, _ordner, projekt = _ansicht(tmp_path)
+    ziel = projekt / "texte.py"
+    ziel.write_bytes(_SONDERZEICHEN.encode("utf-8"))
+    ansicht.oeffne(ziel)
+    feld = ansicht.reiter.currentWidget()
+    ansicht._pruefe(feld)
+    assert feld.toolTip() == ""
+
+
+def test_ein_absatztrenner_in_der_datei_gilt_nicht_als_aenderung(qapp, tmp_path):
+    """U+2029 kann ein QPlainTextEdit nicht halten (er wird zur Zeilengrenze).
+    Ohne Eingabe darf die Datei deshalb trotzdem nicht umgeschrieben werden."""
+    ansicht, _ordner, projekt = _ansicht(tmp_path)
+    ziel = projekt / "absatz.py"
+    ziel.write_text("x = 1\u2029y = 2\n", encoding="utf-8", newline="\n")
+    ansicht.oeffne(ziel)
+    assert ansicht._weicht_ab(ansicht.aktueller_reiter()) is False
 
 
 def test_nicht_utf8_wird_abgelehnt(qapp, tmp_path):
@@ -298,6 +355,149 @@ def test_reiter_schliessen_beendet_den_jedi_arbeiter(qapp, tmp_path):
     QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
 
 
+# ================== Reiter zu, waehrend jedi rechnet (Pruefung 23.09.2026, p06)
+#
+# Eine kalte `np.`-Anfrage brauchte 8.5 s, `schliesse()` wartete hoechstens 2 s,
+# danach zerstoerte `deleteLater` den laufenden QThread: `QThread: Destroyed while
+# thread is still running`, Exit 127 -- das ganze Fenster samt NOT-AUS war weg.
+
+_REITER_ZU_SKRIPT = r'''
+import sys, threading, time
+from pathlib import Path
+from PySide6.QtCore import QCoreApplication, QEvent
+from PySide6.QtGui import QTextCursor
+from PySide6.QtWidgets import QApplication
+from spotlab.gui.editor import completer as modul
+from spotlab.gui.editor.view import EditorView
+from spotlab.gui.theme import DUNKEL
+
+app = QApplication([])
+frei, begonnen = threading.Event(), threading.Event()
+
+def langsam(*_):            # wie die kalte numpy-Anfrage: laenger als jede Frist
+    begonnen.set()
+    frei.wait(60)
+    return []
+
+modul.jedi_lesen = langsam
+modul.jedi = object()       # "jedi ist da" -- ohne echtes jedi zu laden
+projekt = Path(sys.argv[1])
+ansicht = EditorView(DUNKEL)
+ansicht.setze_projekt(projekt)
+ansicht.oeffne(projekt / "a.py")
+feld = ansicht.aktueller_reiter().feld
+feld.moveCursor(QTextCursor.End)
+ansicht.aktueller_reiter().hilfe.anfordern(erzwungen=True)
+assert begonnen.wait(30), "der Arbeiter lief nie an"
+t = time.perf_counter()
+ansicht._schliesse(0)
+print(f"zu nach {time.perf_counter() - t:.2f} s", flush=True)
+QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+print("ueberlebt", flush=True)
+frei.set()
+print("still" if ansicht.schliesse_hintergrund(30000) else "laeuft noch", flush=True)
+'''
+
+
+def test_reiter_zu_waehrend_jedi_rechnet_reisst_das_fenster_nicht_mit(tmp_path):
+    """Im Unterprozess: der Fehler war ein Absturz des ganzen Interpreters."""
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    projekt = tmp_path / "demo"
+    projekt.mkdir()
+    (projekt / "a.py").write_text("import math\nmath.", encoding="utf-8")
+    skript = tmp_path / "reiter_zu.py"
+    skript.write_text(_REITER_ZU_SKRIPT, encoding="utf-8")
+    quelle = Path(__file__).resolve().parents[1] / "src"
+    ergebnis = subprocess.run(
+        [sys.executable, str(skript), str(projekt)],
+        capture_output=True, text=True, timeout=TEST_TIMEOUT_S,
+        env={**os.environ, "PYTHONPATH": str(quelle), "PYTHONUTF8": "1",
+             "QT_QPA_PLATFORM": "offscreen", "HOME": str(tmp_path),
+             "USERPROFILE": str(tmp_path)},
+    )
+    bericht = f"Ausgabe:\n{ergebnis.stdout}\nFehler:\n{ergebnis.stderr}"
+    assert "ueberlebt" in ergebnis.stdout, bericht
+    assert "Destroyed while thread" not in ergebnis.stderr, bericht
+    assert ergebnis.returncode == 0, bericht
+    assert "still" in ergebnis.stdout, bericht
+
+
+def _blockierendes_jedi(monkeypatch):
+    """jedi_lesen, das haengt, bis der Test es freigibt -- ein echter QThread."""
+    import threading
+
+    from spotlab.gui.editor import completer as modul
+
+    frei, begonnen = threading.Event(), threading.Event()
+
+    def langsam(*_):
+        begonnen.set()
+        frei.wait(TEST_TIMEOUT_S)
+        return []
+
+    monkeypatch.setattr(modul, "jedi_lesen", langsam)
+    monkeypatch.setattr(modul, "jedi", object())
+    return frei, begonnen
+
+
+def test_reiter_zu_wartet_nicht_auf_jedi_und_loest_den_arbeiter(qapp, tmp_path, monkeypatch):
+    """Frueher fror das Schliessen bis zu 2 s ein -- in derselben Ereignisschleife
+    wie der NOT-AUS-Knopf. Jetzt wird der Arbeiter vom Feld geloest und laeuft
+    ohne Eltern zu Ende."""
+    import time
+
+    from spotlab.gui.editor import completer as modul
+
+    frei, begonnen = _blockierendes_jedi(monkeypatch)
+    ansicht, _ordner, projekt = _ansicht(tmp_path)
+    ansicht.oeffne(projekt / "hallo_spot.py")
+    hilfe = ansicht.aktueller_reiter().hilfe
+    try:
+        hilfe.anfordern(erzwungen=True)
+        assert begonnen.wait(TEST_TIMEOUT_S)
+        arbeiter = hilfe._worker
+        t = time.perf_counter()
+        ansicht._schliesse(0)
+        assert time.perf_counter() - t < 1.0, "das Schliessen wartete auf jedi"
+        assert arbeiter.parent() is None and arbeiter.isRunning()
+        _arbeite_zerstoerungen_ab()                 # das Feld ist weg, der Faden nicht
+        assert arbeiter.isRunning()
+        assert ansicht.schliesse_hintergrund(20) is False, "jedi rechnet noch"
+    finally:
+        frei.set()
+    assert ansicht.schliesse_hintergrund(TEST_TIMEOUT_S * 1000) is True
+    warte_bis(lambda: not modul._LOSE_ARBEITER, "der geloeste Arbeiter raeumt sich ab",
+              zwischendurch=qapp.processEvents)
+    _arbeite_zerstoerungen_ab()
+
+
+def test_schliesse_hintergrund_wartet_auch_auf_offene_reiter(qapp, tmp_path, monkeypatch):
+    """Das Hauptfenster ruft es beim Schliessen: danach zerstoert Qt alle Reiter,
+    und ein Arbeiter, der noch unter einem offenen Reiter rechnet, risse es mit."""
+    from spotlab.gui.editor import completer as modul
+
+    frei, begonnen = _blockierendes_jedi(monkeypatch)
+    ansicht, _ordner, projekt = _ansicht(tmp_path)
+    ansicht.oeffne(projekt / "hallo_spot.py")
+    hilfe = ansicht.aktueller_reiter().hilfe
+    try:
+        hilfe.anfordern(erzwungen=True)
+        assert begonnen.wait(TEST_TIMEOUT_S)
+        assert ansicht.schliesse_hintergrund(20) is False
+        assert hilfe._worker is None, "der Arbeiter haengt noch am Reiter"
+        hilfe.anfordern(erzwungen=True)
+        assert hilfe._worker is None, "nach dem Schliessen faengt keiner mehr an"
+    finally:
+        frei.set()
+    assert ansicht.schliesse_hintergrund(TEST_TIMEOUT_S * 1000) is True
+    warte_bis(lambda: not modul._LOSE_ARBEITER, "der geloeste Arbeiter raeumt sich ab",
+              zwischendurch=qapp.processEvents)
+
+
 # ============================= S2.2 alle verschmutzten Reiter vor dem Start
 #
 # Gespeichert wurde nur der AKTUELLE Reiter. Ein Mehrdatei-Projekt lief damit
@@ -423,6 +623,120 @@ def test_unbekannter_pfad_schliesst_nichts(qapp, tmp_path):
     ansicht.oeffne(datei)
     ansicht.schliesse_pfad(projekt / "andere.py")
     assert ansicht.reiter.count() == 1
+    _arbeite_zerstoerungen_ab()
+
+
+# ============== Umbenennen und Loeschen im Baum (Pruefung 23.09.2026, p03/p16)
+#
+# Nach dem Umbenennen einer offenen Datei zeigte der Reiter weiter auf den alten
+# Pfad: Speichern legte die alte Datei neu an, die umbenannte behielt den alten
+# Stand. Beim Loeschen eines Ordners blieben dessen Reiter offen.
+
+
+def _kein_konflikt(ansicht):
+    gefragt = []
+    ansicht.frage_bei_konflikt = lambda pfad: gefragt.append(pfad) or "abbrechen"
+    return gefragt
+
+
+def test_umbenannte_offene_datei_wird_am_neuen_ort_gespeichert(qapp, tmp_path):
+    ansicht, _ordner, projekt = _ansicht(tmp_path)
+    alt = projekt / "hallo_spot.py"
+    ansicht.oeffne(alt)
+    ansicht.reiter.currentWidget().insertPlainText("# neu\n")    # wie getippt
+    gefragt = _kein_konflikt(ansicht)
+
+    neu = ansicht.baum.umbenennen(alt, "gruss.py")
+    eintrag = ansicht.aktueller_reiter()
+    assert eintrag.pfad == neu
+    assert ansicht.reiter.tabText(0) == "● gruss.py"
+    assert ansicht.speichere_aktuellen() is True
+    assert gefragt == [], "Umbenennen ist keine fremde Aenderung"
+    assert not alt.exists(), "Speichern hat die alte Datei wieder angelegt"
+    assert neu.read_text(encoding="utf-8") == "# neu\nx = 1\n"
+
+
+def test_umbenannter_ordner_fuehrt_die_reiter_darunter_nach(qapp, tmp_path):
+    ansicht, _ordner, projekt = _ansicht(tmp_path)
+    (projekt / "lib").mkdir()
+    helfer = projekt / "lib" / "helfer.py"
+    helfer.write_text("y = 2\n", encoding="utf-8")
+    ansicht.oeffne(helfer)
+    ansicht.oeffne(projekt / "hallo_spot.py")
+
+    ansicht.baum.umbenennen(projekt / "lib", "werkzeug")
+    pfade = sorted(e.pfad for e in ansicht._reiter.values())
+    assert pfade == sorted([projekt / "hallo_spot.py", projekt / "werkzeug" / "helfer.py"])
+    verschoben = next(e for e in ansicht._reiter.values() if e.pfad.name == "helfer.py")
+    assert verschoben.hilfe._pfad == str(projekt / "werkzeug" / "helfer.py")
+    assert ansicht.speichere_alle_geaenderten() is True
+    assert not (projekt / "lib").exists()
+
+
+def test_umbenennen_nur_in_gross_kleinschreibung_fuehrt_den_reiter_nach(qapp, tmp_path):
+    ansicht, _ordner, projekt = _ansicht(tmp_path)
+    alt = projekt / "Hallo.py"
+    alt.write_text("x = 1\n", encoding="utf-8")
+    ansicht.oeffne(alt)
+    neu = ansicht.baum.umbenennen(alt, "hallo.py")
+    assert neu is not None
+    assert ansicht.aktueller_reiter().pfad.name == "hallo.py"
+    assert ansicht.reiter.tabText(ansicht.reiter.currentIndex()) == "hallo.py"
+
+
+def test_eine_fremde_aenderung_vor_dem_umbenennen_bleibt_erkannt(qapp, tmp_path):
+    """Die Zeitmarke gehoert zum Inhalt, nicht zum Namen: Umbenennen aendert weder
+    Aenderungszeit noch Groesse. Wer sie am neuen Ort neu laese, verdeckte eine
+    Aenderung aus VS Code von VOR dem Umbenennen -- und Speichern ueberschriebe sie."""
+    ansicht, _ordner, projekt = _ansicht(tmp_path)
+    alt = projekt / "hallo_spot.py"
+    ansicht.oeffne(alt)
+    alt.write_text("von VS Code geschrieben\n", encoding="utf-8")
+    ansicht.baum.umbenennen(alt, "gruss.py")
+    assert ansicht.fremd_geaendert(ansicht.aktueller_reiter()) is True
+
+
+def _papierkorb_attrappe(monkeypatch, tmp_path):
+    import shutil
+
+    from spotlab.gui.editor import tree
+
+    korb = tmp_path / "papierkorb"
+    korb.mkdir()
+    monkeypatch.setattr(tree, "in_den_papierkorb",
+                        lambda p: shutil.move(str(p), str(korb / p.name)))
+
+
+def test_geloeschter_ordner_schliesst_alle_reiter_darunter(qapp, tmp_path, monkeypatch):
+    _papierkorb_attrappe(monkeypatch, tmp_path)
+    ansicht, _ordner, projekt = _ansicht(tmp_path)
+    (projekt / "lib").mkdir()
+    for name in ("a.py", "b.py"):
+        (projekt / "lib" / name).write_text("z = 3\n", encoding="utf-8")
+        ansicht.oeffne(projekt / "lib" / name)
+    ansicht.oeffne(projekt / "hallo_spot.py")
+
+    ansicht.baum.loeschen(projekt / "lib")
+    assert [e.pfad.name for e in ansicht._reiter.values()] == ["hallo_spot.py"]
+    assert ansicht.reiter.count() == 1
+    _arbeite_zerstoerungen_ab()
+
+
+def test_geloeschter_ordner_fragt_bei_ungespeicherten_aenderungen(qapp, tmp_path, monkeypatch):
+    """Die Datei liegt im Papierkorb und ist wiederherstellbar, der Puffer nicht."""
+    _papierkorb_attrappe(monkeypatch, tmp_path)
+    ansicht, _ordner, projekt = _ansicht(tmp_path)
+    (projekt / "lib").mkdir()
+    datei = projekt / "lib" / "a.py"
+    datei.write_text("z = 3\n", encoding="utf-8")
+    ansicht.oeffne(datei)
+    ansicht.reiter.currentWidget().insertPlainText("# ungespeichert\n")
+    gefragt = []
+    ansicht.frage_schliessen = lambda pfad: gefragt.append(pfad) or False
+
+    ansicht.baum.loeschen(projekt / "lib")
+    assert gefragt == [datei]
+    assert ansicht.reiter.count() == 1, "der ungespeicherte Puffer ist weg"
     _arbeite_zerstoerungen_ab()
 
 
