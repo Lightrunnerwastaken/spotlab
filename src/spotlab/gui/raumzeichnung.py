@@ -9,7 +9,7 @@ dass es auffiele -- deshalb gibt es genau einen.
 
 import math
 
-from PySide6.QtCore import QPointF, Qt
+from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QBrush, QColor, QImage, QPen, QPolygonF
 
 from spotlab.gui.theme import mische
@@ -19,7 +19,9 @@ from spotlab.welt.kollision import ROBOTER_RADIUS_M
 TAG_KANTE_M = 0.15
 PFEIL_M = 0.4
 ZACKE_PX = 4               # Kammlinie der Klippen
-SPOT_MIN_PX = 4            # kleinster Radius des Spot-Kreises
+SPOT_MIN_PX = 10           # kleinster Radius des Spot-Kreises: herausgezoomt ein Punkt waere unauffindbar
+BLOCK_FUELLUNG = 0.25      # Anteil `gedaempft` in der Blockflaeche
+BESCHRIFTUNG_PX = 150      # halbe Breite des Kastens, in dem ein Name mittig steht
 
 
 def _auf(element, raum, ebene):
@@ -124,15 +126,21 @@ def zeichne_raum(maler, raum, meter_zu_schirm, skala, palette, auswahl=frozenset
         maler.setPen(farbe)
         maler.drawText(int(px) + 4, int(py) + 14, zone.name)
 
+    # Bloecke: Flaeche zwischen `flaeche` und `gedaempft`, Rand `gedaempft` -- im
+    # hellen Thema waren sie weiss mit hellgrauem Rand auf hellgrauem Grund und
+    # kaum zu sehen (UX-Pruefung 23.09.2026). Der Name steht in der Mitte.
+    fuellung = QColor(mische(palette.flaeche, palette.gedaempft, BLOCK_FUELLUNG))
     for i, block in enumerate(raum.bloecke):
         gewaehlt = ("block", i) in auswahl
         blass = not _auf(block, raum, ebene)
-        maler.setPen(QPen(QColor(palette.akzent if gewaehlt else (palette.blass if blass else palette.rand)), 2))
-        maler.setBrush(QBrush(QColor(palette.blass if blass else palette.flaeche)))
+        rand = palette.akzent if gewaehlt else (palette.blass if blass else palette.gedaempft)
+        maler.setPen(QPen(QColor(rand), 2 if gewaehlt else 1))
+        maler.setBrush(QBrush(QColor(palette.blass) if blass else fuellung))
         maler.drawPolygon(_polygon(block.ecken(), meter_zu_schirm))
         px, py = meter_zu_schirm(block.x, block.y)
-        maler.setPen(QColor(palette.blass if blass else palette.gedaempft))
-        maler.drawText(int(px) + 4, int(py) - 4, block.name)
+        maler.setPen(QColor(palette.blass if blass else palette.text))
+        maler.drawText(QRectF(px - BESCHRIFTUNG_PX, py - 10, 2 * BESCHRIFTUNG_PX, 20),
+                       int(Qt.AlignCenter), block.name)
 
     for i, wand in enumerate(raum.waende):
         gewaehlt = ("wand", i) in auswahl

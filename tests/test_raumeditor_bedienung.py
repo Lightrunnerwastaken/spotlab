@@ -552,3 +552,69 @@ def test_rechtsklick_in_3d_bricht_g_ab_und_rechts_ziehen_dreht(tab, qapp):
     _maus(s3, QMouseEvent.MouseMove, 460, 400, Qt.NoButton, Qt.RightButton)
     _maus(s3, QMouseEvent.MouseButtonRelease, 460, 400, Qt.RightButton, Qt.NoButton)
     assert s3.kamera.azimut != azimut
+
+
+# ---------------------------------------------------------------- Zeichnung
+
+
+def _zeichne(qapp, palette, raum, skala=50.0, maler_klasse=None):
+    from PySide6.QtGui import QColor, QImage, QPainter
+
+    from spotlab.gui.raumzeichnung import zeichne_raum
+
+    bild = QImage(400, 300, QImage.Format_RGB32)
+    bild.fill(QColor(palette.hintergrund))
+    maler = (maler_klasse or QPainter)(bild)
+    zeichne_raum(maler, raum, lambda x, y: (20 + x * skala, 280 - y * skala), skala, palette)
+    maler.end()
+    return bild, maler, (lambda x, y: (int(20 + x * skala), int(280 - y * skala)))
+
+
+def test_bloecke_sind_auch_im_hellen_thema_sichtbar(qapp):
+    """Bild hell_18: weisse Bloecke mit hellgrauem Rand auf hellgrauem Grund."""
+    from PySide6.QtGui import QColor
+
+    from spotlab.gui.theme import HELL, mische
+
+    raum = Raum(name="T", beschreibung="", start=(0.5, 0.5, 0.0),
+                bloecke=(Block("Kiste", 3.0, 2.0, 2.0, 1.0),))
+    bild, _maler, px = _zeichne(qapp, HELL, raum)
+    innen = bild.pixelColor(*px(2.2, 1.7))
+    assert innen == QColor(mische(HELL.flaeche, HELL.gedaempft, 0.25))
+    assert bild.pixelColor(*px(2.0, 1.7)) == QColor(HELL.gedaempft)     # der Rand
+
+
+def test_die_beschriftung_eines_blocks_steht_in_der_mitte(qapp):
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QPainter
+
+    from spotlab.gui.theme import DUNKEL
+
+    texte = []
+
+    class Mitschreiber(QPainter):
+        def drawText(self, *args):
+            texte.append(args)
+            return super().drawText(*args)
+
+    raum = Raum(name="T", beschreibung="", start=(0.5, 0.5, 0.0),
+                bloecke=(Block("Kiste", 3.0, 2.0, 2.0, 1.0),))
+    _bild, _maler, px = _zeichne(qapp, DUNKEL, raum, maler_klasse=Mitschreiber)
+    rechteck, flaggen, text = next(a for a in texte if a[-1] == "Kiste")
+    mx, my = px(3.0, 2.0)
+    assert abs(rechteck.center().x() - mx) <= 1 and abs(rechteck.center().y() - my) <= 1
+    assert flaggen & Qt.AlignCenter == Qt.AlignCenter
+
+
+def test_der_startmarker_ist_auch_klein_gezoomt_mindestens_10_px(qapp):
+    from PySide6.QtGui import QColor, QImage, QPainter
+
+    from spotlab.gui.raumzeichnung import zeichne_spot
+    from spotlab.gui.theme import DUNKEL
+
+    bild = QImage(200, 200, QImage.Format_RGB32)
+    bild.fill(QColor(DUNKEL.hintergrund))
+    maler = QPainter(bild)
+    zeichne_spot(maler, 100.0, 100.0, 90.0, 5.0, DUNKEL)        # 5 px je Meter
+    maler.end()
+    assert bild.pixelColor(110, 100) != QColor(DUNKEL.hintergrund)
