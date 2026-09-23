@@ -31,7 +31,13 @@ versionsgepinntes Extra `spotlab[sim]`.
 - **Ein Fehlschlag muss den Zustand zuruecksetzen, nicht nur eine Meldung schreiben.**
   `MapsView._aufnahme_fehler` meldete und liess `_worker` stehen: der Startknopf blieb fuer immer
   grau, und der zweite Versuch antwortete „Es laeuft bereits eine Aufnahme" — eine Ursache, die es
-  nicht gab. Getroffen hat es jeden ohne Roboter beim ersten Klick.
+  nicht gab. Getroffen hat es jeden ohne Roboter beim ersten Klick. **Zuruecksetzen heisst aber
+  nicht: bei JEDEM Fehler alles abbauen.** Nur ein Verbindungsfehler beendet den Arbeiter
+  (`RecordingWorker.abgebrochen`); ein einzelner Auftrag, der scheitert (`fehler(art, text)`),
+  wird gemeldet, und Verbindung und Knoepfe bleiben. Befund p04 (22.09.2026): EIN gescheiterter
+  Wegpunkt schloss die ganze Aufnahme im Fenster, „Beenden und speichern" war grau — und der
+  Roboter zeichnete weiter auf, denn ein Stopp ging nie hinaus. Scheitert der START (kein
+  Fiducial), geht der Startknopf wieder, ohne neu zu verbinden.
 - **Lease wird mit `acquire` geholt, nie implizit mit `take`.** Übernahme ist eine
   bewusste, protokollierte Handlung. **Der NOT-AUS hinterlässt genau deshalb ein verwaistes
   Lease** (18.09.2026, zweimal hintereinander): er tötet den Lauf hart, `close()` läuft nie,
@@ -466,7 +472,15 @@ versionsgepinntes Extra `spotlab[sim]`.
   ein laufender `JediWorker`-QThread destruiert und reisst das ganze Fenster mit, samt
   NOT-AUS-Knopf. Dieselbe Regel gilt für `MapsView._worker` beim Fensterschliessen. Erst
   trennen, dann warten: eine Antwort, die eine Millisekunde zu spät kommt, darf das
-  zerstörte Widget nicht mehr anfassen.
+  zerstörte Widget nicht mehr anfassen. **Und wer nach dem Warten noch läuft, wird nicht
+  vergessen.** `_beende_worker(warte_ms)` gab den Arbeiter bis zum 22.09.2026 nach 3 s auf,
+  auch wenn er noch verband — er blieb Kind des Widgets, und beim Zerstören brach Qt den
+  Prozess ab („QThread: Destroyed while thread is still running", p05). Jetzt löst es ihn
+  vom Widget (`setParent(None)`), hält ihn in `_NACHZUEGLER`, bis `finished` → `deleteLater`
+  ihn abräumt, und gibt **True zurück, solange er läuft** (`aufnahme_laeuft_noch()` fragt
+  dasselbe ohne zu warten). Das Programmende wartet über `atexit` höchstens
+  `NACHZUEGLER_FRIST_S` auf ihn — eine laufende Nachbearbeitung kommt damit noch auf die
+  Platte.
 - **`Ausgabefeld.haenge_an` führt die Dokumentlänge laufend mit, statt `toPlainText()` zu
   rufen.** Jener kopiert bei jeder Zeile das ganze Dokument — gemessen 0.070 ms/Zeile bei
   500 Zeilen, 0.402 bei 4000, also quadratisch; auf 50 000 Zeilen Minuten, in denen die

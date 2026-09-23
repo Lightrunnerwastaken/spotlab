@@ -43,6 +43,8 @@ HINWEIS = (
 )
 
 
+WARTE_MS = 3000              # so lange wartet `_beende_worker` auf den Arbeiter
+
 KEINE_NAVIGATION = "Keine Navigation."
 HINWEIS_NAVIGATION = (
     "Einen Wegpunkt in der Zeichnung anklicken — Spot fährt autonom hin, auf der Karte, die "
@@ -79,6 +81,7 @@ class MapsView(QWidget):
         self._ordner = None
         self._config = None
         self._worker = None
+        self._start_wiederholen = False    # der Start scheiterte, die Verbindung steht
         self._karten = []
         self._lauf_dir = None              # das Verzeichnis des Navigationslaufs, wenn einer laeuft
         self._ziel_nr = 0
@@ -375,6 +378,14 @@ class MapsView(QWidget):
         if self._ordner is None:
             self.meldung.emit("Wähle zuerst einen Arbeitsordner — Ansicht 'Projekte'.")
             return
+        if self._worker is not None and self._start_wiederholen:
+            # Der Start scheiterte (meist: kein Fiducial im Bild), die Verbindung steht:
+            # noch einmal starten, ohne neu zu verbinden.
+            self._start_wiederholen = False
+            self._worker.starte(self.graph_leeren.isChecked())
+            self.start_knopf.setEnabled(False)
+            self.aufnahme_status.setText("Starte…")
+            return
         if self._worker is not None:
             self.meldung.emit("Es läuft bereits eine Aufnahme.")
             return
@@ -383,16 +394,21 @@ class MapsView(QWidget):
 
         self._worker = RecordingWorker(self._config, self)
         self._worker.status.connect(self._zeige_status)
-        self._worker.fehler.connect(self._aufnahme_fehler)
+        self._worker.fehler.connect(self._auftrag_fehler)
+        self._worker.abgebrochen.connect(self._aufnahme_fehler)
         self._worker.gespeichert.connect(self._aufnahme_gespeichert)
-        self._worker.bereit.connect(
-            lambda: self._worker.starte(self.graph_leeren.isChecked())
-        )
+        self._worker.bereit.connect(self._worker_bereit)
         self._worker.start()
         self.start_knopf.setEnabled(False)
         self.wegpunkt_knopf.setEnabled(True)
         self.speichern_knopf.setEnabled(True)
         self.aufnahme_status.setText("Verbinde…")
+
+    def _worker_bereit(self):
+        """Verbunden: die Aufnahme beginnen. Eine Methode, keine Lambda -- nur so laesst
+        sich die Verbindung beim Schliessen gezielt trennen."""
+        if self._worker is not None:
+            self._worker.starte(self.graph_leeren.isChecked())
 
     def _setze_wegpunkt(self):
         if self._worker is None:
@@ -418,11 +434,32 @@ class MapsView(QWidget):
             f"{status.meldung} · {status.wegpunkte} Wegpunkte, {status.kanten} Kanten"
         )
 
+    def _auftrag_fehler(self, art, text):
+        """Ein einzelner Auftrag scheiterte: MELDEN, die Aufnahme bleibt offen.
+
+        Befund p04 (22.09.2026): bis dahin beendete JEDER Fehlschlag die ganze
+        Aufnahme im Fenster — ein Wegpunkt, der nicht gesetzt wurde, und „Beenden und
+        speichern" war grau, waehrend der Roboter weiter aufzeichnete. Jetzt bleiben
+        Verbindung und Knoepfe, der naechste Versuch kann gelingen. Scheiterte der
+        START, zeichnet der Roboter nicht — dann geht der Startknopf wieder, ohne
+        neu zu verbinden.
+        """
+        self.meldung.emit(text)
+        if self._worker is None:
+            return
+        if art == "start":
+            self._start_wiederholen = True
+            self.start_knopf.setEnabled(True)
+            self.aufnahme_status.setText(
+                "Nicht gestartet — die Verbindung steht, „Aufnahme starten“ versucht es noch einmal.")
+        elif art != "status":
+            self.aufnahme_status.setText(f"{text} Die Verbindung steht — noch einmal versuchen.")
+
     def _aufnahme_fehler(self, text):
-        """Melden UND aufraeumen. Vorher blieb `_worker` stehen: der Startknopf blieb
-        fuer immer grau, und der zweite Versuch antwortete "Es laeuft bereits eine
-        Aufnahme" -- eine Ursache, die es nicht gab. Nur ein Neustart half, und getroffen
-        hat es jeden ohne Roboter beim ersten Klick."""
+        """Die Verbindung kam nicht zustande: melden UND aufraeumen. Vorher blieb
+        `_worker` stehen: der Startknopf blieb fuer immer grau, und der zweite Versuch
+        antwortete "Es laeuft bereits eine Aufnahme" -- eine Ursache, die es nicht gab.
+        Nur ein Neustart half, und getroffen hat es jeden ohne Roboter beim ersten Klick."""
         self.meldung.emit(text)
         self._beende_worker()
         self.aufnahme_status.setText("Nicht aufgenommen.")
@@ -432,12 +469,104 @@ class MapsView(QWidget):
         self._beende_worker()
         self.aktualisiere()
 
-    def _beende_worker(self):
-        if self._worker is not None:
-            self._worker.schliesse()
-            self._worker.wait(3000)
-            self._worker = None
+    def _beende_worker(self, warte_ms=WARTE_MS):
+        """Den Aufnahme-Arbeiter beenden. Gibt True zurueck, wenn er danach NOCH LAEUFT.
+
+        Erst trennen, dann warten: eine Meldung, die eine Millisekunde zu spaet kommt,
+        darf das Widget nicht mehr anfassen. Laeuft er nach `warte_ms` noch (Verbinden
+        haengt am Netz, die Nachbearbeitung rechnet), wird er NICHT vergessen — bis zum
+        22.09.2026 geschah genau das: das Widget wurde zerstoert, der QThread als sein
+        Kind mit, und Qt brach den Prozess ab („QThread: Destroyed while thread is
+        still running", p05), samt NOT-AUS-Knopf. Jetzt wird er vom Widget geloest und
+        gehalten, bis er fertig ist (`_halte_bis_zum_ende`). Die Rueckgabe sagt dem
+        Hauptfenster, ob beim Schliessen noch etwas laeuft; ein zweiter Aufruf wartet
+        erneut und zaehlt dabei auch einen schon geloesten Arbeiter.
+        """
+        arbeiter, self._worker = self._worker, None
+        self._start_wiederholen = False
         self.start_knopf.setEnabled(True)
         self.wegpunkt_knopf.setEnabled(False)
         self.speichern_knopf.setEnabled(False)
         self.aufnahme_status.setText("Keine Aufnahme")
+        if arbeiter is not None:
+            self._trenne(arbeiter)
+            arbeiter.schliesse()
+            if arbeiter.wait(warte_ms):
+                return aufnahme_laeuft_noch()    # fertig: bleibt Kind des Widgets, wie bisher
+            _halte_bis_zum_ende(arbeiter)
+            return True
+        return _warte_auf_nachzuegler(warte_ms)
+
+    def _trenne(self, arbeiter):
+        """Jede Verbindung des Arbeiters zu DIESEM Widget einzeln kappen -- nie `disconnect()`
+        ohne Argument, das kappte auch `finished`, an dem das Aufraeumen haengt."""
+        for signal, slot in (("status", self._zeige_status), ("fehler", self._auftrag_fehler),
+                             ("abgebrochen", self._aufnahme_fehler),
+                             ("gespeichert", self._aufnahme_gespeichert),
+                             ("bereit", self._worker_bereit)):
+            try:
+                getattr(arbeiter, signal).disconnect(slot)
+            except (AttributeError, RuntimeError, TypeError):
+                pass                              # war nicht verbunden -- dann eben nichts
+
+
+# Arbeiter, die beim Beenden noch liefen: vom Widget geloest und hier gehalten, bis sie
+# fertig sind. Ohne Referenz zerstoerte Python den QThread, waehrend er laeuft -- dasselbe
+# Absturzmuster wie mit dem Widget als Elternteil.
+_NACHZUEGLER = set()
+# So lange wartet das Programmende hoechstens auf einen Nachzuegler. Eine Nachbearbeitung
+# samt Herunterladen darf damit noch zu Ende kommen; die Karte liegt dann auf der Platte.
+NACHZUEGLER_FRIST_S = 60.0
+
+
+_ABSCHIED = {"angemeldet": False}
+
+
+def _halte_bis_zum_ende(arbeiter):
+    """Den laufenden Arbeiter vom Widget loesen und halten, bis er fertig ist.
+
+    `finished` -> `deleteLater` ist das Qt-Muster fuer genau diesen Fall; die Referenz
+    hier faellt beim naechsten Blick (`_raeume_nachzuegler`), sobald er nicht mehr laeuft.
+    """
+    import atexit
+
+    arbeiter.setParent(None)                 # stirbt das Widget, stirbt der Faden nicht mit
+    arbeiter.finished.connect(arbeiter.deleteLater)
+    _NACHZUEGLER.add(arbeiter)
+    if not _ABSCHIED["angemeldet"]:
+        _ABSCHIED["angemeldet"] = True
+        atexit.register(_warte_auf_nachzuegler, NACHZUEGLER_FRIST_S * 1000)
+
+
+def _raeume_nachzuegler():
+    """Fertige Nachzuegler vergessen -- die Referenz faellt, `deleteLater` raeumt den Rest."""
+    import shiboken6
+
+    for arbeiter in list(_NACHZUEGLER):
+        if not shiboken6.isValid(arbeiter) or not arbeiter.isRunning():
+            _NACHZUEGLER.discard(arbeiter)
+
+
+def aufnahme_laeuft_noch():
+    """Laeuft noch ein Arbeiter der Kartenaufnahme, der schon vom Fenster geloest ist?"""
+    _raeume_nachzuegler()
+    return bool(_NACHZUEGLER)
+
+
+def _warte_auf_nachzuegler(warte_ms):
+    """Hoechstens `warte_ms` auf die Nachzuegler warten. True, wenn danach noch einer laeuft.
+
+    Auch der Haken fuer das Programmende (`atexit`): ein QThread, der beim Abbau des
+    Interpreters noch laeuft, wird zerstoert und reisst den Prozess mit.
+    """
+    import time
+
+    ende = time.monotonic() + max(0.0, float(warte_ms)) / 1000.0
+    _raeume_nachzuegler()
+    for arbeiter in list(_NACHZUEGLER):
+        rest_ms = int(max(0.0, ende - time.monotonic()) * 1000)
+        try:
+            arbeiter.wait(rest_ms)
+        except RuntimeError:
+            pass                                  # schon zerstoert
+    return aufnahme_laeuft_noch()

@@ -274,7 +274,7 @@ def test_nach_einem_fehlgeschlagenen_verbinden_ist_der_reiter_wieder_benutzbar(q
         def wait(self, _ms=0):
             return True
 
-        status = fehler = gespeichert = bereit = property(lambda self: None)
+        status = fehler = abgebrochen = gespeichert = bereit = property(lambda self: None)
 
     ansicht._worker = _Gescheitert()
     ansicht.start_knopf.setEnabled(False)
@@ -283,3 +283,190 @@ def test_nach_einem_fehlgeschlagenen_verbinden_ist_der_reiter_wieder_benutzbar(q
     assert meldungen and "10.0.0.9" in meldungen[0]
     assert ansicht.start_knopf.isEnabled(), "der Reiter muss einen zweiten Versuch zulassen"
     assert ansicht._worker is None
+
+
+# ------------------------------------------------ Aufnahme mit echtem Arbeiter (p04, p05)
+
+
+class _Sitzung:
+    """Die Robotersitzung der Aufnahme -- Attrappe, kein Netz. Der erste Wegpunkt scheitert."""
+
+    def __init__(self, start_scheitert=False):
+        from spotlab.errors import MapError
+
+        self.fehler = MapError
+        self.robot_zeichnet = False
+        self.aufrufe = []
+        self.start_scheitert = start_scheitert
+
+    def start(self, graph_leeren=False):
+        self.aufrufe.append("start")
+        if self.start_scheitert:
+            self.start_scheitert = False
+            raise self.fehler("Kein Fiducial im Bild -- die Aufnahme laesst sich nicht starten.")
+        self.robot_zeichnet = True
+
+    def waypoint(self, name):
+        self.aufrufe.append(f"waypoint:{name}")
+        if self.aufrufe.count("waypoint:kueche") == 1 and name == "kueche":
+            raise self.fehler("Der Wegpunkt liess sich nicht setzen (Zeitueberschreitung).")
+        return "wp-neu"
+
+    def stop(self):
+        self.aufrufe.append("stop")
+        self.robot_zeichnet = False
+
+    def nachbearbeiten(self, melde=None):
+        self.aufrufe.append("nachbearbeiten")
+
+    def download(self, wurzel, name, roboter=None):
+        self.aufrufe.append(f"download:{name}")
+        return wurzel / name
+
+    def status(self):
+        from spotlab.maps.session import RecordingStatus
+
+        return RecordingStatus(self.robot_zeichnet, 3, 2,
+                               "Aufnahme läuft" if self.robot_zeichnet else "Keine Aufnahme")
+
+    def close(self):
+        self.aufrufe.append("close")
+
+
+def _aufnahme(tmp_path, monkeypatch, verbinde, namen=("kueche",)):
+    from spotlab.config import Config, Limits
+    from spotlab.gui.views import maps as maps_modul
+    from spotlab.maps import session as sessionmodul
+
+    monkeypatch.setattr(sessionmodul.RecordingSession, "connect", classmethod(verbinde))
+    antworten = iter(namen)
+    monkeypatch.setattr(maps_modul.QInputDialog, "getText",
+                        staticmethod(lambda *a, **k: (next(antworten, "x"), True)))
+    ansicht = MapsView()
+    ansicht.setze_arbeitsordner(str(tmp_path))
+    ansicht.setze_config(Config(ip="10.0.0.9", username="u", limits=Limits()))
+    meldungen = []
+    ansicht.meldung.connect(meldungen.append)
+    return ansicht, meldungen
+
+
+def _bis(qapp, bedingung, worauf):
+    from tests_zeitgrenzen import warte_bis
+
+    warte_bis(bedingung, worauf, zwischendurch=qapp.processEvents)
+
+
+def _abraeumen(qapp, arbeiter):
+    """Den Faden sicher beenden, bevor der Test endet -- ein Leck faellt nie dort auf, wo es entsteht."""
+    from PySide6.QtCore import QCoreApplication, QEvent
+
+    from tests_zeitgrenzen import TEST_TIMEOUT_S
+
+    if arbeiter is not None:
+        arbeiter.schliesse()
+        assert arbeiter.wait(TEST_TIMEOUT_S * 1000)
+    qapp.processEvents()
+    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+
+
+def test_ein_gescheiterter_wegpunkt_beendet_die_aufnahme_nicht(qapp, tmp_path, monkeypatch):
+    """Befund p04 (22.09.2026): ein einzelner Fehlschlag beim Wegpunkt schloss den Arbeiter,
+    die Anzeige sagte „Nicht aufgenommen.", „Beenden und speichern" war grau -- und der
+    Roboter zeichnete weiter auf, denn ein Stopp ging nie hinaus."""
+    sitzung = _Sitzung()
+    ansicht, meldungen = _aufnahme(tmp_path, monkeypatch, lambda cls, cfg, verbinder=None: sitzung,
+                                   namen=("kueche", "turnhalle"))
+    arbeiter = None
+    try:
+        ansicht.start_knopf.click()
+        arbeiter = ansicht._worker
+        _bis(qapp, lambda: sitzung.robot_zeichnet, "die Aufnahme laeuft")
+        ansicht.wegpunkt_knopf.click()
+        _bis(qapp, lambda: any("Wegpunkt" in m for m in meldungen), "der Fehler ist gemeldet")
+        assert ansicht._worker is arbeiter and arbeiter.isRunning(), "der Arbeiter lebt weiter"
+        assert ansicht.speichern_knopf.isEnabled() and ansicht.wegpunkt_knopf.isEnabled()
+        assert "close" not in sitzung.aufrufe
+        ansicht.speichern_knopf.click()
+        _bis(qapp, lambda: any("gespeichert" in m for m in meldungen), "die Karte ist gespeichert")
+        assert sitzung.aufrufe[-4:] == ["stop", "nachbearbeiten", "download:turnhalle", "close"]
+        assert ansicht._worker is None and ansicht.start_knopf.isEnabled()
+    finally:
+        _abraeumen(qapp, arbeiter)
+    assert "stop" in sitzung.aufrufe, "die Aufnahme am Roboter ist beendet"
+
+
+def test_ein_gescheiterter_start_laesst_sich_ohne_neues_verbinden_wiederholen(
+        qapp, tmp_path, monkeypatch):
+    """Scheitert der Start (kein Fiducial im Bild), steht die Verbindung trotzdem: derselbe
+    Knopf versucht es noch einmal -- vorher hiess es „Es laeuft bereits eine Aufnahme"."""
+    sitzung = _Sitzung(start_scheitert=True)
+    verbunden = []
+
+    def verbinde(cls, cfg, verbinder=None):
+        verbunden.append(1)
+        return sitzung
+
+    ansicht, meldungen = _aufnahme(tmp_path, monkeypatch, verbinde)
+    arbeiter = None
+    try:
+        ansicht.start_knopf.click()
+        arbeiter = ansicht._worker
+        _bis(qapp, lambda: any("Fiducial" in m for m in meldungen), "der Fehlstart ist gemeldet")
+        assert ansicht._worker is arbeiter and ansicht.start_knopf.isEnabled()
+        ansicht.start_knopf.click()
+        _bis(qapp, lambda: sitzung.robot_zeichnet, "der zweite Start laeuft")
+        assert verbunden == [1], "kein zweites Verbinden"
+        assert not any("bereits" in m for m in meldungen), meldungen
+        assert not ansicht.start_knopf.isEnabled()
+    finally:
+        _abraeumen(qapp, arbeiter)
+
+
+def test_schliessen_waehrend_des_verbindens_vergisst_den_arbeiter_nicht(
+        qapp, tmp_path, monkeypatch):
+    """Befund p05 (22.09.2026): `_beende_worker` wartete 3 s und vergass den Arbeiter dann,
+    auch wenn er noch lief. Das Widget wurde zerstoert, der QThread darunter mit -- Qt
+    brach den Prozess ab („QThread: Destroyed while thread is still running"), samt
+    NOT-AUS-Knopf. Jetzt: die Rueckgabe sagt, dass er noch laeuft, und der Arbeiter
+    ueberlebt das Widget, bis er fertig ist."""
+    import threading
+
+    import shiboken6
+
+    from spotlab.gui.views import maps as maps_modul
+    from tests_zeitgrenzen import TEST_TIMEOUT_S
+
+    los = threading.Event()
+
+    def haengt(cls, cfg, verbinder=None):
+        los.wait(TEST_TIMEOUT_S)
+        raise RuntimeError("Zeitueberschreitung beim Verbinden")
+
+    ansicht, _ = _aufnahme(tmp_path, monkeypatch, haengt)
+    ansicht.start_knopf.click()
+    arbeiter = ansicht._worker
+    try:
+        _bis(qapp, arbeiter.isRunning, "der Arbeiter verbindet")
+        assert ansicht._beende_worker(warte_ms=20) is True, "er laeuft noch -- und das wird gesagt"
+        assert ansicht._worker is None and ansicht.start_knopf.isEnabled()
+        assert arbeiter.parent() is None, "vom Widget geloest"
+        assert maps_modul.aufnahme_laeuft_noch()
+        shiboken6.delete(ansicht)          # was beim Beenden passiert -- kein Absturz
+    finally:
+        los.set()
+        assert arbeiter.wait(TEST_TIMEOUT_S * 1000)
+    _abraeumen(qapp, None)
+    assert not maps_modul.aufnahme_laeuft_noch()
+
+
+def test_ein_arbeiter_der_rechtzeitig_endet_meldet_nichts_laufendes(qapp, tmp_path, monkeypatch):
+    sitzung = _Sitzung()
+    ansicht, _ = _aufnahme(tmp_path, monkeypatch, lambda cls, cfg, verbinder=None: sitzung)
+    ansicht.start_knopf.click()
+    arbeiter = ansicht._worker
+    try:
+        _bis(qapp, lambda: sitzung.robot_zeichnet, "die Aufnahme laeuft")
+        assert ansicht._beende_worker() is False
+        assert not arbeiter.isRunning() and sitzung.aufrufe[-1] == "close"
+    finally:
+        _abraeumen(qapp, arbeiter if arbeiter.isRunning() else None)
