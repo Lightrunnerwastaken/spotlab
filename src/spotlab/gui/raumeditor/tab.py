@@ -882,6 +882,15 @@ class RaumeditorView(QWidget):
             if self.umschalter.isEnabled():
                 self.umschalter.toggle()
             return
+        if name == "f" and not (ctrl or alt or self.steuerung.modus.aktiv):
+            # F wie in Blender: die Auswahl einrahmen; ohne Auswahl alles zeigen.
+            huelle_ = self.steuerung.auswahl_huelle()
+            sicht = self.stapel.currentWidget()
+            if huelle_ is not None:
+                sicht.rahme(*huelle_)
+            else:
+                sicht.alles_zeigen()
+            return
         self.steuerung.taste(name, shift, ctrl, alt)
         self._zeige()
 

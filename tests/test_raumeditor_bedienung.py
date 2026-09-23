@@ -437,3 +437,118 @@ def test_ueberfahren_hebt_hervor_und_setzt_den_mauszeiger(tab, qapp):
     tab._bewegt(2.0, 2.0, False)
     assert tab.sicht.cursor().shape() == Qt.CrossCursor
     tab.sicht.grab()                                       # zeichnet mit Hervorhebung, ohne Absturz
+
+
+# ---------------------------------------------------------- Touchpad, Ansicht
+
+
+def _maus(sicht, art, px, py, knopf, knoepfe, tasten=None):
+    from PySide6.QtCore import QPointF, Qt
+    from PySide6.QtGui import QMouseEvent
+    from PySide6.QtWidgets import QApplication
+
+    punkt = QPointF(px, py)
+    QApplication.sendEvent(sicht, QMouseEvent(art, punkt, punkt, knopf, knoepfe,
+                                              tasten if tasten is not None else Qt.NoModifier))
+
+
+def _sicht2d(qapp):
+    from spotlab.gui.raumeditor.sicht2d import Sicht2D
+    from spotlab.gui.theme import DUNKEL
+
+    sicht = Sicht2D(DUNKEL)
+    sicht.resize(400, 300)
+    sicht.zeige(RAUM)
+    sicht.alles_zeigen()
+    gemeldet = []
+    sicht.gedrueckt.connect(lambda *a: gemeldet.append(("gedrueckt", a[2])))
+    sicht.losgelassen.connect(lambda *a: gemeldet.append(("los",)))
+    return sicht, gemeldet
+
+
+def test_rechts_ziehen_schwenkt_und_ein_rechtsklick_bleibt_rechts(qapp):
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QMouseEvent
+
+    sicht, gemeldet = _sicht2d(qapp)
+    vorher = sicht._ursprung
+    _maus(sicht, QMouseEvent.MouseButtonPress, 100, 100, Qt.RightButton, Qt.RightButton)
+    _maus(sicht, QMouseEvent.MouseMove, 140, 120, Qt.NoButton, Qt.RightButton)
+    _maus(sicht, QMouseEvent.MouseButtonRelease, 140, 120, Qt.RightButton, Qt.NoButton)
+    assert sicht._ursprung == (vorher[0] + 40, vorher[1] + 20) and gemeldet == []
+    _maus(sicht, QMouseEvent.MouseButtonPress, 100, 100, Qt.RightButton, Qt.RightButton)
+    _maus(sicht, QMouseEvent.MouseMove, 102, 101, Qt.NoButton, Qt.RightButton)   # unter 4 px
+    _maus(sicht, QMouseEvent.MouseButtonRelease, 102, 101, Qt.RightButton, Qt.NoButton)
+    assert gemeldet == [("gedrueckt", "rechts")]
+
+
+def test_leertaste_und_linksziehen_schwenkt(qapp):
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QKeyEvent, QMouseEvent
+    from PySide6.QtWidgets import QApplication
+
+    sicht, gemeldet = _sicht2d(qapp)
+    vorher = sicht._ursprung
+    QApplication.sendEvent(sicht, QKeyEvent(QKeyEvent.KeyPress, Qt.Key_Space, Qt.NoModifier))
+    _maus(sicht, QMouseEvent.MouseButtonPress, 100, 100, Qt.LeftButton, Qt.LeftButton)
+    _maus(sicht, QMouseEvent.MouseMove, 130, 90, Qt.NoButton, Qt.LeftButton)
+    _maus(sicht, QMouseEvent.MouseButtonRelease, 130, 90, Qt.LeftButton, Qt.NoButton)
+    QApplication.sendEvent(sicht, QKeyEvent(QKeyEvent.KeyRelease, Qt.Key_Space, Qt.NoModifier))
+    assert sicht._ursprung == (vorher[0] + 30, vorher[1] - 10) and gemeldet == []
+    _maus(sicht, QMouseEvent.MouseButtonPress, 100, 100, Qt.LeftButton, Qt.LeftButton)
+    assert gemeldet == [("gedrueckt", "links")]                # ohne Leertaste: ein Klick
+
+
+def test_pfeiltasten_schwenken(qapp):
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+
+    sicht, gemeldet = _sicht2d(qapp)
+    x0, y0 = sicht._ursprung
+    QTest.keyClick(sicht, Qt.Key_Left)
+    assert sicht._ursprung[0] > x0
+    QTest.keyClick(sicht, Qt.Key_Up)
+    assert sicht._ursprung[1] > y0 and gemeldet == []
+
+
+def test_f_rahmt_die_auswahl_ein(tab, qapp):
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+
+    _gezeigt(tab, qapp)
+    skala = tab.sicht.skala
+    tab.steuerung.auswahl = frozenset({("block", 0)})
+    tab._zeige()
+    tab.sicht.setFocus()
+    qapp.processEvents()
+    QTest.keyClick(tab.sicht, Qt.Key_F)
+    assert tab.sicht.skala > 2 * skala
+    tisch = tab.raum().bloecke[0]
+    px, py = tab.sicht.meter_zu_schirm(tisch.x, tisch.y)
+    assert abs(px - tab.sicht.width() / 2) < 20 and abs(py - tab.sicht.height() / 2) < 20
+
+
+def test_rechtsklick_in_3d_bricht_g_ab_und_rechts_ziehen_dreht(tab, qapp):
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QMouseEvent
+
+    tab.waehle_raum("moebliert")
+    s3 = tab.sicht3d
+    s3.resize(800, 600)
+    s3.verfuegbar = True
+    s3.treffer = lambda px, py: None
+    s3.alles_zeigen()
+    st = tab.steuerung
+    x = st.raum.bloecke[0].x
+    st.auswahl = frozenset({("block", 0)})
+    tab._taste("g", False, False, False)
+    tab._bewegt(x + 1.0, st.raum.bloecke[0].y, False)
+    assert st.raum.bloecke[0].x != x
+    azimut = s3.kamera.azimut
+    _maus(s3, QMouseEvent.MouseButtonPress, 400, 400, Qt.RightButton, Qt.RightButton)
+    _maus(s3, QMouseEvent.MouseButtonRelease, 401, 400, Qt.RightButton, Qt.NoButton)
+    assert not st.modus.aktiv and st.raum.bloecke[0].x == x and s3.kamera.azimut == azimut
+    _maus(s3, QMouseEvent.MouseButtonPress, 400, 400, Qt.RightButton, Qt.RightButton)
+    _maus(s3, QMouseEvent.MouseMove, 460, 400, Qt.NoButton, Qt.RightButton)
+    _maus(s3, QMouseEvent.MouseButtonRelease, 460, 400, Qt.RightButton, Qt.NoButton)
+    assert s3.kamera.azimut != azimut

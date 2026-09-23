@@ -33,6 +33,10 @@ FEINES_RASTER_AB = 100.0          # Pixel je Meter, ab da 5-cm-Linien
 # Der Mauszeiger je `Steuerung.zeigerart()`: man sieht vor dem Klick, was er tut.
 ZEIGER = {"bewegen": Qt.SizeAllCursor, "element": Qt.PointingHandCursor,
           "zeichnen": Qt.CrossCursor, "schwenken": Qt.ClosedHandCursor, None: Qt.ArrowCursor}
+SCHWENK_AB_PX = 4                 # so weit rechts ziehen, dann schwenkt es statt zu klicken
+PFEIL_SCHRITT_PX = 60             # eine Pfeiltaste schwenkt so weit
+# Pfeiltaste -> Verschiebung des Bildes (links heisst: nach links schauen).
+PFEILE = {Qt.Key_Left: (1, 0), Qt.Key_Right: (-1, 0), Qt.Key_Up: (0, 1), Qt.Key_Down: (0, -1)}
 
 TASTEN = {
     Qt.Key_Return: "return", Qt.Key_Enter: "return", Qt.Key_Escape: "escape",
@@ -78,6 +82,8 @@ class Sicht2D(QWidget):
         self.skala = 60.0             # Pixel je Meter
         self._ursprung = (RAND, 0.0)  # Pixel des Weltpunkts (0, 0); y wird gespiegelt
         self._schwenk = None
+        self._rechts = None           # rechte Taste gedrueckt: Klick oder Schwenk?
+        self._leertaste = False       # Leertaste gehalten: Linksziehen schwenkt
         # Solange niemand zoomt oder schwenkt, passt sich die Ansicht jeder neuen
         # Groesse an: eingepasst wurde sonst auf 640 x 480, bevor das Fenster
         # seine Groesse hatte, und der Raum sass klein in der Ecke (23.09.2026).
@@ -139,13 +145,18 @@ class Sicht2D(QWidget):
     def alles_zeigen(self):
         if self._raum is None:
             return
-        x0, y0, x1, y1 = huelle(self._raum)
-        breite, hoehe = max(x1 - x0, 1e-6), max(y1 - y0, 1e-6)
-        self.skala = min(max(self.width() - 2 * RAND, 1) / breite,
-                         max(self.height() - 2 * RAND, 1) / hoehe)
-        self._ursprung = ((self.width() - breite * self.skala) / 2 - x0 * self.skala,
-                          (self.height() + hoehe * self.skala) / 2 + y0 * self.skala)
+        self.rahme(*huelle(self._raum))
         self._einpassen = True
+
+    def rahme(self, x0, y0, x1, y1):
+        """Das Rechteck (Meter) mittig und so gross wie moeglich zeigen -- Home fuer den
+        ganzen Raum, F fuer die Auswahl."""
+        breite, hoehe = max(x1 - x0, 1e-6), max(y1 - y0, 1e-6)
+        self.skala = min(2000.0, max(self.width() - 2 * RAND, 1) / breite,
+                         max(self.height() - 2 * RAND, 1) / hoehe)
+        self._ursprung = ((self.width() - (x0 + x1) * self.skala) / 2,
+                          (self.height() + (y0 + y1) * self.skala) / 2)
+        self._einpassen = False
         self.update()
 
     def zoome(self, faktor, px, py):
@@ -184,19 +195,36 @@ class Sicht2D(QWidget):
         p = ereignis.position()
         return p.x(), p.y()
 
+    # Schwenken geht auf drei Wegen: mittlere Maustaste, Leertaste + Linksziehen und
+    # Rechtsziehen -- auf einem Touchpad gibt es keine mittlere Taste (UX-Pruefung
+    # 23.09.2026). Ein Rechtsklick OHNE Ziehen bleibt „rechts": er bricht G/R/S ab
+    # und beendet eine Wandkette; deshalb entscheidet erst das Loslassen.
+
+    def _beginne_schwenk(self, px, py):
+        self._schwenk = (px, py)
+        self.setCursor(ZEIGER["schwenken"])
+
     def mousePressEvent(self, ereignis):
         self.setFocus()
         px, py = self._punkt(ereignis)
-        if ereignis.button() == Qt.MiddleButton:
-            self._schwenk = (px, py)
+        knopf = ereignis.button()
+        if knopf == Qt.MiddleButton or (knopf == Qt.LeftButton and self._leertaste):
+            self._beginne_schwenk(px, py)
+            return
+        if knopf == Qt.RightButton:
+            self._rechts = {"von": (px, py), "schwenkt": False, "tasten": self._tasten(ereignis)}
             return
         shift, ctrl, _alt = self._tasten(ereignis)
-        taste = "rechts" if ereignis.button() == Qt.RightButton else "links"
         x, y = self.schirm_zu_meter(px, py)
-        self.gedrueckt.emit(x, y, taste, shift, ctrl)
+        self.gedrueckt.emit(x, y, "links", shift, ctrl)
 
     def mouseMoveEvent(self, ereignis):
         px, py = self._punkt(ereignis)
+        rechts = self._rechts
+        if (rechts is not None and not rechts["schwenkt"] and ereignis.buttons() & Qt.RightButton
+                and math.hypot(px - rechts["von"][0], py - rechts["von"][1]) > SCHWENK_AB_PX):
+            rechts["schwenkt"] = True
+            self._beginne_schwenk(*rechts["von"])
         if self._schwenk is not None:
             dx, dy = px - self._schwenk[0], py - self._schwenk[1]
             self._schwenk = (px, py)
@@ -210,8 +238,22 @@ class Sicht2D(QWidget):
             self.update()
 
     def mouseReleaseEvent(self, ereignis):
-        if ereignis.button() == Qt.MiddleButton:
+        knopf = ereignis.button()
+        if knopf == Qt.RightButton:
+            rechts, self._rechts = self._rechts, None
+            if rechts is not None and rechts["schwenkt"]:
+                self._schwenk = None
+                self.unsetCursor()
+            elif rechts is not None:
+                shift, ctrl, _alt = rechts["tasten"]
+                x, y = self.schirm_zu_meter(*rechts["von"])
+                self.gedrueckt.emit(x, y, "rechts", shift, ctrl)
+            return
+        if self._schwenk is not None and knopf in (Qt.MiddleButton, Qt.LeftButton):
             self._schwenk = None
+            self.unsetCursor()
+            return
+        if knopf != Qt.LeftButton:
             return
         shift, ctrl, _alt = self._tasten(ereignis)
         x, y = self.schirm_zu_meter(*self._punkt(ereignis))
@@ -222,10 +264,27 @@ class Sicht2D(QWidget):
         p = ereignis.position()
         self.zoome(1.15 ** schritte, p.x(), p.y())
 
+    def keyReleaseEvent(self, ereignis):
+        if ereignis.key() == Qt.Key_Space and not ereignis.isAutoRepeat():
+            self._leertaste = False
+            return
+        super().keyReleaseEvent(ereignis)
+
+    def focusOutEvent(self, ereignis):
+        self._leertaste = False              # ein Loslassen woanders kommt hier nie an
+        super().focusOutEvent(ereignis)
+
     def keyPressEvent(self, ereignis):
         taste = ereignis.key()
         if taste == Qt.Key_Home:
             self.alles_zeigen()
+            return
+        if taste == Qt.Key_Space:
+            self._leertaste = True
+            return
+        if taste in PFEILE:
+            dx, dy = PFEILE[taste]
+            self.schwenke(dx * PFEIL_SCHRITT_PX, dy * PFEIL_SCHRITT_PX)
             return
         shift, ctrl, alt = self._tasten(ereignis)
         if taste in TASTEN:

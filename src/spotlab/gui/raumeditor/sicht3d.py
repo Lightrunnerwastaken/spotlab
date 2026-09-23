@@ -28,7 +28,7 @@ from PySide6.QtOpenGL import QOpenGLFramebufferObject, QOpenGLShader, QOpenGLSha
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 
 from spotlab.gui.raumeditor import geometrie3d as geo
-from spotlab.gui.raumeditor.sicht2d import TASTEN, ZEIGER
+from spotlab.gui.raumeditor.sicht2d import PFEILE, SCHWENK_AB_PX, TASTEN, ZEIGER
 from spotlab.gui.theme import mische
 from spotlab.welt.raum import huelle
 
@@ -205,6 +205,7 @@ class Sicht3D(QOpenGLWidget):
         self._letzte_maus = None
         self._letzter_boden = None  # der letzte Bodenpunkt unter der Maus
         self._links_gedrueckt = False
+        self._rechts = None         # rechte Taste gedrueckt: Klick (bricht ab) oder Drehen?
 
     # ------------------------------------------------------------ Fuellen
 
@@ -239,6 +240,11 @@ class Sicht3D(QOpenGLWidget):
         if self._raum is not None:
             self.kamera.rahme(huelle(self._raum))
             self.update()
+
+    def rahme(self, x0, y0, x1, y1):
+        """F: die Auswahl einrahmen, wie Home den ganzen Raum."""
+        self.kamera.rahme((x0, y0, x1, y1))
+        self.update()
 
     def toleranz_m(self):
         return TOLERANZ_M
@@ -470,6 +476,11 @@ class Sicht3D(QOpenGLWidget):
         self.setFocus()
         p = ereignis.position()
         self._letzte_maus = (p.x(), p.y())
+        if ereignis.button() == Qt.RightButton:
+            # Erst das Loslassen entscheidet: gezogen dreht die Kamera, ein Klick
+            # ist „rechts" und bricht G/R/S ab -- wie in 2D (UX-Pruefung 23.09.2026).
+            self._rechts = {"von": (p.x(), p.y()), "gedreht": False, "tasten": self._tasten(ereignis)}
+            return
         if ereignis.button() != Qt.LeftButton or not self.verfuegbar:
             return
         shift, ctrl, _alt = self._tasten(ereignis)
@@ -488,6 +499,13 @@ class Sicht3D(QOpenGLWidget):
         dx, dy = p.x() - self._letzte_maus[0], p.y() - self._letzte_maus[1]
         self._letzte_maus = (p.x(), p.y())
         knoepfe = ereignis.buttons()
+        rechts = self._rechts
+        if knoepfe & Qt.RightButton and rechts is not None and not rechts["gedreht"]:
+            von = rechts["von"]
+            if abs(p.x() - von[0]) + abs(p.y() - von[1]) <= SCHWENK_AB_PX:
+                return                          # noch ein Klick, kein Ziehen
+            rechts["gedreht"] = True
+            dx, dy = p.x() - von[0], p.y() - von[1]
         if knoepfe & Qt.RightButton or knoepfe & Qt.MiddleButton:
             if knoepfe & Qt.MiddleButton or ereignis.modifiers() & Qt.ShiftModifier:
                 self.kamera.schwenke(-dx * self.kamera.abstand / 500.0,
@@ -505,6 +523,13 @@ class Sicht3D(QOpenGLWidget):
             self.bewegt.emit(boden[0], boden[1], ctrl)
 
     def mouseReleaseEvent(self, ereignis):
+        if ereignis.button() == Qt.RightButton:
+            rechts, self._rechts = self._rechts, None
+            if rechts is not None and not rechts["gedreht"] and self.verfuegbar:
+                boden = self.bodenpunkt(*rechts["von"]) or self._letzter_boden or (0.0, 0.0)
+                shift, ctrl, _alt = rechts["tasten"]
+                self.gedrueckt.emit(boden[0], boden[1], "rechts", shift, ctrl)
+            return
         if ereignis.button() != Qt.LeftButton or not self.verfuegbar or not self._links_gedrueckt:
             return
         self._links_gedrueckt = False
@@ -527,6 +552,12 @@ class Sicht3D(QOpenGLWidget):
         taste = ereignis.key()
         if taste == Qt.Key_Home:
             self.alles_zeigen()
+            return
+        if taste in PFEILE:
+            dx, dy = PFEILE[taste]
+            schritt = self.kamera.abstand * 0.1
+            self.kamera.schwenke(-dx * schritt, dy * schritt)
+            self.update()
             return
         shift, ctrl, alt = self._tasten(ereignis)
         if taste in TASTEN:
