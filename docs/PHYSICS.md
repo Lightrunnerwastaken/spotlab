@@ -58,8 +58,10 @@ Die grobe Capability POSTURE/LOCOMOTION garantiert nicht sämtliche Einzelbefehl
 Die Adaptergrenzen betragen vorerst 0.30 m/s und 0.50 rad/s; Begrenzungen werden
 protokolliert. Das sind Versuchsgrenzen dieses Reglers, keine Eigenschaften des
 realen Spot. Geschwindigkeits-Tracking und Anfahren weichen ab. Ein Sturz stoppt
-den Versuch mit Fehler. Der Modell-Massenwert steht im Laufbericht; er wird nicht
-heimlich an reale Messwerte angepasst. Nicht als Sim-zu-Real-Nachweis verwenden.
+den Versuch mit Fehler. Der Modell-Massenwert steht im Laufbericht; der Adapter passt ihn nie an.
+Seit 0.2.0b5 ist das Modell aus matura-spot das GEMESSENE (33.2 kg statt 50.34 kg,
+offen entschieden, siehe unten „Gemessenes Modell“). Nicht als Sim-zu-Real-Nachweis
+verwenden.
 
 Der Übergang vom Trab zum Stand benutzt den vorhandenen Brems-/Absetzablauf
 (maximal 4 s Simulationszeit). Neue Bewegungsbefehle während dieses Übergangs
@@ -186,3 +188,27 @@ Stufen funktionieren ebenfalls im Forschungsversuch. Bereits 2 cm Startversatz
 verfehlen dort aber knapp die 30-mm-Schwelle (29.95 mm). Deshalb nur die genaue
 Drei-Stufen-Vorlage zusätzlich freigegeben; normale Treppen bleiben gesperrt.
 Weiterhin Geometrie-Oracle, keine Wahrnehmungsplanung oder Realismusfreigabe.
+
+
+## Gemessenes Modell (23.09.2026, ab 0.2.0b5)
+
+Das Menagerie-Modell trug im Rumpf die Masse des ganzen Roboters: **50.34 kg**
+statt rund 33 kg, dazu eine Platzhalter-Trägheit und eine zu tiefe Standhaltung.
+Gemessen am Schul-Spot (Gelenkmomente im ruhigen Stand, 5045 Proben aus 62 Läufen):
+**33.2 kg**, Schwerpunkt 3.8 cm hinter dem Rumpfursprung, Standhöhe 0.5145 m über
+dem Fussaufstand. matura-spot hat das Modell mit diesen Werten zur Vorgabe gemacht
+(RESEARCH DECISION A, `matura-spot/notes/REALISMUS_GATES.md`, Runde 4); spotlab
+übernimmt es mit dem Sim-Wheel, am Adapter ändert sich nichts. Der Laufbericht
+nennt weiter `modell_masse_kg` — daran ist zu erkennen, welches Modell lief.
+
+Folgen für die Stufenversuche: der Regler darf den Schwerpunkt jetzt bis 15 statt
+13 cm verlagern (mit dem gemessenen Schwerpunkt braucht ein Hinterbein 13.0 cm).
+Forschungsversuche in matura-spot mit dem gemessenen Modell: Einzelstufe 56 Schritte
+in 194.8 s, Stützrand mindestens 53.1 mm, Stützfussversatz höchstens 11.0 mm
+(vorher 33.2 mm und 28.7 mm); drei Stufen 120 Schritte in 417.5 s, Stützrand
+54.2 mm, Versatz 11.9 mm (vorher 31.6 und 35.3 mm). Kein Sturz. Der echte Spot
+rutscht je Standphase im Median 0.24 mm, höchstens 17 mm (seine eigene Schätzung).
+
+Weiterhin OFFEN und nicht gemessen: Momentgrenzen und Gelenktempo der Aktuatoren,
+ihre Steifigkeit, die Fussnachgiebigkeit und die Reibung. Eine Realismusfreigabe
+ist das nicht.

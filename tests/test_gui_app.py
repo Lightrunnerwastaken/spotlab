@@ -1328,6 +1328,7 @@ def test_ein_abgewiesener_start_laesst_keine_merker_stehen(qapp, tmp_path, monke
     ihn samt scharfer Tasten, oder er bekommt die Karte in die Umgebung."""
     from dataclasses import replace
 
+    from spotlab import ENV_KARTE
     from spotlab.config import Config, Limits
 
     _karte_im_arbeitsordner(tmp_path)
@@ -1343,7 +1344,11 @@ def test_ein_abgewiesener_start_laesst_keine_merker_stehen(qapp, tmp_path, monke
     fenster.ansichten["karten"].navigation_gewuenscht.emit()
     assert fenster._navigation_erwartet is False
     assert fenster._karte_fuer_lauf is None
-    assert fenster._umgebung_fuer_lauf() == {}
+    # Nur die KARTE ist ein Merker. Raum und Startpose gehoeren zu jedem virtuellen
+    # Start -- und ohne Konfiguration waehlt „Code" seit dem 22.09.2026 `mujoco` vor.
+    # Bis zum 23.09.2026 stand hier `== {}`: gruen nur mit einer config.toml, deren
+    # Backend nicht virtuell ist, rot auf einem frischen Rechner.
+    assert ENV_KARTE not in fenster._umgebung_fuer_lauf()
 
 
 def test_arbeitsordner_merken_behaelt_die_treppensperre_von_der_platte(qapp, tmp_path, monkeypatch):

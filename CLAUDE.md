@@ -713,13 +713,16 @@ versionsgepinntes Extra `spotlab[sim]`.
   Treppe ausser den zwei validierten Szenen `physik_einzelstufe` (ein Podest bis 6 cm) und
   `physik_treppe_3stufen` (3 × 4 cm) — beide über ein Geometrie-Orakel der statischen Szene,
   nicht aus Wahrnehmung. `power_on()` schaltet nur die Kommandofreigabe, kein vorgetäuschtes
-  Aufstehen; ein Sturz beendet den Lauf mit Fehler; die Modellmasse steht im Bericht und
-  wird nie an reale Messwerte angepasst. 0.30 m/s und 0.50 rad/s sind Versuchsgrenzen dieses
+  Aufstehen; ein Sturz beendet den Lauf mit Fehler; die Modellmasse steht im Bericht, und
+  der ADAPTER passt sie nie an — das Modell selbst kommt aus matura-spot und ist seit
+  0.2.0b5 das gemessene (33.2 kg statt 50.34, offen entschieden dort, RESEARCH DECISION A
+  vom 23.09.2026, `docs/PHYSICS.md` „Gemessenes Modell“). 0.30 m/s und 0.50 rad/s sind Versuchsgrenzen dieses
   Reglers, keine Eigenschaft des Spot. **Keine Realismusfreigabe** — im Editor heisst er
   „Physik 3D (experimentell)", die Puppe „Übungsraum 3D (Wiedergabe)", damit niemand die
   beiden verwechselt; er steht in `OHNE_ROBOTER` und in `config.BACKENDS`. Gemessen
   (`docs/PHYSICS.md`): bis 17 mm Fusspenetration und rund 30 mm Stützfussversatz unter Last
-  — offene Modellprobleme, keine Toleranzen.
+  mit dem alten Modell, rund 12 mm Versatz mit dem gemessenen — offene Modellprobleme,
+  keine Toleranzen.
 - **Die Physik überspringt keine Schritte, um Echtzeit vorzutäuschen, und Fristen laufen
   nach der WANDUHR.** Fester MuJoCo-Zeitschritt; ist der Rechner zu langsam, läuft die
   Simulation langsamer. Eine Kommandofrist wird in Simulationszeit übersetzt UND gegen die
