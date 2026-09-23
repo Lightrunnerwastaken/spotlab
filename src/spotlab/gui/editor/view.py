@@ -31,7 +31,7 @@ from PySide6.QtWidgets import (
 from spotlab.editor.syntax import pruefe
 from spotlab.editor.traceback import finde_stellen
 from spotlab.errors import SpotlabError
-from spotlab.gui.editor.codeedit import CodeEdit
+from spotlab.gui.editor.codeedit import ABSATZ, CodeEdit
 from spotlab.gui.editor.completer import Vervollstaendigung, warte_auf_arbeiter
 from spotlab.gui.editor.highlighter import Hervorheber
 from spotlab.gui.editor.tree import Dateibaum
@@ -353,7 +353,7 @@ class EditorView(QWidget):
         eintrag = self._reiter.get(feld)
         if eintrag is None:
             return
-        feld.zeige_fehler(pruefe(feld.toPlainText(), name=str(eintrag.pfad)))
+        feld.zeige_fehler(pruefe(feld.rohtext(), name=str(eintrag.pfad)))
 
     def _verschmutzt(self, feld, geaendert=True):
         eintrag = self._reiter.get(feld)
@@ -418,8 +418,14 @@ class EditorView(QWidget):
         """
         if eintrag.verschmutzt:
             return True
+        # Rohtext, nicht toPlainText(): jenes machte aus U+00A0 und U+2028 etwas
+        # anderes, die Datei galt als geaendert, und das blosse „Starten" schrieb
+        # sie kaputt (Pruefung 23.09.2026). U+2029 in der Datei kann das Feld gar
+        # nicht halten -- es wird beim Laden zur Zeilengrenze --, also zaehlt es
+        # hier als eine; umgeschrieben wird erst, wer wirklich etwas aendert.
         try:
-            return lade_text(eintrag.pfad) != eintrag.feld.toPlainText()
+            datei = lade_text(eintrag.pfad).replace(ABSATZ, "\n")
+            return datei != eintrag.feld.rohtext()
         except (OSError, SpotlabError):
             return True
 
@@ -438,7 +444,7 @@ class EditorView(QWidget):
                 self._neu_laden(eintrag)
                 return False
         try:
-            schreibe_text(eintrag.pfad, eintrag.feld.toPlainText())
+            schreibe_text(eintrag.pfad, eintrag.feld.rohtext())
             eintrag.mtime, eintrag.groesse = stempel(eintrag.pfad)
         except OSError as fehler:
             self.meldung.emit(f"{eintrag.pfad.name} liess sich nicht speichern: {fehler}")

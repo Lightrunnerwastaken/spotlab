@@ -13,6 +13,8 @@ from pygments.lexers import PythonLexer
 from pygments.token import Comment, Keyword, Name, Number, String
 from PySide6.QtGui import QColor, QSyntaxHighlighter, QTextCharFormat
 
+from spotlab.gui.editor.codeedit import rohtext
+
 
 def _formate(palette):
     def format_mit(farbe):
@@ -89,7 +91,7 @@ class Hervorheber(QSyntaxHighlighter):
 
         Ein rehighlight() direkt im Aenderungssignal loeste sich selbst wieder aus.
         """
-        self._karte = spannen(self.document().toPlainText(), self._palette)
+        self._karte = spannen(rohtext(self.document()), self._palette)
         self.rehighlight()
 
     def highlightBlock(self, text):

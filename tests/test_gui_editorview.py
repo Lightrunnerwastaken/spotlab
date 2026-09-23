@@ -2,6 +2,7 @@ import pytest
 
 pytest.importorskip("PySide6.QtWidgets")
 
+from PySide6.QtGui import QTextCursor  # noqa: E402
 from PySide6.QtTest import QTest  # noqa: E402
 
 from spotlab.gui.editor.view import EditorView  # noqa: E402
@@ -84,6 +85,62 @@ def test_speichern_schreibt_lf_und_utf8(qapp, tmp_path):
     assert b"\r\n" not in roh
     assert roh.decode("utf-8") == "s = 'grün'\n"
     assert not ansicht.reiter.tabText(0).startswith("●")
+
+
+# ================= Sonderzeichen: blosses Starten schrieb die Datei um (p07)
+#
+# toPlainText() macht aus U+00A0 ein Leerzeichen und aus U+2028 einen
+# Zeilenumbruch. `_weicht_ab` meldete deshalb eine Aenderung, „Starten"
+# speicherte -- und danach kompilierte die Datei nicht mehr.
+
+_SONDERZEICHEN = ('hinweis = "Abstand:\u00a010\u00a0m"\n'
+                  'trenner = "a\u2028b"\n'
+                  'print(repr(hinweis), repr(trenner))\n')
+
+
+def test_blosses_starten_veraendert_die_datei_nicht(qapp, tmp_path):
+    ansicht, _ordner, projekt = _ansicht(tmp_path)
+    ziel = projekt / "texte.py"
+    ziel.write_bytes(_SONDERZEICHEN.encode("utf-8"))
+    ansicht.oeffne(ziel)
+    assert ansicht._weicht_ab(ansicht.aktueller_reiter()) is False
+    assert ansicht.speichere_alle_geaenderten() is True
+    assert ziel.read_bytes() == _SONDERZEICHEN.encode("utf-8")
+
+
+def test_speichern_behaelt_geschuetzte_leerzeichen_und_zeilentrenner(qapp, tmp_path):
+    ansicht, _ordner, projekt = _ansicht(tmp_path)
+    ziel = projekt / "texte.py"
+    ziel.write_bytes(_SONDERZEICHEN.encode("utf-8"))
+    ansicht.oeffne(ziel)
+    feld = ansicht.reiter.currentWidget()
+    feld.moveCursor(QTextCursor.Start)
+    feld.insertPlainText("# neu\n")
+    assert ansicht.speichere_aktuellen() is True
+    gespeichert = ziel.read_bytes().decode("utf-8")
+    assert gespeichert == "# neu\n" + _SONDERZEICHEN
+    compile(gespeichert, "texte.py", "exec")
+
+
+def test_die_syntaxpruefung_sieht_den_zeilentrenner_nicht_als_umbruch(qapp, tmp_path):
+    """Sonst stuende ein Kringel „unterminated string literal" unter Code, der laeuft."""
+    ansicht, _ordner, projekt = _ansicht(tmp_path)
+    ziel = projekt / "texte.py"
+    ziel.write_bytes(_SONDERZEICHEN.encode("utf-8"))
+    ansicht.oeffne(ziel)
+    feld = ansicht.reiter.currentWidget()
+    ansicht._pruefe(feld)
+    assert feld.toolTip() == ""
+
+
+def test_ein_absatztrenner_in_der_datei_gilt_nicht_als_aenderung(qapp, tmp_path):
+    """U+2029 kann ein QPlainTextEdit nicht halten (er wird zur Zeilengrenze).
+    Ohne Eingabe darf die Datei deshalb trotzdem nicht umgeschrieben werden."""
+    ansicht, _ordner, projekt = _ansicht(tmp_path)
+    ziel = projekt / "absatz.py"
+    ziel.write_text("x = 1\u2029y = 2\n", encoding="utf-8", newline="\n")
+    ansicht.oeffne(ziel)
+    assert ansicht._weicht_ab(ansicht.aktueller_reiter()) is False
 
 
 def test_nicht_utf8_wird_abgelehnt(qapp, tmp_path):

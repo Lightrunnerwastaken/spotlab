@@ -49,6 +49,7 @@ from spotlab.editor.verbs import (
     spotlab_verben,
     teilwort,
 )
+from spotlab.gui.editor.codeedit import rohtext
 from spotlab.gui.theme import DUNKEL
 
 # jedi wird erst im JediWorker geladen, beim ersten Vorschlag: der Import kostet
@@ -420,7 +421,7 @@ class Vervollstaendigung(QObject):
             if not stelle_passt(vor):
                 self.completer.popup().hide()
                 return
-            quelltext = self._editor.toPlainText()
+            quelltext = rohtext(self._editor.document())
             if not im_code(quelltext[: self._editor.textCursor().position()]):
                 self.completer.popup().hide()
                 return
@@ -498,7 +499,7 @@ class Vervollstaendigung(QObject):
         cursor = self._editor.textCursor()
         self._auftrag = (
             nummer,
-            self._editor.toPlainText() if quelltext is None else quelltext,
+            rohtext(self._editor.document()) if quelltext is None else quelltext,
             cursor.blockNumber() + 1,
             cursor.positionInBlock(),
             self._pfad,

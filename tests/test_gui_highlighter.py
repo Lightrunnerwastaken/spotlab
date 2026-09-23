@@ -50,3 +50,18 @@ def test_spalten_stimmen(qapp):
 
 def test_leerer_text_ergibt_leere_karte(qapp):
     assert spannen("", DUNKEL) == {}
+
+
+def test_ein_zeilentrenner_verschiebt_die_zeilen_nicht(qapp):
+    """toPlainText() macht aus U+2028 einen Zeilenumbruch -- die Karte zaehlte
+    dann eine Zeile mehr als das Dokument Bloecke, und ab dort sass jede Farbe
+    eine Zeile zu tief."""
+    from PySide6.QtGui import QTextDocument
+
+    from spotlab.gui.editor.highlighter import Hervorheber
+
+    dokument = QTextDocument()
+    dokument.setPlainText('s = "a\u2028b"\nx = 1\n')
+    hervorheber = Hervorheber(dokument, DUNKEL)
+    hervorheber.neu_lexen()
+    assert DUNKEL.zahl in _farben(hervorheber._karte, 1)

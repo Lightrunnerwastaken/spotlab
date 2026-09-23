@@ -388,6 +388,25 @@ class _Attrappenworker:
         self.eltern = eltern
 
 
+def test_jedi_bekommt_den_rohtext_samt_zeilentrenner(qapp, monkeypatch):
+    """toPlainText() macht aus U+2028 einen Zeilenumbruch; jedi zaehlte dann eine
+    Zeile mehr als Qt und vervollstaendigte an der falschen Stelle."""
+    erzeugt = []
+
+    class _Worker(_Attrappenworker):
+        def __init__(self, *args, **kw):
+            super().__init__(*args, **kw)
+            erzeugt.append(self)
+
+    monkeypatch.setattr(modul, "JediWorker", _Worker)
+    monkeypatch.setattr(modul, "jedi", object())
+    feld = CodeEdit(DUNKEL)
+    hilfe = _hilfe_mit(feld, 's = "a\u2028b"\nimport math\nmath.')
+    hilfe.anfordern()
+    _nummer, quelltext, zeile, spalte, _pfad = erzeugt[0].args[:5]
+    assert quelltext.split("\n")[zeile - 1][:spalte] == "math."
+
+
 def test_jeder_arbeiter_raeumt_sich_selbst_ab(qapp, monkeypatch):
     """Ein Arbeiter je Tastendruck: ohne `deleteLater` blieben sie alle als
     Kinder haengen, bis der Reiter zugeht. Bei zwei Anfragen nach `spot.` fiel

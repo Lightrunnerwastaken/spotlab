@@ -29,6 +29,21 @@ from spotlab.editor.indent import EINRUECKUNG, ausruecken, naechste_einrueckung
 
 RUHE_MS = 150
 
+ABSATZ = "\u2029"       # so trennt QTextDocument seine Bloecke
+
+
+def rohtext(dokument):
+    """Der Text, wie er in der Datei steht -- NICHT `toPlainText()`.
+
+    `toPlainText()` macht aus U+00A0 (geschütztes Leerzeichen) ein Leerzeichen
+    und aus U+2028 (Zeilentrenner) einen Zeilenumbruch. Beides steht in Code
+    aus dem Netz oder aus Word; ein U+2028 in einer Zeichenkette wurde so beim
+    blossen „Starten" zum Umbruch, und die Datei kompilierte danach nicht mehr
+    (Prüfung 23.09.2026). Der Rohtext trägt beide unverändert; nur die
+    Blockgrenzen sind U+2029 und werden hier zu dem, was sie in der Datei sind.
+    """
+    return dokument.toRawText().replace(ABSATZ, "\n")
+
 
 class Zeilenleiste(QWidget):
     def __init__(self, editor):
@@ -68,6 +83,10 @@ class CodeEdit(QPlainTextEdit):
 
         self._setze_rand()
         self._markiere()
+
+    def rohtext(self):
+        """Der Inhalt fuer Datei, Syntaxpruefung und jedi (siehe `rohtext`)."""
+        return rohtext(self.document())
 
     # ------------------------------------------------------------ Zeilenleiste
 
