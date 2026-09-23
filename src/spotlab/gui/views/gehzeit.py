@@ -114,6 +114,9 @@ def zeilen_aus(lauf):
 
 class GehzeitView(QWidget):
     meldung = Signal(str)
+    # (Prozess, Name): das Hauptfenster haengt seinen Ausgabeleser an -- ohne ihn
+    # las niemand die Pipe, sie war nach ~4 KB voll, und der Versuch stand still.
+    lauf_gestartet = Signal(object, str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -453,4 +456,5 @@ class GehzeitView(QWidget):
             "Gehzeit läuft — Spot misst die Strecke und schaut dann zu. "
             "Kein Lease, er bewegt sich nicht."
         )
+        self.lauf_gestartet.emit(prozess, "gehzeit")
         return prozess

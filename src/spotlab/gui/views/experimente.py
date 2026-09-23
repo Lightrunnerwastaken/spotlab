@@ -53,6 +53,7 @@ EXPERIMENTE = (
 
 class ExperimenteView(QWidget):
     meldung = Signal(str)
+    lauf_gestartet = Signal(object, str)      # von jedem Experiment, das Prozesse startet
 
     def __init__(self, parent=None, experimente=EXPERIMENTE):
         super().__init__(parent)
@@ -74,6 +75,9 @@ class ExperimenteView(QWidget):
             signal = getattr(ansicht, "meldung", None)
             if signal is not None:
                 signal.connect(self.meldung)
+            gestartet = getattr(ansicht, "lauf_gestartet", None)
+            if gestartet is not None:
+                gestartet.connect(self.lauf_gestartet)
         self.auswahl.currentIndexChanged.connect(self._gewaehlt)
 
         kopf = QHBoxLayout()

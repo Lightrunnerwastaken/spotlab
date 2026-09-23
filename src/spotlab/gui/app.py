@@ -191,6 +191,10 @@ class MainWindow(QWidget):
         )
         self.ansichten["fahren"].meldung.connect(self._melde)
         self.ansichten["experimente"].meldung.connect(self._melde)
+        # Die Ausgabe des Versuchs braucht einen Leser, sonst laeuft die Pipe voll.
+        self.ansichten["experimente"].lauf_gestartet.connect(
+            lambda prozess, _name: self._starte_leser(prozess)
+        )
         self._setze_backendwahl(self._config)
         self.ansichten["code"].laeuft_geaendert.connect(self._code_laeuft_geaendert)
         self._fahrt_erwartet = False

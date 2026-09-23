@@ -322,3 +322,31 @@ def test_ohne_arbeitsordner_startet_nichts_und_es_wird_gesagt(qapp):
     ansicht.setze_arbeitsordner(None)
     ansicht.starten.click()
     assert gemeldet and "Arbeitsordner" in gemeldet[-1]
+
+
+def test_der_gestartete_versuch_meldet_seinen_prozess(qapp, tmp_path):
+    """Pruefung 23.09.2026: die Ausgabe des Versuchs las niemand. Meldungen wie
+    „Keine Messung: …“ erschienen nirgends, und nach rund 4 KB war die Pipe voll --
+    der Versuch blieb stehen, und der freundliche Stopp erreichte ihn nicht mehr."""
+    from spotlab.gui.views.gehzeit import GehzeitView
+
+    ansicht = GehzeitView()
+    ansicht.setze_arbeitsordner(tmp_path)
+    prozess = object()
+    ansicht._start = lambda skript, argumente: prozess
+    gemeldet = []
+    ansicht.lauf_gestartet.connect(lambda p, name: gemeldet.append((p, name)))
+    ansicht.starten.click()
+    assert gemeldet and gemeldet[0][0] is prozess
+
+
+def test_das_hauptfenster_liest_die_ausgabe_des_versuchs(qapp, tmp_path, monkeypatch):
+    from spotlab.gui.app import MainWindow
+
+    fenster = MainWindow()
+    angehaengt = []
+    monkeypatch.setattr(fenster, "_starte_leser", angehaengt.append)
+    gehzeit = fenster.ansichten["experimente"].experiment("gehzeit")
+    prozess = object()
+    gehzeit.lauf_gestartet.emit(prozess, "gehzeit")
+    assert angehaengt == [prozess]
