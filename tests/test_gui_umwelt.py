@@ -130,3 +130,56 @@ def test_sonde_ohne_arbeitsordner_meldet_klartext(qapp, tmp_path):
     ansicht.meldung.connect(gemeldet.append)
     assert ansicht._starte_sonde() is None
     assert gemeldet and "Arbeitsordner" in gemeldet[0]
+
+
+def test_die_sonde_startet_ueber_den_einen_startweg_am_echten_spot(qapp, tmp_path):
+    """Pruefung 23.09.2026: die Sonde ging an der Ein-Lauf-Sperre vorbei (eigener
+    Launcher), ihren Prozess warf Qt weg (Pipe zu -> OSError beim ersten print),
+    und ihr Lauf lag unter <Arbeitsordner>/runs, wo die Laufsuche nicht sucht.
+    Und ohne Backend fragte sie seit der Vorgabe MuJoCo den Uebungsraum."""
+    from spotlab.gui.views.umwelt import UmweltView
+    from spotlab.workshop.beispiele import ORDNER
+
+    ansicht = UmweltView()
+    ansicht.setze_arbeitsordner(tmp_path)
+    aufrufe, gemeldet = [], []
+    prozess = object()
+
+    def start(skript, **kw):
+        aufrufe.append(kw)
+        return prozess
+
+    ansicht._start = start
+    ansicht.lauf_gestartet.connect(lambda p, name: gemeldet.append(p))
+    ansicht.abfragen.click()
+    assert aufrufe[0]["backend"] == "real"
+    assert aufrufe[0]["argumente"] == ["--runs", str(tmp_path / ORDNER / "runs")]
+    assert gemeldet == [prozess]
+
+
+def test_die_sonde_nutzt_den_launcher_mit_der_sperre():
+    module = _importierte_module(QUELLE)
+    assert "spotlab.workshop.launcher" not in module, "am Ein-Lauf-Schloss vorbei"
+
+
+def test_nach_einem_lauf_mit_beobachtung_zeigt_die_ansicht_ihn(qapp, tmp_path):
+    """lade() gab es, aber niemand rief es: der Reiter blieb immer leer."""
+    from spotlab.gui.views.umwelt import UmweltView
+
+    ansicht = UmweltView()
+    leer = tmp_path / "ohne"
+    leer.mkdir()
+    assert ansicht.lade_wenn_passend(leer) is False
+    assert ansicht.lade_wenn_passend(_lauf_mit_objekten(tmp_path)) is True
+    assert ansicht.liste.count() == 2
+
+
+def test_das_hauptfenster_gibt_jeden_beendeten_lauf_an_die_umwelt(qapp, tmp_path, monkeypatch):
+    from spotlab.gui.app import MainWindow
+
+    fenster = MainWindow()
+    gesehen = []
+    monkeypatch.setattr(fenster.ansichten["umwelt"], "lade_wenn_passend", gesehen.append)
+    fenster._aktiver_lauf = Path(tmp_path)
+    fenster._lauf_beendet(str(tmp_path))
+    assert gesehen == [str(tmp_path)]

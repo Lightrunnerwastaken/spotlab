@@ -192,9 +192,14 @@ class MainWindow(QWidget):
         self.ansichten["fahren"].meldung.connect(self._melde)
         self.ansichten["experimente"].meldung.connect(self._melde)
         # Die Ausgabe des Versuchs braucht einen Leser, sonst laeuft die Pipe voll.
+        # Und wer dort startet, bleibt dort -- wie bei „Code“ und „Anbindungen“.
         self.ansichten["experimente"].lauf_gestartet.connect(
-            lambda prozess, _name: self._starte_leser(prozess)
+            lambda prozess, _name: self._lauf_in_ansicht(prozess, "experimente")
         )
+        self.ansichten["umwelt"].lauf_gestartet.connect(
+            lambda prozess, _name: self._lauf_in_ansicht(prozess, "umwelt")
+        )
+        self.ansichten["umwelt"].meldung.connect(self._melde)
         self._setze_backendwahl(self._config)
         self.ansichten["code"].laeuft_geaendert.connect(self._code_laeuft_geaendert)
         self._fahrt_erwartet = False
@@ -391,6 +396,12 @@ class MainWindow(QWidget):
         self._melde(text)
         if self._fahrt_erwartet == "real" or self.ansichten["fahren"].laeuft():
             self.ansichten["fahren"].zeige_startfehler(text)
+
+    def _lauf_in_ansicht(self, prozess, ansicht):
+        """Ein Lauf aus einer Ansicht, die ihre Ergebnisse selbst zeigt: Leser dran,
+        und kein Wechsel nach „Live-Lauf“, wenn der Watcher ihn findet."""
+        self._start_aus = ansicht
+        self._starte_leser(prozess)
 
     def _lauf_gestartet(self, prozess, skript):
         self._start_aus = "projekte"
@@ -777,7 +788,7 @@ class MainWindow(QWidget):
         # sonst sieht der Schüler nicht, dass sein Programm läuft. Wer aber
         # gerade selbst aus „Code" gestartet hat, wird nicht aus seiner Ansicht
         # geworfen.
-        if self._start_aus in ("code", "anbindungen"):
+        if self._start_aus in ("code", "anbindungen", "experimente", "umwelt"):
             return
         self._wechsle("live")
         self.leiste.waehle("live")
@@ -811,6 +822,9 @@ class MainWindow(QWidget):
         # Die Ansicht zeigt danach die gefahrene Spur -- `lade()` gab es schon
         # und wurde nirgends gerufen, der Raum blieb nach jedem Lauf leer.
         self.ansichten["raumeditor"].lade(verzeichnis)
+        # Was der Lauf gesehen hat (Sonde, spot.tags() im Schuelerprogramm) -- vorher
+        # rief niemand lade(), der Reiter Umwelt blieb immer leer.
+        self.ansichten["umwelt"].lade_wenn_passend(verzeichnis)
         if self.uebungsfenster is not None:
             self.uebungsfenster.beendet(lauf=verzeichnis)
         self.ansichten["fahren"].lauf_beendet()

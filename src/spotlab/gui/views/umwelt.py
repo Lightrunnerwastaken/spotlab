@@ -7,8 +7,14 @@ ausschliesslich das Lauf-Verzeichnis: `ereignisse.jsonl` fuer die Objekte,
 brauchte das SDK, und das ist unterhalb von `gui/` verboten.
 
 Der Knopf „Umgebung abfragen" startet `spotlab.workshop.sonde` als gewoehnliches
-Skript ueber den vorhandenen Launcher — kein Lease, kein Kommando, der Roboter
-kann sich dadurch nicht bewegen.
+Skript ueber den EINEN Startweg (`gui/launcher`, mit der Ein-Lauf-Sperre) —
+kein Lease, kein Kommando, der Roboter kann sich dadurch nicht bewegen. Das
+Backend steht ausdruecklich auf „real“: die Vorgabe ist seit 0.2 der
+Uebungsraum, und die Ansicht zeigt, was der ECHTE Spot sieht.
+
+Gezeigt wird nach jedem Lauf, der etwas gesehen hat (`lade_wenn_passend`, vom
+Hauptfenster gerufen) -- die Sonde ebenso wie ein Schuelerprogramm mit
+`spot.tags()`. Bis zum 23.09.2026 rief niemand `lade()`, der Reiter blieb leer.
 """
 
 import json
@@ -91,12 +97,16 @@ def gitterbild_pfad(lauf_verzeichnis):
 
 class UmweltView(QWidget):
     meldung = Signal(str)
+    # (Prozess, Name): das Hauptfenster haengt seinen Ausgabeleser an. Ohne ihn
+    # warf Qt den Prozess weg, die Pipe war zu, und die Sonde starb beim ersten print.
+    lauf_gestartet = Signal(object, str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._verzeichnis = None
         self._pixmap = None
         self._arbeitsordner = None
+        self._start = None                 # austauschbar im Test
 
         self.abfragen = QPushButton("Umgebung abfragen")
         self.abfragen.setToolTip(
@@ -143,6 +153,14 @@ class UmweltView(QWidget):
             self.bild.setPixmap(QPixmap())
             self.bild.setText("noch kein Gitter aufgezeichnet")
 
+    def lade_wenn_passend(self, lauf_verzeichnis):
+        """Zeigen, wenn der Lauf etwas gesehen hat (Objekte oder ein Gitter). True dann."""
+        verzeichnis = Path(lauf_verzeichnis)
+        if not zeilen_aus(_ereignisse(verzeichnis)) and gitterbild_pfad(verzeichnis) is None:
+            return False
+        self.lade(verzeichnis)
+        return True
+
     def objekttexte(self):
         if self._verzeichnis is None:
             return []
@@ -158,21 +176,27 @@ class UmweltView(QWidget):
         self._arbeitsordner = Path(pfad) if pfad else None
 
     def _starte_sonde(self):
-        from spotlab.workshop.launcher import start_script
-
         if self._arbeitsordner is None:
             self.meldung.emit(
                 "Es ist kein Arbeitsordner gesetzt. Wähle einen in der Ansicht "
                 "'Projekte' — dorthin schreibt die Sonde ihren Lauf."
             )
             return
+        starte = self._start
+        if starte is None:
+            from spotlab.gui.launcher import start_script
+
+            starte = start_script
+        # Unter Beispiele/runs wie der Gehzeit-Versuch: dort sucht die Laufsuche --
+        # <Arbeitsordner>/runs durchsuchte niemand.
+        from spotlab.workshop.beispiele import ORDNER
+
+        runs = self._arbeitsordner / ORDNER / "runs"
         try:
-            prozess = start_script(
-                SONDE_SKRIPT,
-                argumente=["--runs", str(self._arbeitsordner / "runs")],
-            )
+            prozess = starte(SONDE_SKRIPT, argumente=["--runs", str(runs)], backend="real")
         except Exception as fehler:
             self.meldung.emit(f"Die Sonde liess sich nicht starten: {fehler}")
             return
         self.meldung.emit("Sonde läuft — kein Lease, der Roboter bewegt sich nicht.")
+        self.lauf_gestartet.emit(prozess, "sonde")
         return prozess
