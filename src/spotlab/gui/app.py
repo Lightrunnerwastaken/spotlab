@@ -7,7 +7,9 @@ Qt-frei und prüfbar.
 
 import collections
 import math
+import subprocess
 import sys
+import time
 from dataclasses import replace
 from pathlib import Path
 
@@ -29,6 +31,7 @@ from spotlab.errors import SpotlabError
 from spotlab.gui import konfig
 from spotlab.gui.editor.view import EditorView, verfuegbare_backends
 from spotlab.gui.header import Header
+from spotlab.gui.launcher import laufender_prozess
 from spotlab.gui.raumeditor import RaumeditorView
 from spotlab.gui.sidebar import Sidebar
 from spotlab.gui.symbol import symbol
@@ -826,6 +829,56 @@ class MainWindow(QWidget):
                 self._uebernimm_lauf(naechster)
                 return
 
+    def _lauf_lebt(self):
+        if laufender_prozess() is not None:
+            return True
+        return self._aktiver_lauf is not None and ist_aktiv(self._aktiver_lauf)
+
+    def frage_lauf_beenden(self):
+        """True: Programm beenden und schliessen. Ersetzbar im Test."""
+        antwort = QMessageBox.question(
+            self,
+            "spotlab",
+            "Ein Programm läuft noch. Ohne dieses Fenster gibt es keinen NOT-AUS-Knopf "
+            "mehr.\n\nProgramm beenden und spotlab schliessen?",
+            QMessageBox.Yes | QMessageBox.Cancel,
+            QMessageBox.Cancel,
+        )
+        return antwort == QMessageBox.Yes
+
+    def _beende_lauf_beim_schliessen(self, frist_s=3.0):
+        """Erst freundlich (der Lauf setzt sich, gibt das Lease ab), dann hart."""
+        live = self.ansichten["live"]
+        live.stoppe()
+        prozess = laufender_prozess()
+        if prozess is not None:
+            try:
+                prozess.wait(timeout=frist_s)
+            except subprocess.TimeoutExpired:
+                pass
+        else:
+            ende = time.monotonic() + frist_s
+            while self._aktiver_lauf is not None and ist_aktiv(self._aktiver_lauf) \
+                    and time.monotonic() < ende:
+                time.sleep(0.1)
+        if self._lauf_lebt():
+            live.notaus()
+
+    def _warte_auf_hintergrund(self, frist_ms=3000):
+        """Faeden, die das Fenster als Kinder haelt, vor dem Abraeumen beenden: sonst
+        bricht Qt mit „QThread: Destroyed while thread is still running“ ab."""
+        if self._film is not None and self._film.state() != QProcess.NotRunning:
+            self._film.kill()
+            self._film.waitForFinished(frist_ms)
+        for faden in (self._leser, self._doctor):
+            if faden is None or not faden.isRunning():
+                continue
+            if not faden.wait(frist_ms):
+                # Haengt im Netz (Spot pruefen): beim Beenden der Anwendung ist das
+                # das kleinere Uebel als ein Absturz beim Abraeumen.
+                faden.terminate()
+                faden.wait(1000)
+
     def frage_beim_schliessen(self, pfade):
         """„speichern", „verwerfen" oder „abbrechen". Ersetzbar im Test."""
         namen = ", ".join(p.name for p in pfade)
@@ -856,6 +909,14 @@ class MainWindow(QWidget):
             if wahl == "speichern" and not self.ansichten["code"].speichere_alle_geaenderten():
                 ereignis.ignore()
                 return
+        # Ein laufendes Programm verliert mit dem Fenster seinen NOT-AUS-Knopf. Bis
+        # zum 23.09.2026 lief es dann verwaist weiter -- nie ohne Frage schliessen.
+        if self._lauf_lebt():
+            if not self.frage_lauf_beenden():
+                ereignis.ignore()
+                return
+            self._beende_lauf_beim_schliessen()
+        self._warte_auf_hintergrund()
         if self._watcher is not None:
             self._watcher.stop()
         # Sonst bliebe das Uebungsfenster ohne Hauptfenster offen stehen, und

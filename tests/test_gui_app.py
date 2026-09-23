@@ -1421,3 +1421,45 @@ def test_scheitert_der_start_der_fahrt_steht_es_im_tab_fahren(qapp, tmp_path, mo
     fenster._fahrt_erwartet = "real"
     fenster._prozess_ende(1, ["spotlab.errors.NotReachable: Ich erreiche 192.168.80.3 nicht."])
     assert "Ich erreiche 192.168.80.3 nicht" in fenster.ansichten["fahren"].zustand.text()
+
+
+@pytest.fixture
+def eigener_prozess(monkeypatch):
+    """Ein echter, schlafender Prozess als „das laufende Programm“ des einen Startwegs."""
+    import subprocess
+    import sys as _sys
+
+    from spotlab.gui import launcher
+
+    prozess = subprocess.Popen([_sys.executable, "-c", "import time; time.sleep(120)"])
+    monkeypatch.setattr(launcher, "_prozess", prozess)
+    yield prozess
+    if prozess.poll() is None:
+        prozess.kill()
+        prozess.wait(10)
+
+
+def test_schliessen_waehrend_ein_programm_laeuft_fragt_zuerst(qapp, eigener_prozess):
+    """Pruefung 23.09.2026: keine Rueckfrage, das Programm lief verwaist weiter --
+    ohne Fenster, also ohne NOT-AUS-Knopf -- und Qt stuerzte beim Abraeumen ab."""
+    from PySide6.QtGui import QCloseEvent
+
+    fenster = MainWindow()
+    gefragt = []
+    fenster.frage_lauf_beenden = lambda: gefragt.append(True) or False
+    ereignis = QCloseEvent()
+    fenster.closeEvent(ereignis)
+    assert gefragt == [True]
+    assert not ereignis.isAccepted()
+    assert eigener_prozess.poll() is None, "abgebrochen: das Programm laeuft weiter"
+
+
+def test_schliessen_mit_ja_beendet_das_programm(qapp, eigener_prozess):
+    from PySide6.QtGui import QCloseEvent
+
+    fenster = MainWindow()
+    fenster.frage_lauf_beenden = lambda: True
+    ereignis = QCloseEvent()
+    fenster.closeEvent(ereignis)
+    assert ereignis.isAccepted()
+    assert eigener_prozess.poll() is not None, "das Programm darf nicht verwaist weiterlaufen"
