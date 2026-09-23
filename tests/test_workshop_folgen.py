@@ -50,6 +50,55 @@ def test_die_drehrate_ist_gedeckelt():
     assert wz == pytest.approx(-math.radians(folgen.MAX_DREHRATE_GRAD))
 
 
+NAN, INF = float("nan"), float("inf")
+
+
+@pytest.mark.parametrize("peilung, abstand", [
+    (0.0, NAN), (0.0, INF), (0.0, -INF), (NAN, 3.0), (INF, 3.0), (-INF, 3.0), (NAN, NAN),
+])
+def test_ein_ungueltiges_ziel_heisst_stehen(peilung, abstand):
+    """Befund p09 (22.09.2026): `befehl(Ziel(0, nan))` gab (0.5, 0.0) -- VOLLGAS. Jeder
+    Vergleich mit NaN ist falsch, `fehler <= toleranz` und `distance <= mindest` sagten
+    beide nein, und so lief ein Finder mit ungueltigem Abstand an MIN_ABSTAND_M vorbei.
+    Ein selbstgebauter Finder ist ausdruecklich vorgesehen; eine Division durch null darin
+    genuegt."""
+    assert folgen.befehl(Ziel(peilung, abstand)) == (0.0, 0.0)
+    assert folgen.befehl(Ziel(peilung, abstand), takt_s=0.6) == (0.0, 0.0)
+
+
+def test_ein_finder_mit_ungueltigem_abstand_laesst_spot_stehen_und_sagt_es_einmal():
+    spot = _Spot()
+    gesagt = []
+    folgen.folge(spot, lambda _s: Ziel(0.0, NAN, "Eigenbau"), melde=gesagt.append,
+                 schlaf=lambda _s: None, laeuft=_laeuft_takte(4), blick_grad=0.0)
+    assert not any(isinstance(k, dict) for k in spot.kommandos), "kein einziger Fahrbefehl"
+    assert spot.kommandos[-1] == "stop"
+    ungueltig = [m for m in gesagt if "ungültig" in m]
+    assert len(ungueltig) == 1 and "Eigenbau" in ungueltig[0], gesagt
+
+
+def test_ein_ungueltiges_ziel_zaehlt_nicht_als_gesehen():
+    """Sonst hielte der Nachlauf ein Ziel fest, das es nie gab -- und nach einem echten
+    Ziel verlaengerte ein NaN-Takt den Nachlauf ohne Ende."""
+    folge_ziele = iter([Ziel(0.0, 3.0, "Tag 1")] + [Ziel(0.0, NAN, "Tag 1")] * 10)
+    spot = _Spot()
+    folgen.folge(spot, lambda _s: next(folge_ziele), melde=lambda _t: None, jetzt=_uhr(0.4),
+                 schlaf=lambda _s: None, laeuft=_laeuft_takte(8), blick_grad=0.0,
+                 nachlauf_s=1.0)
+    fahrten = [k for k in spot.kommandos if isinstance(k, dict)]
+    assert len(fahrten) <= 2, "nach dem Nachlauf von 1 s steht er, NaN hin oder her"
+    assert spot.kommandos[-1] == "stop"
+
+
+def test_eine_ungueltige_oberkante_regelt_die_nase_nicht():
+    """`bild_oben = nan` hob die Nase jeden Takt um den vollen Schritt (min(3, nan) == 3)."""
+    spot = _Spot(neigt=True)
+    folgen.folge(spot, lambda _s: Ziel(0.0, 3.0, "Gesicht", bild_oben=NAN), melde=lambda _t: None,
+                 schlaf=lambda _s: None, laeuft=_laeuft_takte(4))
+    nicks = [k["nick_grad"] for k in spot.kommandos if isinstance(k, dict)]
+    assert nicks and all(n == pytest.approx(-folgen.BLICK_GRAD) for n in nicks), nicks
+
+
 # ------------------------------------------------------------------ Finder
 
 

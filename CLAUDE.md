@@ -371,7 +371,10 @@ versionsgepinntes Extra `spotlab[sim]`.
   der Kopfraum, weil das Hindernisgitter eine Bodenkarte ist. Der Kopfraum wird nur alle
   `KOPFRAUM_TAKT_S` geholt — zwei Tiefenbilder über WLAN kosten mehr als ein Takt, und in
   einer Sekunde legt Spot höchstens einen halben Meter zurück, während der geprüfte
-  Korridor zwei Meter reicht.
+  Korridor zwei Meter reicht. **Ein Ziel mit NaN oder inf ist KEIN Ziel** (`_gepruefter`,
+  und `befehl()` gibt dafür selbst (0, 0)): mit NaN ist jeder Vergleich falsch, und
+  `befehl(Ziel(0, nan))` war bis zum 22.09.2026 Vollgas am Mindestabstand vorbei (p09). Es
+  zählt auch nicht als gesehen — sonst hielte der Nachlauf es fest; `folge()` sagt es einmal.
 - **`HasField` wirft auf ein Feld, das die SDK-Fassung nicht kennt — deshalb `_hat`.**
   `ARTEN` in `backends/real/wahrnehmung.py` führte `door_properties`, das es in
   bosdyn-api 5.0.1.2 nicht gibt. Die Schleife läuft für JEDES Objekt, also riss der eine

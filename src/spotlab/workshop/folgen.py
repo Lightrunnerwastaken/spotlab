@@ -516,7 +516,40 @@ def _lage(spot):
         gier = float(zustand.pose[2])
     except Exception:
         gier = None
-    return nick, gier
+    # Ein NaN rechnet sich ueberall hindurch, ohne je aufzufallen: kein Wert statt eines falschen.
+    return (nick if _endlich(nick) else 0.0), (gier if _endlich(gier) else None)
+
+
+def _endlich(wert):
+    """Eine endliche Zahl? NaN, inf, None und Nicht-Zahlen sind es nicht."""
+    try:
+        return math.isfinite(float(wert))
+    except (TypeError, ValueError):
+        return False
+
+
+def _gepruefter(ziel):
+    """(Ziel oder None, was daran ungültig war) — ein Ziel mit NaN oder inf ist KEIN Ziel.
+
+    Befund p09 (22.09.2026): `befehl(Ziel(0, nan))` gab Vollgas, weil jeder
+    Vergleich mit NaN falsch ist — und damit lief ein Finder mit ungültigem Abstand
+    am Mindestabstand vorbei. Peilung oder Abstand ungültig heisst hier: kein Ziel,
+    also stehen, und es zählt nicht als gesehen (sonst hielte der Nachlauf es fest).
+    Eine ungültige Oberkante oder Gier fällt nur weg: ohne sie wird die Nase nicht
+    geregelt und die Peilung nicht nachgeführt, gefolgt wird trotzdem.
+    """
+    if ziel is None:
+        return None, ""
+    if not (_endlich(ziel.bearing) and _endlich(ziel.distance)):
+        return None, f"Peilung {ziel.bearing}, Abstand {ziel.distance}"
+    from dataclasses import replace
+
+    weg = {feld: None for feld in ("bild_oben", "gier")
+           if getattr(ziel, feld) is not None and not _endlich(getattr(ziel, feld))}
+    if not weg:
+        return ziel, ""
+    text = ", ".join(f"{feld} {getattr(ziel, feld)}" for feld in weg)
+    return replace(ziel, **weg), text
 
 
 def _gier(spot):
@@ -767,7 +800,13 @@ def befehl(ziel, wunsch=WUNSCH_ABSTAND_M, mindest=MIN_ABSTAND_M, toleranz=TOLERA
     `takt_s` ist die Zeit, die Spot bis zum nächsten Blick blind dreht. Wer 0.6 s
     nicht hinschaut, darf in der Zeit nicht weiter drehen, als das Ziel entfernt
     ist — sonst liegt es danach auf der anderen Seite, und er dreht zurück.
+
+    Eine Peilung oder ein Abstand, die keine endliche Zahl sind (NaN, inf), heissen
+    STEHEN: (0.0, 0.0). Mit NaN ist jeder Vergleich falsch, und ohne diese Zeile
+    wurde aus `Ziel(0, nan)` Vollgas (p09, 22.09.2026).
     """
+    if not (_endlich(ziel.bearing) and _endlich(ziel.distance)):
+        return 0.0, 0.0
     drehrate = min(MAX_DREHRATE_GRAD, abs(LENKUNG * ziel.bearing))
     if takt_s:
         drehrate = min(drehrate, ANTEIL_JE_TAKT * abs(ziel.bearing) / float(takt_s))
@@ -856,6 +895,7 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
     angehalten = False          # per Handzeichen -- bis zum Daumen hoch
     gesten_stolpern_gemeldet = False
     licht_stolpern_gemeldet = False
+    ungueltig_gemeldet = False  # ein Finder mit NaN/inf -- einmal gesagt, nicht je Takt
     if licht is None:
         from spotlab.api.signals import Statuslicht
 
@@ -883,7 +923,14 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
             nun = jetzt()
             takt_dauer = max(takt_s, nun - takt_beginn) if takt_beginn is not None else takt_s
             takt_beginn = nun
-            ziel = _sicher(finder, spot)
+            roh = _sicher(finder, spot)
+            ziel, ungueltig = _gepruefter(roh)
+            if ungueltig and not ungueltig_gemeldet:
+                ungueltig_gemeldet = True
+                was = ("Spot behandelt das als „kein Ziel“ und bleibt stehen" if ziel is None
+                       else "der Wert fällt weg, gefolgt wird ohne ihn")
+                melde(f"{getattr(roh, 'name', 'Ziel')}: ungültige Zahl vom Finder ({ungueltig}) "
+                      f"— {was}. Den Finder prüfen.")
             echt = ziel is not None
 
             if gesten is not None:
