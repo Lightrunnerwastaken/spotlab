@@ -5,7 +5,7 @@ import os
 import sys
 from pathlib import Path
 
-__version__ = "0.2.0b1"
+__version__ = "0.2.0b2"
 
 ENV_BACKEND = "SPOTLAB_BACKEND"
 

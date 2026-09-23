@@ -55,6 +55,15 @@ if ($LASTEXITCODE -ne 0) { throw "Paketkonflikt: siehe pip-check-Ausgabe oben." 
 if (-not $Entwickler) {
     & $python (Join-Path $PSScriptRoot "pruefe_schueler.py")
     if ($LASTEXITCODE -ne 0) { throw "GUI-/Sim-Installationspruefung fehlgeschlagen." }
+    # Erkennermodelle fuer Folgen, Gesichter und Handzeichen nach ~/.spotlab/modelle.
+    # Die Simulation braucht sie nicht -- deshalb nur eine Warnung, kein Abbruch.
+    $modelle = Join-Path $PSScriptRoot "modelle_einrichten.py"
+    if (Test-Path -LiteralPath $modelle) {
+        & $python $modelle
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning "Erkennermodelle unvollstaendig: Folgemodus und Handzeichen am echten Spot finden niemanden. Simulation geht."
+        }
+    }
 } else {
     & $python -c "import spotlab; from PySide6 import QtWidgets; print('Entwicklerumgebung installiert')"
     if ($LASTEXITCODE -ne 0) { throw "Entwicklerumgebung unvollstaendig." }

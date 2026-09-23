@@ -743,6 +743,16 @@ versionsgepinntes Extra `spotlab[sim]`.
   ein gleichnamiges Release wird nicht überschrieben. Lizenz des Modells und SHA-256 der
   Sim-Quellen liegen im Wheel. **Runtime-Wheel und editierbare Forschungsinstallation nie in
   derselben Umgebung** — beide heissen `spotsim`.
+- **Die fünf Erkennermodelle reisen im ZIP mit (seit 0.2.0b2), neben den Wheels, nicht darin.**
+  `schueler_release.py --modelle` (Vorgabe `~/.spotlab/modelle`) nimmt nur Dateien mit der
+  Prüfsumme aus `MODELLE` — der OpenCV-Zoo führt sie über git-lfs, ein 132-Byte-Zeiger sähe
+  sonst wie ein Modell aus. Lizenzen (YuNet MIT, die vier MediaPipe-Modelle Apache 2.0) stehen
+  in `tools/modelle_lizenzen.txt` und liegen als `modelle/LIZENZEN.txt` bei.
+  `einrichten.ps1` ruft danach `modelle_einrichten.py` auf, das nach `~/.spotlab/modelle`
+  kopiert, was fehlt oder abweicht, und spotlab fragt, ob Gesicht, Körper und Hand sie finden.
+  Fehlen sie trotzdem, gibt es nur eine Warnung: die Simulation braucht sie nicht.
+  `test_das_zip_bringt_genau_die_modelle_die_spotlab_sucht` hält `MODELLE` und die
+  Dateinamen in `gesicht.py`, `koerper.py`, `gesten.py` zusammen.
 - **Die Navigation aus dem Tab „Karten" hat keinen eigenen Weg zum Roboter.** Der Knopf
   startet `Beispiele/navigieren.py` über denselben einen Startweg wie „Starten" und „Fahren"
   (`app.py::_starte_navigation`, Backend `NAVIGATION_BACKEND` erzwungen, die Karte als

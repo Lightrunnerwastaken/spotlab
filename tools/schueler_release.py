@@ -18,6 +18,15 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 MODULES = frozenset('puppe sensors local_grid kinematics sim interpreter posture stability '
                     'sdk_sim trot terrain_sdk terrain_step contact_metrics detect'.split())
+# Erkennermodelle aus dem OpenCV-Zoo (Lizenzen: tools/modelle_lizenzen.txt), mit
+# Pruefsumme: der Zoo fuehrt sie ueber git-lfs, ein 132-Byte-Zeiger sieht aus wie eine Datei.
+MODELLE = {
+    'face_detection_yunet_2023mar.onnx': '8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4',
+    'person_detection_mediapipe_2023mar.onnx': '47fd5599d6fa17608f03e0eb0ae230baa6e597d7e8a2c8199fe00abea55a701f',
+    'pose_estimation_mediapipe_2023mar.onnx': '9d89c599319a18fb7d2e28451a883476164543182bafca5f09eb2cf767ed2f3f',
+    'palm_detection_mediapipe_2023feb.onnx': '78ff51c38496b7fc8b8ebdb6cc8c1abb02fa6c38427c6848254cdaba57fcce7c',
+    'handpose_estimation_mediapipe_2023feb.onnx': 'db0898ae717b76b075d9bf563af315b29562e11f8df5027a1ef07b02bef6d81c',
+}
 ASSETS_PY = '''"""Robot model shipped inside the runtime wheel."""
 from pathlib import Path
 SPOT_DIR = str(Path(__file__).resolve().parent / "model")
@@ -87,6 +96,22 @@ def model_files(model):
     return sorted(found)
 
 
+def modelle(quelle):
+    """Die Modelldateien aus `quelle`, jede an ihrer Pruefsumme erkannt -- sonst ein Abbruch."""
+    gefunden = []
+    for name, summe in sorted(MODELLE.items()):
+        pfad = quelle/name
+        if not pfad.is_file():
+            raise ValueError(f'Modell fehlt: {pfad}')
+        daten = pfad.read_bytes()
+        if hashlib.sha256(daten).hexdigest() != summe:
+            zeiger = daten.startswith(b'version https://git-lfs')
+            raise ValueError(f'Modell {name} hat die falsche Pruefsumme'
+                             + (' -- das ist ein git-lfs-Zeiger, nicht das Modell' if zeiger else ''))
+        gefunden.append(pfad)
+    return gefunden
+
+
 def runtime(research, target, release_version):
     package = target/'src/spotsim'
     package.mkdir(parents=True)
@@ -122,12 +147,13 @@ spotsim = ["provenance.json", "model/*", "model/assets/*"]
 ''', encoding='utf-8')
 
 
-def build(repo, research, output):
+def build(repo, research, output, modell_quelle):
     release_version = version(repo)
     output.mkdir(parents=True, exist_ok=True)
     archive = output/f'spotlab-{release_version}-schueler.zip'
     if archive.exists():
         raise FileExistsError(f'Release exists; increment version or choose another output: {archive}')
+    modell_dateien = modelle(modell_quelle)
     with tempfile.TemporaryDirectory(prefix='spotlab-release-') as temporary:
         work = Path(temporary)
         app = work/'app'
@@ -146,6 +172,13 @@ def build(repo, research, output):
             shutil.copyfile(repo/name, bundle/name)
         shutil.copyfile(repo/'docs/INSTALLATION_SCHULE.md', bundle/'ANLEITUNG.md')
         shutil.copyfile(repo/'tools/pruefe_schueler.py', bundle/'pruefe_schueler.py')
+        # Ohne Modelle findet der Folgemodus niemanden; einrichten.cmd legt sie
+        # nach ~/.spotlab/modelle. Die Lizenzen reisen mit (MIT und Apache 2.0).
+        (bundle/'modelle').mkdir()
+        for pfad in modell_dateien:
+            shutil.copyfile(pfad, bundle/'modelle'/pfad.name)
+        shutil.copyfile(repo/'tools/modelle_lizenzen.txt', bundle/'modelle/LIZENZEN.txt')
+        shutil.copyfile(repo/'tools/modelle_einrichten.py', bundle/'modelle_einrichten.py')
         app_wheel = next(wheels.glob('spotlab-*.whl')).name
         sim_wheel = next(wheels.glob('spotlab_sim_runtime-*.whl')).name
         # `gesicht` bringt OpenCV mit. Ohne das sind Folgemodus, Gesichter, Koerper
@@ -164,7 +197,8 @@ def build(repo, research, output):
             for path in bundle.rglob('*'):
                 if path.is_file():
                     zipped.write(path, path.relative_to(work).as_posix())
-    print(f'Release: {archive} ({archive.stat().st_size / 1024**2:.1f} MiB; dependencies downloaded during setup)')
+    print(f'Release: {archive} ({archive.stat().st_size / 1024**2:.1f} MiB; models included, '
+          f'dependencies downloaded during setup)')
     return archive
 
 
@@ -173,5 +207,7 @@ if __name__ == '__main__':
     parser.add_argument('--repo', type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument('--sim-quelle', type=Path, required=True)
     parser.add_argument('--ausgabe', type=Path, default=Path('dist'))
+    parser.add_argument('--modelle', type=Path, default=Path.home()/'.spotlab'/'modelle',
+                        help='Ordner mit den fuenf Erkennermodellen (Pruefsummen in MODELLE)')
     args = parser.parse_args()
-    build(args.repo.resolve(), args.sim_quelle.resolve(), args.ausgabe.resolve())
+    build(args.repo.resolve(), args.sim_quelle.resolve(), args.ausgabe.resolve(), args.modelle.resolve())

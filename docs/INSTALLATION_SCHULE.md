@@ -15,6 +15,11 @@ keine Forschungs-/Messskripte, kein pytest/Ruff und kein MCP-Zusatzpaket.**
 Die Pakete liegen in der eigenen `.venv`; das System-Python bleibt unverändert.
 Der Sim-Code ist als normales Python-Paket enthalten, keine verschlüsselte Software.
 
+Mit im ZIP liegen die fünf Erkennermodelle für Gesichter, Körper und Handzeichen
+(Ordner `modelle`, 26 MB, aus dem OpenCV Model Zoo; Lizenzen in `modelle/LIZENZEN.txt`).
+Die Einrichtung legt sie nach `%USERPROFILE%\.spotlab\modelle`. Ohne sie findet der
+Folgemodus am echten Spot niemanden; die Simulation braucht sie nicht.
+
 Die Einrichtung prüft Paketkonflikte und lädt das Sim-Modell ohne Roboterverbindung.
 Beim ersten Start zusätzlich eine Sim-Vorlage in der GUI öffnen und die 3D-Ansicht
 testen. Es werden durch die Einrichtung keine Motoren eingeschaltet.
