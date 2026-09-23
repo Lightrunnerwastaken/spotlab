@@ -485,7 +485,9 @@ def test_die_weltpruefung_haengt_an_der_strecke_nicht_am_takt(uhr):
     """Je Integrationsschritt (5 ms) die Puppe setzen, `mj_forward` und die Kontakte
     lesen kostete auf den Katakomben (Gelaende, 330 Waende) 1.6 ms -- 200-mal je
     Sekunde. Wie in 2D: eine Pruefung je MAX_SCHRITT_M und je Abfrage (07.09.2026)."""
-    backend = _backend(uhr, (1.0, 0.7, 0.0))
+    from spotlab.kalibrierung.tempoantwort import Tempoantwort
+
+    backend = _backend(uhr, (1.0, 0.7, 0.0), tempoantwort=Tempoantwort.sofort())
     zaehler = {"n": 0}
     echt = backend.puppe.kollisionen
 

@@ -1,0 +1,3517 @@
+{
+ "fassung": 1,
+ "spruenge": [
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.2,
+   "totzeit_s": 0.06,
+   "tau_s": 0.04,
+   "endwert": 0.981,
+   "herkunft": {
+    "lauf": "20260907T153328Z_6c51302d",
+    "t": 20.421
+   }
+  },
+  {
+   "art": "anfahren",
+   "gruppe": "gehen",
+   "soll": 0.2,
+   "totzeit_s": 0.45,
+   "tau_s": 0.2,
+   "endwert": 0.925,
+   "herkunft": {
+    "lauf": "20260907T153414Z_6c51302d",
+    "t": 7.096
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "drehen",
+   "soll": 0.393,
+   "totzeit_s": 0.03,
+   "tau_s": 0.11,
+   "endwert": 0.807,
+   "herkunft": {
+    "lauf": "20260907T153414Z_6c51302d",
+    "t": 35.487
+   }
+  },
+  {
+   "art": "anfahren",
+   "gruppe": "gehen",
+   "soll": 0.2,
+   "totzeit_s": 0.45,
+   "tau_s": 0.19,
+   "endwert": 0.908,
+   "herkunft": {
+    "lauf": "20260907T153613Z_6c51302d",
+    "t": 8.609
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.2,
+   "totzeit_s": 0.12,
+   "tau_s": 0.02,
+   "endwert": 0.993,
+   "herkunft": {
+    "lauf": "20260907T153613Z_6c51302d",
+    "t": 34.199
+   }
+  },
+  {
+   "art": "anfahren",
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "totzeit_s": 0.12,
+   "tau_s": 0.06,
+   "endwert": 0.488,
+   "herkunft": {
+    "lauf": "20260907T155045Z_6c51302d",
+    "t": 8.628
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "totzeit_s": 0.08,
+   "tau_s": 0.12,
+   "endwert": 0.956,
+   "herkunft": {
+    "lauf": "20260907T155045Z_6c51302d",
+    "t": 23.209
+   }
+  },
+  {
+   "art": "anfahren",
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "totzeit_s": 0.11,
+   "tau_s": 0.26,
+   "endwert": 0.755,
+   "herkunft": {
+    "lauf": "20260907T155045Z_6c51302d",
+    "t": 25.562
+   }
+  },
+  {
+   "art": "anfahren",
+   "gruppe": "gehen",
+   "soll": 0.2,
+   "totzeit_s": 0.16,
+   "tau_s": 0.04,
+   "endwert": 0.724,
+   "herkunft": {
+    "lauf": "20260907T155521Z_6c51302d",
+    "t": 7.145
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.2,
+   "totzeit_s": 0.03,
+   "tau_s": 0.03,
+   "endwert": 0.979,
+   "herkunft": {
+    "lauf": "20260907T155521Z_6c51302d",
+    "t": 18.02
+   }
+  },
+  {
+   "art": "anfahren",
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "totzeit_s": 0.12,
+   "tau_s": 0.21,
+   "endwert": 1.005,
+   "herkunft": {
+    "lauf": "20260907T155521Z_6c51302d",
+    "t": 27.756
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "totzeit_s": 0.19,
+   "tau_s": 0.18,
+   "endwert": 0.674,
+   "herkunft": {
+    "lauf": "20260907T155521Z_6c51302d",
+    "t": 39.725
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "drehen",
+   "soll": 1.1,
+   "totzeit_s": 0.07,
+   "tau_s": 0.02,
+   "endwert": 0.993,
+   "herkunft": {
+    "lauf": "20260907T155757Z_6c51302d",
+    "t": 31.853
+   }
+  },
+  {
+   "art": "anfahren",
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "totzeit_s": 0.3,
+   "tau_s": 0.16,
+   "endwert": 1.039,
+   "herkunft": {
+    "lauf": "20260907T160343Z_6c51302d",
+    "t": 20.562
+   }
+  },
+  {
+   "art": "anfahren",
+   "gruppe": "gehen",
+   "soll": 0.2,
+   "totzeit_s": 0.45,
+   "tau_s": 0.03,
+   "endwert": 0.123,
+   "herkunft": {
+    "lauf": "20260909T101427Z_6c51302d",
+    "t": 69.91
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "totzeit_s": 0.05,
+   "tau_s": 0.09,
+   "endwert": 1.043,
+   "herkunft": {
+    "lauf": "20260909T101427Z_6c51302d",
+    "t": 77.419
+   }
+  },
+  {
+   "art": "anfahren",
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "totzeit_s": 0.16,
+   "tau_s": 0.24,
+   "endwert": 0.765,
+   "herkunft": {
+    "lauf": "20260909T101427Z_6c51302d",
+    "t": 187.327
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "totzeit_s": 0.16,
+   "tau_s": 0.39,
+   "endwert": 0.516,
+   "herkunft": {
+    "lauf": "20260909T101758Z_6c51302d",
+    "t": 15.018
+   }
+  },
+  {
+   "art": "anfahren",
+   "gruppe": "gehen",
+   "soll": 0.2,
+   "totzeit_s": 0.28,
+   "tau_s": 0.02,
+   "endwert": 0.56,
+   "herkunft": {
+    "lauf": "20260909T101758Z_6c51302d",
+    "t": 72.254
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.2,
+   "totzeit_s": 0.05,
+   "tau_s": 0.03,
+   "endwert": 1.071,
+   "herkunft": {
+    "lauf": "20260909T101758Z_6c51302d",
+    "t": 90.546
+   }
+  },
+  {
+   "art": "anfahren",
+   "gruppe": "gehen",
+   "soll": 0.2,
+   "totzeit_s": 0.02,
+   "tau_s": 0.79,
+   "endwert": 1.338,
+   "herkunft": {
+    "lauf": "20260909T101758Z_6c51302d",
+    "t": 114.143
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.2,
+   "totzeit_s": 0.0,
+   "tau_s": 0.43,
+   "endwert": 0.937,
+   "herkunft": {
+    "lauf": "20260909T101758Z_6c51302d",
+    "t": 129.315
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "drehen",
+   "soll": 0.393,
+   "totzeit_s": 0.11,
+   "tau_s": 0.06,
+   "endwert": 0.828,
+   "herkunft": {
+    "lauf": "20260909T101758Z_6c51302d",
+    "t": 137.367
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "totzeit_s": 0.04,
+   "tau_s": 0.14,
+   "endwert": 0.969,
+   "herkunft": {
+    "lauf": "20260909T101758Z_6c51302d",
+    "t": 147.351
+   }
+  },
+  {
+   "art": "anfahren",
+   "gruppe": "drehen",
+   "soll": 0.393,
+   "totzeit_s": 0.14,
+   "tau_s": 0.02,
+   "endwert": 0.873,
+   "herkunft": {
+    "lauf": "20260909T103657Z_6c51302d",
+    "t": 21.081
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "drehen",
+   "soll": 0.393,
+   "totzeit_s": 0.11,
+   "tau_s": 0.08,
+   "endwert": 0.776,
+   "herkunft": {
+    "lauf": "20260909T112651Z_6c51302d",
+    "t": 13.973
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "totzeit_s": 0.2,
+   "tau_s": 0.1,
+   "endwert": 0.734,
+   "herkunft": {
+    "lauf": "20260909T112651Z_6c51302d",
+    "t": 85.034
+   }
+  },
+  {
+   "art": "anfahren",
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "totzeit_s": 0.35,
+   "tau_s": 0.27,
+   "endwert": 1.052,
+   "herkunft": {
+    "lauf": "20260909T112953Z_6c51302d",
+    "t": 7.72
+   }
+  },
+  {
+   "art": "anfahren",
+   "gruppe": "drehen",
+   "soll": 1.1,
+   "totzeit_s": 0.24,
+   "tau_s": 0.14,
+   "endwert": 0.987,
+   "herkunft": {
+    "lauf": "20260909T113328Z_6c51302d",
+    "t": 9.24
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "totzeit_s": 0.17,
+   "tau_s": 0.14,
+   "endwert": 0.964,
+   "herkunft": {
+    "lauf": "20260909T113328Z_6c51302d",
+    "t": 41.506
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "drehen",
+   "soll": 1.1,
+   "totzeit_s": 0.4,
+   "tau_s": 0.1,
+   "endwert": 0.549,
+   "herkunft": {
+    "lauf": "20260909T113328Z_6c51302d",
+    "t": 74.602
+   }
+  },
+  {
+   "art": "anfahren",
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "totzeit_s": 0.25,
+   "tau_s": 0.36,
+   "endwert": 1.029,
+   "herkunft": {
+    "lauf": "20260909T113643Z_6c51302d",
+    "t": 8.749
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "totzeit_s": 0.1,
+   "tau_s": 0.02,
+   "endwert": 0.979,
+   "herkunft": {
+    "lauf": "20260909T122643Z_6c51302d",
+    "t": 22.575
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.3,
+   "totzeit_s": 0.45,
+   "tau_s": 0.22,
+   "endwert": 0.935,
+   "herkunft": {
+    "lauf": "20260909T122643Z_6c51302d",
+    "t": 26.315
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "totzeit_s": 0.07,
+   "tau_s": 0.07,
+   "endwert": 1.001,
+   "herkunft": {
+    "lauf": "20260909T122643Z_6c51302d",
+    "t": 46.393
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.3,
+   "totzeit_s": 0.18,
+   "tau_s": 0.22,
+   "endwert": 0.81,
+   "herkunft": {
+    "lauf": "20260909T123122Z_6c51302d",
+    "t": 15.275
+   }
+  },
+  {
+   "art": "anfahren",
+   "gruppe": "gehen",
+   "soll": 0.3,
+   "totzeit_s": 0.13,
+   "tau_s": 0.28,
+   "endwert": 0.855,
+   "herkunft": {
+    "lauf": "20260909T123122Z_6c51302d",
+    "t": 18.467
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "drehen",
+   "soll": 0.785,
+   "totzeit_s": 0.18,
+   "tau_s": 0.02,
+   "endwert": 0.673,
+   "herkunft": {
+    "lauf": "20260909T123122Z_6c51302d",
+    "t": 71.632
+   }
+  },
+  {
+   "art": "anfahren",
+   "gruppe": "drehen",
+   "soll": 0.785,
+   "totzeit_s": 0.31,
+   "tau_s": 0.02,
+   "endwert": 0.989,
+   "herkunft": {
+    "lauf": "20260909T123122Z_6c51302d",
+    "t": 74.474
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "totzeit_s": 0.2,
+   "tau_s": 0.03,
+   "endwert": 0.747,
+   "herkunft": {
+    "lauf": "20260909T123122Z_6c51302d",
+    "t": 93.28
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "totzeit_s": 0.15,
+   "tau_s": 0.02,
+   "endwert": 0.766,
+   "herkunft": {
+    "lauf": "20260909T123122Z_6c51302d",
+    "t": 109.124
+   }
+  },
+  {
+   "art": "anfahren",
+   "gruppe": "gehen",
+   "soll": 0.2,
+   "totzeit_s": 0.45,
+   "tau_s": 0.2,
+   "endwert": 0.907,
+   "herkunft": {
+    "lauf": "20260909T141247Z_6c51302d",
+    "t": 6.881
+   }
+  },
+  {
+   "art": "anfahren",
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "totzeit_s": 0.13,
+   "tau_s": 0.26,
+   "endwert": 0.771,
+   "herkunft": {
+    "lauf": "20260909T141247Z_6c51302d",
+    "t": 46.635
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "totzeit_s": 0.21,
+   "tau_s": 0.06,
+   "endwert": 0.895,
+   "herkunft": {
+    "lauf": "20260909T141247Z_6c51302d",
+    "t": 139.721
+   }
+  },
+  {
+   "art": "anfahren",
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "totzeit_s": 0.45,
+   "tau_s": 0.21,
+   "endwert": 0.739,
+   "herkunft": {
+    "lauf": "20260909T142309Z_6c51302d",
+    "t": 21.527
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "totzeit_s": 0.02,
+   "tau_s": 0.31,
+   "endwert": 0.787,
+   "herkunft": {
+    "lauf": "20260909T142309Z_6c51302d",
+    "t": 40.444
+   }
+  },
+  {
+   "art": "anfahren",
+   "gruppe": "drehen",
+   "soll": 0.785,
+   "totzeit_s": 0.33,
+   "tau_s": 0.02,
+   "endwert": 0.272,
+   "herkunft": {
+    "lauf": "20260909T142309Z_6c51302d",
+    "t": 76.655
+   }
+  },
+  {
+   "art": "anfahren",
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "totzeit_s": 0.22,
+   "tau_s": 0.19,
+   "endwert": 1.091,
+   "herkunft": {
+    "lauf": "20260911T163134Z_310b13ae",
+    "t": 8.439
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "totzeit_s": 0.14,
+   "tau_s": 0.22,
+   "endwert": 0.748,
+   "herkunft": {
+    "lauf": "20260914T151710Z_310b13ae",
+    "t": 31.837
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "drehen",
+   "soll": 0.393,
+   "totzeit_s": 0.11,
+   "tau_s": 0.06,
+   "endwert": 0.993,
+   "herkunft": {
+    "lauf": "20260916T101804Z_310b13ae",
+    "t": 22.295
+   }
+  },
+  {
+   "art": "anfahren",
+   "gruppe": "drehen",
+   "soll": 0.393,
+   "totzeit_s": 0.13,
+   "tau_s": 0.02,
+   "endwert": 0.744,
+   "herkunft": {
+    "lauf": "20260916T103355Z_310b13ae",
+    "t": 8.183
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "drehen",
+   "soll": 0.393,
+   "totzeit_s": 0.08,
+   "tau_s": 0.08,
+   "endwert": 1.006,
+   "herkunft": {
+    "lauf": "20260916T103355Z_310b13ae",
+    "t": 10.14
+   }
+  },
+  {
+   "art": "anfahren",
+   "gruppe": "drehen",
+   "soll": 0.785,
+   "totzeit_s": 0.34,
+   "tau_s": 0.03,
+   "endwert": 1.006,
+   "herkunft": {
+    "lauf": "20260916T103355Z_310b13ae",
+    "t": 13.136
+   }
+  },
+  {
+   "art": "anfahren",
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "totzeit_s": 0.44,
+   "tau_s": 0.09,
+   "endwert": 0.772,
+   "herkunft": {
+    "lauf": "20260916T113556Z_310b13ae",
+    "t": 7.478
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "totzeit_s": 0.01,
+   "tau_s": 0.2,
+   "endwert": 1.034,
+   "herkunft": {
+    "lauf": "20260916T113556Z_310b13ae",
+    "t": 14.072
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "totzeit_s": 0.31,
+   "tau_s": 0.03,
+   "endwert": 0.501,
+   "herkunft": {
+    "lauf": "20260916T113556Z_310b13ae",
+    "t": 18.978
+   }
+  },
+  {
+   "art": "anfahren",
+   "gruppe": "drehen",
+   "soll": 0.785,
+   "totzeit_s": 0.25,
+   "tau_s": 0.02,
+   "endwert": 0.875,
+   "herkunft": {
+    "lauf": "20260916T114435Z_310b13ae",
+    "t": 32.022
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "totzeit_s": 0.05,
+   "tau_s": 0.06,
+   "endwert": 0.912,
+   "herkunft": {
+    "lauf": "20260916T114435Z_310b13ae",
+    "t": 45.684
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "drehen",
+   "soll": 0.393,
+   "totzeit_s": 0.06,
+   "tau_s": 0.1,
+   "endwert": 0.992,
+   "herkunft": {
+    "lauf": "20260916T123124Z_310b13ae",
+    "t": 13.889
+   }
+  },
+  {
+   "art": "anfahren",
+   "gruppe": "gehen",
+   "soll": 0.2,
+   "totzeit_s": 0.45,
+   "tau_s": 0.32,
+   "endwert": 0.997,
+   "herkunft": {
+    "lauf": "20260916T130047Z_310b13ae",
+    "t": 7.893
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "totzeit_s": 0.04,
+   "tau_s": 0.2,
+   "endwert": 1.05,
+   "herkunft": {
+    "lauf": "20260916T130823Z_310b13ae",
+    "t": 29.888
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "totzeit_s": 0.04,
+   "tau_s": 0.21,
+   "endwert": 0.98,
+   "herkunft": {
+    "lauf": "20260916T130823Z_310b13ae",
+    "t": 113.101
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "drehen",
+   "soll": 1.1,
+   "totzeit_s": 0.23,
+   "tau_s": 0.02,
+   "endwert": 0.911,
+   "herkunft": {
+    "lauf": "20260916T130823Z_310b13ae",
+    "t": 118.29
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "drehen",
+   "soll": 0.042,
+   "totzeit_s": 0.0,
+   "tau_s": 0.02,
+   "endwert": 0.567,
+   "herkunft": {
+    "lauf": "20260916T131450Z_29668fd8",
+    "t": 44.295
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "totzeit_s": 0.04,
+   "tau_s": 0.2,
+   "endwert": 0.919,
+   "herkunft": {
+    "lauf": "20260916T131653Z_310b13ae",
+    "t": 57.73
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "drehen",
+   "soll": 1.1,
+   "totzeit_s": 0.1,
+   "tau_s": 0.25,
+   "endwert": 1.007,
+   "herkunft": {
+    "lauf": "20260916T131813Z_310b13ae",
+    "t": 34.383
+   }
+  },
+  {
+   "art": "anfahren",
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "totzeit_s": 0.45,
+   "tau_s": 0.1,
+   "endwert": 0.786,
+   "herkunft": {
+    "lauf": "20260916T131813Z_310b13ae",
+    "t": 36.852
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "drehen",
+   "soll": 1.1,
+   "totzeit_s": 0.19,
+   "tau_s": 0.2,
+   "endwert": 1.008,
+   "herkunft": {
+    "lauf": "20260916T131813Z_310b13ae",
+    "t": 44.541
+   }
+  },
+  {
+   "art": "anfahren",
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "totzeit_s": 0.25,
+   "tau_s": 0.14,
+   "endwert": 1.074,
+   "herkunft": {
+    "lauf": "20260916T131813Z_310b13ae",
+    "t": 46.76
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "totzeit_s": 0.13,
+   "tau_s": 0.25,
+   "endwert": 1.074,
+   "herkunft": {
+    "lauf": "20260916T131813Z_310b13ae",
+    "t": 49.345
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "drehen",
+   "soll": 1.1,
+   "totzeit_s": 0.23,
+   "tau_s": 0.02,
+   "endwert": 0.645,
+   "herkunft": {
+    "lauf": "20260916T131813Z_310b13ae",
+    "t": 79.043
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "drehen",
+   "soll": 1.1,
+   "totzeit_s": 0.26,
+   "tau_s": 0.02,
+   "endwert": 0.588,
+   "herkunft": {
+    "lauf": "20260916T132300Z_310b13ae",
+    "t": 30.138
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "drehen",
+   "soll": 0.027,
+   "totzeit_s": 0.0,
+   "tau_s": 0.02,
+   "endwert": 1.187,
+   "herkunft": {
+    "lauf": "20260916T132743Z_29668fd8",
+    "t": 113.167
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "drehen",
+   "soll": 0.518,
+   "totzeit_s": 0.05,
+   "tau_s": 0.1,
+   "endwert": 0.773,
+   "herkunft": {
+    "lauf": "20260916T132743Z_29668fd8",
+    "t": 195.547
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "drehen",
+   "soll": 0.157,
+   "totzeit_s": 0.01,
+   "tau_s": 0.02,
+   "endwert": 0.933,
+   "herkunft": {
+    "lauf": "20260916T132743Z_29668fd8",
+    "t": 204.568
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "totzeit_s": 0.12,
+   "tau_s": 0.14,
+   "endwert": 0.947,
+   "herkunft": {
+    "lauf": "20260916T133307Z_310b13ae",
+    "t": 31.05
+   }
+  },
+  {
+   "art": "anfahren",
+   "gruppe": "drehen",
+   "soll": 1.1,
+   "totzeit_s": 0.26,
+   "tau_s": 0.08,
+   "endwert": 0.85,
+   "herkunft": {
+    "lauf": "20260916T134159Z_310b13ae",
+    "t": 7.115
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "totzeit_s": 0.13,
+   "tau_s": 0.12,
+   "endwert": 0.724,
+   "herkunft": {
+    "lauf": "20260916T134159Z_310b13ae",
+    "t": 9.694
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "drehen",
+   "soll": 1.1,
+   "totzeit_s": 0.18,
+   "tau_s": 0.03,
+   "endwert": 0.779,
+   "herkunft": {
+    "lauf": "20260916T134431Z_310b13ae",
+    "t": 10.114
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "drehen",
+   "soll": 0.496,
+   "totzeit_s": 0.11,
+   "tau_s": 0.12,
+   "endwert": 0.867,
+   "herkunft": {
+    "lauf": "20260916T134639Z_29668fd8",
+    "t": 318.02
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "drehen",
+   "soll": 0.533,
+   "totzeit_s": 0.11,
+   "tau_s": 0.08,
+   "endwert": 1.015,
+   "herkunft": {
+    "lauf": "20260916T134639Z_29668fd8",
+    "t": 323.035
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "drehen",
+   "soll": 0.785,
+   "totzeit_s": 0.11,
+   "tau_s": 0.16,
+   "endwert": 1.004,
+   "herkunft": {
+    "lauf": "20260916T134639Z_29668fd8",
+    "t": 398.63
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "drehen",
+   "soll": 0.739,
+   "totzeit_s": 0.19,
+   "tau_s": 0.09,
+   "endwert": 0.847,
+   "herkunft": {
+    "lauf": "20260916T134639Z_29668fd8",
+    "t": 405.764
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "drehen",
+   "soll": 0.424,
+   "totzeit_s": 0.13,
+   "tau_s": 0.06,
+   "endwert": 1.024,
+   "herkunft": {
+    "lauf": "20260916T134639Z_29668fd8",
+    "t": 413.314
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "drehen",
+   "soll": 0.144,
+   "totzeit_s": 0.0,
+   "tau_s": 0.51,
+   "endwert": 1.055,
+   "herkunft": {
+    "lauf": "20260916T134639Z_29668fd8",
+    "t": 473.993
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "drehen",
+   "soll": 0.483,
+   "totzeit_s": 0.0,
+   "tau_s": 0.02,
+   "endwert": 1.088,
+   "herkunft": {
+    "lauf": "20260916T134639Z_29668fd8",
+    "t": 539.286
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "drehen",
+   "soll": 0.387,
+   "totzeit_s": 0.14,
+   "tau_s": 0.05,
+   "endwert": 0.891,
+   "herkunft": {
+    "lauf": "20260916T135625Z_29668fd8",
+    "t": 167.812
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "drehen",
+   "soll": 0.257,
+   "totzeit_s": 0.08,
+   "tau_s": 0.24,
+   "endwert": 0.976,
+   "herkunft": {
+    "lauf": "20260916T135625Z_29668fd8",
+    "t": 182.032
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "drehen",
+   "soll": 0.069,
+   "totzeit_s": 0.45,
+   "tau_s": 0.09,
+   "endwert": 0.763,
+   "herkunft": {
+    "lauf": "20260916T135625Z_29668fd8",
+    "t": 211.082
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "drehen",
+   "soll": 0.445,
+   "totzeit_s": 0.05,
+   "tau_s": 0.11,
+   "endwert": 1.028,
+   "herkunft": {
+    "lauf": "20260916T135625Z_29668fd8",
+    "t": 249.765
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "drehen",
+   "soll": 0.785,
+   "totzeit_s": 0.12,
+   "tau_s": 0.15,
+   "endwert": 0.997,
+   "herkunft": {
+    "lauf": "20260916T135625Z_29668fd8",
+    "t": 580.447
+   }
+  },
+  {
+   "art": "anfahren",
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "totzeit_s": 0.31,
+   "tau_s": 0.3,
+   "endwert": 1.073,
+   "herkunft": {
+    "lauf": "20260916T141112Z_310b13ae",
+    "t": 7.951
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "totzeit_s": 0.09,
+   "tau_s": 0.2,
+   "endwert": 0.971,
+   "herkunft": {
+    "lauf": "20260916T141112Z_310b13ae",
+    "t": 95.608
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "drehen",
+   "soll": 0.088,
+   "totzeit_s": 0.05,
+   "tau_s": 0.02,
+   "endwert": 1.332,
+   "herkunft": {
+    "lauf": "20260916T150628Z_29668fd8",
+    "t": 99.838
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.3,
+   "totzeit_s": 0.33,
+   "tau_s": 0.17,
+   "endwert": 0.892,
+   "herkunft": {
+    "lauf": "20260916T151014Z_310b13ae",
+    "t": 16.761
+   }
+  },
+  {
+   "art": "anfahren",
+   "gruppe": "gehen",
+   "soll": 0.2,
+   "totzeit_s": 0.45,
+   "tau_s": 0.18,
+   "endwert": 0.813,
+   "herkunft": {
+    "lauf": "20260917T093738Z_310b13ae",
+    "t": 13.722
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "totzeit_s": 0.06,
+   "tau_s": 0.1,
+   "endwert": 0.966,
+   "herkunft": {
+    "lauf": "20260917T093738Z_310b13ae",
+    "t": 50.086
+   }
+  },
+  {
+   "art": "anfahren",
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "totzeit_s": 0.23,
+   "tau_s": 0.14,
+   "endwert": 1.07,
+   "herkunft": {
+    "lauf": "20260917T093738Z_310b13ae",
+    "t": 85.951
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "totzeit_s": 0.05,
+   "tau_s": 0.25,
+   "endwert": 0.916,
+   "herkunft": {
+    "lauf": "20260917T093738Z_310b13ae",
+    "t": 91.855
+   }
+  },
+  {
+   "art": "anfahren",
+   "gruppe": "drehen",
+   "soll": 0.785,
+   "totzeit_s": 0.32,
+   "tau_s": 0.02,
+   "endwert": 1.014,
+   "herkunft": {
+    "lauf": "20260917T094055Z_310b13ae",
+    "t": 8.834
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "totzeit_s": 0.14,
+   "tau_s": 0.1,
+   "endwert": 0.703,
+   "herkunft": {
+    "lauf": "20260917T094055Z_310b13ae",
+    "t": 11.408
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "drehen",
+   "soll": 0.202,
+   "totzeit_s": 0.0,
+   "tau_s": 0.02,
+   "endwert": 1.142,
+   "herkunft": {
+    "lauf": "20260917T094954Z_114ff694",
+    "t": 21.49
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "drehen",
+   "soll": 0.164,
+   "totzeit_s": 0.04,
+   "tau_s": 0.02,
+   "endwert": 1.151,
+   "herkunft": {
+    "lauf": "20260917T094954Z_114ff694",
+    "t": 27.444
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "drehen",
+   "soll": 0.128,
+   "totzeit_s": 0.0,
+   "tau_s": 0.02,
+   "endwert": 0.919,
+   "herkunft": {
+    "lauf": "20260917T094954Z_114ff694",
+    "t": 34.63
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "drehen",
+   "soll": 0.002,
+   "totzeit_s": 0.45,
+   "tau_s": 0.8,
+   "endwert": 0.59,
+   "herkunft": {
+    "lauf": "20260917T095303Z_114ff694",
+    "t": 77.551
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "drehen",
+   "soll": 0.349,
+   "totzeit_s": 0.06,
+   "tau_s": 0.07,
+   "endwert": 1.051,
+   "herkunft": {
+    "lauf": "20260917T095619Z_114ff694",
+    "t": 48.264
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "drehen",
+   "soll": 0.508,
+   "totzeit_s": 0.15,
+   "tau_s": 0.07,
+   "endwert": 1.09,
+   "herkunft": {
+    "lauf": "20260917T095619Z_114ff694",
+    "t": 62.044
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "drehen",
+   "soll": 0.05,
+   "totzeit_s": 0.13,
+   "tau_s": 0.02,
+   "endwert": 0.92,
+   "herkunft": {
+    "lauf": "20260917T095619Z_114ff694",
+    "t": 82.393
+   }
+  },
+  {
+   "art": "anfahren",
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "totzeit_s": 0.45,
+   "tau_s": 0.23,
+   "endwert": 0.993,
+   "herkunft": {
+    "lauf": "20260917T100404Z_310b13ae",
+    "t": 63.722
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "totzeit_s": 0.05,
+   "tau_s": 0.15,
+   "endwert": 1.017,
+   "herkunft": {
+    "lauf": "20260917T100525Z_310b13ae",
+    "t": 15.797
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.471,
+   "totzeit_s": 0.15,
+   "tau_s": 0.19,
+   "endwert": 0.959,
+   "herkunft": {
+    "lauf": "20260917T101206Z_114ff694",
+    "t": 62.291
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.5,
+   "totzeit_s": 0.14,
+   "tau_s": 0.04,
+   "endwert": 1.023,
+   "herkunft": {
+    "lauf": "20260917T101206Z_114ff694",
+    "t": 84.853
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.5,
+   "totzeit_s": 0.17,
+   "tau_s": 0.04,
+   "endwert": 1.014,
+   "herkunft": {
+    "lauf": "20260917T101206Z_114ff694",
+    "t": 92.596
+   }
+  },
+  {
+   "art": "anfahren",
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "totzeit_s": 0.35,
+   "tau_s": 0.1,
+   "endwert": 0.822,
+   "herkunft": {
+    "lauf": "20260917T101426Z_310b13ae",
+    "t": 17.133
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "totzeit_s": 0.08,
+   "tau_s": 0.23,
+   "endwert": 0.937,
+   "herkunft": {
+    "lauf": "20260917T101426Z_310b13ae",
+    "t": 19.18
+   }
+  },
+  {
+   "art": "anfahren",
+   "gruppe": "drehen",
+   "soll": 1.1,
+   "totzeit_s": 0.15,
+   "tau_s": 0.35,
+   "endwert": 0.902,
+   "herkunft": {
+    "lauf": "20260917T101426Z_310b13ae",
+    "t": 28.654
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "totzeit_s": 0.11,
+   "tau_s": 0.07,
+   "endwert": 1.015,
+   "herkunft": {
+    "lauf": "20260917T101426Z_310b13ae",
+    "t": 35.641
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.2,
+   "totzeit_s": 0.09,
+   "tau_s": 0.07,
+   "endwert": 0.782,
+   "herkunft": {
+    "lauf": "20260918T154344Z_310b13ae",
+    "t": 20.701
+   }
+  },
+  {
+   "art": "anfahren",
+   "gruppe": "gehen",
+   "soll": 0.2,
+   "totzeit_s": 0.15,
+   "tau_s": 0.02,
+   "endwert": 0.467,
+   "herkunft": {
+    "lauf": "20260918T161749Z_3977daed",
+    "t": 7.801
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.2,
+   "totzeit_s": 0.41,
+   "tau_s": 0.02,
+   "endwert": 0.782,
+   "herkunft": {
+    "lauf": "20260918T161749Z_3977daed",
+    "t": 14.273
+   }
+  },
+  {
+   "art": "anfahren",
+   "gruppe": "gehen",
+   "soll": 0.2,
+   "totzeit_s": 0.27,
+   "tau_s": 0.62,
+   "endwert": 1.046,
+   "herkunft": {
+    "lauf": "20260918T161749Z_3977daed",
+    "t": 24.666
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.453,
+   "totzeit_s": 0.07,
+   "tau_s": 0.05,
+   "endwert": 1.043,
+   "herkunft": {
+    "lauf": "20260921T071712Z_114ff694",
+    "t": 13.165
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.413,
+   "totzeit_s": 0.05,
+   "tau_s": 0.34,
+   "endwert": 0.732,
+   "herkunft": {
+    "lauf": "20260921T071712Z_114ff694",
+    "t": 35.98
+   }
+  },
+  {
+   "art": "anfahren",
+   "gruppe": "gehen",
+   "soll": 0.3,
+   "totzeit_s": 0.11,
+   "tau_s": 0.33,
+   "endwert": 0.986,
+   "herkunft": {
+    "lauf": "20260921T071943Z_3977daed",
+    "t": 6.854
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "totzeit_s": 0.08,
+   "tau_s": 0.35,
+   "endwert": 0.85,
+   "herkunft": {
+    "lauf": "20260921T071943Z_3977daed",
+    "t": 160.7
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "drehen",
+   "soll": 0.11,
+   "totzeit_s": 0.03,
+   "tau_s": 0.02,
+   "endwert": 2.748,
+   "herkunft": {
+    "lauf": "20260921T072832Z_114ff694",
+    "t": 31.804
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.356,
+   "totzeit_s": 0.11,
+   "tau_s": 0.05,
+   "endwert": 0.906,
+   "herkunft": {
+    "lauf": "20260921T072832Z_114ff694",
+    "t": 78.537
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.5,
+   "totzeit_s": 0.1,
+   "tau_s": 0.24,
+   "endwert": 0.95,
+   "herkunft": {
+    "lauf": "20260921T072832Z_114ff694",
+    "t": 96.517
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "drehen",
+   "soll": 0.785,
+   "totzeit_s": 0.1,
+   "tau_s": 0.17,
+   "endwert": 0.973,
+   "herkunft": {
+    "lauf": "20260921T073742Z_3977daed",
+    "t": 9.065
+   }
+  },
+  {
+   "art": "anfahren",
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "totzeit_s": 0.2,
+   "tau_s": 0.09,
+   "endwert": 1.007,
+   "herkunft": {
+    "lauf": "20260921T080258Z_3977daed",
+    "t": 6.885
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "gehen",
+   "soll": 0.3,
+   "totzeit_s": 0.42,
+   "tau_s": 0.12,
+   "endwert": 0.677,
+   "herkunft": {
+    "lauf": "20260921T080611Z_3977daed",
+    "t": 31.682
+   }
+  },
+  {
+   "art": "anfahren",
+   "gruppe": "drehen",
+   "soll": 0.785,
+   "totzeit_s": 0.32,
+   "tau_s": 0.02,
+   "endwert": 1.006,
+   "herkunft": {
+    "lauf": "20260911T152235Z_cd4bb9e9",
+    "t": 8.385
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "drehen",
+   "soll": 0.785,
+   "totzeit_s": 0.01,
+   "tau_s": 0.18,
+   "endwert": 1.006,
+   "herkunft": {
+    "lauf": "20260911T152235Z_cd4bb9e9",
+    "t": 23.736
+   }
+  },
+  {
+   "art": "anfahren",
+   "gruppe": "drehen",
+   "soll": 0.785,
+   "totzeit_s": 0.13,
+   "tau_s": 0.14,
+   "endwert": 0.998,
+   "herkunft": {
+    "lauf": "20260911T154103Z_cd4bb9e9",
+    "t": 8.662
+   }
+  },
+  {
+   "art": "anhalten",
+   "gruppe": "drehen",
+   "soll": 0.785,
+   "totzeit_s": 0.07,
+   "tau_s": 0.22,
+   "endwert": 0.747,
+   "herkunft": {
+    "lauf": "20260911T154103Z_cd4bb9e9",
+    "t": 23.519
+   }
+  },
+  {
+   "art": "anfahren",
+   "gruppe": "drehen",
+   "soll": 0.785,
+   "totzeit_s": 0.11,
+   "tau_s": 0.17,
+   "endwert": 0.99,
+   "herkunft": {
+    "lauf": "20260911T154103Z_cd4bb9e9",
+    "t": 25.735
+   }
+  },
+  {
+   "art": "anfahren",
+   "gruppe": "drehen",
+   "soll": 0.785,
+   "totzeit_s": 0.24,
+   "tau_s": 0.05,
+   "endwert": 0.978,
+   "herkunft": {
+    "lauf": "20260911T162303Z_cd4bb9e9",
+    "t": 7.283
+   }
+  }
+ ],
+ "drehschwelle": [
+  {
+   "soll_rad_s": 0.01,
+   "proben": 251,
+   "anteil": -0.0727
+  },
+  {
+   "soll_rad_s": 0.02,
+   "proben": 57,
+   "anteil": -0.0295
+  },
+  {
+   "soll_rad_s": 0.03,
+   "proben": 56,
+   "anteil": -0.0256
+  },
+  {
+   "soll_rad_s": 0.04,
+   "proben": 120,
+   "anteil": -0.0195
+  },
+  {
+   "soll_rad_s": 0.05,
+   "proben": 73,
+   "anteil": -0.0005
+  },
+  {
+   "soll_rad_s": 0.06,
+   "proben": 257,
+   "anteil": 0.038
+  },
+  {
+   "soll_rad_s": 0.07,
+   "proben": 116,
+   "anteil": 0.1007
+  },
+  {
+   "soll_rad_s": 0.08,
+   "proben": 14,
+   "anteil": 0.0004
+  },
+  {
+   "soll_rad_s": 0.09,
+   "proben": 139,
+   "anteil": -0.0049
+  },
+  {
+   "soll_rad_s": 0.1,
+   "proben": 282,
+   "anteil": -0.0042
+  },
+  {
+   "soll_rad_s": 0.11,
+   "proben": 109,
+   "anteil": 0.0068
+  },
+  {
+   "soll_rad_s": 0.12,
+   "proben": 329,
+   "anteil": 0.0078
+  },
+  {
+   "soll_rad_s": 0.13,
+   "proben": 36,
+   "anteil": 0.9398
+  },
+  {
+   "soll_rad_s": 0.14,
+   "proben": 7,
+   "anteil": 0.9231
+  },
+  {
+   "soll_rad_s": 0.15,
+   "proben": 76,
+   "anteil": 0.9922
+  },
+  {
+   "soll_rad_s": 0.16,
+   "proben": 16,
+   "anteil": 0.9285
+  },
+  {
+   "soll_rad_s": 0.17,
+   "proben": 10,
+   "anteil": 0.7689
+  },
+  {
+   "soll_rad_s": 0.19,
+   "proben": 9,
+   "anteil": 0.921
+  },
+  {
+   "soll_rad_s": 0.2,
+   "proben": 12,
+   "anteil": 0.0864
+  },
+  {
+   "soll_rad_s": 0.21,
+   "proben": 7,
+   "anteil": 0.7541
+  },
+  {
+   "soll_rad_s": 0.23,
+   "proben": 9,
+   "anteil": 0.9516
+  },
+  {
+   "soll_rad_s": 0.24,
+   "proben": 7,
+   "anteil": 0.6915
+  },
+  {
+   "soll_rad_s": 0.25,
+   "proben": 10,
+   "anteil": 0.4595
+  },
+  {
+   "soll_rad_s": 0.26,
+   "proben": 4,
+   "anteil": 0.8903
+  },
+  {
+   "soll_rad_s": 0.28,
+   "proben": 6,
+   "anteil": 0.7661
+  },
+  {
+   "soll_rad_s": 0.3,
+   "proben": 72,
+   "anteil": 0.967
+  },
+  {
+   "soll_rad_s": 0.31,
+   "proben": 5,
+   "anteil": 0.9751
+  },
+  {
+   "soll_rad_s": 0.32,
+   "proben": 6,
+   "anteil": 0.8319
+  },
+  {
+   "soll_rad_s": 0.33,
+   "proben": 2,
+   "anteil": 0.6659
+  },
+  {
+   "soll_rad_s": 0.36,
+   "proben": 4,
+   "anteil": 0.9858
+  },
+  {
+   "soll_rad_s": 0.37,
+   "proben": 14,
+   "anteil": 0.9498
+  },
+  {
+   "soll_rad_s": 0.38,
+   "proben": 19,
+   "anteil": 0.983
+  },
+  {
+   "soll_rad_s": 0.39,
+   "proben": 242,
+   "anteil": 0.9698
+  },
+  {
+   "soll_rad_s": 0.42,
+   "proben": 4,
+   "anteil": 0.5139
+  },
+  {
+   "soll_rad_s": 0.47,
+   "proben": 2,
+   "anteil": 0.9299
+  },
+  {
+   "soll_rad_s": 0.55,
+   "proben": 1,
+   "anteil": 0.3477
+  },
+  {
+   "soll_rad_s": 0.58,
+   "proben": 4,
+   "anteil": 0.6913
+  },
+  {
+   "soll_rad_s": 0.72,
+   "proben": 16,
+   "anteil": 0.8526
+  },
+  {
+   "soll_rad_s": 0.78,
+   "proben": 7,
+   "anteil": 1.0049
+  },
+  {
+   "soll_rad_s": 0.79,
+   "proben": 1833,
+   "anteil": 0.9937
+  },
+  {
+   "soll_rad_s": 1.1,
+   "proben": 191,
+   "anteil": 0.9845
+  }
+ ],
+ "tempo": [
+  {
+   "gruppe": "drehen",
+   "soll": 0.39,
+   "anteil": 1.0139,
+   "herkunft": {
+    "lauf": "20260907T153328Z_6c51302d",
+    "t": 10.959
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.2,
+   "anteil": 0.8813,
+   "herkunft": {
+    "lauf": "20260907T153328Z_6c51302d",
+    "t": 16.238
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.2,
+   "anteil": 1.034,
+   "herkunft": {
+    "lauf": "20260907T153414Z_6c51302d",
+    "t": 7.096
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.2,
+   "anteil": 0.8986,
+   "herkunft": {
+    "lauf": "20260907T153414Z_6c51302d",
+    "t": 12.205
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.2,
+   "anteil": 0.854,
+   "herkunft": {
+    "lauf": "20260907T153414Z_6c51302d",
+    "t": 24.877
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.2,
+   "anteil": 0.6978,
+   "herkunft": {
+    "lauf": "20260907T153414Z_6c51302d",
+    "t": 28.545
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.2,
+   "anteil": 0.824,
+   "herkunft": {
+    "lauf": "20260907T153613Z_6c51302d",
+    "t": 8.609
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.2,
+   "anteil": 0.8327,
+   "herkunft": {
+    "lauf": "20260907T153613Z_6c51302d",
+    "t": 24.297
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 1.014,
+   "herkunft": {
+    "lauf": "20260907T155045Z_6c51302d",
+    "t": 12.89
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 0.8088,
+   "herkunft": {
+    "lauf": "20260907T155045Z_6c51302d",
+    "t": 25.562
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.3,
+   "anteil": 1.0863,
+   "herkunft": {
+    "lauf": "20260907T155045Z_6c51302d",
+    "t": 53.934
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.2,
+   "anteil": 1.024,
+   "herkunft": {
+    "lauf": "20260907T155521Z_6c51302d",
+    "t": 7.145
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.2,
+   "anteil": 1.167,
+   "herkunft": {
+    "lauf": "20260907T155521Z_6c51302d",
+    "t": 15.464
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.79,
+   "anteil": 1.0018,
+   "herkunft": {
+    "lauf": "20260907T155521Z_6c51302d",
+    "t": 33.525
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 0.8294,
+   "herkunft": {
+    "lauf": "20260907T155757Z_6c51302d",
+    "t": 9.774
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "anteil": 1.0116,
+   "herkunft": {
+    "lauf": "20260907T155757Z_6c51302d",
+    "t": 18.925
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 1.1,
+   "anteil": 0.9891,
+   "herkunft": {
+    "lauf": "20260907T155757Z_6c51302d",
+    "t": 29.588
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 1.1,
+   "anteil": 1.0012,
+   "herkunft": {
+    "lauf": "20260907T160043Z_6c51302d",
+    "t": 18.582
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 1.0432,
+   "herkunft": {
+    "lauf": "20260907T160343Z_6c51302d",
+    "t": 13.89
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "anteil": 1.0508,
+   "herkunft": {
+    "lauf": "20260907T160343Z_6c51302d",
+    "t": 20.562
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "anteil": 1.0679,
+   "herkunft": {
+    "lauf": "20260907T160343Z_6c51302d",
+    "t": 26.386
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 1.0393,
+   "herkunft": {
+    "lauf": "20260909T101427Z_6c51302d",
+    "t": 74.406
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 0.8014,
+   "herkunft": {
+    "lauf": "20260909T101427Z_6c51302d",
+    "t": 105.445
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 0.825,
+   "herkunft": {
+    "lauf": "20260909T101427Z_6c51302d",
+    "t": 187.327
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 1.0481,
+   "herkunft": {
+    "lauf": "20260909T101427Z_6c51302d",
+    "t": 191.683
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 0.8065,
+   "herkunft": {
+    "lauf": "20260909T101427Z_6c51302d",
+    "t": 195.638
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.2,
+   "anteil": 0.869,
+   "herkunft": {
+    "lauf": "20260909T101758Z_6c51302d",
+    "t": 72.254
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.2,
+   "anteil": 1.0545,
+   "herkunft": {
+    "lauf": "20260909T101758Z_6c51302d",
+    "t": 114.143
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.39,
+   "anteil": 0.7967,
+   "herkunft": {
+    "lauf": "20260909T101758Z_6c51302d",
+    "t": 135.256
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.39,
+   "anteil": 0.8926,
+   "herkunft": {
+    "lauf": "20260909T103657Z_6c51302d",
+    "t": 21.081
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.39,
+   "anteil": 1.0106,
+   "herkunft": {
+    "lauf": "20260909T103657Z_6c51302d",
+    "t": 30.599
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.2,
+   "anteil": 0.923,
+   "herkunft": {
+    "lauf": "20260909T112651Z_6c51302d",
+    "t": 25.654
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 0.8276,
+   "herkunft": {
+    "lauf": "20260909T112651Z_6c51302d",
+    "t": 49.224
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 0.823,
+   "herkunft": {
+    "lauf": "20260909T112651Z_6c51302d",
+    "t": 63.034
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 0.8089,
+   "herkunft": {
+    "lauf": "20260909T112651Z_6c51302d",
+    "t": 78.263
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "anteil": 0.9749,
+   "herkunft": {
+    "lauf": "20260909T112651Z_6c51302d",
+    "t": 98.719
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "anteil": 1.0026,
+   "herkunft": {
+    "lauf": "20260909T112651Z_6c51302d",
+    "t": 103.047
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "anteil": 0.9982,
+   "herkunft": {
+    "lauf": "20260909T112651Z_6c51302d",
+    "t": 106.266
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "anteil": 0.8701,
+   "herkunft": {
+    "lauf": "20260909T112651Z_6c51302d",
+    "t": 111.153
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "anteil": 1.0807,
+   "herkunft": {
+    "lauf": "20260909T112953Z_6c51302d",
+    "t": 7.72
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 1.1,
+   "anteil": 1.0012,
+   "herkunft": {
+    "lauf": "20260909T113328Z_6c51302d",
+    "t": 9.24
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "anteil": 1.034,
+   "herkunft": {
+    "lauf": "20260909T113328Z_6c51302d",
+    "t": 12.361
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "anteil": 1.0,
+   "herkunft": {
+    "lauf": "20260909T113328Z_6c51302d",
+    "t": 25.373
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "anteil": 0.9978,
+   "herkunft": {
+    "lauf": "20260909T113328Z_6c51302d",
+    "t": 36.292
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "anteil": 1.0921,
+   "herkunft": {
+    "lauf": "20260909T113328Z_6c51302d",
+    "t": 56.664
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 1.1,
+   "anteil": 0.9952,
+   "herkunft": {
+    "lauf": "20260909T113328Z_6c51302d",
+    "t": 59.02
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "anteil": 1.0144,
+   "herkunft": {
+    "lauf": "20260909T113328Z_6c51302d",
+    "t": 67.113
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 1.1,
+   "anteil": 0.9945,
+   "herkunft": {
+    "lauf": "20260909T113328Z_6c51302d",
+    "t": 71.194
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "anteil": 1.0343,
+   "herkunft": {
+    "lauf": "20260909T113643Z_6c51302d",
+    "t": 8.749
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.79,
+   "anteil": 0.9913,
+   "herkunft": {
+    "lauf": "20260909T122643Z_6c51302d",
+    "t": 12.449
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 1.035,
+   "herkunft": {
+    "lauf": "20260909T122643Z_6c51302d",
+    "t": 17.298
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 1.0138,
+   "herkunft": {
+    "lauf": "20260909T122643Z_6c51302d",
+    "t": 40.138
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 1.0084,
+   "herkunft": {
+    "lauf": "20260909T123122Z_6c51302d",
+    "t": 26.284
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 1.0166,
+   "herkunft": {
+    "lauf": "20260909T123122Z_6c51302d",
+    "t": 49.906
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.79,
+   "anteil": 1.0015,
+   "herkunft": {
+    "lauf": "20260909T123122Z_6c51302d",
+    "t": 74.474
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 0.8122,
+   "herkunft": {
+    "lauf": "20260909T123122Z_6c51302d",
+    "t": 91.127
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 0.8129,
+   "herkunft": {
+    "lauf": "20260909T123122Z_6c51302d",
+    "t": 99.926
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.2,
+   "anteil": 0.8336,
+   "herkunft": {
+    "lauf": "20260909T141247Z_6c51302d",
+    "t": 9.37
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 0.8511,
+   "herkunft": {
+    "lauf": "20260909T141247Z_6c51302d",
+    "t": 46.635
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 1.0071,
+   "herkunft": {
+    "lauf": "20260909T141247Z_6c51302d",
+    "t": 52.692
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 0.9928,
+   "herkunft": {
+    "lauf": "20260909T141247Z_6c51302d",
+    "t": 59.013
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 0.8171,
+   "herkunft": {
+    "lauf": "20260909T141247Z_6c51302d",
+    "t": 63.035
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.79,
+   "anteil": 1.0189,
+   "herkunft": {
+    "lauf": "20260909T141247Z_6c51302d",
+    "t": 69.055
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 1.1062,
+   "herkunft": {
+    "lauf": "20260909T141247Z_6c51302d",
+    "t": 71.256
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 1.0119,
+   "herkunft": {
+    "lauf": "20260909T141247Z_6c51302d",
+    "t": 77.826
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 0.9943,
+   "herkunft": {
+    "lauf": "20260909T141247Z_6c51302d",
+    "t": 81.127
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 1.0031,
+   "herkunft": {
+    "lauf": "20260909T141247Z_6c51302d",
+    "t": 89.482
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 0.9995,
+   "herkunft": {
+    "lauf": "20260909T141247Z_6c51302d",
+    "t": 95.493
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 1.0168,
+   "herkunft": {
+    "lauf": "20260909T141247Z_6c51302d",
+    "t": 103.715
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 0.8105,
+   "herkunft": {
+    "lauf": "20260909T141247Z_6c51302d",
+    "t": 112.317
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.79,
+   "anteil": 0.972,
+   "herkunft": {
+    "lauf": "20260909T141247Z_6c51302d",
+    "t": 121.41
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 1.0118,
+   "herkunft": {
+    "lauf": "20260909T141247Z_6c51302d",
+    "t": 132.74
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 0.787,
+   "herkunft": {
+    "lauf": "20260909T142309Z_6c51302d",
+    "t": 21.527
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 0.8334,
+   "herkunft": {
+    "lauf": "20260909T142309Z_6c51302d",
+    "t": 36.309
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.3,
+   "anteil": 1.0602,
+   "herkunft": {
+    "lauf": "20260909T142309Z_6c51302d",
+    "t": 82.504
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.3,
+   "anteil": 0.9322,
+   "herkunft": {
+    "lauf": "20260911T150740Z_51b8887e",
+    "t": 50.093
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.03,
+   "anteil": -0.01,
+   "herkunft": {
+    "lauf": "20260911T150740Z_51b8887e",
+    "t": 71.829
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.04,
+   "anteil": -0.0186,
+   "herkunft": {
+    "lauf": "20260911T150740Z_51b8887e",
+    "t": 74.795
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.02,
+   "anteil": -0.0345,
+   "herkunft": {
+    "lauf": "20260911T150740Z_51b8887e",
+    "t": 90.506
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.09,
+   "anteil": -0.0083,
+   "herkunft": {
+    "lauf": "20260911T150740Z_51b8887e",
+    "t": 102.547
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.16,
+   "anteil": 0.9885,
+   "herkunft": {
+    "lauf": "20260911T150740Z_51b8887e",
+    "t": 106.669
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.15,
+   "anteil": 1.0221,
+   "herkunft": {
+    "lauf": "20260911T150740Z_51b8887e",
+    "t": 114.041
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.15,
+   "anteil": 0.9945,
+   "herkunft": {
+    "lauf": "20260911T150740Z_51b8887e",
+    "t": 118.466
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.79,
+   "anteil": 0.9955,
+   "herkunft": {
+    "lauf": "20260911T151153Z_51b8887e",
+    "t": 9.432
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.79,
+   "anteil": 0.9977,
+   "herkunft": {
+    "lauf": "20260911T151153Z_51b8887e",
+    "t": 13.102
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.79,
+   "anteil": 1.0005,
+   "herkunft": {
+    "lauf": "20260911T151153Z_51b8887e",
+    "t": 24.315
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.79,
+   "anteil": 0.9692,
+   "herkunft": {
+    "lauf": "20260911T151153Z_51b8887e",
+    "t": 37.554
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 1.0388,
+   "herkunft": {
+    "lauf": "20260911T163134Z_310b13ae",
+    "t": 13.543
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 0.8142,
+   "herkunft": {
+    "lauf": "20260914T151418Z_310b13ae",
+    "t": 74.18
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.79,
+   "anteil": 1.0017,
+   "herkunft": {
+    "lauf": "20260914T151418Z_310b13ae",
+    "t": 82.905
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 0.8115,
+   "herkunft": {
+    "lauf": "20260914T151710Z_310b13ae",
+    "t": 11.864
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 0.8056,
+   "herkunft": {
+    "lauf": "20260914T151710Z_310b13ae",
+    "t": 20.481
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 0.8092,
+   "herkunft": {
+    "lauf": "20260914T151710Z_310b13ae",
+    "t": 26.79
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.39,
+   "anteil": 0.986,
+   "herkunft": {
+    "lauf": "20260916T101804Z_310b13ae",
+    "t": 13.872
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.79,
+   "anteil": 0.9881,
+   "herkunft": {
+    "lauf": "20260916T103355Z_310b13ae",
+    "t": 13.136
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 0.8115,
+   "herkunft": {
+    "lauf": "20260916T103355Z_310b13ae",
+    "t": 19.891
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 1.078,
+   "herkunft": {
+    "lauf": "20260916T113556Z_310b13ae",
+    "t": 10.915
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.79,
+   "anteil": 0.8853,
+   "herkunft": {
+    "lauf": "20260916T114435Z_310b13ae",
+    "t": 32.022
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 1.0941,
+   "herkunft": {
+    "lauf": "20260916T122121Z_310b13ae",
+    "t": 7.175
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 0.9953,
+   "herkunft": {
+    "lauf": "20260916T122511Z_310b13ae",
+    "t": 9.151
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.38,
+   "anteil": 1.0093,
+   "herkunft": {
+    "lauf": "20260916T122739Z_29668fd8",
+    "t": 45.115
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.72,
+   "anteil": 0.8145,
+   "herkunft": {
+    "lauf": "20260916T122739Z_29668fd8",
+    "t": 50.32
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.79,
+   "anteil": 0.9723,
+   "herkunft": {
+    "lauf": "20260916T122739Z_29668fd8",
+    "t": 61.001
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.79,
+   "anteil": 0.9569,
+   "herkunft": {
+    "lauf": "20260916T122739Z_29668fd8",
+    "t": 75.184
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.39,
+   "anteil": 0.9979,
+   "herkunft": {
+    "lauf": "20260916T123124Z_310b13ae",
+    "t": 11.305
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.2,
+   "anteil": 0.8481,
+   "herkunft": {
+    "lauf": "20260916T130047Z_310b13ae",
+    "t": 7.893
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.39,
+   "anteil": 0.8539,
+   "herkunft": {
+    "lauf": "20260916T130047Z_310b13ae",
+    "t": 12.347
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.79,
+   "anteil": 0.8863,
+   "herkunft": {
+    "lauf": "20260916T130129Z_29668fd8",
+    "t": 17.524
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.79,
+   "anteil": 0.9191,
+   "herkunft": {
+    "lauf": "20260916T130129Z_29668fd8",
+    "t": 21.543
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.06,
+   "anteil": 1.1139,
+   "herkunft": {
+    "lauf": "20260916T130501Z_29668fd8",
+    "t": 36.736
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 1.1,
+   "anteil": 0.9743,
+   "herkunft": {
+    "lauf": "20260916T130823Z_310b13ae",
+    "t": 14.512
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "anteil": 1.0271,
+   "herkunft": {
+    "lauf": "20260916T130823Z_310b13ae",
+    "t": 42.831
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "anteil": 1.003,
+   "herkunft": {
+    "lauf": "20260916T130823Z_310b13ae",
+    "t": 49.365
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "anteil": 1.0044,
+   "herkunft": {
+    "lauf": "20260916T130823Z_310b13ae",
+    "t": 59.09
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "anteil": 1.0754,
+   "herkunft": {
+    "lauf": "20260916T130823Z_310b13ae",
+    "t": 72.509
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "anteil": 1.0336,
+   "herkunft": {
+    "lauf": "20260916T130823Z_310b13ae",
+    "t": 80.054
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "anteil": 1.0096,
+   "herkunft": {
+    "lauf": "20260916T130823Z_310b13ae",
+    "t": 84.603
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "anteil": 0.7266,
+   "herkunft": {
+    "lauf": "20260916T130823Z_310b13ae",
+    "t": 96.704
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "anteil": 0.9542,
+   "herkunft": {
+    "lauf": "20260916T130823Z_310b13ae",
+    "t": 100.286
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "anteil": 1.023,
+   "herkunft": {
+    "lauf": "20260916T130823Z_310b13ae",
+    "t": 108.133
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 0.9478,
+   "herkunft": {
+    "lauf": "20260916T131653Z_310b13ae",
+    "t": 12.462
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "anteil": 0.9469,
+   "herkunft": {
+    "lauf": "20260916T131653Z_310b13ae",
+    "t": 27.648
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "anteil": 0.8106,
+   "herkunft": {
+    "lauf": "20260916T131653Z_310b13ae",
+    "t": 35.779
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "anteil": 0.8555,
+   "herkunft": {
+    "lauf": "20260916T131653Z_310b13ae",
+    "t": 46.925
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 1.1,
+   "anteil": 1.0047,
+   "herkunft": {
+    "lauf": "20260916T131813Z_310b13ae",
+    "t": 40.183
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "anteil": 1.0704,
+   "herkunft": {
+    "lauf": "20260916T131813Z_310b13ae",
+    "t": 46.76
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 1.1,
+   "anteil": 0.9889,
+   "herkunft": {
+    "lauf": "20260916T131813Z_310b13ae",
+    "t": 62.7
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "anteil": 1.0522,
+   "herkunft": {
+    "lauf": "20260916T131813Z_310b13ae",
+    "t": 67.79
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "anteil": 0.9942,
+   "herkunft": {
+    "lauf": "20260916T131813Z_310b13ae",
+    "t": 71.555
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.79,
+   "anteil": 1.0019,
+   "herkunft": {
+    "lauf": "20260916T131945Z_29668fd8",
+    "t": 120.343
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.79,
+   "anteil": 1.0063,
+   "herkunft": {
+    "lauf": "20260916T131945Z_29668fd8",
+    "t": 125.22
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "anteil": 1.0481,
+   "herkunft": {
+    "lauf": "20260916T132300Z_310b13ae",
+    "t": 17.143
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "anteil": 0.9873,
+   "herkunft": {
+    "lauf": "20260916T133307Z_310b13ae",
+    "t": 28.127
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.79,
+   "anteil": 0.9781,
+   "herkunft": {
+    "lauf": "20260916T135625Z_29668fd8",
+    "t": 552.824
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.79,
+   "anteil": 1.0079,
+   "herkunft": {
+    "lauf": "20260916T135625Z_29668fd8",
+    "t": 562.616
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.79,
+   "anteil": 1.0018,
+   "herkunft": {
+    "lauf": "20260916T135625Z_29668fd8",
+    "t": 573.516
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 1.1,
+   "anteil": 0.9974,
+   "herkunft": {
+    "lauf": "20260916T141112Z_310b13ae",
+    "t": 12.121
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "anteil": 0.9941,
+   "herkunft": {
+    "lauf": "20260916T141112Z_310b13ae",
+    "t": 22.738
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "anteil": 0.8634,
+   "herkunft": {
+    "lauf": "20260916T141112Z_310b13ae",
+    "t": 29.29
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.79,
+   "anteil": 0.9429,
+   "herkunft": {
+    "lauf": "20260916T144117Z_29668fd8",
+    "t": 18.426
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.07,
+   "anteil": 0.8629,
+   "herkunft": {
+    "lauf": "20260916T150628Z_29668fd8",
+    "t": 24.007
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.1,
+   "anteil": 0.8176,
+   "herkunft": {
+    "lauf": "20260916T150628Z_29668fd8",
+    "t": 32.069
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.12,
+   "anteil": 0.0092,
+   "herkunft": {
+    "lauf": "20260916T150628Z_29668fd8",
+    "t": 62.477
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.12,
+   "anteil": 0.0324,
+   "herkunft": {
+    "lauf": "20260916T150628Z_29668fd8",
+    "t": 72.833
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.79,
+   "anteil": 1.0005,
+   "herkunft": {
+    "lauf": "20260916T151014Z_310b13ae",
+    "t": 8.678
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.2,
+   "anteil": 0.9153,
+   "herkunft": {
+    "lauf": "20260917T093738Z_310b13ae",
+    "t": 13.722
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 0.9965,
+   "herkunft": {
+    "lauf": "20260917T093738Z_310b13ae",
+    "t": 18.696
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.79,
+   "anteil": 0.9995,
+   "herkunft": {
+    "lauf": "20260917T093738Z_310b13ae",
+    "t": 30.259
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 1.0943,
+   "herkunft": {
+    "lauf": "20260917T093738Z_310b13ae",
+    "t": 85.951
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.79,
+   "anteil": 1.0074,
+   "herkunft": {
+    "lauf": "20260917T094118Z_463e7606",
+    "t": 13.133
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.79,
+   "anteil": 1.0162,
+   "herkunft": {
+    "lauf": "20260917T094118Z_463e7606",
+    "t": 23.89
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.79,
+   "anteil": 0.9288,
+   "herkunft": {
+    "lauf": "20260917T094118Z_463e7606",
+    "t": 45.721
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.79,
+   "anteil": 1.0,
+   "herkunft": {
+    "lauf": "20260917T094118Z_463e7606",
+    "t": 51.587
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 0.8112,
+   "herkunft": {
+    "lauf": "20260917T094346Z_310b13ae",
+    "t": 19.615
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 1.0195,
+   "herkunft": {
+    "lauf": "20260917T094346Z_310b13ae",
+    "t": 24.197
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 0.8484,
+   "herkunft": {
+    "lauf": "20260917T100404Z_310b13ae",
+    "t": 33.133
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 0.6322,
+   "herkunft": {
+    "lauf": "20260917T100404Z_310b13ae",
+    "t": 39.066
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 0.8068,
+   "herkunft": {
+    "lauf": "20260917T100404Z_310b13ae",
+    "t": 43.222
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "anteil": 1.1147,
+   "herkunft": {
+    "lauf": "20260917T100404Z_310b13ae",
+    "t": 58.638
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "anteil": 1.0137,
+   "herkunft": {
+    "lauf": "20260917T100525Z_310b13ae",
+    "t": 23.841
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 1.1,
+   "anteil": 0.8021,
+   "herkunft": {
+    "lauf": "20260917T101426Z_310b13ae",
+    "t": 28.654
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.2,
+   "anteil": 0.6703,
+   "herkunft": {
+    "lauf": "20260918T154344Z_310b13ae",
+    "t": 10.99
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.2,
+   "anteil": 0.8782,
+   "herkunft": {
+    "lauf": "20260918T154344Z_310b13ae",
+    "t": 13.982
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.2,
+   "anteil": 0.7615,
+   "herkunft": {
+    "lauf": "20260918T155437Z_310b13ae",
+    "t": 8.817
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.2,
+   "anteil": 1.0439,
+   "herkunft": {
+    "lauf": "20260918T161749Z_3977daed",
+    "t": 24.666
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.2,
+   "anteil": 0.7945,
+   "herkunft": {
+    "lauf": "20260921T071403Z_3977daed",
+    "t": 10.732
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.3,
+   "anteil": 1.0742,
+   "herkunft": {
+    "lauf": "20260921T071943Z_3977daed",
+    "t": 6.854
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 1.0698,
+   "herkunft": {
+    "lauf": "20260921T071943Z_3977daed",
+    "t": 19.126
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.79,
+   "anteil": 1.0035,
+   "herkunft": {
+    "lauf": "20260921T071943Z_3977daed",
+    "t": 22.456
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 0.9453,
+   "herkunft": {
+    "lauf": "20260921T071943Z_3977daed",
+    "t": 38.492
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 0.9982,
+   "herkunft": {
+    "lauf": "20260921T071943Z_3977daed",
+    "t": 41.457
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 1.0493,
+   "herkunft": {
+    "lauf": "20260921T071943Z_3977daed",
+    "t": 53.489
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 0.9674,
+   "herkunft": {
+    "lauf": "20260921T071943Z_3977daed",
+    "t": 55.979
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.8,
+   "anteil": 1.0175,
+   "herkunft": {
+    "lauf": "20260921T071943Z_3977daed",
+    "t": 60.87
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 0.8152,
+   "herkunft": {
+    "lauf": "20260921T071943Z_3977daed",
+    "t": 66.13
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.79,
+   "anteil": 0.9963,
+   "herkunft": {
+    "lauf": "20260921T071943Z_3977daed",
+    "t": 70.192
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 0.8131,
+   "herkunft": {
+    "lauf": "20260921T071943Z_3977daed",
+    "t": 85.514
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 0.9908,
+   "herkunft": {
+    "lauf": "20260921T080258Z_3977daed",
+    "t": 6.885
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.4,
+   "anteil": 1.0147,
+   "herkunft": {
+    "lauf": "20260921T080611Z_3977daed",
+    "t": 14.62
+   }
+  },
+  {
+   "gruppe": "gehen",
+   "soll": 0.3,
+   "anteil": 1.0416,
+   "herkunft": {
+    "lauf": "20260921T080611Z_3977daed",
+    "t": 27.33
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.79,
+   "anteil": 1.0023,
+   "herkunft": {
+    "lauf": "20260911T152235Z_cd4bb9e9",
+    "t": 8.385
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.79,
+   "anteil": 0.9967,
+   "herkunft": {
+    "lauf": "20260911T154103Z_cd4bb9e9",
+    "t": 8.662
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.79,
+   "anteil": 0.9804,
+   "herkunft": {
+    "lauf": "20260911T154103Z_cd4bb9e9",
+    "t": 25.735
+   }
+  },
+  {
+   "gruppe": "drehen",
+   "soll": 0.79,
+   "anteil": 0.9946,
+   "herkunft": {
+    "lauf": "20260911T162303Z_cd4bb9e9",
+    "t": 7.283
+   }
+  }
+ ],
+ "erzeugt": "2026-09-23T21:19:11.566426+00:00",
+ "bemerkung": "Fahren und Folgen am Schul-Spot, 07.-21.09.2026 (spotProjects/Beispiele/runs und run/runs)",
+ "hinweis": "Antwort des echten Spot auf walk()-Kommandos: Totzeit und Zeitkonstante beim Anfahren und Anhalten, Drehschwelle auf der Stelle, Tempoanteil in Haltephasen. Gemessen am gemeldeten Tempo; Zeiten ab dem Kommando-Ereignis."
+}

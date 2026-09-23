@@ -7,6 +7,12 @@ im Boden versinken. Die Standhoehe aus der Kinematik wird gegen die gemessene
 BERICHTET -- ihre Differenz sagt, wie gut das Menagerie-Modell zum Schul-Spot
 passt (06.09.2026: 2-8 mm).
 
+Gefahren wird mit `Tempoantwort.sofort()`: geprueft wird der GANG beim
+gemessenen Ist-Tempo, nicht die Antwort auf das Kommando (die hat ihre eigene
+Pruefung, `test_backend_sim_tempoantwort.py`). Mit der gemessenen Antwort
+erreichte die Puppe nur den Tempoanteil und liefe mit Verzug an -- der Weg
+waere dann nicht tempo * t, obwohl der Gang stimmt.
+
 Uebersprungen ohne spotsim oder Asset, wie test_backend_mujoco.py.
 """
 
@@ -17,6 +23,9 @@ import pytest
 spotsim = pytest.importorskip("spotsim")
 
 from spotlab.kalibrierung.modell import lade_modell  # noqa: E402
+from spotlab.kalibrierung.tempoantwort import Tempoantwort  # noqa: E402
+
+SOFORT = Tempoantwort.sofort()
 
 pytestmark = pytest.mark.skipif(
     not spotsim.spot_asset_available(),
@@ -56,7 +65,7 @@ def test_die_wiedergabe_trifft_die_messung(stelle):
     tempo = stelle["tempo_m_s"]
     dauer = ZYKLEN * stelle["zyklusdauer_s"]
     uhr = Uhr()
-    backend = MujocoBackend(jetzt=uhr, start=(0.0, 0.0, 0.0))
+    backend = MujocoBackend(jetzt=uhr, start=(0.0, 0.0, 0.0), tempoantwort=SOFORT)
     backend.power_on()
 
     kontakte = {bein: 0 for bein in ("fl", "fr", "hl", "hr")}
@@ -103,7 +112,7 @@ def test_die_zyklusdauer_wird_eingehalten():
 
     stelle = _stuetzstellen()[1]
     uhr = Uhr()
-    backend = MujocoBackend(jetzt=uhr, start=(0.0, 0.0, 0.0))
+    backend = MujocoBackend(jetzt=uhr, start=(0.0, 0.0, 0.0), tempoantwort=SOFORT)
     backend.power_on()
     umschlaege, letzte = 0, 0.0
     ende = uhr.t + ZYKLEN * stelle["zyklusdauer_s"] + 1e-6

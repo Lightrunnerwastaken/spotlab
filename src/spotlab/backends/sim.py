@@ -11,7 +11,13 @@ er sich, und zwar so, wie der echte Spot am 12.08.2026 gemessen wurde.
 WAS DAS IST
     Eine Interpolation zwischen gemessenen Gangarten. Bei 0.36 m/s bewegen
     sich die Gelenke so, wie sie sich am echten Roboter bei 0.36 m/s bewegt
-    haben.
+    haben. Und seit dem 23.09.2026 kommt das Tempo so, wie der echte Spot es
+    auf ein walk()-Kommando liefert (`kalibrierung/tempoantwort.py`, 60
+    kommandierte Laeufe): nach 0.1 s Latenz, aus dem Stand mit Anlauf, mit
+    Anfahren und Auslaufen, im gemessenen Anteil des Sollwerts, und reines
+    Drehen unter 0.125 rad/s bleibt stehen. Bis dahin galt: kommandiert IST
+    erreicht, sofort -- ein Programm lief im Sim ohne Verzug und stand beim
+    Loslassen im selben Takt.
 
 WAS DAS NICHT IST
     Physik. Es gibt keine Massen, keine Kontaktkräfte, keinen Regler. Der
@@ -100,9 +106,11 @@ class SimBackend:
     """Bewegt sich nach der Gangkennlinie. Kein Roboter, keine Physik."""
 
     def __init__(self, recorder=None, jetzt=time.time, modell=None,
-                 raum=None, start=None, antwort=None, treppen="auto"):
+                 raum=None, start=None, antwort=None, treppen="auto", tempoantwort=None):
         from spotlab.kalibrierung.antwort import lade_modell as lade_antwort
         from spotlab.kalibrierung.modell import lade_modell
+        from spotlab.kalibrierung.tempoantwort import Folger
+        from spotlab.kalibrierung.tempoantwort import lade_modell as lade_tempoantwort
 
         # Stufe 10: ein Zimmer um den Sim herum. OHNE Raum verhaelt sich alles
         # exakt wie vorher -- daran haengt jeder bestehende Lauf und jeder
@@ -120,6 +128,15 @@ class SimBackend:
         # einem Tempo aus der Mitte der Kennlinie: ein Platzhalter, der es
         # immerhin zugab.
         self._antwort = antwort or lade_antwort()
+        # Die Antwort auf walk(): der Folger haelt das IST-Tempo, `_soll` bleibt
+        # das Kommando (die Treppenregel fragt die befohlene Richtung). Ziele
+        # (move) fahren weiter ihr eigenes Profil oben.
+        self._tempo = tempoantwort or lade_tempoantwort()
+        self._folger = Folger(self._tempo)
+        self._abgelaufen = True            # der Ablauf des letzten walk ist vorgemerkt
+        self._letzte_art = None
+        self._unter_drehschwelle = 0       # Kommandos, die Spot auf der Stelle stehen laesst
+        self._tempo_ausserhalb = 0         # Kommandos ausserhalb des gemessenen Tempoanteils
         self._deckel = (None, None)        # (m/s, rad/s) aus vel_limit im Kommando
         self._ziele_ausserhalb = 0
         # Totzeiten der gemessenen Antwort: vor dem Losfahren und -- nach dem
@@ -374,6 +391,7 @@ class SimBackend:
         self._beende_ziel("Motoren aus (Sim)", rejected=True)
         self._powered = False
         self._soll = (0.0, 0.0, 0.0)
+        self._folger.zuruecksetzen()
         self._sitzt = True
 
     def close(self):
@@ -413,6 +431,12 @@ class SimBackend:
             "antwort": {
                 **self._antwort.beschreibung(),
                 "ziele_ausserhalb_der_messung": self._ziele_ausserhalb,
+            },
+            # Die Antwort auf walk(); was davon nicht gemessen ist, zaehlt hier.
+            "tempoantwort": {
+                **self._tempo.beschreibung(),
+                "befehle_unter_drehschwelle": self._unter_drehschwelle,
+                "befehle_ausserhalb_der_messung": self._tempo_ausserhalb,
             },
             "kennlinie": {
                 "stuetzstellen_fahrt": len(self._modell.fahren),
@@ -493,18 +517,30 @@ class SimBackend:
             # `angular` ist bei SE2Velocity ein SKALAR, kein Vektor — anders als
             # bei der Geschwindigkeit im RobotState, wo `angular.z` steht.
             v = mobil.se2_velocity_request.velocity
+            if self._letzte_art == "se2_trajectory_request":
+                # Aus dem Zielprofil weiter, sonst spraenge das Tempo auf null.
+                self._folger.zuruecksetzen(
+                    self._soll if jetzt < self._gueltig_bis else (0.0, 0.0, 0.0))
             self._soll = (v.linear.x, v.linear.y, v.angular)
+            ziel, unter = self._tempo.ziel(*self._soll)
+            self._unter_drehschwelle += unter
+            self._tempo_ausserhalb += not self._tempo.gemessen(*self._soll)
+            self._folger.befehl(jetzt, ziel)
+            self._abgelaufen = False
             self._sitzt = False
             self._gueltig_bis = (
                 float(end_time_secs) if end_time_secs is not None else jetzt + NACHLAUF_S
             )
         elif art == "stand_request":
             self._soll = (0.0, 0.0, 0.0)
+            self._folger.befehl(jetzt, (0.0, 0.0, 0.0))
             self._sitzt = False
         elif art == "sit_request":
             self._soll = (0.0, 0.0, 0.0)
+            self._folger.zuruecksetzen()
             self._sitzt = True
         elif art == "se2_trajectory_request":
+            self._folger.zuruecksetzen()
             # Eine Zieltrajektorie: der echte Spot wählt sein Tempo selbst. WIE,
             # ist seit dem 02.09.2026 gemessen (kalibrierung/antwort.py):
             # Anfahren, Reisetempo, Bremsen — bei 1 m und 90°. Andere Ziele
@@ -528,9 +564,13 @@ class SimBackend:
                 float(end_time_secs) if end_time_secs is not None else jetzt + NACHLAUF_S
             )
         else:
-            # stop_command und alles andere: anhalten.
+            # stop_command und alles andere: anhalten -- nach der Latenz, mit
+            # Auslaufen (gemessen: 90 % -> 10 % in rund 0.3 s).
             self._soll = (0.0, 0.0, 0.0)
             self._gueltig_bis = jetzt
+            self._folger.befehl(jetzt, (0.0, 0.0, 0.0))
+            self._abgelaufen = True
+        self._letzte_art = art
 
     def _ziel_aus(self, anfrage):
         """Zielpose (x, y, yaw) im odom-Frame, oder None.
@@ -698,22 +738,43 @@ class SimBackend:
         jetzt = self._jetzt()
         if jetzt <= self._t:
             return
-        ende = min(jetzt, self._gueltig_bis)
         geprueft = self._pose
-        while self._t < ende:
-            if not self._powered or self._sitzt or (
-                self._ziel is None and self._soll == (0.0, 0.0, 0.0)
-            ):
-                break
-            if self._ziel is not None and self._t < self._ziel_ab:
-                self._t = min(ende, self._ziel_ab)
-                continue
-            weiter = min(ende, self._t + MAX_DT_S)
-            dt = weiter - self._t
-            self._schritt(dt, self._t)
-            if math.dist(geprueft[:2], self._pose[:2]) >= MAX_SCHRITT_M:
-                geprueft = self._welt_pruefen(geprueft)
-            self._t = weiter
+        if self._ziel is not None:
+            ende = min(jetzt, self._gueltig_bis)
+            while self._t < ende and self._ziel is not None:
+                if not self._powered or self._sitzt:
+                    break
+                if self._t < self._ziel_ab:
+                    self._t = min(ende, self._ziel_ab)
+                    continue
+                weiter = min(ende, self._t + MAX_DT_S)
+                self._schritt(weiter - self._t, self._t)
+                if math.dist(geprueft[:2], self._pose[:2]) >= MAX_SCHRITT_M:
+                    geprueft = self._welt_pruefen(geprueft)
+                self._t = weiter
+        else:
+            # walk(): das Ist-Tempo laeuft auch NACH dem Ablauf aus. Der Ablauf
+            # ist ein Nullkommando genau zur Ablaufzeit -- vorgemerkt, wenn die
+            # Zeit ihn erreicht, damit ein spaeteres Kommando ihn nicht ueberholt.
+            while self._t < jetzt and self._powered and not self._sitzt:
+                if not self._abgelaufen and self._t >= self._gueltig_bis:
+                    self._folger.befehl(self._gueltig_bis, (0.0, 0.0, 0.0))
+                    self._abgelaufen = True
+                if self._folger.ruht:
+                    break
+                weiter = min(jetzt, self._t + MAX_DT_S)
+                if not self._abgelaufen and self._t < self._gueltig_bis < weiter:
+                    weiter = self._gueltig_bis
+                ereignis = self._folger.naechstes_ereignis()
+                if ereignis is not None and self._t < ereignis < weiter:
+                    weiter = ereignis
+                self._schritt(weiter - self._t, self._t)
+                if math.dist(geprueft[:2], self._pose[:2]) >= MAX_SCHRITT_M:
+                    geprueft = self._welt_pruefen(geprueft)
+                self._t = weiter
+            if not self._abgelaufen and jetzt >= self._gueltig_bis:
+                self._folger.befehl(self._gueltig_bis, (0.0, 0.0, 0.0))
+                self._abgelaufen = True
         self._welt_pruefen(geprueft)
         if jetzt >= self._gueltig_bis:
             self._beende_ziel("abgelaufen (Sim)", rejected=True)
@@ -721,9 +782,12 @@ class SimBackend:
         self._t = jetzt
 
     def _geschwindigkeit(self):
-        if self._powered and not self._sitzt and self._t < self._gueltig_bis:
-            return self._soll
-        return 0.0, 0.0, 0.0
+        """Das IST-Tempo: bei Zielen das Profil, bei walk() der Folger."""
+        if not self._powered or self._sitzt:
+            return 0.0, 0.0, 0.0
+        if self._ziel is not None:
+            return self._soll if self._t < self._gueltig_bis else (0.0, 0.0, 0.0)
+        return self._folger.ist
 
     def _schritt(self, dt, jetzt):
         from spotlab.kalibrierung.modell import integriere
@@ -735,7 +799,9 @@ class SimBackend:
                 self._soll = (0.0, 0.0, 0.0)
             else:
                 self._soll = gefunden
-        vx, vy, wz = self._soll
+            vx, vy, wz = self._soll
+        else:
+            vx, vy, wz = self._folger.schritt(jetzt, dt)
         tempo = math.hypot(vx, vy)
         if tempo > 1e-6 or abs(wz) > 1e-6:
             self._takte_bewegt += 1

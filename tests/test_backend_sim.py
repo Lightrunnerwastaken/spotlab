@@ -43,8 +43,12 @@ def _fahre(backend, uhr, vx=0.0, wz=0.0, sekunden=1.0, schritt=0.05):
     backend.robot_state()
 
 
-def _sim(uhr):
-    b = SimBackend(jetzt=uhr)
+def _sim(uhr, sofort=False):
+    """`sofort`: kommandiert IST erreicht (Tempoantwort.sofort) -- fuer Tests, die das
+    Integrieren pruefen, nicht die gemessene Antwort des Roboters."""
+    from spotlab.kalibrierung.tempoantwort import Tempoantwort
+
+    b = SimBackend(jetzt=uhr, tempoantwort=Tempoantwort.sofort() if sofort else None)
     b.power_on()
     return b
 
@@ -58,7 +62,7 @@ def uhr():
 
 
 def test_die_strecke_stimmt(uhr):
-    backend = _sim(uhr)
+    backend = _sim(uhr, sofort=True)      # das Rechnen; die Antwort: test_backend_sim_tempoantwort
     _fahre(backend, uhr, vx=0.3, sekunden=4.0)
     from bosdyn.client.frame_helpers import (
         BODY_FRAME_NAME,
@@ -72,7 +76,7 @@ def test_die_strecke_stimmt(uhr):
 
 
 def test_die_drehung_stimmt(uhr):
-    backend = _sim(uhr)
+    backend = _sim(uhr, sofort=True)
     _fahre(backend, uhr, wz=0.5, sekunden=3.0)
     from bosdyn.client.frame_helpers import (
         BODY_FRAME_NAME,
@@ -137,7 +141,9 @@ def test_beim_gehen_heben_fuesse_ab(uhr):
 
 def test_ohne_nachschub_bleibt_er_stehen(uhr):
     """Geschwindigkeitskommandos verfallen — beim echten Spot ist das eine
-    Sicherheitseigenschaft. Ein Sim, der weiterliefe, verstecke sie."""
+    Sicherheitseigenschaft. Ein Sim, der weiterliefe, verstecke sie. Mit der
+    gemessenen Antwort laeuft er nach dem Ablauf noch aus (Latenz 0.1 s, rund
+    0.3 s Auslaufen) -- deshalb wird erst nach 2 s verglichen."""
     from bosdyn.client.robot_command import RobotCommandBuilder
 
     backend = _sim(uhr)
@@ -145,7 +151,7 @@ def test_ohne_nachschub_bleibt_er_stehen(uhr):
         RobotCommandBuilder.synchro_velocity_command(v_x=0.3, v_y=0.0, v_rot=0.0),
         end_time_secs=uhr.t + 1.0,
     )
-    uhr.weiter(1.0)
+    uhr.weiter(2.0)
     backend.robot_state()
     from bosdyn.client.frame_helpers import (
         BODY_FRAME_NAME,
@@ -568,7 +574,7 @@ def test_ein_walk_hebt_ein_laufendes_ziel_auf(uhr):
         RobotCommandBuilder.synchro_velocity_command(v_x=0.0, v_y=0.0, v_rot=0.0),
         end_time_secs=uhr.t + 1.0,
     )
-    uhr.weiter(0.1)
+    uhr.weiter(1.0)                        # Latenz und Auslaufen, gemessen
     backend.robot_state()
     stand = _pose(backend)[0]
     uhr.weiter(20.0)
@@ -1076,7 +1082,10 @@ def test_die_weltpruefung_haengt_an_der_strecke_nicht_am_takt(uhr, monkeypatch):
         return echt(*args, **kwargs)
 
     monkeypatch.setattr(kollision, "hindernis_bei", gezaehlt)
-    backend = SimBackend(raum=_uebungsraum(), start=(1.0, 5.0, 0.0), jetzt=uhr)
+    from spotlab.kalibrierung.tempoantwort import Tempoantwort
+
+    backend = SimBackend(raum=_uebungsraum(), start=(1.0, 5.0, 0.0), jetzt=uhr,
+                         tempoantwort=Tempoantwort.sofort())       # gezaehlt wird, nicht gefahren
     backend.power_on()
     _fahre(backend, uhr, vx=0.4, sekunden=2.0, schritt=0.05)      # 0.8 m, 41 Abfragen
     assert zaehler["n"] <= 41 + 8 + 2, zaehler["n"]

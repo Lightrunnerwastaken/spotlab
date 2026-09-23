@@ -666,13 +666,25 @@ versionsgepinntes Extra `spotlab[sim]`.
   gesetzt, Kameras und GraphNav fehlen in `capabilities()`. Ein erfundener Reibwert
   0.6 oder ein erfundenes Bild sähe aus wie eine Messung und liefe in jede
   Auswertung — dieselbe Regel wie in `api/state.py`.
-- **Es gibt keine Kurve „kommandiert → erreicht", und der Sim tut nicht so.** Im
-  Beobachter-Modus hat niemand kommandiert; `ziel_m_s` ist die ABSICHT des
-  Bedieners, und er hat mit der Live-Anzeige darauf hin gesteuert. Die Abweichung
-  misst also die Tablet-Bedienung, nicht das Folgeverhalten des Roboters. Wer sie
-  als Schleppfehler ausgibt, verkauft Bedienfehler als Robotereigenschaft. Der
-  echte Schleppfehler bleibt unbekannt, bis jemand mit `gates_real.py`
-  **kommandiert** misst — hinter Sperrpunkt A1.
+- **Die Kurve „kommandiert → erreicht" kommt aus KOMMANDIERTEN Läufen, nie aus dem
+  Beobachter-Modus.** Dort hat niemand kommandiert; `ziel_m_s` ist die ABSICHT des
+  Bedieners, und die Abweichung misst die Tablet-Bedienung — wer sie als
+  Schleppfehler ausgibt, verkauft Bedienfehler als Robotereigenschaft. **Seit dem
+  23.09.2026 gibt es die Kurve** (`kalibrierung/tempoantwort.py`, `docs/SIM_ANTWORT.md`):
+  60 Läufe mit `fahren.py`/`folgen.py` am Schul-Spot, `walk`-Kommandos und gemeldetes
+  Tempo. `SimBackend` (und damit die Puppe) fährt sie: 0.1 s Latenz, aus dem Stand
+  0.15 s Anlauf, Anfahren/Auslaufen erster Ordnung, Tempoanteil (87 % bei 0.2 m/s),
+  und **reines Drehen unter 0.125 rad/s bleibt stehen** — der echte Spot tut es auch
+  (über 1700 Takte). Bis dahin galt: kommandiert IST erreicht, sofort, und nach dem
+  Loslassen stand er im selben Takt. `Tempoantwort.sofort()` ist diese alte Annahme —
+  nur für Prüfungen, die etwas ANDERES messen (G11 Gangwiedergabe, Mechanik der
+  Zeitintegration). **Gültigkeit nur außerhalb der Stichprobe**: Kennlinie aus den
+  Läufen bis 16.09. bauen, die danach nachspielen (`kalibrierung/nachspiel.py`, `--bis`
+  und `--ab`); gegen dieselben Läufe gemessen zeigt es nur die Anpassung. Befehle
+  wirken zu IHRER Zeit: der Sim teilt seine 5-ms-Schritte an jedem Wirkzeitpunkt,
+  sonst hinge die Bahn davon ab, wie oft jemand nach dem Zustand fragt. Nicht gemessen
+  und nicht erfunden: eine Gehschwelle unter 0.15 m/s (`bericht()` zählt solche
+  Kommandos), das Gierzittern (0.06°, ein Drittel Pixel), Seitwärtsfahrt.
 - **Eine kombinierte Bewegung wurde nie vermessen.** Die B2-Fenster haben
   Drehraten um 0.000, die B3-Fenster Tempi um 0.005. Das Modell wählt deshalb die
   dominierende Achse, statt zwischen zwei Messreihen zu mischen, die nichts

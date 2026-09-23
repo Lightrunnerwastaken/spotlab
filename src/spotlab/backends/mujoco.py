@@ -277,9 +277,9 @@ class MujocoBackend(SimBackend):
     """Bewegt sich nach Gangkennlinie und Antwortmodell — in einem 3D-Zimmer."""
 
     def __init__(self, recorder=None, jetzt=time.time, modell=None, raum=None,
-                 start=None, antwort=None, ansicht_ziel=None, treppen="auto"):
-        super().__init__(recorder=recorder, jetzt=jetzt, modell=modell,
-                         raum=raum, start=start, antwort=antwort, treppen=treppen)
+                 start=None, antwort=None, ansicht_ziel=None, treppen="auto", tempoantwort=None):
+        super().__init__(recorder=recorder, jetzt=jetzt, modell=modell, raum=raum, start=start,
+                         antwort=antwort, treppen=treppen, tempoantwort=tempoantwort)
         puppe = _puppe_laden()
         self.puppe = puppe.SpotPuppe(welt_aus_raum(raum, puppe))
         self._fassung = puppe.FASSUNG

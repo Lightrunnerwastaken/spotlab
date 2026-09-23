@@ -15,9 +15,10 @@ WAS ES NICHT BEANTWORTET
     gut ein Mensch ein Tablet bedient, nicht wie gut der Roboter folgt. Wer sie
     als Schleppfehler ausgäbe, verkaufte Bedienfehler als Robotereigenschaft.
 
-    Deshalb gilt hier: kommandiert IST erreicht. Der Schleppfehler des echten
-    Spot bleibt unbekannt, bis jemand mit `gates_real.py` kommandiert misst —
-    und das steht hinter Sperrpunkt A1.
+    Deshalb beantwortet dieses Modell es nicht: es nimmt das Tempo, das der
+    Roboter HAT. Wie er auf ein Kommando dorthin kommt, misst seit dem
+    23.09.2026 `tempoantwort.py` aus KOMMANDIERTEN Läufen (Fahren, Folgen) —
+    Latenz, Anlauf, Anfahren, Auslaufen, Drehschwelle, Tempoanteil.
 
 AUSSERHALB DER MESSUNG
     Unter der langsamsten und über der schnellsten gemessenen Gangart gibt es

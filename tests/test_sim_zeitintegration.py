@@ -1,4 +1,11 @@
-"""Regressionen: Beobachten darf weder Fahrt verlieren noch Erfolg erfinden."""
+"""Regressionen: Beobachten darf weder Fahrt verlieren noch Erfolg erfinden.
+
+Die Mechanik der Zeitintegration wird mit `Tempoantwort.sofort()` geprueft
+(kommandiert IST erreicht, sofort): die exakten Zahlen hier -- 0.3 m nach 1 s,
+0.6 m nach 2 s -- sind Aussagen ueber das Integrieren, nicht ueber die Antwort
+des Roboters. Die gemessene Antwort (Latenz, Anlauf, Auslaufen) pruefen
+`test_backend_sim_tempoantwort.py` und unten `..._mit_der_gemessenen_antwort`.
+"""
 
 import math
 import threading
@@ -7,6 +14,9 @@ import pytest
 from bosdyn.client.robot_command import RobotCommandBuilder as B
 
 from spotlab.backends.sim import SimBackend
+from spotlab.kalibrierung.tempoantwort import Tempoantwort
+
+SOFORT = Tempoantwort.sofort()
 
 
 class Uhr:
@@ -28,7 +38,7 @@ def roboter(request):
         from spotlab.backends.mujoco import MujocoBackend
 
         cls = MujocoBackend
-    b = cls(jetzt=uhr)
+    b = cls(jetzt=uhr, tempoantwort=SOFORT)
     b.power_on()
     yield b, uhr
     b.close()
@@ -97,6 +107,31 @@ def test_grobe_und_feine_abfragen_liefern_denselben_verlauf():
     assert all(0 < p <= 1 for p in positionen)
 
 
+def test_grobe_und_feine_abfragen_mit_der_gemessenen_antwort():
+    """Auch mit Latenz, Anlauf und Auslaufen haengt die Bahn nicht davon ab, wie oft
+    jemand fragt: Kommandos wirken zu IHRER Zeit, nicht am Anfang des naechsten
+    5-ms-Schritts."""
+    befehle = [(0.0, .4, 0.), (.3, .4, .3), (.8, 0., .3), (1.4, .2, 0.)]
+    positionen = []
+    for dt in (.02, .1, .25, .037):
+        uhr = Uhr()
+        b = SimBackend(jetzt=uhr)
+        b.power_on()
+        abfragen = sorted({min(3., i * dt) for i in range(1, math.ceil(3 / dt) + 1)}
+                          | {t for t, *_ in befehle})
+        for t in abfragen:
+            uhr.t = 1_000_000 + t
+            b.robot_state()
+            for tb, vx, wz in befehle:
+                if abs(tb - t) < 1e-12:
+                    b.send_command(B.synchro_velocity_command(vx, 0, wz), end_time_secs=uhr.t + 1)
+        positionen.append(b._pose)
+    for achse in range(3):
+        werte = [p[achse] for p in positionen]
+        assert max(werte) - min(werte) < 1e-3, werte
+    assert positionen[0][0] > 0.2
+
+
 def test_startverzug_wird_nicht_rueckwirkend_gefahren():
     uhr = Uhr()
     b = SimBackend(jetzt=uhr)
@@ -127,7 +162,7 @@ def test_frame_snapshot_zieht_bewegung_vor_folgeziel_nach(roboter):
 
 def test_rueckwaertssprung_wird_nicht_doppelt_integriert():
     uhr = Uhr()
-    b = SimBackend(jetzt=uhr)
+    b = SimBackend(jetzt=uhr, tempoantwort=SOFORT)
     b.power_on()
     b.send_command(B.synchro_velocity_command(.3, 0, 0), end_time_secs=uhr.t + 10)
     for t in (1, .5, 1, 2):
