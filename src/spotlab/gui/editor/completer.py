@@ -49,7 +49,7 @@ from spotlab.editor.verbs import (
     spotlab_verben,
     teilwort,
 )
-from spotlab.gui.editor.codeedit import rohtext
+from spotlab.gui.editor.codeedit import bis_position, rohtext, vor_dem_cursor
 from spotlab.gui.theme import DUNKEL
 
 # jedi wird erst im JediWorker geladen, beim ersten Vorschlag: der Import kostet
@@ -426,7 +426,9 @@ class Vervollstaendigung(QObject):
                 self.completer.popup().hide()
                 return
             quelltext = rohtext(self._editor.document())
-            if not im_code(quelltext[: self._editor.textCursor().position()]):
+            # position() zaehlt UTF-16; ein Python-Schnitt nahm nach jedem Emoji
+            # ein Zeichen HINTER dem Cursor mit -- etwa ein Anfuehrungszeichen.
+            if not im_code(bis_position(quelltext, self._editor.textCursor().position())):
                 self.completer.popup().hide()
                 return
         self._nummer += 1
@@ -434,8 +436,7 @@ class Vervollstaendigung(QObject):
         self._frage_jedi(self._nummer, quelltext)
 
     def _vor_dem_cursor(self):
-        cursor = self._editor.textCursor()
-        return cursor.block().text()[: cursor.positionInBlock()]
+        return vor_dem_cursor(self._editor.textCursor())
 
     def _zeige(self, vorschlaege, praefixwort):
         self.modell.setze(vorschlaege)
@@ -508,7 +509,7 @@ class Vervollstaendigung(QObject):
             nummer,
             rohtext(self._editor.document()) if quelltext is None else quelltext,
             cursor.blockNumber() + 1,
-            cursor.positionInBlock(),
+            len(vor_dem_cursor(cursor)),          # jedi zaehlt Zeichen, nicht UTF-16
             self._pfad,
         )
         self._starte_auftrag()

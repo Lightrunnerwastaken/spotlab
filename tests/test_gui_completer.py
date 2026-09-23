@@ -459,6 +459,61 @@ def test_jedi_bekommt_den_rohtext_samt_zeilentrenner(qapp, monkeypatch):
     assert quelltext.split("\n")[zeile - 1][:spalte] == "math."
 
 
+# Emojis ausserhalb der BMP: Qt zaehlt UTF-16-Einheiten, Python Zeichen. Jeder
+# Schnitt „Text bis zum Cursor" nahm nach einem Emoji Zeichen HINTER dem Cursor mit.
+
+ROBOTER = chr(0x1F916)
+
+
+def _u16(text):
+    return len(text.encode("utf-16-le")) // 2
+
+
+def _cursor_nach(feld, text_davor):
+    cursor = feld.textCursor()
+    cursor.setPosition(_u16(text_davor))
+    feld.setTextCursor(cursor)
+
+
+def test_text_vor_dem_cursor_endet_am_cursor_auch_nach_einem_emoji(qapp, monkeypatch):
+    monkeypatch.setattr(modul, "jedi", None)
+    feld = CodeEdit(DUNKEL)
+    hilfe = Vervollstaendigung(feld)
+    feld.setPlainText(f'print("{ROBOTER}"); spot.st')
+    _cursor_nach(feld, f'print("{ROBOTER}"); spot.')
+    assert hilfe._vor_dem_cursor() == f'print("{ROBOTER}"); spot.'
+
+
+def test_ein_emoji_im_kommentar_davor_haelt_jedi_nicht_ab(qapp, monkeypatch):
+    """Der Schnitt fuer `im_code` nahm das Anfuehrungszeichen hinter dem Cursor
+    mit -- und hielt die Stelle fuer das Innere einer Zeichenkette."""
+    feld = CodeEdit(DUNKEL)
+    hilfe = Vervollstaendigung(feld)
+    feld.setPlainText(f'# {ROBOTER}\nmath."')
+    _cursor_nach(feld, f'# {ROBOTER}\nmath.')
+    protokoll = _gefragt(hilfe, monkeypatch)
+    hilfe.anfordern()
+    assert protokoll, "jedi wurde nicht gefragt"
+
+
+def test_jedi_bekommt_die_spalte_in_zeichen(qapp, monkeypatch):
+    """jedi zaehlt Python-Zeichen, nicht UTF-16-Einheiten."""
+    erzeugt = []
+
+    class _Worker(_Attrappenworker):
+        def __init__(self, *args, **kw):
+            super().__init__(*args, **kw)
+            erzeugt.append(self)
+
+    monkeypatch.setattr(modul, "JediWorker", _Worker)
+    monkeypatch.setattr(modul, "jedi", object())
+    feld = CodeEdit(DUNKEL)
+    hilfe = _hilfe_mit(feld, f'import math\nx = "{ROBOTER}"; math.')
+    hilfe.anfordern()
+    _nummer, _quelltext, zeile, spalte, _pfad = erzeugt[0].args[:5]
+    assert (zeile, spalte) == (2, len(f'x = "{ROBOTER}"; math.'))
+
+
 def test_jeder_arbeiter_raeumt_sich_selbst_ab(qapp, monkeypatch):
     """Ein Arbeiter je Tastendruck: ohne `deleteLater` blieben sie alle als
     Kinder haengen, bis der Reiter zugeht. Bei zwei Anfragen nach `spot.` fiel

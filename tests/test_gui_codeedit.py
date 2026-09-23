@@ -105,6 +105,21 @@ def test_leere_zeilen_bekommen_keine_leerzeichen(qapp):
     assert feld.toPlainText() == "    a\n\n    b\n"
 
 
+def test_enter_nach_einem_emoji_sieht_nur_den_text_vor_dem_cursor(qapp):
+    """positionInBlock() zaehlt UTF-16-Einheiten, block.text() Python-Zeichen:
+    nach einem Emoji nahm der Schnitt ein Zeichen HINTER dem Cursor mit -- hier
+    den Doppelpunkt, und die neue Zeile wurde eingerueckt (Pruefung 23.09.2026)."""
+    roboter = chr(0x1F916)
+    feld = CodeEdit(DUNKEL)
+    zeile = f'if s == "{roboter}":'
+    feld.setPlainText(zeile)
+    cursor = feld.textCursor()
+    cursor.setPosition(len(zeile.encode("utf-16-le")) // 2 - 1)     # vor dem ':'
+    feld.setTextCursor(cursor)
+    QTest.keyClick(feld, Qt.Key_Return)
+    assert feld.toPlainText() == f'if s == "{roboter}"\n:'
+
+
 def test_ctrl_s_meldet_speicherwunsch(qapp):
     feld = CodeEdit(DUNKEL)
     gerufen = []

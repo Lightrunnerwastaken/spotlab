@@ -48,6 +48,31 @@ def rohtext(dokument):
     return dokument.toRawText().replace(ABSATZ, "\n")
 
 
+def utf16_laenge(text):
+    """Wie viele Qt-Positionen `text` belegt: UTF-16-Einheiten, keine Zeichen.
+
+    Python zaehlt ein Emoji ausserhalb der BMP (Roboter, Gamepad) als EIN
+    Zeichen, Qt -- Cursor, Blockspalten, Formate -- als ZWEI. Wer beides
+    mischt, verschiebt alles hinter dem Emoji: Traceback-Links sassen daneben,
+    Farben verrutschten (Pruefung 23.09.2026).
+    """
+    if text.isascii():
+        return len(text)
+    return len(text.encode("utf-16-le")) // 2
+
+
+def bis_position(text, position):
+    """Der Anfang von `text` bis zur Qt-Position `position` (UTF-16-Einheiten)."""
+    if text.isascii():
+        return text[:position]
+    return text.encode("utf-16-le")[: 2 * position].decode("utf-16-le", "ignore")
+
+
+def vor_dem_cursor(cursor):
+    """Der Text der Zeile vor dem Cursor -- `positionInBlock()` zaehlt UTF-16."""
+    return bis_position(cursor.block().text(), cursor.positionInBlock())
+
+
 class Zeilenleiste(QWidget):
     def __init__(self, editor):
         super().__init__(editor)
@@ -215,8 +240,8 @@ class CodeEdit(QPlainTextEdit):
 
     def _neue_zeile(self):
         cursor = self.textCursor()
-        vor_dem_cursor = cursor.block().text()[: cursor.positionInBlock()]
-        cursor.insertText("\n" + naechste_einrueckung(vor_dem_cursor))
+        davor = vor_dem_cursor(cursor)
+        cursor.insertText("\n" + naechste_einrueckung(davor))
         self.setTextCursor(cursor)
 
     def _markierte_bloecke(self):

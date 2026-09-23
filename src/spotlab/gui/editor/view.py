@@ -31,7 +31,7 @@ from PySide6.QtWidgets import (
 from spotlab.editor.syntax import pruefe
 from spotlab.editor.traceback import finde_stellen
 from spotlab.errors import SpotlabError
-from spotlab.gui.editor.codeedit import ABSATZ, CodeEdit
+from spotlab.gui.editor.codeedit import ABSATZ, CodeEdit, utf16_laenge
 from spotlab.gui.editor.completer import Vervollstaendigung, warte_auf_arbeiter
 from spotlab.gui.editor.highlighter import Hervorheber
 from spotlab.gui.editor.tree import Dateibaum
@@ -130,7 +130,7 @@ class Ausgabefeld(QPlainTextEdit):
         self._palette = palette
         self._wurzel = None
         self._stellen = []          # (von, bis, pfad, zeile), absolut im Dokument
-        self._laenge = 0            # Dokumentlänge in Zeichen, laufend geführt
+        self._laenge = 0            # Dokumentlänge in Qt-Positionen (UTF-16), laufend
 
     def setze_wurzel(self, pfad):
         self._wurzel = Path(pfad) if pfad else None
@@ -153,13 +153,19 @@ class Ausgabefeld(QPlainTextEdit):
         # Die Zahl MUSS stimmen: an ihr hängen die Zeichenpositionen der
         # anklickbaren Traceback-Stellen. Ein Fehler hier schickt den Schüler in
         # die falsche Datei, deshalb prüft ein Test sie gegen toPlainText().
+        #
+        # Gezählt wird in UTF-16-Einheiten wie in Qt, nicht in Python-Zeichen:
+        # ein Emoji ausserhalb der BMP ist für Qt ZWEI Positionen, und nach
+        # zwölf Zeilen mit zwei Emojis sass jeder Link 24 Positionen zu früh
+        # (Prüfung 23.09.2026). `finde_stellen` zählt in Zeichen der Zeile.
         basis = self._laenge + (1 if self._laenge else 0)  # append setzt ein \n davor
         self.appendPlainText(zeile)
-        self._laenge = basis + len(zeile)
+        self._laenge = basis + utf16_laenge(zeile)
         if self._wurzel is None:
             return
         for stelle in finde_stellen(zeile, self._wurzel):
-            von, bis = basis + stelle.von, basis + stelle.bis
+            von = basis + utf16_laenge(zeile[: stelle.von])
+            bis = basis + utf16_laenge(zeile[: stelle.bis])
             self._stellen.append((von, bis, stelle.pfad, stelle.zeile))
             self._male_link(von, bis)
 
