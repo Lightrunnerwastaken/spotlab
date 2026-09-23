@@ -81,6 +81,33 @@ def _zeilen(pfad):
     return saetze
 
 
+def _winkel_anzeige(grad):
+    """Ein Winkel im Bereich (-180, 180] -- -90 bleibt -90, 270 wird -90."""
+    grad = float(grad) % 360.0
+    return grad - 360.0 if grad > 180.0 else grad
+
+
+def _wert_von(widget):
+    if isinstance(widget, QLineEdit):
+        return widget.text()
+    return widget.value()
+
+
+class Zahlenfeld(QDoubleSpinBox):
+    """Bis zu `decimals()` Nachkommastellen, angezeigt ohne Nullen am Ende
+    (mindestens zwei): 6.1234 bleibt 6.1234, 3.1 steht als 3.10 da."""
+
+    def textFromValue(self, wert):
+        gebiet = self.locale()
+        text = gebiet.toString(float(wert), "f", self.decimals())
+        text = text.replace(gebiet.groupSeparator(), "")
+        punkt = gebiet.decimalPoint()
+        if punkt in text:
+            ganz, nach = text.split(punkt, 1)
+            text = ganz + punkt + nach.rstrip("0").ljust(2, "0")
+        return text
+
+
 def _beschrifte(raum, schluessel):
     art = schluessel[0]
     if art == "wand":
@@ -192,6 +219,8 @@ class RaumeditorView(QWidget):
         self.liste.itemSelectionChanged.connect(self._liste_gewaehlt)
         self.eigenschaften = QWidget()
         self._form = QFormLayout(self.eigenschaften)
+        self._felder = {}                # Feldname -> Widget der gezeigten Auswahl
+        self._form_signatur = None       # (Schluessel, Felder): gleich -> nur Werte nachtragen
         self.hinweise = QLabel("")
         self.hinweise.setWordWrap(True)
         self.hinweise.setObjectName("Gedaempft")
@@ -620,7 +649,13 @@ class RaumeditorView(QWidget):
             self._ebenen_sperre = False
 
     def _feld_geaendert(self, schluessel, feld, widget):
-        wert = widget.text() if isinstance(widget, QLineEdit) else widget.value()
+        """`editingFinished` kommt auch beim blossen Verlassen des Felds. Geschrieben
+        wird deshalb nur, wenn der Wert ein ANDERER ist als der angezeigte -- sonst
+        wurden -90 Grad beim Durchklicken 0, 6.1234 m wurden 6.12, und jedes Mal
+        stand ein Verlaufsschritt mehr da (23.09.2026)."""
+        wert = _wert_von(widget)
+        if wert == widget.property("anfang"):
+            return
         try:
             self.steuerung.setze_feld(schluessel, feld, wert)
         except ValueError as fehler:
@@ -663,42 +698,69 @@ class RaumeditorView(QWidget):
             self._liste_sperre = False
 
     def _fuelle_eigenschaften(self):
-        while self._form.rowCount():
-            self._form.removeRow(0)
+        """Die Felder der Auswahl. Bleibt die Auswahl dieselbe, werden nur die WERTE
+        nachgetragen -- neu gebaute Felder nahmen den Fokus mit, und Tab von x nach
+        y landete im Nichts."""
         st = self.steuerung
         if len(st.auswahl) > 1:
+            signatur = ("mehrere", len(st.auswahl))
+        else:
+            schluessel = next(iter(st.auswahl)) if st.auswahl else b.RAUM
+            signatur = (schluessel, b.FELDER[schluessel[0]])
+        if signatur == self._form_signatur and self._felder:
+            self._trage_werte_ein(signatur[0])
+            return
+        while self._form.rowCount():
+            self._form.removeRow(0)
+        self._felder = {}
+        self._form_signatur = signatur
+        if signatur[0] == "mehrere":
             self._form.addRow(QLabel(f"{len(st.auswahl)} Elemente gewählt"))
             return
-        schluessel = next(iter(st.auswahl)) if st.auswahl else b.RAUM
+        schluessel = signatur[0]
         e = b.element(st.raum, schluessel)
         if schluessel[0] == "gelaende":
+            self._form_signatur = None             # die Zusammenfassung folgt dem Gelaende
             self._form.addRow(QLabel(zusammenfassung(e)))
             hinweis = QLabel("gerechnet aus Wänden, Weg und Pauspapier — nicht von Hand zu ändern")
             hinweis.setWordWrap(True)
             self._form.addRow(hinweis)
             return
         for feld in b.FELDER[schluessel[0]]:
+            if feld in TEXT_FELDER:
+                widget = QLineEdit()
+            elif feld in ("id", "stufen"):
+                widget = QSpinBox()
+                widget.setRange(0, 9999)
+            else:
+                widget = Zahlenfeld()
+                if feld in GRAD_FELDER:
+                    widget.setDecimals(2)
+                    widget.setRange(-360.0, 360.0)
+                    widget.setSingleStep(5.0)
+                else:
+                    widget.setDecimals(4)
+                    widget.setRange(-1000.0, 1000.0)
+                    widget.setSingleStep(0.05)
+            widget.setObjectName(f"feld_{feld}")
+            widget.editingFinished.connect(
+                lambda s=schluessel, f=feld, w=widget: self._feld_geaendert(s, f, w))
+            self._felder[feld] = widget
+            self._form.addRow(feld, widget)
+        self._trage_werte_ein(schluessel)
+
+    def _trage_werte_ein(self, schluessel):
+        e = b.element(self.steuerung.raum, schluessel)
+        for feld, widget in self._felder.items():
             if schluessel[0] == "start":
                 wert = {"x": e[0], "y": e[1], "grad": e[2]}[feld]
             else:
                 wert = getattr(e, feld)
-            if feld in TEXT_FELDER:
-                widget = QLineEdit(str(wert))
-            elif feld in ("id", "stufen"):
-                widget = QSpinBox()
-                widget.setRange(0, 9999)
+            if isinstance(widget, QLineEdit):
+                widget.setText(str(wert))
+            elif isinstance(widget, QSpinBox):
                 widget.setValue(int(wert))
             else:
-                widget = QDoubleSpinBox()
-                widget.setDecimals(2)
-                if feld in GRAD_FELDER:
-                    widget.setRange(0.0, 360.0)
-                    widget.setSingleStep(5.0)
-                else:
-                    widget.setRange(-1000.0, 1000.0)
-                    widget.setSingleStep(0.05)
-                widget.setValue(float(wert))
-            widget.setObjectName(f"feld_{feld}")
-            widget.editingFinished.connect(
-                lambda s=schluessel, f=feld, w=widget: self._feld_geaendert(s, f, w))
-            self._form.addRow(feld, widget)
+                widget.setValue(_winkel_anzeige(wert) if feld in GRAD_FELDER else float(wert))
+            # Was angezeigt wird (gerundet wie im Feld) -- der Vergleich in `_feld_geaendert`.
+            widget.setProperty("anfang", _wert_von(widget))

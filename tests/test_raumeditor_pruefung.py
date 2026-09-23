@@ -311,6 +311,54 @@ def _feld(tab, qapp, schluessel, feld):
     return tab.eigenschaften.findChild(QAbstractSpinBox, f"feld_{feld}")
 
 
+@pytest.mark.parametrize("schluessel, feld, anzeige", [
+    (("start",), "grad", -90.0), (("wand", 0), "x2", 6.1234), (("block", 0), "drehung", -30.0)])
+def test_durch_ein_feld_klicken_aendert_den_raum_nicht(qapp, tmp_path, schluessel, feld, anzeige):
+    """p03: Hineinklicken und Verlassen schrieb den Wert zurueck -- -90 Grad
+    wurden 0, 6.1234 wurde 6.12, und jedes Mal ein Verlaufsschritt."""
+    from PySide6.QtCore import Qt
+
+    tab = _tab_mit_probe(qapp, tmp_path)
+    vorher = tab.steuerung.raum
+    w = _feld(tab, qapp, schluessel, feld)
+    assert w.value() == pytest.approx(anzeige)
+    w.setFocus(Qt.MouseFocusReason)
+    qapp.processEvents()
+    tab.sicht.setFocus(Qt.MouseFocusReason)
+    qapp.processEvents()
+    w.editingFinished.emit()                              # auch ein ausdrueckliches Ende aendert nichts
+    assert tab.steuerung.raum is vorher and not tab.steuerung.geaendert
+    assert not tab.steuerung.verlauf.kann_zurueck
+    tab.close()
+
+
+def test_ein_geaenderter_winkel_wird_geschrieben_und_normalisiert(qapp, tmp_path):
+    tab = _tab_mit_probe(qapp, tmp_path)
+    w = _feld(tab, qapp, ("start",), "grad")
+    w.setValue(-45.0)
+    w.editingFinished.emit()
+    assert tab.steuerung.raum.start[2] % 360.0 == pytest.approx(315.0)
+    assert tab.steuerung.geaendert and tab.steuerung.verlauf.kann_zurueck
+    w = _feld(tab, qapp, ("wand", 0), "x2")
+    w.setValue(6.2345)
+    w.editingFinished.emit()
+    assert tab.steuerung.raum.waende[0].x2 == pytest.approx(6.2345)
+    tab.close()
+
+
+def test_nach_einem_feld_bleiben_die_felder_stehen(qapp, tmp_path):
+    """Tab von Feld zu Feld: die Felder werden aktualisiert, nicht neu gebaut --
+    sonst ist der Fokus nach jedem Wert weg."""
+    tab = _tab_mit_probe(qapp, tmp_path)
+    x = _feld(tab, qapp, ("block", 0), "x")
+    y = tab.eigenschaften.findChild(type(x), "feld_y")
+    x.setValue(3.5)
+    x.editingFinished.emit()
+    assert tab.steuerung.raum.bloecke[0].x == pytest.approx(3.5)
+    assert tab.eigenschaften.findChild(type(x), "feld_y") is y
+    tab.close()
+
+
 # ------------------------------------------------------------- weitere kleine
 
 
