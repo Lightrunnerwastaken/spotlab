@@ -117,6 +117,9 @@ QSpinBox {{
     border-radius: 8px;
 }}
 QLineEdit, QDoubleSpinBox, QSpinBox {{ padding: 6px 8px; }}
+/* Beschriftungen auf einer Flaeche (Kacheln, Tastenfeld) tragen keinen eigenen
+   Hintergrund -- sonst stand hinter jedem Text ein dunkler Kasten. */
+QFrame#Flaeche QLabel {{ background: transparent; }}
 QLineEdit:focus, QDoubleSpinBox:focus, QSpinBox:focus, QComboBox:focus,
 QPlainTextEdit:focus {{ border-color: {p.akzent}; }}
 QListWidget::item, QTableWidget::item {{ padding: 3px 4px; }}
@@ -135,6 +138,23 @@ QLabel#Titel {{ font-size: 16px; font-weight: 600; }}
 QLabel#Kachelwert {{ font-family: Consolas, monospace; font-size: 17px; font-weight: 600; }}
 QLabel#Kachelname {{ color: {p.gedaempft}; font-size: 10px; }}
 QLabel#Ok {{ color: {p.ok}; }}
+QLabel#Taste {{
+    background: {p.flaeche};
+    border: 1px solid {p.rand};
+    border-bottom-width: 3px;
+    border-radius: 6px;
+    font-family: Consolas, monospace;
+    font-size: 14px;
+    font-weight: 600;
+    color: {p.gedaempft};
+}}
+QLabel#Taste[gedrueckt="true"] {{
+    background: {p.akzent};
+    border-color: {p.akzent};
+    color: {p.auf_akzent};
+}}
+QLabel#Stufe {{ color: {p.gedaempft}; padding: 2px 6px; border-radius: 4px; font-size: 11px; }}
+QLabel#Stufe[aktiv="true"] {{ color: {p.text}; background: {p.akzent_flaeche}; font-weight: 600; }}
 QLabel#Warnung {{ color: {p.warnung}; }}
 QLabel#Gefahr {{ color: {p.gefahr}; }}
 QPushButton {{

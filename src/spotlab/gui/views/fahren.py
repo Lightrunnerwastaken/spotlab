@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
     QComboBox,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -38,6 +39,7 @@ from PySide6.QtWidgets import (
 )
 
 from spotlab.gui.tastenfahrt import Tastenfahrt
+from spotlab.gui.tastenfeld import Tastenfeld
 from spotlab.record import ansicht as ansichtsschalter
 from spotlab.record import fahrt
 
@@ -52,7 +54,11 @@ HINWEIS = (
     "Sekunde. Freifläche, Aufsicht, Tablet mit Not-Aus in Reichweite — "
     "vor dem ersten Mal Abnahmepunkt A1 (docs/ABNAHME.md)."
 )
-BELEGUNG = "W A S D Q E  ·  1 2 3 Tempo  ·  Leertaste hält"
+# Immer sichtbar -- der lange HINWEIS klappt darunter auf („Hinweise“).
+SICHERHEIT = (
+    "⚠ Echter Spot: Freifläche, Aufsicht, Tablet mit Not-Aus in Reichweite. "
+    "Losgelassen heisst Stopp."
+)
 KEIN_BILD = "Kein Bild — der Blick kommt, sobald der Lauf steht."
 
 GESICHT_HINWEIS = (
@@ -159,11 +165,23 @@ class FahrenView(QWidget):
 
         titel = QLabel("Den echten Spot über die Tastatur fahren")
         titel.setObjectName("Titel")
-        hinweis = QLabel(HINWEIS)
-        hinweis.setObjectName("Gedaempft")
-        hinweis.setWordWrap(True)
+        # Die Sicherheitszeile steht immer; der lange Text klappt auf. Nichts davon
+        # ist weg -- die UX-Pruefung vom 23.09.2026 fand eine Textwand ueber einem
+        # kleinen Kamerabild.
+        self.sicherheit = QLabel(SICHERHEIT)
+        self.sicherheit.setObjectName("Warnung")
+        self.sicherheit.setWordWrap(True)
+        self.mehr = QPushButton("Hinweise ▾")
+        self.mehr.setCheckable(True)
+        self.mehr.setToolTip("Was der Knopf startet, die Tasten, der Totmannschalter, Abnahmepunkt A1")
+        self.hinweis = QLabel(HINWEIS)
+        self.hinweis.setObjectName("Gedaempft")
+        self.hinweis.setWordWrap(True)
+        self.hinweis.hide()
+        self.mehr.toggled.connect(self.hinweis.setVisible)
 
         self.start = QPushButton("🎮 Fahrt beginnen")
+        self.start.setObjectName("Primaer")
         self.start.clicked.connect(self._start_geklickt)
         self.stufe = QComboBox()
         self.stufe.setToolTip("Tempostufe — auch mit den Tasten 1, 2, 3 während der Fahrt")
@@ -195,15 +213,25 @@ class FahrenView(QWidget):
         self.uebernehmen = QCheckBox("🔓 Kontrolle übernehmen")
         self.uebernehmen.setToolTip(UEBERNEHMEN_WERKZEUG)
 
+        fahrt_gruppe = QGroupBox("Fahrt")
         knoepfe = QHBoxLayout()
         knoepfe.addWidget(self.start)
         knoepfe.addWidget(self.stopp)
+        knoepfe.addSpacing(12)
         knoepfe.addWidget(QLabel("Tempo"))
         knoepfe.addWidget(self.stufe)
-        knoepfe.addWidget(self.uebernehmen)
-        knoepfe.addWidget(self.gesicht)
-        knoepfe.addWidget(self.hand)
         knoepfe.addStretch(1)
+        knoepfe.addWidget(self.uebernehmen)
+        im_blick = QHBoxLayout()
+        blick = QLabel("Im Blick einzeichnen:")
+        blick.setObjectName("Gedaempft")
+        im_blick.addWidget(blick)
+        im_blick.addWidget(self.gesicht)
+        im_blick.addWidget(self.hand)
+        im_blick.addStretch(1)
+        innen = QVBoxLayout(fahrt_gruppe)
+        innen.addLayout(knoepfe)
+        innen.addLayout(im_blick)
 
         # Die Lage: Akku wechseln (auf die Seite rollen) und Aufrichten. Kein eigener
         # Weg zum Roboter -- jeder Knopf startet einen Lauf ueber die App, mit dem
@@ -228,17 +256,22 @@ class FahrenView(QWidget):
         self.lage_zustand = QLabel("")
         self.lage_zustand.setObjectName("Gedaempft")
         self.lage_zustand.setWordWrap(True)
+        self.lage_zustand.hide()             # erst, wenn es etwas zu sagen gibt
         self.lage_hinweis = QLabel(LAGE_HINWEIS)
         self.lage_hinweis.setObjectName("Gedaempft")
         self.lage_hinweis.setWordWrap(True)
 
+        lage_gruppe = QGroupBox("Lage — Akku wechseln und Aufrichten")
         lage = QHBoxLayout()
-        lage.addWidget(QLabel("Lage"))
         lage.addWidget(self.seite_beschriftung)
         lage.addWidget(self.seite)
         lage.addWidget(self.akku)
         lage.addWidget(self.aufrichten)
         lage.addStretch(1)
+        lage_innen = QVBoxLayout(lage_gruppe)
+        lage_innen.addLayout(lage)
+        lage_innen.addWidget(self.lage_zustand)
+        lage_innen.addWidget(self.lage_hinweis)
 
         # Der Blick nach vorn: `workshop/blick.py` schreibt `ansicht.jpg` (beide
         # Frontkameras zu einem Bild) ins Lauf-Verzeichnis, der Watcher meldet
@@ -266,32 +299,42 @@ class FahrenView(QWidget):
         self.notaus_hinweis.setWordWrap(True)
         self.notaus_hinweis.hide()
 
-        self.belegung = QLabel(BELEGUNG)
-        self.belegung.setObjectName("Kachelname")
-        self.gedrueckt = QLabel("—")
-        self.gedrueckt.setObjectName("Kachelwert")
+        # Rechts neben dem Bild: welche Tasten gedrueckt sind, die Stufe, ob die
+        # Tastatur faehrt -- und was Spot daraus macht.
+        self.tastenfeld = Tastenfeld()
         self.befehl_zeile = QLabel("Spot steht.")
+        self.befehl_zeile.setWordWrap(True)
         self.zustand = QLabel("Kein Lauf.")
         self.zustand.setObjectName("Gedaempft")
+        self.zustand.setWordWrap(True)
+
+        kopf = QHBoxLayout()
+        kopf.addWidget(titel, 1)
+        kopf.addWidget(self.mehr)
+
+        bildspalte = QVBoxLayout()
+        bildspalte.addWidget(self.hinweis_bild, 1)
+        bildspalte.addWidget(self.bild, 1)
+        bildspalte.addWidget(self.bildrate)
+        bildspalte.addWidget(self.gesicht_hinweis)
+        bildspalte.addWidget(self.hand_hinweis)
+        seite = QVBoxLayout()
+        seite.addWidget(self.tastenfeld)
+        seite.addWidget(self.befehl_zeile)
+        seite.addStretch(1)
+        mitte = QHBoxLayout()
+        mitte.addLayout(bildspalte, 1)
+        mitte.addLayout(seite)
 
         anordnung = QVBoxLayout(self)
-        anordnung.addWidget(titel)
-        anordnung.addWidget(hinweis)
-        anordnung.addLayout(knoepfe)
+        anordnung.addLayout(kopf)
+        anordnung.addWidget(self.sicherheit)
+        anordnung.addWidget(self.hinweis)
+        anordnung.addWidget(fahrt_gruppe)
         anordnung.addWidget(self.notaus_hinweis)
-        anordnung.addLayout(lage)
-        anordnung.addWidget(self.lage_zustand)
-        anordnung.addWidget(self.hinweis_bild)
-        anordnung.addWidget(self.bild, 1)
-        anordnung.addWidget(self.bildrate)
-        anordnung.addWidget(self.gesicht_hinweis)
-        anordnung.addWidget(self.hand_hinweis)
-        anordnung.addWidget(self.lage_hinweis)
-        anordnung.addWidget(self.belegung)
-        anordnung.addWidget(self.gedrueckt)
-        anordnung.addWidget(self.befehl_zeile)
+        anordnung.addLayout(mitte, 1)
         anordnung.addWidget(self.zustand)
-        anordnung.addStretch(1)
+        anordnung.addWidget(lage_gruppe)
 
         self.tastenfahrt = Tastenfahrt(self)
         self.tastenfahrt.befehl.connect(self._zeige_befehl)
@@ -326,6 +369,7 @@ class FahrenView(QWidget):
         self._schreibe_schalter()
         self._zustand_normal()
         self.zustand.setText(f"{name} läuft — Tasten sind scharf.")
+        self.tastenfeld.zeige_aktiv(True)
         self._tastatur_greifen()
 
     def _zustand_normal(self):
@@ -347,7 +391,7 @@ class FahrenView(QWidget):
         self.gesicht_hinweis.hide()
         self.hand.setEnabled(False)
         self.hand_hinweis.hide()
-        self.gedrueckt.setText("—")
+        self.tastenfeld.zeige_aktiv(False)
         self.befehl_zeile.setText("Spot steht.")
         self.zustand.setText("Kein Lauf.")
         self.bild.leeren()
@@ -449,6 +493,7 @@ class FahrenView(QWidget):
         self.stopp.setEnabled(True)
         name = "Akku wechseln" if aktion == "akku" else "Aufrichten"
         self.lage_zustand.setText(f"{name} läuft — Spot bewegt sich. „■ Stopp“ hier, Not-Aus am Tablet.")
+        self.lage_zustand.show()
         self.zustand.setText(f"{name} läuft.")
 
     def zeige_lage_zeile(self, zeile):
@@ -493,6 +538,7 @@ class FahrenView(QWidget):
             self.tastenfahrt.setze_stufe(name)
 
     def _zeige_stufe(self, name):
+        self.tastenfeld.zeige_stufe(name)
         # Per Ziffer gewechselt: die Auswahl folgt, ohne noch einmal zu setzen.
         if self.stufe.currentData() != name:
             self.stufe.blockSignals(True)
@@ -514,8 +560,7 @@ class FahrenView(QWidget):
         super().keyReleaseEvent(ereignis)
 
     def _zeige_befehl(self, vx, vy, wz):
-        tasten = self.tastenfahrt.tasten
-        self.gedrueckt.setText(" ".join(sorted(t.upper() for t in tasten)) if tasten else "—")
+        self.tastenfeld.zeige_tasten(self.tastenfahrt.tasten)
         teile = []
         if vx:
             teile.append(f"{'vor' if vx > 0 else 'zurück'} {abs(vx):.2f} m/s")

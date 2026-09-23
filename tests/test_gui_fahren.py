@@ -40,13 +40,14 @@ def test_im_lauf_schreiben_die_tasten_den_befehl_langsam_voreingestellt(qapp, tm
     assert ansicht.laeuft() and ansicht.stufe.currentData() == "langsam"
     QTest.keyPress(ansicht, Qt.Key_W)
     assert fahrt.lies(tmp_path) == (pytest.approx(fahrt.TEMPO_M_S / 2), 0.0, 0.0)
-    assert "W" in ansicht.gedrueckt.text()
+    assert ansicht.tastenfeld.gedrueckt() == {"w"}
     ansicht.stufe.setCurrentIndex(1)                             # normal
     QTest.keyPress(ansicht, Qt.Key_Q)
     assert fahrt.lies(tmp_path) == (fahrt.TEMPO_M_S, 0.0, fahrt.DREH_RAD_S)
+    assert ansicht.tastenfeld.gedrueckt() == {"w", "q"}
     QTest.keyPress(ansicht, Qt.Key_Space)
     assert fahrt.lies(tmp_path) == (0.0, 0.0, 0.0)
-    assert "—" in ansicht.gedrueckt.text()
+    assert ansicht.tastenfeld.gedrueckt() == set()
 
 
 def test_die_stufen_stehen_zur_wahl_und_die_ziffern_schalten_sie(qapp, tmp_path):
@@ -432,3 +433,29 @@ def test_waehrend_akkuwechsel_und_aufrichten_geht_der_stopp(qapp):
     assert gewuenscht == [1]
     ansicht.lage_beendet()
     assert not ansicht.stopp.isEnabled()
+
+
+def test_das_tastenfeld_zeigt_tasten_stufe_und_ob_sie_scharf_sind(qapp, tmp_path):
+    """UX-Pruefung 23.09.2026: die Belegung stand in 10 px, „Tasten sind scharf“
+    wurde von der ersten Positionszeile ueberschrieben -- am echten Roboter sah
+    man nicht mehr, dass die Tastatur faehrt."""
+    ansicht = FahrenView()
+    assert not ansicht.tastenfeld.aktiv()
+    ansicht.lauf_beginnt(tmp_path, "fahren.py")
+    assert ansicht.tastenfeld.aktiv()
+    assert ansicht.tastenfeld.stufe() == "langsam"
+    QTest.keyPress(ansicht, Qt.Key_3)
+    assert ansicht.tastenfeld.stufe() == "schnell"
+    ansicht.zeige_zustand({"daten": {"pose": [1.0, 2.0, 0.0], "battery": 70.0}})
+    assert ansicht.tastenfeld.aktiv(), "eine Positionszeile darf den Zustand nicht verdecken"
+    ansicht.lauf_beendet()
+    assert not ansicht.tastenfeld.aktiv()
+
+
+def test_der_lange_hinweis_ist_einklappbar_die_sicherheitszeile_nicht(qapp):
+    ansicht = FahrenView()
+    assert not ansicht.sicherheit.isHidden()
+    assert "Not-Aus" in ansicht.sicherheit.text()
+    assert ansicht.hinweis.isHidden()
+    ansicht.mehr.click()
+    assert not ansicht.hinweis.isHidden()

@@ -283,3 +283,21 @@ def test_nach_dem_ende_verschwindet_der_fahrhinweis(qapp, tmp_path):
     assert not fenster.fahrt_zeile.isHidden()
     fenster.beendet("fertig")
     assert fenster.fahrt_zeile.isHidden()
+
+
+def test_im_fahrmodus_zeigt_das_fenster_tasten_und_tempo(qapp, tmp_path):
+    """Die Signale befehl und stufe_geaendert hingen an nichts: man sah weder die
+    gehaltene Taste noch die Tempostufe."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+
+    fenster = Uebungsfenster(DUNKEL)
+    assert fenster.tastenfeld.isHidden()
+    fenster.beginne(raum_laden("leer"), (1.0, 1.0, 0.0), "fahren.py", lauf_dir=tmp_path, fahrt=True)
+    assert not fenster.tastenfeld.isHidden() and fenster.tastenfeld.aktiv()
+    QTest.keyPress(fenster, Qt.Key_W)
+    assert fenster.tastenfeld.gedrueckt() == {"w"}
+    QTest.keyPress(fenster, Qt.Key_3)
+    assert fenster.tastenfeld.stufe() == "schnell"
+    fenster.beendet("fertig")
+    assert fenster.tastenfeld.isHidden()

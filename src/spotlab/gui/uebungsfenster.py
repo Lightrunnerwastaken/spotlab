@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
 from spotlab.gui.liveplot import LiveRaumPlot
 from spotlab.gui.symbol import symbol
 from spotlab.gui.tastenfahrt import Tastenfahrt
+from spotlab.gui.tastenfeld import Tastenfeld
 from spotlab.record import kamera
 from spotlab.welt.raum import raum_laden
 
@@ -125,11 +126,28 @@ class Uebungsfenster(QWidget):
         unten.addWidget(self.video)
         unten.addWidget(self.stopp)
 
+        # Im Fahrmodus rechts: gedrueckte Tasten, Tempostufe, ob die Tastatur faehrt.
+        # Vorher hingen befehl und stufe_geaendert an nichts (UX-Pruefung 23.09.2026).
+        self.tastenfeld = Tastenfeld()
+        self.tastenfeld.hide()
+        self.tastenfahrt.befehl.connect(
+            lambda *_: self.tastenfeld.zeige_tasten(self.tastenfahrt.tasten)
+        )
+        self.tastenfahrt.stufe_geaendert.connect(self.tastenfeld.zeige_stufe)
+        sicht = QVBoxLayout()
+        sicht.addWidget(self.bild)
+        sicht.addWidget(self.plot, 1)
+        rechts = QVBoxLayout()
+        rechts.addWidget(self.tastenfeld)
+        rechts.addStretch(1)
+        mitte = QHBoxLayout()
+        mitte.addLayout(sicht, 1)
+        mitte.addLayout(rechts)
+
         anordnung = QVBoxLayout(self)
         anordnung.addWidget(self.kopf)
         anordnung.addWidget(self.fahrt_zeile)
-        anordnung.addWidget(self.bild)
-        anordnung.addWidget(self.plot, 1)
+        anordnung.addLayout(mitte, 1)
         anordnung.addLayout(unten)
 
     # ------------------------------------------------------------- Zustand
@@ -156,6 +174,9 @@ class Uebungsfenster(QWidget):
         self._lauf_dir = None
         self._lauf = None
         self.fahrt_zeile.setVisible(bool(fahrt))
+        self.tastenfeld.setVisible(bool(fahrt))
+        self.tastenfeld.zeige_aktiv(bool(fahrt))
+        self.tastenfeld.zeige_stufe(self.tastenfahrt.stufe)
         if fahrt:
             self.tastenfahrt.beginne(lauf_dir)
             self.verfolgen.setChecked(True)
@@ -314,6 +335,8 @@ class Uebungsfenster(QWidget):
         self.tastenfahrt.beende()
         self._tastatur_loslassen()
         self.fahrt_zeile.hide()
+        self.tastenfeld.zeige_aktiv(False)
+        self.tastenfeld.hide()
         self.stopp.setEnabled(False)
         self.kopf.setText("Fertig.")
         if text:
