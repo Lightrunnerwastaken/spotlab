@@ -785,7 +785,14 @@ versionsgepinntes Extra `spotlab[sim]`.
   bis zum 06.09.2026 entpackte `gitter_aus` bitweise, und `is_free()` hielt am echten Spot
   Unbekanntes für frei. Das Gitter des echten Dienstes ist an den WELTACHSEN ausgerichtet;
   `ObstacleGrid` rechnet in Weltkoordinaten — `is_free(0.5, 0.0)` ist ein Weltpunkt, nicht
-  „einen halben Meter voraus".
+  „einen halben Meter voraus". **Und die Welt ist „vision", nicht „odom".** Wer das Gitter
+  abfragt, nimmt die Lage aus demselben Rahmen (`spot.look()`: `position`, `heading`;
+  `folgen._lage_im_gitter`), nie `state.pose` — die ist odom, und am echten Spot driften die
+  beiden. Befund p16 (22.09.2026): die Hindernisschranke des Folgemodus fragte mit der
+  odom-Lage, bei 0.6 m Drift lief ihr Strahl an einer Kiste 0.9 m voraus vorbei, und sie gab
+  frei; `Beispiele/durchgang_finden.py` hatte denselben Fehler. Im Trockenlauf und in den Sims
+  sind beide Rahmen gleich — ein Test dafür braucht eine Attrappe, in der sie auseinanderliegen
+  (`test_workshop_folgen.py::_auseinander`).
 - **Eine Sperrzone ist eine REGEL, kein Hindernis.** Sie steht in keinem Gitter, wirft
   keinen Schatten und verändert das Gelände nicht — `zone_bei` sitzt bewusst NEBEN
   `hindernis_bei`, nicht darin. Das ist ihr ganzer Zweck: sie hält dort, wo der SENSOR frei

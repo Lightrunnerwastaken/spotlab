@@ -53,6 +53,29 @@ def test_die_drehrate_ist_gedeckelt():
 # ------------------------------------------------------------------ Finder
 
 
+def _baum(x, y, gier):
+    """Ein Rahmenbaum vision -> body, wie ihn `frame_tree_snapshot()` liefert.
+
+    Hier ist odom = vision (wie im Trockenlauf und in den Sims); wo die beiden
+    auseinanderliegen, steht das beim Test dabei.
+    """
+    import math
+
+    from bosdyn.api import geometry_pb2
+    from bosdyn.client.frame_helpers import BODY_FRAME_NAME, VISION_FRAME_NAME
+
+    baum = geometry_pb2.FrameTreeSnapshot()
+    baum.child_to_parent_edge_map[VISION_FRAME_NAME].CopyFrom(
+        geometry_pb2.FrameTreeSnapshot.ParentEdge())
+    koerper = geometry_pb2.FrameTreeSnapshot.ParentEdge(parent_frame_name=VISION_FRAME_NAME)
+    koerper.parent_tform_child.position.x = x
+    koerper.parent_tform_child.position.y = y
+    koerper.parent_tform_child.rotation.w = math.cos(gier / 2.0)
+    koerper.parent_tform_child.rotation.z = math.sin(gier / 2.0)
+    baum.child_to_parent_edge_map[BODY_FRAME_NAME].CopyFrom(koerper)
+    return baum
+
+
 class _Spot:
     def __init__(self, tags=(), leute=(), frei=5.0, pose=(0.0, 0.0, 0.0),
                  faehigkeiten=Capability.LOCOMOTION, kopfraum=None, kartenlage=None,
@@ -65,6 +88,7 @@ class _Spot:
             capabilities=lambda: faehigkeiten,
             images=lambda quellen: kopfraum,
             neigt_beim_gehen=neigt,
+            frame_tree_snapshot=lambda: _baum(*self._pose),
         )
 
     def tags(self, id=None):
@@ -136,6 +160,74 @@ def test_ein_unlesbares_gitter_verbietet_die_fahrt():
 
     darf, grund = folgen.frei_voraus(_Kaputt())
     assert darf is False and "nicht lesbar" in grund
+
+
+def _kiste_voraus(x0, y0, voraus=0.9, breite=0.5, zelle=0.03, n=128):
+    """Ein echtes Hindernisgitter um (x0, y0): eine Kiste `voraus` Meter in +x, `breite` breit."""
+    import numpy as np
+
+    from spotlab.backends.base import ObstacleGrid
+
+    ursprung = (x0 - n * zelle / 2, y0 - n * zelle / 2)
+    x, y = np.meshgrid(ursprung[0] + np.arange(n) * zelle, ursprung[1] + np.arange(n) * zelle)
+    dx = np.maximum(np.maximum(x0 + voraus - 0.1 - x, x - (x0 + voraus + 0.1)), 0.0)
+    dy = np.maximum(np.maximum(y0 - breite / 2 - y, y - (y0 + breite / 2)), 0.0)
+    return ObstacleGrid(cells=np.hypot(dx, dy), cell_size=zelle, origin=ursprung, time=0.0)
+
+
+def _auseinander(quer_m, gitter=None, baum=None):
+    """Ein Trockenlauf, in dem vision und odom `quer_m` Meter quer auseinanderliegen.
+
+    Am echten Spot driften die beiden Rahmen: das Hindernisgitter kommt im Rahmen
+    „vision" (`backends/real/wahrnehmung.py::gitter_aus`), `state.pose` ist „odom".
+    Im Trockenlauf und in den Sims sind sie gleich -- deshalb sah es kein Test.
+    """
+    from bosdyn.client.frame_helpers import ODOM_FRAME_NAME
+
+    from spotlab.api.spot import Spot
+    from spotlab.backends.dryrun import DryRunBackend
+
+    class _Verschoben(DryRunBackend):
+        def frame_tree_snapshot(self):
+            if baum is not None:
+                return baum
+            b = super().frame_tree_snapshot()
+            b.child_to_parent_edge_map[ODOM_FRAME_NAME].parent_tform_child.position.y = quer_m
+            return b
+
+        def local_grid(self):
+            return gitter
+
+    return Spot(_Verschoben())
+
+
+def test_die_hindernisschranke_fragt_das_gitter_im_rahmen_des_gitters():
+    """Befund p16 (22.09.2026): Kiste 0.9 m voraus, Rahmen 0.8 m auseinander -- mit der
+    odom-Lage ging der Strahl an der Kiste vorbei, und die Schranke gab frei."""
+    spot = _auseinander(-0.8, gitter=_kiste_voraus(0.0, -0.8))
+    assert spot.state.pose[:2] == (0.0, 0.0), "odom: Spot steht im Ursprung, vision: 0.8 m daneben"
+    darf, grund = folgen.frei_voraus(spot)
+    assert darf is False and "frei voraus" in grund, grund
+
+
+def test_ohne_vision_rahmen_verbietet_die_hindernisschranke_die_fahrt():
+    """Fail-closed: ohne Lage im Rahmen des Gitters gibt es keine Aussage ueber voraus."""
+    from bosdyn.api import geometry_pb2
+
+    spot = _auseinander(0.0, gitter=_kiste_voraus(0.0, 0.0, voraus=5.0),
+                        baum=geometry_pb2.FrameTreeSnapshot())
+    darf, grund = folgen.frei_voraus(spot)
+    assert darf is False and "nicht lesbar" in grund, grund
+
+
+def test_das_beispiel_durchgang_nimmt_die_lage_im_rahmen_des_gitters():
+    """Dieselbe Falle im Beispiel: `spot.state.pose` neben `spot.obstacles()`."""
+    from pathlib import Path
+
+    quelle = (Path(folgen.__file__).parent / "beispiele" / "durchgang_finden.py").read_text(
+        encoding="utf-8")
+    assert "state.pose" not in quelle
+    assert "spot.look(" in quelle
 
 
 def test_ohne_tiefenkameras_gibt_es_die_kopfraumschranke_nicht():

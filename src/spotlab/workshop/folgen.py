@@ -665,15 +665,41 @@ def gesten_leser(finder, ordner=None, haende_holen=None, jeder=GESTEN_JEDER_TAKT
 # ---------------------------------------------------------------- Schranken
 
 
+def _lage_im_gitter(spot):
+    """(x, y, Gier in RAD) des Körpers im Rahmen „vision" — dem Rahmen des Hindernisgitters.
+
+    NICHT `spot.state.pose`: die ist „odom". Am echten Spot kommt das Gitter im
+    Rahmen „vision" (`backends/real/wahrnehmung.py::gitter_aus`), und die beiden
+    Rahmen driften auseinander — mit der odom-Lage prüft die Schranke einen Strahl
+    NEBEN dem Weg (Befund p16, 22.09.2026: Kiste 0.9 m voraus, Rahmen 0.6 m
+    auseinander, die Schranke gab frei). Im Trockenlauf und in den Sims sind beide
+    gleich, deshalb fiel es dort nie auf. Dieselbe Rechnung wie `spot.look()`.
+    Wirft, wenn der Rahmenbaum keine Lage in „vision" hat — die Schranke macht
+    daraus „nicht lesbar", also Stehen.
+    """
+    from bosdyn.client.frame_helpers import BODY_FRAME_NAME, VISION_FRAME_NAME, get_a_tform_b
+
+    lage = get_a_tform_b(spot.backend.frame_tree_snapshot(), VISION_FRAME_NAME, BODY_FRAME_NAME)
+    if lage is None:
+        raise SpotlabError("kein Rahmen vision/body für das Hindernisgitter")
+    q = lage.rotation
+    gier = math.atan2(2.0 * (q.w * q.z + q.x * q.y), 1.0 - 2.0 * (q.y * q.y + q.z * q.z))
+    return float(lage.x), float(lage.y), gier
+
+
 def frei_voraus(spot, meter=FREIRAUM_M):
-    """(darf fahren, Grund). Fail-closed: kein Gitter heisst kein Vorwärts."""
+    """(darf fahren, Grund). Fail-closed: kein Gitter heisst kein Vorwärts.
+
+    Die Lage kommt aus dem Rahmen des Gitters (`_lage_im_gitter`), nicht aus
+    `spot.state.pose` — siehe dort.
+    """
     try:
         gitter = spot.obstacles()
-        x, y, yaw = spot.state.pose
-        frei = gitter.free_distance(x, y, math.degrees(yaw))
+        x, y, gier = _lage_im_gitter(spot)
+        frei = gitter.free_distance(x, y, math.degrees(gier))
     except Exception as fehler:
         return False, f"Hindernisgitter nicht lesbar ({fehler})"
-    if frei < meter:
+    if not frei >= meter:                 # auch NaN heisst: nicht frei
         return False, f"nur {frei:.1f} m frei voraus"
     return True, ""
 
