@@ -381,3 +381,59 @@ def test_f1_und_der_knopf_zeigen_die_tastentafel(tab, qapp):
     tab.tasten_knopf.click()
     assert tab._tastentafel.isVisible()
     tab._tastentafel.close()
+
+
+# ------------------------------------------- Zustandszeile, Achse, Zeiger (Qt)
+
+
+def test_die_zustandszeile_unter_der_sicht_folgt_maus_und_geste(tab, qapp):
+    _gezeigt(tab, qapp)
+    assert tab.zustand.objectName() == "Statuszeile"
+    tab._bewegt(1.23, 2.5, False)
+    assert "x 1.23 m  y 2.50 m" in tab.zustand.text()
+    tab.steuerung.auswahl = frozenset({("block", 0)})
+    tab._taste("g", False, False, False)
+    tab._taste("x", False, False, False)
+    assert tab.zustand.text().startswith("G bewegen") and "nur X" in tab.zustand.text()
+    assert "Enter bestätigt · Esc bricht ab" in tab.zustand.text()
+
+
+def test_die_2d_sicht_zeichnet_die_gesperrte_achse(tab, qapp):
+    from PySide6.QtGui import QColor
+
+    from spotlab.gui.theme import DUNKEL
+
+    _gezeigt(tab, qapp)
+    st = tab.steuerung
+    st.auswahl = frozenset({("block", 0)})
+    mitte = b.mitte(st.raum, st.auswahl)
+    tab._taste("g", False, False, False)
+    tab._taste("x", False, False, False)
+    assert tab.sicht._achse == ("x", mitte)
+    bild = tab.sicht.grab().toImage()
+    _px, py = tab.sicht.meter_zu_schirm(*mitte)
+    farbe = bild.pixelColor(3, round(py))
+    rot, hinten = QColor(DUNKEL.gefahr), QColor(DUNKEL.hintergrund)
+
+    def abstand(a, c):
+        return abs(a.red() - c.red()) + abs(a.green() - c.green()) + abs(a.blue() - c.blue())
+
+    assert abstand(farbe, rot) < abstand(farbe, hinten)
+    tab._taste("escape", False, False, False)
+    assert tab.sicht._achse is None
+
+
+def test_ueberfahren_hebt_hervor_und_setzt_den_mauszeiger(tab, qapp):
+    from PySide6.QtCore import Qt
+
+    _gezeigt(tab, qapp)
+    tisch = tab.raum().bloecke[0]
+    tab._bewegt(tisch.x, tisch.y, False)
+    assert tab.sicht._ueber == ("block", 0)
+    assert tab.sicht.cursor().shape() == Qt.PointingHandCursor
+    tab._bewegt(0.3, 0.3, False)
+    assert tab.sicht._ueber is None and tab.sicht.cursor().shape() == Qt.ArrowCursor
+    tab._werkzeug_knoepfe["wand"].click()
+    tab._bewegt(2.0, 2.0, False)
+    assert tab.sicht.cursor().shape() == Qt.CrossCursor
+    tab.sicht.grab()                                       # zeichnet mit Hervorhebung, ohne Absturz

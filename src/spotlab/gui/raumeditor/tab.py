@@ -307,10 +307,16 @@ class RaumeditorView(QWidget):
         self.stapel = QStackedWidget()
         self.stapel.addWidget(self.sicht)
         self.stapel.addWidget(self.sicht3d)
+        # Die Zustandszeile: Werkzeug oder Geste, was jetzt geht, Zeiger, Raster --
+        # der Text kommt aus `Steuerung.beschreibung()`.
+        self.zustand = QLabel("")
+        self.zustand.setObjectName("Statuszeile")
+        self.zustand.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         mitte = QVBoxLayout()
         mitte.setSpacing(4)
         mitte.addLayout(kopf)
         mitte.addWidget(self.stapel, 1)
+        mitte.addWidget(self.zustand)
 
         # -- rechts, FESTE Breite: sonst wurde die Sicht bei jeder Auswahl mit
         # langem Namen schmaler und sprang (UX-Pruefung 23.09.2026).
@@ -861,7 +867,7 @@ class RaumeditorView(QWidget):
         self._zeige()
 
     def _bewegt(self, x, y, ctrl):
-        self.steuerung.bewege(x, y, ctrl)
+        self.steuerung.bewege(x, y, ctrl, toleranz=self.stapel.currentWidget().toleranz_m())
         self._zeige(nur_sicht=True)
 
     def _losgelassen(self, x, y, shift, ctrl):
@@ -966,8 +972,11 @@ class RaumeditorView(QWidget):
     def _zeige(self, nur_sicht=False):
         st = self.steuerung
         self.sicht.zeige(st.raum, st.auswahl, st.griffe(), st.rahmen, st.kette,
-                         ebene=st.ebene, klippen_=self._klippen(st.raum))
+                         ebene=st.ebene, klippen_=self._klippen(st.raum),
+                         ueber=st.ueber, achse=st.achslinie())
         self.sicht3d.zeige(st.raum, st.auswahl)
+        self.stapel.currentWidget().setze_zeigerart(st.zeigerart())
+        self.zustand.setText(st.beschreibung())
         if nur_sicht or st.raum is None:
             return
         self._fuelle_ebenen()

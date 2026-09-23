@@ -19,6 +19,7 @@ from spotlab.welt.kollision import ROBOTER_RADIUS_M
 TAG_KANTE_M = 0.15
 PFEIL_M = 0.4
 ZACKE_PX = 4               # Kammlinie der Klippen
+SPOT_MIN_PX = 4            # kleinster Radius des Spot-Kreises
 
 
 def _auf(element, raum, ebene):
@@ -157,6 +158,49 @@ def zeichne_raum(maler, raum, meter_zu_schirm, skala, palette, auswahl=frozenset
         maler.drawText(int(px + halb) + 3, int(py) + 4, str(tag.id))
 
 
+def zeichne_hervorhebung(maler, raum, schluessel, meter_zu_schirm, skala, palette):
+    """Der Umriss des Elements unter dem Zeiger -- vor dem Klick sieht man, was er trifft."""
+    if schluessel is None:
+        return
+    art = schluessel[0]
+    farbe = QColor(mische(palette.text, palette.akzent, 0.55))
+    maler.setPen(QPen(farbe, 2))
+    maler.setBrush(Qt.NoBrush)
+    try:
+        if art == "wand":
+            wand = raum.waende[schluessel[1]]
+            dicke = max(raum.wand_dicke, 6.0 / max(skala, 1e-6))
+            maler.drawPolygon(_polygon(wand_polygon(wand, dicke), meter_zu_schirm))
+        elif art in ("block", "boden", "sperrzone"):
+            element = {"block": raum.bloecke, "boden": raum.boeden,
+                       "sperrzone": raum.sperrzonen}[art][schluessel[1]]
+            maler.drawPolygon(_polygon(element.ecken(), meter_zu_schirm))
+        elif art == "tag":
+            tag = raum.tags[schluessel[1]]
+            px, py = meter_zu_schirm(tag.x, tag.y)
+            halb = max(6.0, TAG_KANTE_M / 2 * skala) + 3
+            maler.drawRect(int(px - halb), int(py - halb), int(2 * halb), int(2 * halb))
+        elif art == "start":
+            px, py = meter_zu_schirm(raum.start[0], raum.start[1])
+            r = max(SPOT_MIN_PX, ROBOTER_RADIUS_M * skala) + 3
+            maler.drawEllipse(QPointF(px, py), r, r)
+    except IndexError:
+        return                      # die Hervorhebung gehoerte zu einem aelteren Raum
+
+
+def zeichne_achse(maler, achse, meter_zu_schirm, breite, hoehe, palette):
+    """Die gesperrte Achse bei G oder S (Blender-Farben: x rot, y gruen), quer durchs Bild."""
+    if achse is None:
+        return
+    name, (x, y) = achse
+    px, py = meter_zu_schirm(x, y)
+    maler.setPen(QPen(QColor(palette.gefahr if name == "x" else palette.ok), 1))
+    if name == "x":
+        maler.drawLine(QPointF(0, round(py)), QPointF(breite, round(py)))
+    else:
+        maler.drawLine(QPointF(round(px), 0), QPointF(round(px), hoehe))
+
+
 def zeichne_spur(maler, spur, meter_zu_schirm, palette):
     if len(spur) < 2:
         return
@@ -196,7 +240,7 @@ def zeichne_anstoesse(maler, punkte, meter_zu_schirm, palette):
 
 def zeichne_spot(maler, px, py, blick_grad, skala, palette, gewaehlt=False):
     """Spot als Kreis mit Blickstrich -- `px, py` schon in Pixeln."""
-    r = max(4.0, ROBOTER_RADIUS_M * skala)
+    r = max(SPOT_MIN_PX, ROBOTER_RADIUS_M * skala)
     maler.setPen(QPen(QColor(palette.akzent if gewaehlt else palette.funktion), 2))
     maler.setBrush(Qt.NoBrush)
     maler.drawEllipse(QPointF(px, py), r, r)

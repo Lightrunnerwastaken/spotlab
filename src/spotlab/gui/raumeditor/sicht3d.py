@@ -28,7 +28,7 @@ from PySide6.QtOpenGL import QOpenGLFramebufferObject, QOpenGLShader, QOpenGLSha
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 
 from spotlab.gui.raumeditor import geometrie3d as geo
-from spotlab.gui.raumeditor.sicht2d import TASTEN
+from spotlab.gui.raumeditor.sicht2d import TASTEN, ZEIGER
 from spotlab.gui.theme import mische
 from spotlab.welt.raum import huelle
 
@@ -216,6 +216,9 @@ class Sicht3D(QOpenGLWidget):
             self._puffer_dirty = True
         self._raum, self._auswahl = raum, frozenset(auswahl)
         self.update()
+
+    def setze_zeigerart(self, art):
+        self.setCursor(ZEIGER.get(art, Qt.ArrowCursor))
 
     def setze_spur(self, punkte):
         self._spur = list(punkte)

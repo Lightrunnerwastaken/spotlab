@@ -15,7 +15,9 @@ from spotlab.gui.raumzeichnung import (
     gelaende_bild,
     gelaende_rechteck,
     pauspapier_bild,
+    zeichne_achse,
     zeichne_anstoesse,
+    zeichne_hervorhebung,
     zeichne_offen,
     zeichne_raum,
     zeichne_spot,
@@ -28,6 +30,9 @@ RAND = 24
 GRIFF_PX = 5
 TOLERANZ_PX = 8
 FEINES_RASTER_AB = 100.0          # Pixel je Meter, ab da 5-cm-Linien
+# Der Mauszeiger je `Steuerung.zeigerart()`: man sieht vor dem Klick, was er tut.
+ZEIGER = {"bewegen": Qt.SizeAllCursor, "element": Qt.PointingHandCursor,
+          "zeichnen": Qt.CrossCursor, "schwenken": Qt.ClosedHandCursor, None: Qt.ArrowCursor}
 
 TASTEN = {
     Qt.Key_Return: "return", Qt.Key_Enter: "return", Qt.Key_Escape: "escape",
@@ -62,6 +67,8 @@ class Sicht2D(QWidget):
         self._markierung = []        # Strecken der gewaehlten Luecke des Korrigierers
         self._kandidaten = []        # alle Kandidaten, duenn dahinter
         self._offen = []             # offene Raender des Gelaendes
+        self._ueber = None           # das Element unter dem Zeiger
+        self._achse = None           # die bei G/S gesperrte Achse
         self._gelaende_bild = None   # einmal je (Hoehen, Ebene) gerendert
         self._gelaende_ref = None    # haelt die Hoehen, damit id() stabil bleibt
         self._gelaende_schluessel = None
@@ -79,11 +86,17 @@ class Sicht2D(QWidget):
     # ------------------------------------------------------------ Fuellen
 
     def zeige(self, raum, auswahl=frozenset(), griffe=(), rahmen=None, kette=None,
-              ebene=None, klippen_=()):
+              ebene=None, klippen_=(), ueber=None, achse=None):
+        """`ueber`: das Element unter dem Zeiger (hervorgehoben); `achse`: die bei G/S
+        gesperrte Achse als (\"x\" | \"y\", (x, y)) -- eine Linie durchs Bild."""
         self._raum, self._auswahl = raum, frozenset(auswahl)
         self._griffe, self._rahmen, self._kette = list(griffe), rahmen, kette
         self._ebene, self._klippen = ebene, list(klippen_)
+        self._ueber, self._achse = ueber, achse
         self.update()
+
+    def setze_zeigerart(self, art):
+        self.setCursor(ZEIGER.get(art, Qt.ArrowCursor))
 
     def setze_spur(self, punkte):
         self._spur = list(punkte)
@@ -297,8 +310,12 @@ class Sicht2D(QWidget):
 
         self._zeichne_pauspapier(maler)
 
+        zeichne_achse(maler, self._achse, self.meter_zu_schirm, self.width(), self.height(), self._p)
         zeichne_raum(maler, self._raum, self.meter_zu_schirm, self.skala, self._p, self._auswahl,
                      ebene=self._ebene, klippen_=self._klippen)
+        if self._ueber not in self._auswahl:
+            zeichne_hervorhebung(maler, self._raum, self._ueber, self.meter_zu_schirm,
+                                 self.skala, self._p)
         zeichne_strecken(maler, self._kandidaten, self.meter_zu_schirm, self._p.gedaempft, 1)
         zeichne_strecken(maler, self._markierung, self.meter_zu_schirm, self._p.akzent, 2, enden=True)
         zeichne_spur(maler, self._spur, self.meter_zu_schirm, self._p)
