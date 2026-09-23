@@ -50,7 +50,79 @@ def test_die_drehrate_ist_gedeckelt():
     assert wz == pytest.approx(-math.radians(folgen.MAX_DREHRATE_GRAD))
 
 
+NAN, INF = float("nan"), float("inf")
+
+
+@pytest.mark.parametrize("peilung, abstand", [
+    (0.0, NAN), (0.0, INF), (0.0, -INF), (NAN, 3.0), (INF, 3.0), (-INF, 3.0), (NAN, NAN),
+])
+def test_ein_ungueltiges_ziel_heisst_stehen(peilung, abstand):
+    """Befund p09 (22.09.2026): `befehl(Ziel(0, nan))` gab (0.5, 0.0) -- VOLLGAS. Jeder
+    Vergleich mit NaN ist falsch, `fehler <= toleranz` und `distance <= mindest` sagten
+    beide nein, und so lief ein Finder mit ungueltigem Abstand an MIN_ABSTAND_M vorbei.
+    Ein selbstgebauter Finder ist ausdruecklich vorgesehen; eine Division durch null darin
+    genuegt."""
+    assert folgen.befehl(Ziel(peilung, abstand)) == (0.0, 0.0)
+    assert folgen.befehl(Ziel(peilung, abstand), takt_s=0.6) == (0.0, 0.0)
+
+
+def test_ein_finder_mit_ungueltigem_abstand_laesst_spot_stehen_und_sagt_es_einmal():
+    spot = _Spot()
+    gesagt = []
+    folgen.folge(spot, lambda _s: Ziel(0.0, NAN, "Eigenbau"), melde=gesagt.append,
+                 schlaf=lambda _s: None, laeuft=_laeuft_takte(4), blick_grad=0.0)
+    assert not any(isinstance(k, dict) for k in spot.kommandos), "kein einziger Fahrbefehl"
+    assert spot.kommandos[-1] == "stop"
+    ungueltig = [m for m in gesagt if "ungültig" in m]
+    assert len(ungueltig) == 1 and "Eigenbau" in ungueltig[0], gesagt
+
+
+def test_ein_ungueltiges_ziel_zaehlt_nicht_als_gesehen():
+    """Sonst hielte der Nachlauf ein Ziel fest, das es nie gab -- und nach einem echten
+    Ziel verlaengerte ein NaN-Takt den Nachlauf ohne Ende."""
+    folge_ziele = iter([Ziel(0.0, 3.0, "Tag 1")] + [Ziel(0.0, NAN, "Tag 1")] * 10)
+    spot = _Spot()
+    folgen.folge(spot, lambda _s: next(folge_ziele), melde=lambda _t: None, jetzt=_uhr(0.4),
+                 schlaf=lambda _s: None, laeuft=_laeuft_takte(8), blick_grad=0.0,
+                 nachlauf_s=1.0)
+    fahrten = [k for k in spot.kommandos if isinstance(k, dict)]
+    assert len(fahrten) <= 2, "nach dem Nachlauf von 1 s steht er, NaN hin oder her"
+    assert spot.kommandos[-1] == "stop"
+
+
+def test_eine_ungueltige_oberkante_regelt_die_nase_nicht():
+    """`bild_oben = nan` hob die Nase jeden Takt um den vollen Schritt (min(3, nan) == 3)."""
+    spot = _Spot(neigt=True)
+    folgen.folge(spot, lambda _s: Ziel(0.0, 3.0, "Gesicht", bild_oben=NAN), melde=lambda _t: None,
+                 schlaf=lambda _s: None, laeuft=_laeuft_takte(4))
+    nicks = [k["nick_grad"] for k in spot.kommandos if isinstance(k, dict)]
+    assert nicks and all(n == pytest.approx(-folgen.BLICK_GRAD) for n in nicks), nicks
+
+
 # ------------------------------------------------------------------ Finder
+
+
+def _baum(x, y, gier):
+    """Ein Rahmenbaum vision -> body, wie ihn `frame_tree_snapshot()` liefert.
+
+    Hier ist odom = vision (wie im Trockenlauf und in den Sims); wo die beiden
+    auseinanderliegen, steht das beim Test dabei.
+    """
+    import math
+
+    from bosdyn.api import geometry_pb2
+    from bosdyn.client.frame_helpers import BODY_FRAME_NAME, VISION_FRAME_NAME
+
+    baum = geometry_pb2.FrameTreeSnapshot()
+    baum.child_to_parent_edge_map[VISION_FRAME_NAME].CopyFrom(
+        geometry_pb2.FrameTreeSnapshot.ParentEdge())
+    koerper = geometry_pb2.FrameTreeSnapshot.ParentEdge(parent_frame_name=VISION_FRAME_NAME)
+    koerper.parent_tform_child.position.x = x
+    koerper.parent_tform_child.position.y = y
+    koerper.parent_tform_child.rotation.w = math.cos(gier / 2.0)
+    koerper.parent_tform_child.rotation.z = math.sin(gier / 2.0)
+    baum.child_to_parent_edge_map[BODY_FRAME_NAME].CopyFrom(koerper)
+    return baum
 
 
 class _Spot:
@@ -65,6 +137,7 @@ class _Spot:
             capabilities=lambda: faehigkeiten,
             images=lambda quellen: kopfraum,
             neigt_beim_gehen=neigt,
+            frame_tree_snapshot=lambda: _baum(*self._pose),
         )
 
     def tags(self, id=None):
@@ -136,6 +209,74 @@ def test_ein_unlesbares_gitter_verbietet_die_fahrt():
 
     darf, grund = folgen.frei_voraus(_Kaputt())
     assert darf is False and "nicht lesbar" in grund
+
+
+def _kiste_voraus(x0, y0, voraus=0.9, breite=0.5, zelle=0.03, n=128):
+    """Ein echtes Hindernisgitter um (x0, y0): eine Kiste `voraus` Meter in +x, `breite` breit."""
+    import numpy as np
+
+    from spotlab.backends.base import ObstacleGrid
+
+    ursprung = (x0 - n * zelle / 2, y0 - n * zelle / 2)
+    x, y = np.meshgrid(ursprung[0] + np.arange(n) * zelle, ursprung[1] + np.arange(n) * zelle)
+    dx = np.maximum(np.maximum(x0 + voraus - 0.1 - x, x - (x0 + voraus + 0.1)), 0.0)
+    dy = np.maximum(np.maximum(y0 - breite / 2 - y, y - (y0 + breite / 2)), 0.0)
+    return ObstacleGrid(cells=np.hypot(dx, dy), cell_size=zelle, origin=ursprung, time=0.0)
+
+
+def _auseinander(quer_m, gitter=None, baum=None):
+    """Ein Trockenlauf, in dem vision und odom `quer_m` Meter quer auseinanderliegen.
+
+    Am echten Spot driften die beiden Rahmen: das Hindernisgitter kommt im Rahmen
+    „vision" (`backends/real/wahrnehmung.py::gitter_aus`), `state.pose` ist „odom".
+    Im Trockenlauf und in den Sims sind sie gleich -- deshalb sah es kein Test.
+    """
+    from bosdyn.client.frame_helpers import ODOM_FRAME_NAME
+
+    from spotlab.api.spot import Spot
+    from spotlab.backends.dryrun import DryRunBackend
+
+    class _Verschoben(DryRunBackend):
+        def frame_tree_snapshot(self):
+            if baum is not None:
+                return baum
+            b = super().frame_tree_snapshot()
+            b.child_to_parent_edge_map[ODOM_FRAME_NAME].parent_tform_child.position.y = quer_m
+            return b
+
+        def local_grid(self):
+            return gitter
+
+    return Spot(_Verschoben())
+
+
+def test_die_hindernisschranke_fragt_das_gitter_im_rahmen_des_gitters():
+    """Befund p16 (22.09.2026): Kiste 0.9 m voraus, Rahmen 0.8 m auseinander -- mit der
+    odom-Lage ging der Strahl an der Kiste vorbei, und die Schranke gab frei."""
+    spot = _auseinander(-0.8, gitter=_kiste_voraus(0.0, -0.8))
+    assert spot.state.pose[:2] == (0.0, 0.0), "odom: Spot steht im Ursprung, vision: 0.8 m daneben"
+    darf, grund = folgen.frei_voraus(spot)
+    assert darf is False and "frei voraus" in grund, grund
+
+
+def test_ohne_vision_rahmen_verbietet_die_hindernisschranke_die_fahrt():
+    """Fail-closed: ohne Lage im Rahmen des Gitters gibt es keine Aussage ueber voraus."""
+    from bosdyn.api import geometry_pb2
+
+    spot = _auseinander(0.0, gitter=_kiste_voraus(0.0, 0.0, voraus=5.0),
+                        baum=geometry_pb2.FrameTreeSnapshot())
+    darf, grund = folgen.frei_voraus(spot)
+    assert darf is False and "nicht lesbar" in grund, grund
+
+
+def test_das_beispiel_durchgang_nimmt_die_lage_im_rahmen_des_gitters():
+    """Dieselbe Falle im Beispiel: `spot.state.pose` neben `spot.obstacles()`."""
+    from pathlib import Path
+
+    quelle = (Path(folgen.__file__).parent / "beispiele" / "durchgang_finden.py").read_text(
+        encoding="utf-8")
+    assert "state.pose" not in quelle
+    assert "spot.look(" in quelle
 
 
 def test_ohne_tiefenkameras_gibt_es_die_kopfraumschranke_nicht():

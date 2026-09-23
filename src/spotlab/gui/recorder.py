@@ -61,8 +61,22 @@ def verarbeite(sitzung, auftrag, melde=None):
 
 
 class RecordingWorker(QThread):
+    """Der Arbeiter der Kartenaufnahme: EINE Robotersitzung, Aufträge nacheinander.
+
+    Zwei Arten Fehlschlag, und sie sind verschieden (Befund p04, 22.09.2026):
+
+    `abgebrochen(text)`  die Verbindung kam nicht zustande — der Arbeiter ENDET.
+    `fehler(art, text)`  ein einzelner Auftrag scheiterte (`art`: start, waypoint,
+                         stop, speichern, status) — der Arbeiter LÄUFT WEITER.
+                         Bis zum 22.09.2026 beendete die Ansicht bei jedem Fehler
+                         die ganze Aufnahme: ein gescheiterter Wegpunkt, und
+                         „Beenden und speichern" war grau, während der Roboter
+                         weiter aufzeichnete — ein Stopp ging nie hinaus.
+    """
+
     status = Signal(object)
-    fehler = Signal(str)
+    fehler = Signal(str, str)
+    abgebrochen = Signal(str)
     gespeichert = Signal(str)
     bereit = Signal()
 
@@ -72,6 +86,7 @@ class RecordingWorker(QThread):
         self._verbinder = verbinder
         self._auftraege = queue.Queue()
         self._laeuft = True
+        self._status_fehler = False     # ein Abfragefehler wird einmal gesagt, nicht je Sekunde
 
     # ------------------------------------------------------------- Aufträge
 
@@ -102,10 +117,10 @@ class RecordingWorker(QThread):
         try:
             sitzung = RecordingSession.connect(self._cfg, verbinder=self._verbinder)
         except SpotlabError as fehler:
-            self.fehler.emit(str(fehler))
+            self.abgebrochen.emit(str(fehler))
             return
         except Exception as fehler:
-            self.fehler.emit(f"{type(fehler).__name__}: {fehler}")
+            self.abgebrochen.emit(f"{type(fehler).__name__}: {fehler}")
             return
 
         self.bereit.emit()
@@ -122,7 +137,8 @@ class RecordingWorker(QThread):
                     sitzung, auftrag, melde=lambda text: self._melde_text(sitzung, text)
                 )
                 if art == "fehler":
-                    self.fehler.emit(nutzlast)
+                    # Melden und WEITER: die Sitzung steht, der naechste Auftrag kann gelingen.
+                    self.fehler.emit(auftrag.art, nutzlast)
                 elif art == "gespeichert":
                     self.gespeichert.emit(nutzlast)
                 else:
@@ -132,9 +148,14 @@ class RecordingWorker(QThread):
 
     def _melde_status(self, sitzung):
         try:
-            self.status.emit(sitzung.status())
+            stand = sitzung.status()
         except Exception as fehler:
-            self.fehler.emit(f"Status nicht abrufbar: {fehler}")
+            if not self._status_fehler:
+                self._status_fehler = True
+                self.fehler.emit("status", f"Status nicht abrufbar: {fehler}")
+            return
+        self._status_fehler = False
+        self.status.emit(stand)
 
     def _melde_text(self, sitzung, text):
         """Ein Zwischenstand mit den aktuellen Zahlen — die Kanten wachsen dabei."""

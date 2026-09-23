@@ -31,7 +31,13 @@ versionsgepinntes Extra `spotlab[sim]`.
 - **Ein Fehlschlag muss den Zustand zuruecksetzen, nicht nur eine Meldung schreiben.**
   `MapsView._aufnahme_fehler` meldete und liess `_worker` stehen: der Startknopf blieb fuer immer
   grau, und der zweite Versuch antwortete „Es laeuft bereits eine Aufnahme" — eine Ursache, die es
-  nicht gab. Getroffen hat es jeden ohne Roboter beim ersten Klick.
+  nicht gab. Getroffen hat es jeden ohne Roboter beim ersten Klick. **Zuruecksetzen heisst aber
+  nicht: bei JEDEM Fehler alles abbauen.** Nur ein Verbindungsfehler beendet den Arbeiter
+  (`RecordingWorker.abgebrochen`); ein einzelner Auftrag, der scheitert (`fehler(art, text)`),
+  wird gemeldet, und Verbindung und Knoepfe bleiben. Befund p04 (22.09.2026): EIN gescheiterter
+  Wegpunkt schloss die ganze Aufnahme im Fenster, „Beenden und speichern" war grau — und der
+  Roboter zeichnete weiter auf, denn ein Stopp ging nie hinaus. Scheitert der START (kein
+  Fiducial), geht der Startknopf wieder, ohne neu zu verbinden.
 - **Lease wird mit `acquire` geholt, nie implizit mit `take`.** Übernahme ist eine
   bewusste, protokollierte Handlung. **Der NOT-AUS hinterlässt genau deshalb ein verwaistes
   Lease** (18.09.2026, zweimal hintereinander): er tötet den Lauf hart, `close()` läuft nie,
@@ -343,6 +349,17 @@ versionsgepinntes Extra `spotlab[sim]`.
   gesagt, dann weiter), und wo es keinen AV-Dienst gibt, wird gar nicht erst gefragt. Anlass:
   ohne Licht sieht der Mensch vor dem Roboter nur, DASS er steht — und das tut er aus vielen
   Gründen. Ob ein Handzeichen angekommen ist, war bis dahin nur am Laptop zu sehen.
+  **„Blockiert nie" heisst: die Anfragen gehen über einen BOTEN** (Hintergrundfaden je Schub,
+  `ausfuehren=` als Testtür), der Takt wartet nie auf den AV-Dienst; ist der Bote unterwegs,
+  gilt nur der neueste Wunsch. Die Prüfung am 22.09.2026 fand die erste Fassung in drei Punkten
+  falsch: sie schickte im Takt der Schleife (bis zu 5 s je Anfrage — p07), sie meldete nie, weil
+  `setze()` jeden Fehler selbst zählt und `folge()` auf eine Ausnahme wartete, und nach einem
+  Fehler fragte sie JEDEN Takt neu (sechs Anfragen in sechs Takten). Jetzt: Rückoff bis zur
+  nächsten Auffrischfrist, `folge()` liest `fehler`/`letzter_fehler` und sagt es einmal, und im
+  `finally` steht **`spot.stop()` VOR `licht.aus()`** (p08: stop kam 3.0 s zu spät, Spot fuhr so
+  lange mit dem letzten Befehl); `aus()` wartet höchstens `LICHT_AUS_WARTE_S` auf den Boten.
+  `test_ein_haengendes_licht_verlaengert_keinen_takt` lässt die Anfrage am Kopf hängen, bis alle
+  Takte durch sind.
 - **Handzeichen gibt es nur beim gefolgten Körper, und ein Zeichen ist kein Fahrbefehl.**
   `backends/real/gesten.py` (MediaPipe-Handfläche und -Handpose aus dem Zoo, ONNX über
   `cv2.dnn`) und `folgen.gesten_leser(finder)`: offene Hand = Halt, Daumen hoch = Weiter.
@@ -371,7 +388,10 @@ versionsgepinntes Extra `spotlab[sim]`.
   der Kopfraum, weil das Hindernisgitter eine Bodenkarte ist. Der Kopfraum wird nur alle
   `KOPFRAUM_TAKT_S` geholt — zwei Tiefenbilder über WLAN kosten mehr als ein Takt, und in
   einer Sekunde legt Spot höchstens einen halben Meter zurück, während der geprüfte
-  Korridor zwei Meter reicht.
+  Korridor zwei Meter reicht. **Ein Ziel mit NaN oder inf ist KEIN Ziel** (`_gepruefter`,
+  und `befehl()` gibt dafür selbst (0, 0)): mit NaN ist jeder Vergleich falsch, und
+  `befehl(Ziel(0, nan))` war bis zum 22.09.2026 Vollgas am Mindestabstand vorbei (p09). Es
+  zählt auch nicht als gesehen — sonst hielte der Nachlauf es fest; `folge()` sagt es einmal.
 - **`HasField` wirft auf ein Feld, das die SDK-Fassung nicht kennt — deshalb `_hat`.**
   `ARTEN` in `backends/real/wahrnehmung.py` führte `door_properties`, das es in
   bosdyn-api 5.0.1.2 nicht gibt. Die Schleife läuft für JEDES Objekt, also riss der eine
@@ -452,7 +472,15 @@ versionsgepinntes Extra `spotlab[sim]`.
   ein laufender `JediWorker`-QThread destruiert und reisst das ganze Fenster mit, samt
   NOT-AUS-Knopf. Dieselbe Regel gilt für `MapsView._worker` beim Fensterschliessen. Erst
   trennen, dann warten: eine Antwort, die eine Millisekunde zu spät kommt, darf das
-  zerstörte Widget nicht mehr anfassen.
+  zerstörte Widget nicht mehr anfassen. **Und wer nach dem Warten noch läuft, wird nicht
+  vergessen.** `_beende_worker(warte_ms)` gab den Arbeiter bis zum 22.09.2026 nach 3 s auf,
+  auch wenn er noch verband — er blieb Kind des Widgets, und beim Zerstören brach Qt den
+  Prozess ab („QThread: Destroyed while thread is still running", p05). Jetzt löst es ihn
+  vom Widget (`setParent(None)`), hält ihn in `_NACHZUEGLER`, bis `finished` → `deleteLater`
+  ihn abräumt, und gibt **True zurück, solange er läuft** (`aufnahme_laeuft_noch()` fragt
+  dasselbe ohne zu warten). Das Programmende wartet über `atexit` höchstens
+  `NACHZUEGLER_FRIST_S` auf ihn — eine laufende Nachbearbeitung kommt damit noch auf die
+  Platte.
 - **`Ausgabefeld.haenge_an` führt die Dokumentlänge laufend mit, statt `toPlainText()` zu
   rufen.** Jener kopiert bei jeder Zeile das ganze Dokument — gemessen 0.070 ms/Zeile bei
   500 Zeilen, 0.402 bei 4000, also quadratisch; auf 50 000 Zeilen Minuten, in denen die
@@ -770,6 +798,11 @@ versionsgepinntes Extra `spotlab[sim]`.
   den Tab änderbar (`maps/store.py::benenne_wegpunkt`, atomar, bereinigt wie bei der
   Aufnahme) und EINDEUTIG — `Map.id_fuer` nähme bei zwei gleichen Namen stillschweigend den
   ersten, und Spot führe woandershin. Keine Nebenliste mit Namen: der Graph ist die Wahrheit.
+  **`MapsView.aktualisiere()` behält die Auswahl — nach NAMEN, samt gewähltem Wegpunkt** — und
+  zeichnet die Karte neu von der Platte; ist sie weg, ist auch die Zeichnung weg. Die App ruft
+  es nach JEDEM Lauf (`_lauf_beendet`); bis zum 22.09.2026 leerte es die Liste, die Zeichnung
+  blieb, „Wegpunkt benennen" war aktiv und tat still nichts (p14). Nach Namen, weil die Liste
+  nach Änderungszeit sortiert ist.
 - **`einrichten.cmd` ist der eine Einstieg, und ohne `-Entwickler` installiert er nur aus
   dem ZIP.** Er ruft `einrichten.ps1`; ohne `-Entwickler` verlangt das Skript
   `schueler-requirements.txt` (liegt nur im Release) und installiert `--only-binary=:all:`
@@ -785,7 +818,14 @@ versionsgepinntes Extra `spotlab[sim]`.
   bis zum 06.09.2026 entpackte `gitter_aus` bitweise, und `is_free()` hielt am echten Spot
   Unbekanntes für frei. Das Gitter des echten Dienstes ist an den WELTACHSEN ausgerichtet;
   `ObstacleGrid` rechnet in Weltkoordinaten — `is_free(0.5, 0.0)` ist ein Weltpunkt, nicht
-  „einen halben Meter voraus".
+  „einen halben Meter voraus". **Und die Welt ist „vision", nicht „odom".** Wer das Gitter
+  abfragt, nimmt die Lage aus demselben Rahmen (`spot.look()`: `position`, `heading`;
+  `folgen._lage_im_gitter`), nie `state.pose` — die ist odom, und am echten Spot driften die
+  beiden. Befund p16 (22.09.2026): die Hindernisschranke des Folgemodus fragte mit der
+  odom-Lage, bei 0.6 m Drift lief ihr Strahl an einer Kiste 0.9 m voraus vorbei, und sie gab
+  frei; `Beispiele/durchgang_finden.py` hatte denselben Fehler. Im Trockenlauf und in den Sims
+  sind beide Rahmen gleich — ein Test dafür braucht eine Attrappe, in der sie auseinanderliegen
+  (`test_workshop_folgen.py::_auseinander`).
 - **Eine Sperrzone ist eine REGEL, kein Hindernis.** Sie steht in keinem Gitter, wirft
   keinen Schatten und verändert das Gelände nicht — `zone_bei` sitzt bewusst NEBEN
   `hindernis_bei`, nicht darin. Das ist ihr ganzer Zweck: sie hält dort, wo der SENSOR frei
@@ -1038,7 +1078,12 @@ versionsgepinntes Extra `spotlab[sim]`.
   unter `Beispiele/runs`, wo der Watcher sucht. Motoren müssen VOR dem Verbinden aus sein
   (`MotorsOnError` beim Not-Aus-Eintrag), und die Lease-Übernahme ist ein Häkchen, nie Vorgabe.
   `starte_skript(pfad, argumente=())` reicht die Aktion als Liste an den Prozess, nie über
-  eine Shell. Am Gerät: A36.
+  eine Shell. Am Gerät: A36. **Ein Motor-Aus ist nur mit dem Rollwinkel ein Befund**: ab
+  `AUF_DER_SEITE_GRAD` heisst es „liegt auf der Seite, Akku wechseln" (die Seite aus dem
+  VORZEICHEN, nicht aus dem Wunsch), darunter ist es ein Fehler „Motoren unerwartet aus — liegt
+  NICHT auf der Seite" (Not-Aus am Tablet, Fehler). Bis zum 22.09.2026 galt jedes Motor-Aus als
+  Seitenlage — bei 2° Rollwinkel (p12). Und eine Fehlermeldung sagt, was mit den Motoren
+  GESCHIEHT (`NACH_DEM_FEHLER`: der Abbau schaltet sie sicher aus), nicht „noch an".
 - **Das Fenstersymbol ist FREIGESTELLT und liegt im Paket** (`gui/spotlab.png`, runde
   Ecken mit Transparenz aussen, dazu `package-data`). Ein Symbol mit eigenem
   Hintergrund sitzt in der Taskleiste in einem grauen Kasten, und ohne den

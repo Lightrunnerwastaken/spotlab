@@ -516,7 +516,40 @@ def _lage(spot):
         gier = float(zustand.pose[2])
     except Exception:
         gier = None
-    return nick, gier
+    # Ein NaN rechnet sich ueberall hindurch, ohne je aufzufallen: kein Wert statt eines falschen.
+    return (nick if _endlich(nick) else 0.0), (gier if _endlich(gier) else None)
+
+
+def _endlich(wert):
+    """Eine endliche Zahl? NaN, inf, None und Nicht-Zahlen sind es nicht."""
+    try:
+        return math.isfinite(float(wert))
+    except (TypeError, ValueError):
+        return False
+
+
+def _gepruefter(ziel):
+    """(Ziel oder None, was daran ungültig war) — ein Ziel mit NaN oder inf ist KEIN Ziel.
+
+    Befund p09 (22.09.2026): `befehl(Ziel(0, nan))` gab Vollgas, weil jeder
+    Vergleich mit NaN falsch ist — und damit lief ein Finder mit ungültigem Abstand
+    am Mindestabstand vorbei. Peilung oder Abstand ungültig heisst hier: kein Ziel,
+    also stehen, und es zählt nicht als gesehen (sonst hielte der Nachlauf es fest).
+    Eine ungültige Oberkante oder Gier fällt nur weg: ohne sie wird die Nase nicht
+    geregelt und die Peilung nicht nachgeführt, gefolgt wird trotzdem.
+    """
+    if ziel is None:
+        return None, ""
+    if not (_endlich(ziel.bearing) and _endlich(ziel.distance)):
+        return None, f"Peilung {ziel.bearing}, Abstand {ziel.distance}"
+    from dataclasses import replace
+
+    weg = {feld: None for feld in ("bild_oben", "gier")
+           if getattr(ziel, feld) is not None and not _endlich(getattr(ziel, feld))}
+    if not weg:
+        return ziel, ""
+    text = ", ".join(f"{feld} {getattr(ziel, feld)}" for feld in weg)
+    return replace(ziel, **weg), text
 
 
 def _gier(spot):
@@ -665,15 +698,41 @@ def gesten_leser(finder, ordner=None, haende_holen=None, jeder=GESTEN_JEDER_TAKT
 # ---------------------------------------------------------------- Schranken
 
 
+def _lage_im_gitter(spot):
+    """(x, y, Gier in RAD) des Körpers im Rahmen „vision" — dem Rahmen des Hindernisgitters.
+
+    NICHT `spot.state.pose`: die ist „odom". Am echten Spot kommt das Gitter im
+    Rahmen „vision" (`backends/real/wahrnehmung.py::gitter_aus`), und die beiden
+    Rahmen driften auseinander — mit der odom-Lage prüft die Schranke einen Strahl
+    NEBEN dem Weg (Befund p16, 22.09.2026: Kiste 0.9 m voraus, Rahmen 0.6 m
+    auseinander, die Schranke gab frei). Im Trockenlauf und in den Sims sind beide
+    gleich, deshalb fiel es dort nie auf. Dieselbe Rechnung wie `spot.look()`.
+    Wirft, wenn der Rahmenbaum keine Lage in „vision" hat — die Schranke macht
+    daraus „nicht lesbar", also Stehen.
+    """
+    from bosdyn.client.frame_helpers import BODY_FRAME_NAME, VISION_FRAME_NAME, get_a_tform_b
+
+    lage = get_a_tform_b(spot.backend.frame_tree_snapshot(), VISION_FRAME_NAME, BODY_FRAME_NAME)
+    if lage is None:
+        raise SpotlabError("kein Rahmen vision/body für das Hindernisgitter")
+    q = lage.rotation
+    gier = math.atan2(2.0 * (q.w * q.z + q.x * q.y), 1.0 - 2.0 * (q.y * q.y + q.z * q.z))
+    return float(lage.x), float(lage.y), gier
+
+
 def frei_voraus(spot, meter=FREIRAUM_M):
-    """(darf fahren, Grund). Fail-closed: kein Gitter heisst kein Vorwärts."""
+    """(darf fahren, Grund). Fail-closed: kein Gitter heisst kein Vorwärts.
+
+    Die Lage kommt aus dem Rahmen des Gitters (`_lage_im_gitter`), nicht aus
+    `spot.state.pose` — siehe dort.
+    """
     try:
         gitter = spot.obstacles()
-        x, y, yaw = spot.state.pose
-        frei = gitter.free_distance(x, y, math.degrees(yaw))
+        x, y, gier = _lage_im_gitter(spot)
+        frei = gitter.free_distance(x, y, math.degrees(gier))
     except Exception as fehler:
         return False, f"Hindernisgitter nicht lesbar ({fehler})"
-    if frei < meter:
+    if not frei >= meter:                 # auch NaN heisst: nicht frei
         return False, f"nur {frei:.1f} m frei voraus"
     return True, ""
 
@@ -741,7 +800,13 @@ def befehl(ziel, wunsch=WUNSCH_ABSTAND_M, mindest=MIN_ABSTAND_M, toleranz=TOLERA
     `takt_s` ist die Zeit, die Spot bis zum nächsten Blick blind dreht. Wer 0.6 s
     nicht hinschaut, darf in der Zeit nicht weiter drehen, als das Ziel entfernt
     ist — sonst liegt es danach auf der anderen Seite, und er dreht zurück.
+
+    Eine Peilung oder ein Abstand, die keine endliche Zahl sind (NaN, inf), heissen
+    STEHEN: (0.0, 0.0). Mit NaN ist jeder Vergleich falsch, und ohne diese Zeile
+    wurde aus `Ziel(0, nan)` Vollgas (p09, 22.09.2026).
     """
+    if not (_endlich(ziel.bearing) and _endlich(ziel.distance)):
+        return 0.0, 0.0
     drehrate = min(MAX_DREHRATE_GRAD, abs(LENKUNG * ziel.bearing))
     if takt_s:
         drehrate = min(drehrate, ANTEIL_JE_TAKT * abs(ziel.bearing) / float(takt_s))
@@ -778,7 +843,8 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
     stehenden Roboter, und der steht aus vielen Gründen. `licht=False` schaltet
     sie ab, `None` baut sie selbst (und lässt sie weg, wo es keine gibt). Ein
     Fehler am Licht hält den Lauf nie an: es wird einmal gesagt und weiter
-    gefolgt.
+    gefolgt. Und das Licht verlangsamt keinen Takt: `Statuslicht` schickt über
+    einen Boten, und am Ende hält Spot ZUERST an, dann gehen die LEDs aus.
 
     `blick_grad` hebt die Nase während der Fahrt, damit die Kameras höher
     schauen — positiv, in Grad. Damit kommt ein stehendes Gesicht schon auf
@@ -830,23 +896,42 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
     angehalten = False          # per Handzeichen -- bis zum Daumen hoch
     gesten_stolpern_gemeldet = False
     licht_stolpern_gemeldet = False
+    ungueltig_gemeldet = False  # ein Finder mit NaN/inf -- einmal gesagt, nicht je Takt
     if licht is None:
         from spotlab.api.signals import Statuslicht
 
         licht = Statuslicht(spot)
 
-    def zeige(farbe):
-        """Die LEDs sind eine Beigabe: ein Fehler daran haelt nie den Regler an."""
+    def licht_melden(ausnahme=None):
+        """Einen Fehler am Licht EINMAL sagen -- geworfen oder vom Licht gezaehlt."""
         nonlocal licht_stolpern_gemeldet
+        if licht_stolpern_gemeldet:
+            return
+        if ausnahme is not None:
+            grund = f"{type(ausnahme).__name__}: {ausnahme}"
+        elif getattr(licht, "fehler", 0):
+            grund = str(getattr(licht, "letzter_fehler", "") or "Fehler ohne Text")
+        else:
+            return
+        licht_stolpern_gemeldet = True
+        melde(f"Das Licht am Kopf geht nicht ({grund}) — Spot folgt weiter, nur ohne Farbe.")
+
+    def zeige(farbe):
+        """Die LEDs sind eine Beigabe: ein Fehler daran haelt nie den Regler an.
+
+        `Statuslicht` wirft nicht, es ZAEHLT (`fehler`, `letzter_fehler`) -- bis zum
+        22.09.2026 wartete dieser Zweig auf eine Ausnahme, die nie kam, und ein
+        kaputtes Licht blieb stumm (p07). Ein selbstgebautes Licht darf auch werfen.
+        `setze` blockiert nicht: die Anfragen an den Roboter gehen ueber einen Boten.
+        """
         if not licht:
             return
         try:
             licht.setze(farbe)
         except Exception as fehler:
-            if not licht_stolpern_gemeldet:
-                licht_stolpern_gemeldet = True
-                melde(f"Das Licht am Kopf geht nicht ({type(fehler).__name__}: {fehler}) "
-                      f"— Spot folgt weiter, nur ohne Farbe.")
+            licht_melden(fehler)
+            return
+        licht_melden()
     gier_vorher = None          # die Gier beim letzten Befehl: so viel hat er seither gedreht
     seitlich_gedreht = 0.0      # Grad gedreht, seit das Ziel zuletzt VOR ihm war (Kreissperre)
     drehsperre = False
@@ -857,7 +942,14 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
             nun = jetzt()
             takt_dauer = max(takt_s, nun - takt_beginn) if takt_beginn is not None else takt_s
             takt_beginn = nun
-            ziel = _sicher(finder, spot)
+            roh = _sicher(finder, spot)
+            ziel, ungueltig = _gepruefter(roh)
+            if ungueltig and not ungueltig_gemeldet:
+                ungueltig_gemeldet = True
+                was = ("Spot behandelt das als „kein Ziel“ und bleibt stehen" if ziel is None
+                       else "der Wert fällt weg, gefolgt wird ohne ihn")
+                melde(f"{getattr(roh, 'name', 'Ziel')}: ungültige Zahl vom Finder ({ungueltig}) "
+                      f"— {was}. Den Finder prüfen.")
             echt = ziel is not None
 
             if gesten is not None:
@@ -1004,12 +1096,20 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
                 faehrt = True
             schlaf(_rest(takt_s, takt_beginn, jetzt))
     finally:
+        try:
+            # ZUERST anhalten, DANN das Licht: bis zum 22.09.2026 stand `licht.aus()`
+            # davor, und bei einem langsamen AV-Dienst fuhr Spot mit dem letzten Befehl
+            # weiter, bis dessen Endzeit ablief -- 3.0 s zu spaet gemessen (p08).
+            # `fahren.fahre` macht es seit jeher so herum.
+            spot.stop()
+        finally:
+            if licht:
+                try:
+                    licht.aus()           # wartet hoechstens kurz auf den Boten
+                except Exception:
+                    pass                  # die LEDs erloeschen ohnehin mit der Frist
         if licht:
-            try:
-                licht.aus()
-            except Exception:
-                pass                      # die LEDs erloeschen ohnehin mit der Frist
-        spot.stop()
+            licht_melden()                # ein Fehler aus dem letzten Takt kommt auch noch an
         melde("Folgen beendet.")
 
 

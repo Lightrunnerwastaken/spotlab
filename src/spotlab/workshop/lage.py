@@ -74,13 +74,32 @@ def _stufe(melde, winkel, gemeldet):
     return stufe
 
 
+# Was nach einem Fehler mit den Motoren geschieht -- WAHR, nicht beruhigend: der Fehler
+# beendet den Lauf, und der Abbau (`RealSpot.close()`) schickt gleich danach
+# `power_off(cut_immediately=False)`. Bis zum 22.09.2026 stand hier „die Motoren sind
+# noch an" -- eine Aussage, die eine Sekunde spaeter nicht mehr stimmte.
+NACH_DEM_FEHLER = ("Beim Beenden des Laufs schaltet spotlab die Motoren aus (sicher: erst "
+                   "hinsetzen, dann aus).")
+
+
+def _seite_von(winkel):
+    """Die Seite, auf der er LIEGT — aus dem Vorzeichen des Rollwinkels, nicht aus dem Wunsch."""
+    return "linken" if winkel < 0 else "rechten"
+
+
 def umlegen(spot, seite="links", melde=print, jetzt=time.monotonic, schlaf=time.sleep,
             warte_s=WARTE_S):
     """In die Batteriewechsel-Haltung: Motoren an, rollen, warten, bis er liegt.
 
     Gibt den Befund als Text zurück; wirft `SpotlabError`, wenn Spot nach
-    `warte_s` nicht auf der Seite liegt — und lässt ihn dann unter Strom, denn
-    aufrecht und unter Strom ist der Zustand, in dem ein Mensch nachsehen soll.
+    `warte_s` nicht auf der Seite liegt oder die Motoren ausgehen, BEVOR er auf
+    der Seite liegt. Ausgeschaltet wird dann hier nichts — der Fehler beendet den
+    Lauf, und dessen Abbau schaltet die Motoren sicher aus (`NACH_DEM_FEHLER`).
+
+    Ein Motor-Aus ist nur dann der Befund „liegt auf der Seite", wenn der
+    Rollwinkel es sagt (ab `AUF_DER_SEITE_GRAD`): die Motoren gehen auch aus, wenn
+    jemand am Tablet den Not-Aus drückt oder ein Fehler sie abschaltet — dann steht
+    oder sitzt Spot aufrecht (p12: „liegt auf der linken Seite" bei Rollwinkel 2°).
     """
     richtung = _richtung(seite)
     from bosdyn.client.robot_command import RobotCommandBuilder
@@ -100,18 +119,24 @@ def umlegen(spot, seite="links", melde=print, jetzt=time.monotonic, schlaf=time.
         winkel = rollwinkel(zustand)
         gemeldet = _stufe(melde, winkel, gemeldet)
         if not zustand.powered:
-            return (f"Motoren von selbst aus bei Rollwinkel {winkel:.0f}° — Spot liegt auf der "
-                    f"{lage} Seite. Akku wechseln.")
+            if abs(winkel) >= AUF_DER_SEITE_GRAD:
+                return (f"Motoren von selbst aus bei Rollwinkel {winkel:.0f}° — Spot liegt auf "
+                        f"der {_seite_von(winkel)} Seite. Akku wechseln.")
+            raise SpotlabError(
+                f"Motoren unerwartet aus bei Rollwinkel {winkel:.0f}° — Spot liegt NICHT auf "
+                f"der Seite (das wäre ab {AUF_DER_SEITE_GRAD:.0f}°). Not-Aus am Tablet oder ein "
+                f"Fehler? Am Tablet nachsehen, bevor jemand den Akku anfasst."
+            )
         schlaf(TAKT_S)
     if abs(winkel) >= AUF_DER_SEITE_GRAD:
         melde("Motoren aus (sicher) …")
         spot.power_off(safe=True)
-        return (f"Spot liegt auf der {lage} Seite (Rollwinkel {winkel:.0f}°), Motoren aus. "
-                f"Akku wechseln.")
+        return (f"Spot liegt auf der {_seite_von(winkel)} Seite (Rollwinkel {winkel:.0f}°), "
+                f"Motoren aus. Akku wechseln.")
     raise SpotlabError(
         f"Spot liegt nach {warte_s:.0f} s nicht auf der Seite (Rollwinkel {winkel:.0f}°). "
-        f"Sitzt er auf ebenem Boden, mit Platz auf der {lage} Seite? Am Tablet nachsehen — "
-        f"die Motoren sind noch an."
+        f"Sitzt er auf ebenem Boden, mit Platz auf der {lage} Seite? Am Tablet nachsehen. "
+        + NACH_DEM_FEHLER
     )
 
 
@@ -145,7 +170,7 @@ def aufrichten(spot, melde=print, jetzt=time.monotonic, schlaf=time.sleep, warte
             if nun >= ende:
                 raise SpotlabError(
                     f"Spot ist nach {warte_s:.0f} s nicht aufrecht (Rollwinkel {winkel:.0f}°). "
-                    f"Liegt etwas im Weg? Am Tablet nachsehen — die Motoren sind noch an."
+                    f"Liegt etwas im Weg? Am Tablet nachsehen. " + NACH_DEM_FEHLER
                 )
             winkel = rollwinkel(spot.state)
             gemeldet = _stufe(melde, winkel, gemeldet)

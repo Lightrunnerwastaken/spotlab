@@ -188,8 +188,13 @@ class ObstacleGrid:
     def free_distance(self, x, y, heading, max_distance=FREI_BIS_M, margin=0.3):
         """Wie viele Meter sind ab (x, y) in Richtung `heading` frei?
 
-        `heading` in GRAD, im Weltframe — `math.degrees(spot.state.pose[2])`
-        ist die Blickrichtung. Abgetastet wird Zelle fuer Zelle ab dem Punkt.
+        `heading` in GRAD, im Rahmen des Gitters. Punkt und Blickrichtung
+        muessen aus DEMSELBEN Rahmen kommen wie das Gitter: am echten Spot ist
+        das „vision" -- `spot.look()` liefert `position` und `heading` dort.
+        NICHT `spot.state.pose`: die ist „odom", und am echten Spot driften die
+        beiden auseinander; der Strahl liefe dann neben dem Weg her (im
+        Trockenlauf und in den Sims sind beide gleich, dort faellt es nicht auf).
+        Abgetastet wird Zelle fuer Zelle ab dem Punkt.
         Naeher als FREI_AB_M zaehlt nur ein BEKANNTES Hindernis: dort liegt der
         Koerperschatten, in dem Spot nie etwas sieht, und ein Strahl, der
         deswegen 0.0 meldete, waere wertlos. Weiter draussen gilt Unbekanntes

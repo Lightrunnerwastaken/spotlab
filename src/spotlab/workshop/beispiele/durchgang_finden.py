@@ -37,10 +37,17 @@ HOECHSTENS_M = 25.0
 
 
 def umsehen(spot):
-    """((x, y), Blickrichtung in Grad, {Richtung relativ dazu: freie Meter dorthin})"""
-    gitter = spot.obstacles()
-    x, y, yaw = spot.state.pose
-    blick = math.degrees(yaw)
+    """((x, y), Blickrichtung in Grad, {Richtung relativ dazu: freie Meter dorthin})
+
+    Gitter, Ort und Blickrichtung kommen zusammen aus `spot.look()`: das Gitter
+    liegt im Rahmen „vision", und Ort und Blick dort auch. Die Pose aus
+    `spot.state` ist ein ANDERER Rahmen („odom") — am echten Spot liegen die
+    beiden nach einer Weile auseinander, und der Strahl ginge neben dem Weg her.
+    """
+    umgebung = spot.look()
+    x, y = umgebung.position
+    blick = umgebung.heading
+    gitter = umgebung.grid
     return (x, y), blick, {d: gitter.free_distance(x, y, blick + d) for d in RICHTUNGEN}
 
 

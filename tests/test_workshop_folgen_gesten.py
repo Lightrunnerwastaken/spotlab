@@ -8,6 +8,7 @@ ohnehin erlaubt: sie ist kein Fahrbefehl, und jede Schranke gilt weiter.
 """
 
 import json
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -24,6 +25,7 @@ from spotlab.backends.real import gesten
 from spotlab.errors import SpotlabError
 from spotlab.workshop import folgen
 from spotlab.workshop.folgen import Ziel
+from tests_zeitgrenzen import TEST_TIMEOUT_S
 
 # --------------------------------------------------------- Die Sicht des Finders
 
@@ -442,6 +444,120 @@ def test_ein_licht_das_nicht_geht_haelt_den_lauf_nicht_an():
     fahrten = [k for k in spot.kommandos if isinstance(k, dict)]
     assert len(fahrten) == 4, "gefolgt wie ohne Licht"
     assert len([m for m in gesagt if "Licht" in m]) == 1, "einmal gesagt, nicht je Takt"
+
+
+class _AV:
+    """Der AV-Dienst am Kopf -- auf Wunsch kaputt oder haengend, und er schreibt mit."""
+
+    def __init__(self, protokoll=None, kaputt=False, haengt=False):
+        self.protokoll = protokoll if protokoll is not None else []
+        self.kaputt, self.haengt = kaputt, haengt
+        self.drin, self.los, self.zurueck = (threading.Event() for _ in range(3))
+
+    def add_or_modify_behavior(self, name, behavior, **kw):
+        self.protokoll.append("av_add")
+        if self.haengt and not self.zurueck.is_set():
+            self.drin.set()                  # wie ein RPC, der seine 5 s Frist ausschoepft
+            self.los.wait(TEST_TIMEOUT_S)
+            self.zurueck.set()
+
+    def run_behavior(self, name, end_time_secs, **kw):
+        from bosdyn.api import audio_visual_pb2 as av
+
+        self.protokoll.append("av_run")
+        if self.kaputt:
+            raise RuntimeError("AV-Dienst: DEADLINE_EXCEEDED")
+        return av.RunBehaviorResponse(run_result=av.RunBehaviorResponse.RESULT_BEHAVIOR_RUN)
+
+    def stop_behavior(self, name, **kw):
+        self.protokoll.append("av_stop")
+
+    def delete_behaviors(self, names, **kw):
+        self.protokoll.append("av_delete")
+
+
+def _mit_av(spot, av):
+    spot.robot = SimpleNamespace(list_services=lambda: [SimpleNamespace(name="audio-visual")],
+                                 ensure_client=lambda name: av)
+    return spot
+
+
+def _sofort(arbeit):
+    arbeit()
+
+
+def test_ein_kaputtes_licht_wird_einmal_gesagt():
+    """Befund p07: `Statuslicht.setze` faengt jeden Fehler selbst und zaehlt ihn nur --
+    der Zweig in `folge()`, der „Das Licht am Kopf geht nicht" sagen soll, kam nie
+    dran. Jetzt liest `folge()` den Zaehler des Lichts."""
+    from spotlab.api.signals import Statuslicht
+
+    spot = _mit_av(_Spot(neigt=True), _AV(kaputt=True))
+    gesagt = []
+    licht = Statuslicht(spot, jetzt=_uhr(1.0), ausfuehren=_sofort)
+    folgen.folge(spot, _koerper_finder_immer(), melde=gesagt.append, jetzt=_uhr(0.05),
+                 schlaf=lambda _s: None, laeuft=_laeuft_takte(12), licht=licht)
+    ueber_licht = [m for m in gesagt if "Licht" in m]
+    assert len(ueber_licht) == 1, gesagt
+    assert "DEADLINE" in ueber_licht[0] and "folgt weiter" in ueber_licht[0]
+    assert len([k for k in spot.kommandos if isinstance(k, dict)]) == 12, "gefolgt wie ohne Licht"
+
+
+def test_ein_haengendes_licht_verlaengert_keinen_takt():
+    """Befund p07: jeder AV-Aufruf lief im Takt der Schleife, mit bis zu 5 s Frist. Hier
+    haengt die erste Anfrage am Kopf, bis der Test sie loslaesst: alle Takte muessen
+    WAEHREND des Haengers durchlaufen, im Abstand des Takts auf der Attrappen-Uhr."""
+    from spotlab.api.signals import Statuslicht
+
+    av = _AV(haengt=True)
+    spot = _mit_av(_Spot(neigt=True), av)
+    uhr = {"t": 0.0}
+
+    def jetzt():
+        return uhr["t"]
+
+    def schlaf(s):
+        uhr["t"] += s
+
+    zeiten = []
+    fahre = spot.walk
+    spot.walk = lambda **kw: (zeiten.append(uhr["t"]), fahre(**kw))
+    licht = Statuslicht(spot, jetzt=jetzt, aus_warte_s=0.01)
+    try:
+        folgen.folge(spot, _koerper_finder_immer(), melde=lambda _t: None, jetzt=jetzt,
+                     schlaf=schlaf, laeuft=_laeuft_takte(20), licht=licht)
+        haengt_noch = av.drin.is_set() and not av.zurueck.is_set()
+    finally:
+        av.los.set()
+    assert haengt_noch, "alle Takte liefen, waehrend die Anfrage am Kopf hing"
+    assert len(zeiten) == 20
+    abstaende = [b - a for a, b in zip(zeiten, zeiten[1:])]
+    assert all(a == pytest.approx(folgen.TAKT_S) for a in abstaende), abstaende
+    assert spot.kommandos[-1] == "stop"
+
+
+def test_am_ende_haelt_spot_zuerst_an_dann_kommt_das_licht():
+    """Befund p08: im `finally` stand `licht.aus()` VOR `spot.stop()` -- bei einem langsamen
+    AV-Dienst fuhr Spot mit dem letzten Befehl weiter, bis dessen Endzeit ablief (3.0 s zu
+    spaet gemessen). `fahren.fahre` macht es seit jeher andersherum."""
+    from spotlab.api.signals import Statuslicht
+
+    spot = _Spot(neigt=True)
+    _mit_av(spot, _AV(protokoll=spot.kommandos))
+    zaehler = {"n": 0}
+
+    def laeuft():
+        zaehler["n"] += 1
+        if zaehler["n"] > 3:
+            raise KeyboardInterrupt          # der freundliche Stopp aus der GUI
+        return True
+
+    with pytest.raises(KeyboardInterrupt):
+        folgen.folge(spot, _koerper_finder_immer(), melde=lambda _t: None, jetzt=_uhr(0.05),
+                     schlaf=lambda _s: None, laeuft=laeuft,
+                     licht=Statuslicht(spot, jetzt=_uhr(1.0), ausfuehren=_sofort))
+    ende = spot.kommandos[spot.kommandos.index("stop"):]
+    assert ende[:1] == ["stop"] and "av_stop" in ende and "av_delete" in ende, spot.kommandos
 
 
 def test_ohne_licht_bleibt_alles_wie_vorher():
