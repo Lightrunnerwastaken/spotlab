@@ -192,7 +192,9 @@ class RunsView(QWidget):
         # Stufe 3, und er ist hier unbemerkt wiedergekommen.
         self._laeufe = []
         if self._ordner is not None:
-            self._laeufe = [read_run(p) for p in lauf_verzeichnisse(self._ordner)]
+            # Ohne Zeilenzahlen: die Tabelle zeigt sie nicht, und sie zu zaehlen
+            # las bei jedem Auffrischen jede Datei jedes Laufs (1.4 s bei 335).
+            self._laeufe = [read_run(p, zaehlen=False) for p in lauf_verzeichnisse(self._ordner)]
         self._laeufe.sort(key=lambda lauf: lauf.id, reverse=True)
 
         self.tabelle.setRowCount(len(self._laeufe))

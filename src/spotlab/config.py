@@ -10,8 +10,6 @@ import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import keyring
-
 from spotlab.errors import ConfigBroken, ConfigMissing
 
 CONFIG_PATH = Path.home() / ".spotlab" / "config.toml"
@@ -185,11 +183,26 @@ def load_config(path=None):
     )
 
 
+def __getattr__(name):
+    """`keyring` erst beim ersten Gebrauch laden: 0.4 s beim GUI-Start, für ein
+    Passwort, das erst beim Verbinden gebraucht wird. `spotlab.config.keyring`
+    bleibt als Name erreichbar (die Tests ersetzen darüber `get_password`)."""
+    if name == "keyring":
+        import keyring
+
+        return keyring
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
 def save_password(username, password):
+    import keyring
+
     keyring.set_password(KEYRING_SERVICE, username, password)
 
 
 def load_password(username):
+    import keyring
+
     gespeichert = keyring.get_password(KEYRING_SERVICE, username)
     if gespeichert:
         return gespeichert

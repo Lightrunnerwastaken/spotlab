@@ -50,10 +50,23 @@ from spotlab.editor.verbs import (
 )
 from spotlab.gui.theme import DUNKEL
 
-try:
-    import jedi
-except Exception:       # pragma: no cover - haengt an der Installation
-    jedi = None
+# jedi wird erst im JediWorker geladen, beim ersten Vorschlag: der Import kostet
+# 0.3 s, und beim Programmstart braucht ihn niemand. `None` heisst "fehlt" (oder
+# im Test: "abgeschaltet"), `_UNGELADEN` heisst "noch nicht versucht".
+_UNGELADEN = object()
+jedi = _UNGELADEN
+
+
+def _jedi():
+    """Das jedi-Modul oder None; laedt beim ersten Aufruf. Nur im Worker/Test rufen."""
+    global jedi
+    if jedi is _UNGELADEN:
+        try:
+            import jedi as modul
+        except Exception:       # pragma: no cover - haengt an der Installation
+            modul = None
+        jedi = modul
+    return jedi
 
 NAME_ROLLE = Qt.UserRole + 1
 SIGNATUR_ROLLE = Qt.UserRole + 2
@@ -135,11 +148,12 @@ JEDI_SPERRE = threading.Lock()
 
 def jedi_lesen(quelltext, zeile, spalte, pfad):
     """Blockierend — laeuft nur im JediWorker oder im Test. Immer allein."""
-    if jedi is None:
+    modul = _jedi()
+    if modul is None:
         return []
     try:
         with JEDI_SPERRE:
-            skript = jedi.Script(code=quelltext, path=pfad)
+            skript = modul.Script(code=quelltext, path=pfad)
             treffer = skript.complete(zeile, spalte)
         return [
             Vorschlag(t.name, t.name, "", art_von(t.type))

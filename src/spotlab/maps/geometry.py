@@ -10,8 +10,6 @@ kette   Ab einem Wurzel-Wegpunkt edge.from_tform_to aufmultiplizieren.
 import math
 from dataclasses import dataclass
 
-from bosdyn.client.math_helpers import SE3Pose
-
 HINWEIS_KETTE = (
     "Gezeichnet über die Kantenkette, weil die Karte keine Anker hat. "
     "Über lange Wege summieren sich dabei Rundungsfehler — eine Schleife "
@@ -41,6 +39,14 @@ class Grundriss:
     hinweis: str
 
 
+def _se3():
+    """SE3Pose erst beim Rechnen laden: `bosdyn.client` kostet 1 s, und die GUI
+    importiert dieses Modul beim Start, lange bevor es eine Karte gibt."""
+    from bosdyn.client.math_helpers import SE3Pose
+
+    return SE3Pose
+
+
 def _kanten_paare(graph):
     return [(k.id.from_waypoint, k.id.to_waypoint) for k in graph.edges]
 
@@ -50,6 +56,7 @@ def _namen(graph):
 
 
 def _aus_ankern(graph):
+    SE3Pose = _se3()
     anker = {a.id: SE3Pose.from_proto(a.seed_tform_waypoint) for a in graph.anchoring.anchors}
     if not anker or any(wp.id not in anker for wp in graph.waypoints):
         return None  # unvollständig ⇒ die Kette ist ehrlicher
@@ -66,6 +73,7 @@ def _aus_kette(graph):
     """Breitensuche ab dem ersten Wegpunkt, Transformationen aufmultiplizieren."""
     if not graph.waypoints:
         return None
+    SE3Pose = _se3()
     nachbarn = {}
     for kante in graph.edges:
         pose = SE3Pose.from_proto(kante.from_tform_to)

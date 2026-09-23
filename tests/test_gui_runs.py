@@ -163,3 +163,18 @@ def test_die_ereignisliste_zeigt_das_ergebnis(qapp, tmp_path):
     assert "Kontrolle verloren" in zusammen, zusammen
     assert "Tablet" in zusammen, zusammen
     assert "000.png" in zusammen, zusammen
+
+
+def test_auffrischen_zaehlt_keine_zeilen(qapp, tmp_path, monkeypatch):
+    import spotlab.record.read as lesen
+
+    projekt = create_project("demo", tmp_path)
+    _lauf_mit_fahrt(projekt / "runs")
+
+    def verboten(pfad):
+        raise AssertionError(f"Zeilen gezaehlt: {pfad}")
+
+    monkeypatch.setattr(lesen, "_zeilen", verboten)
+    ansicht = RunsView()
+    ansicht.setze_arbeitsordner(tmp_path)
+    assert ansicht.tabelle.rowCount() == 1

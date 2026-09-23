@@ -131,3 +131,17 @@ def test_eine_alte_aufzeichnung_ohne_version_bleibt_lesbar(tmp_path):
     ordner.mkdir()
     (ordner / "lauf.json").write_text(json.dumps({"id": "y"}), encoding="utf-8")
     assert read_run(ordner).spotlab_version is None
+
+
+def test_ohne_zaehlen_wird_keine_zeile_gelesen(tmp_path):
+    """Die Läufe-Tabelle zeigt keine Zeilenzahlen. Sie zu zählen hiess beim Start
+    und nach JEDEM Lauf jede Datei jedes Laufs lesen -- 1.4 s bei 335 Läufen,
+    im GUI-Thread, und mit jedem Lauf mehr."""
+    rec = RunRecorder(tmp_path, None, backend="dryrun")
+    rec.event("verbunden")
+    rec.finish("ok")
+
+    zusammenfassung = read_run(rec.dir, zaehlen=False)
+    assert zusammenfassung.ergebnis == "ok"
+    assert zusammenfassung.ereignisse_n is None
+    assert zusammenfassung.abtastungen_n is None

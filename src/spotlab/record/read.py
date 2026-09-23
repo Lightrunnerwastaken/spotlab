@@ -38,8 +38,8 @@ class RunSummary:
     fehler: str | None
     skript: str | None
     benutzer: str | None
-    ereignisse_n: int
-    abtastungen_n: int
+    ereignisse_n: int | None
+    abtastungen_n: int | None
     spotlab_version: str | None = None
 
 
@@ -70,7 +70,10 @@ def _zeilen(pfad):
     return max(anzahl, 0)
 
 
-def read_run(run_dir):
+def read_run(run_dir, zaehlen=True):
+    """Die Zusammenfassung eines Laufs. `zaehlen=False` laesst die Zeilenzahlen weg
+    (dann `None`): sie kosten je Lauf das Lesen beider jsonl-Dateien, und eine
+    Liste aller Laeufe braucht sie nicht."""
     verzeichnis = Path(run_dir)
     meta = {}
     lauf = verzeichnis / "lauf.json"
@@ -90,8 +93,8 @@ def read_run(run_dir):
         fehler=meta.get("fehler"),
         skript=meta.get("skript"),
         benutzer=meta.get("benutzer"),
-        ereignisse_n=_zeilen(verzeichnis / "ereignisse.jsonl"),
-        abtastungen_n=_zeilen(verzeichnis / "zustand.jsonl"),
+        ereignisse_n=_zeilen(verzeichnis / "ereignisse.jsonl") if zaehlen else None,
+        abtastungen_n=_zeilen(verzeichnis / "zustand.jsonl") if zaehlen else None,
         spotlab_version=meta.get("spotlab_version"),
     )
 

@@ -4,24 +4,8 @@ Jede übersetzte Ausnahme behält die originale als __cause__: für die Schüler
 Klartext, für die Entwicklung die volle Wahrheit.
 """
 
-from bosdyn.client.auth import InvalidLoginError, TemporarilyLockedOutError
-from bosdyn.client.exceptions import (
-    LeaseUseError,
-    ProxyConnectionError,
-    RetryableUnavailableError,
-    RpcError,
-    TimedOutError,
-    UnableToConnectToRobotError,
-    UnauthenticatedError,
-    UnknownDnsNameError,
-)
-from bosdyn.client.lease import DisplacedLeaseError, ResourceAlreadyClaimedError
-from bosdyn.client.robot_command import (
-    BehaviorFaultError,
-    ExpiredError,
-    NoTimeSyncError,
-    TooDistantError,
-)
+# Das SDK erst beim ersten Fehler laden: es kostet 1.2 s, und `spotlab.errors`
+# importiert jedes Programm -- die GUI, jedes Sim-Skript, die Kommandozeile.
 
 
 def _mit_ursache(fehler, ursprung):
@@ -31,6 +15,29 @@ def _mit_ursache(fehler, ursprung):
 
 def translate(exc, *, ip=None):
     """bosdyn-Ausnahme → SpotlabError, oder None wenn nicht übersetzbar."""
+    # Was nicht aus dem SDK stammt, kann es nicht übersetzen -- und braucht es
+    # dafür auch nicht zu laden.
+    if not any(k.__module__.startswith("bosdyn") for k in type(exc).__mro__):
+        return None
+    from bosdyn.client.auth import InvalidLoginError, TemporarilyLockedOutError
+    from bosdyn.client.exceptions import (
+        LeaseUseError,
+        ProxyConnectionError,
+        RetryableUnavailableError,
+        RpcError,
+        TimedOutError,
+        UnableToConnectToRobotError,
+        UnauthenticatedError,
+        UnknownDnsNameError,
+    )
+    from bosdyn.client.lease import DisplacedLeaseError, ResourceAlreadyClaimedError
+    from bosdyn.client.robot_command import (
+        BehaviorFaultError,
+        ExpiredError,
+        NoTimeSyncError,
+        TooDistantError,
+    )
+
     from spotlab import errors as E
 
     ziel = ip or "dem Roboter"

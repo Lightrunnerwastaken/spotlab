@@ -4,6 +4,7 @@ Ein Projekt auf einmal, nicht die ganze Werkstatt: der Baum bleibt kurz genug,
 um ihn zu ueberblicken.
 """
 
+import importlib.util
 from pathlib import Path
 
 from PySide6.QtCore import QSortFilterProxyModel, Qt, Signal
@@ -19,13 +20,15 @@ from PySide6.QtWidgets import (
 ENDUNGEN = ("*.py", "*.md", "*.txt", "*.json")
 SICHTBAR = tuple(e.lstrip("*") for e in ENDUNGEN)      # (".py", ".md", …)
 
-try:
-    from send2trash import send2trash as _send2trash
-except Exception:       # pragma: no cover - haengt an der Installation
+# Ob send2trash da ist, sagt find_spec ohne Import; geladen wird es erst beim
+# ersten Loeschen (0.15 s beim Programmstart gespart).
+if importlib.util.find_spec("send2trash") is None:     # pragma: no cover
     in_den_papierkorb = None
 else:
     def in_den_papierkorb(pfad):
-        _send2trash(str(pfad))
+        from send2trash import send2trash
+
+        send2trash(str(pfad))
 
 
 class KeineLaeufe(QSortFilterProxyModel):
