@@ -17,8 +17,11 @@ with connect(backend="dryrun") as spot:
 
 `connect(backend=None, runs_dir=None, script=None, take=False, config_path=None,
 nickname=None, raum=None, nur_lesen=False)` ist ein Context Manager. Backend-Auswahl: Argument,
-`SPOTLAB_BACKEND`, Konfiguration, sonst `dryrun`. Zulässige Betriebsarten sind
-`dryrun`, `sim`, `mujoco`, `real`. Für den echten Spot Konfiguration mit `spotlab login`
+`SPOTLAB_BACKEND`, Konfiguration (fehlt dort `[defaults]`, gilt `mujoco`), ohne
+Konfiguration `dryrun`. Zulässige Betriebsarten sind genau
+`dryrun`, `sim`, `mujoco`, `physics`, `real` — jeder andere Name (auch `Sim` oder
+`mujoko`) wird mit `SpotlabError` abgewiesen, bevor ein Lauf angelegt wird. Den echten
+Spot fährt nur, wer `real` wählt; dafür Konfiguration mit `spotlab login`
 einrichten. `connect()` schaltet die Motoren nicht ein.
 `runs_dir` setzt das Aufzeichnungsziel, `script` die zugehörige Skriptdatei,
 `config_path` eine andere Konfiguration, `nickname` den Namen im Lauf,
@@ -33,7 +36,10 @@ Programm sie unterlässt. Übrig bleiben die Lesedienste — `world_objects()`,
 `tags()`, `stairs()`, `obstacles()`, `camera()` und der Zustand. So arbeitet
 `workshop/sonde.py` hinter dem Knopf „Umgebung abfragen". In den Trockenläufen
 und Sims ändert die Angabe nichts; die halten ohnehin nie ein Lease. Der Context Manager beendet Abtastung,
-Roboterverbindung und Aufzeichnung auch bei Ausnahmen.
+Roboterverbindung und Aufzeichnung auch bei Ausnahmen. `sys.exit(0)` (oder `sys.exit()`)
+im Programm gilt als ordentliches Ende (`ergebnis: ok`), jeder andere Code als Fehler.
+Scheitert schon der Aufbau (Raum unbekannt, Simulation fehlt, Strg-C beim Laden),
+steht der Grund in `lauf.json`.
 
 ## Alle Befehle
 
@@ -48,8 +54,8 @@ normalerweise weglassen.
 | `power_on()` | Schaltet die Motoren ein. Spot steht davon noch nicht auf. |
 | `power_off(safe=True)` | Schaltet die Motoren ab; mit safe=True setzt Spot sich vorher hin. |
 | `is_powered` | True, solange die Motoren eingeschaltet sind. |
-| `battery` | Ladestand des Akkus in Prozent. |
-| `stand(height=0.0, timeout=10.0, schlaf=None)` | Steht auf. height hebt oder senkt den Körper in Metern. |
+| `battery` | Ladestand des Akkus in Prozent; `None`, wenn das Backend keinen Akku meldet (Physikmodus). |
+| `stand(height=0.0, timeout=10.0, schlaf=None)` | Steht auf. height hebt oder senkt den Körper in Metern (±0.15 m wie bei `pose()`; Sim und MuJoCo klemmen darauf, was der Roboter jenseits davon tut, ist nicht gemessen). |
 | `sit(timeout=10.0, schlaf=None)` | Setzt sich hin. |
 | `move(forward=0.0, left=0.0, turn=0.0, timeout=30.0)` | Geht eine feste Strecke in Metern und dreht sich um turn in Grad. |
 | `walk(vx=0.0, vy=0.0, wz=0.0, duration=1.0, stop=True, nick_grad=0.0)` | Fährt duration Sekunden lang mit den angegebenen Geschwindigkeiten. `nick_grad` neigt den Körper während der Fahrt (negativ hebt die Nase, die Kameras schauen dann höher); nur am echten Roboter. |
@@ -88,9 +94,15 @@ normalerweise weglassen.
   `beep`, `close`: kein Nutzwert (`None`); `navigate_to` gibt True (angekommen) oder
   False (über `abbruch` abgebrochen). `stand`, `sit`, `move`, `pose` und `navigate_to`
   warten auf Rückmeldung bis zum Timeout.
-- `walk(stop=True)` wartet die Dauer und stoppt; `stop=False` kehrt sofort zurück,
+- `walk(stop=True)` wartet genau die Dauer (nicht auf 0.4 s aufgerundet) und stoppt;
+  `stop=False` kehrt sofort zurück,
   benötigt laufende neue Kommandos und begrenzt die Gültigkeit auf höchstens eine Sekunde.
-- `is_powered`: bool; `battery`: Prozent; `state`: neue State-Momentaufnahme;
+- `walk()` und `move()` weisen NaN, `inf` und Nicht-Zahlen mit `ValueError` ab, bevor
+  ein Kommando gebaut ist — ein NaN wird nie geklemmt oder zu 0 umgedeutet.
+  `move(timeout=...)` muss grösser als 0 sein.
+- `is_powered`: bool; `battery`: Prozent oder `None`; `state`: neue State-Momentaufnahme
+  (vor `power_on()` und im Sitzen meldet der Sim `behavior` „NOT_READY“, erst `stand()`
+  oder eine Fahrt macht „STANDING“/„STEPPING“);
   `robot`: SDK-Robot nur am echten Backend, sonst `None`.
 - `cameras()`: Liste bekannter Kurznamen; `camera(name)`: Image. Kurznamen:
   frontleft, frontright, left, right, back. Auch exakte gemeldete SDK-Quellnamen
@@ -108,7 +120,8 @@ normalerweise weglassen.
 - `send(command, end_time_secs=None)`: Kommando-ID; nimmt RobotCommand-Protobuf
   und optional absolute lokale Ablaufzeit. Wartet nicht auf Abschluss.
 - `messfenster(name, hz=50, **felder)`: Context Manager für markierte Messung.
-  hz ist die angeforderte Abtastrate, keine zugesicherte effektive Rate.
+  hz ist die angeforderte Abtastrate, keine zugesicherte effektive Rate; eine Zahl
+  über 0, sonst `SpotlabError` (das Fenster bleibt dann ungeöffnet).
   Metadaten etwa `bedingung="A"` werden zur Messung gespeichert.
 
 `spot.state` einmal lesen und den Wert weiterverwenden, wenn mehrere Felder zur
@@ -154,6 +167,9 @@ liefert Abstand oder None; `is_free(x,y,margin=0.3)` liefert bool. Die Koordinat
 sind vision, **nicht state.pose (odom)**. Bestehendes `free_distance(x,y,heading,
 max_distance=1.8,margin=0.3)` verwendet Weltwinkel in Grad und überspringt unbekannte
 Nahzellen unter 0.9 m. Für neue Skripte mit expliziter Unbekannt-Behandlung look nutzen.
+Der Körperschatten ist in jedem Backend unbekannt — auch im 2D-Sim, dort als Kreis von
+0.5 m um die Körpermitte (am echten Gitter und in MuJoCo gemessen: je Richtung etwa
+0.2 bis 0.8 m). Ein Hindernis darin sieht Spot nicht.
 
 ## Licht, Summer, Körperhaltung
 

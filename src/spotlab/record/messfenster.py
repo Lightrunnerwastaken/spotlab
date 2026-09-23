@@ -9,12 +9,31 @@ Messfahrt vorbei ist.
 """
 
 import contextlib
+import math
 
 from spotlab.errors import SpotlabError
 
 # `name` fehlt hier absichtlich: es ist ein Positionsparameter von oeffne(),
 # und Python weist ein doppeltes `name=` schon mit einer klaren Meldung ab.
 RESERVIERT = ("phase", "hz_soll")
+
+
+def _rate(hz):
+    """`hz` als float > 0 -- sonst SpotlabError, BEVOR irgendetwas umgeschaltet ist.
+
+    `hz=0` teilte im Abtaster durch null, `hz=-5` liess ihn ohne Pause laufen
+    (Beta-Pruefung 23.09.2026).
+    """
+    try:
+        zahl = float(hz)
+    except (TypeError, ValueError):
+        zahl = math.nan
+    if not math.isfinite(zahl) or zahl <= 0.0:
+        raise SpotlabError(
+            f"Messfenster: hz={hz!r} ist keine Abtastrate. Gemeint ist eine Zahl über 0 "
+            "in Hertz, zum Beispiel hz=50."
+        )
+    return zahl
 
 
 class Messfenster:
@@ -48,6 +67,7 @@ class Messfenster:
                 "Verschachtelte Fenster wären in der Auswertung nicht "
                 "auseinanderzuhalten."
             )
+        hz = _rate(hz)
 
         self._offen = name
         vorher = self._sampler.takt() if self._sampler is not None else None
@@ -55,12 +75,20 @@ class Messfenster:
         # die Abschnittsgrenze des Lueckenmelders. Staende es VOR dem
         # Umschalten, koennte eine Abtastung nach der Grenze noch den alten
         # Takt schlafen, und der zaehlte als Luecke im Fenster.
-        if self._sampler is not None:
-            self._sampler.setze_takt(hz, reich)
-        if self._recorder is not None:
-            self._recorder.event(
-                "messfenster", phase="start", name=name, hz_soll=hz, **felder
-            )
+        try:
+            if self._sampler is not None:
+                self._sampler.setze_takt(hz, reich)
+            if self._recorder is not None:
+                self._recorder.event(
+                    "messfenster", phase="start", name=name, hz_soll=hz, **felder
+                )
+        except BaseException:
+            # Scheitert schon das Oeffnen, ist das Fenster NICHT offen: sonst
+            # scheiterte jedes weitere an „schon offen“ (Beta-Pruefung p11).
+            if self._sampler is not None and vorher is not None:
+                self._sampler.setze_takt(*vorher)
+            self._offen = None
+            raise
         try:
             yield
         finally:

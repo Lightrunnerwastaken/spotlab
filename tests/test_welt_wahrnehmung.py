@@ -80,14 +80,50 @@ def test_gitter_kennt_die_wand():
 
 
 def test_verdeckte_zellen_sind_unbekannt_nicht_frei():
-    """Der Fehler, der einen Roboter in eine Wand faehrt: unbekannt != frei."""
-    raum = _raum(bloecke=(Block("Kiste", 5.7, 5.0, 0.4, 1.0),))
+    """Der Fehler, der einen Roboter in eine Wand faehrt: unbekannt != frei.
+
+    (Die Kiste steht seit dem 23.09.2026 1.2 m voraus statt 0.7: „davor“ muss
+    ausserhalb des Koerperschattens liegen, sonst prueft der Test den Schatten.)"""
+    raum = _raum(bloecke=(Block("Kiste", 6.2, 5.0, 0.4, 1.0),))
     _werte, bekannt, ursprung = abstandsgitter(raum, (5.0, 5.0, 0.0))
     zeile = int(round((5.0 - ursprung[1]) / GITTER_ZELLE_M))
     spalte_dahinter = int(round((6.8 - ursprung[0]) / GITTER_ZELLE_M))
     assert bekannt[zeile][spalte_dahinter] is False
-    spalte_davor = int(round((5.2 - ursprung[0]) / GITTER_ZELLE_M))
+    spalte_davor = int(round((5.7 - ursprung[0]) / GITTER_ZELLE_M))
     assert bekannt[zeile][spalte_davor] is True
+
+
+def test_der_koerperschatten_ist_unbekannt_wie_am_roboter():
+    """Beta-Prüfung 23.09.2026 (p10): der 2D-Sim sah direkt vor und unter dem
+    Koerper -- `look()` meldete dort „clear“ und „blocked“, wo MuJoCo und der
+    echte Spot nichts sehen. Gemessen am echten Gitter vom 12.08.2026: 91 %
+    unbekannt bis 0.3 m, 65 % bis 0.5 m, dann 33 % und ab 0.7 m der Grund-
+    anteil; MuJoCo: erste bekannte Zelle je Richtung bei 0.36 bis 0.8 m."""
+    import math
+
+    from spotlab.welt.wahrnehmung import KOERPERSCHATTEN_M
+
+    werte, bekannt, ursprung = abstandsgitter(_raum(), (5.0, 5.0, 0.3))
+    for zeile in range(GITTER_ZELLEN):
+        for spalte in range(GITTER_ZELLEN):
+            x = ursprung[0] + spalte * GITTER_ZELLE_M
+            y = ursprung[1] + zeile * GITTER_ZELLE_M
+            abstand = math.hypot(x - 5.0, y - 5.0)
+            if abstand < KOERPERSCHATTEN_M:
+                assert bekannt[zeile][spalte] is False, (x, y)
+            elif abstand < 1.5:
+                assert bekannt[zeile][spalte] is True, (x, y)   # freie Sicht im leeren Raum
+
+
+def test_der_schatten_endet_bevor_free_distance_unbekanntes_fuer_zu_haelt():
+    """`free_distance` ueberspringt Unbekanntes nur bis FREI_AB_M. Reichte der
+    Schatten bis dorthin, endete JEDE freie Strecke am Schattenrand -- die
+    naechste Zelle ab FREI_AB_M muss bekannt sein (eine Zelle Luft fuer das
+    Runden auf die Zellmitte)."""
+    from spotlab.backends.base import FREI_AB_M
+    from spotlab.welt.wahrnehmung import KOERPERSCHATTEN_M
+
+    assert KOERPERSCHATTEN_M <= FREI_AB_M - GITTER_ZELLE_M
 
 
 def test_gitter_liefert_listen_keine_numpy_arrays():

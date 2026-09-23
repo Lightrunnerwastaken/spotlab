@@ -26,7 +26,7 @@ class JointState:
 
 @dataclass(frozen=True)
 class State:
-    battery: float
+    battery: float | None            # Prozent; None, wenn das Backend keinen Akku meldet
     powered: bool
     pose: tuple                      # (x, y, yaw) — unverändert dreielementig
     velocity: tuple
@@ -226,8 +226,22 @@ def _akku_detail(zustand):
     }
 
 
+def _ladestand(zustand):
+    """Prozent, oder None, wenn der Zustand keinen Ladestand trägt.
+
+    Nie 0.0 als Ersatz: der Physikmodus meldet gar keinen Akku, und ein
+    erfundenes „0 %“ hiesse „leer“ (Beta-Prüfung 23.09.2026).
+    """
+    if not zustand.battery_states:
+        return None
+    akku = zustand.battery_states[0]
+    if not akku.HasField("charge_percentage"):
+        return None
+    return akku.charge_percentage.value
+
+
 def from_proto(zustand):
-    akku = zustand.battery_states[0].charge_percentage.value if zustand.battery_states else 0.0
+    akku = _ladestand(zustand)
     kinematik = zustand.kinematic_state
 
     x = y = z_hoehe = roll = pitch = yaw = 0.0

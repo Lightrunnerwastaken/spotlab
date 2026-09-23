@@ -249,3 +249,80 @@ def test_der_nick_steht_in_der_aufzeichnung(tmp_path):
     kommandos = [json.loads(z)["daten"] for z in zeilen if z.strip()
                  and json.loads(z)["daten"].get("name") == "walk"]
     assert kommandos and kommandos[0]["nick_grad"] == -8.0
+
+
+# ------------------------------------------------ Dauer genau, nicht gerundet
+
+
+class _Uhr:
+    """Monotone Uhr, die nur im Schlaf vorgeht -- jede Sekunde ist eine geschlafene."""
+
+    def __init__(self):
+        self.t = 0.0
+        self.schlaefe = []
+
+    def jetzt(self):
+        return self.t
+
+    def schlaf(self, sekunden):
+        self.schlaefe.append(sekunden)
+        self.t += sekunden
+
+
+@pytest.mark.parametrize("dauer", [0.1, 0.25, 0.5, 1.0, 1.3, 2.0])
+def test_walk_faehrt_genau_die_dauer_nicht_das_naechste_vielfache(dauer):
+    """Beta-Prüfung 23.09.2026 (p17): der letzte Schlaf war immer die volle
+    Nachsendepause. `walk(vx=0.5, duration=0.1)` fuhr 0.4 s und damit 0.2 m
+    statt 0.05 -- auch am echten Roboter, denn der Stopp kam erst danach."""
+    uhr = _Uhr()
+    backend = _backend()
+    walk(backend, None, Limits(), vx=0.5, duration=dauer, schlaf=uhr.schlaf, jetzt=uhr.jetzt)
+    assert sum(uhr.schlaefe) == pytest.approx(dauer)
+    assert all(0.0 < s <= 0.4 + 1e-12 for s in uhr.schlaefe)
+    assert backend.gesendet[-1].full_body_command.HasField("stop_request")
+    fahrbefehle = [k for k in backend.gesendet if k.HasField("synchronized_command")]
+    assert len(fahrbefehle) == math.ceil(dauer / 0.4 - 1e-9)
+
+
+# ------------------------------------------- NaN und inf sind keine Zahlen
+
+
+NICHT_ENDLICH = [float("nan"), float("inf"), float("-inf")]
+
+
+@pytest.mark.parametrize("wert", NICHT_ENDLICH)
+def test_clamp_weist_nicht_endliche_werte_ab(wert):
+    """`clamp(0, 0, nan)` lieferte 0.8 rad/s -- volle Drehung aus einem NaN --,
+    `clamp(inf, 0, 0)` ein NaN-Tempo."""
+    for argumente in ((0.0, 0.0, wert), (wert, 0.0, 0.0), (0.0, wert, 0.0)):
+        with pytest.raises(ValueError, match="endliche Zahl"):
+            clamp(*argumente, Limits())
+
+
+@pytest.mark.parametrize("feld", ["vx", "vy", "wz", "duration", "nick_grad"])
+@pytest.mark.parametrize("wert", NICHT_ENDLICH)
+def test_walk_sendet_bei_nan_nichts(feld, wert):
+    """Ein NaN aus einer Rechnung (Mittelwert einer leeren Liste) darf nie als
+    Vollgas beim Roboter ankommen -- auch nicht als endlose Fahrt."""
+    backend = _backend()
+    with pytest.raises(ValueError, match=feld):
+        walk(backend, None, Limits(), **{feld: wert}, schlaf=lambda _: None, jetzt=lambda: 0.0)
+    assert backend.gesendet == []
+
+
+@pytest.mark.parametrize("feld", ["forward", "left", "turn", "timeout"])
+@pytest.mark.parametrize("wert", NICHT_ENDLICH)
+def test_move_sendet_bei_nan_nichts(feld, wert):
+    """p19: `move(forward=nan)` stand im Sim 5 s still und meldete dann
+    „abgelaufen“ -- eine Ursache, die mit dem NaN nichts zu tun hatte."""
+    backend = _backend()
+    with pytest.raises(ValueError, match=feld):
+        move(backend, None, Limits(), **{feld: wert}, schlaf=lambda _: None)
+    assert backend.gesendet == []
+
+
+def test_eine_zahl_als_text_wird_benannt():
+    backend = _backend()
+    with pytest.raises(ValueError, match="vx muss eine Zahl sein"):
+        walk(backend, None, Limits(), vx="schnell", stop=False)
+    assert backend.gesendet == []

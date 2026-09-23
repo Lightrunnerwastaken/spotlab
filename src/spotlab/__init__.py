@@ -87,6 +87,13 @@ def connect(
     if NUR_TROCKEN and art not in OHNE_ROBOTER:
         raise SpotlabError(NUR_TROCKEN_MELDUNG)
 
+    # Ein unbekannter Name ist ein Fehler, keine Wahl. Bis zum 23.09.2026 fiel
+    # jeder Name, der nicht genau stimmte (`"Sim"`, `"mujoko"`, `"trocken"`),
+    # in den letzten Zweig unten -- und der verbindet mit dem ECHTEN Spot.
+    # Nach der Schranke (die sagt unter SPOTLAB_NUR_TROCKEN das Wichtigere) und
+    # VOR dem RunRecorder, aus demselben Grund wie sie.
+    _pruefe_backend(art, backend)
+
     grenzen = cfg.limits if cfg else Limits()
     spitzname = nickname or (cfg.nickname if cfg else "")
 
@@ -97,80 +104,17 @@ def connect(
     # protokoll.notiere() nichts — ein Import von spotlab legt keine Datei an.
     protokoll.setze_ziel(recorder.dir)
 
-    if art == "dryrun":
-        from spotlab.backends.dryrun import DryRunBackend
-
-        roher_roboter, unten = None, DryRunBackend(recorder)
-        recorder.event("verbunden", backend="dryrun")
-    elif art in ("sim", "mujoco", "physics"):
-        # `mujoco` ist der 2D-Sim mit einem 3D-Koerper (backends/mujoco.py):
-        # dieselben Kommandos, dieselbe Gangkennlinie, dieselbe Antwort — dazu
-        # Kameras, Tiefengitter und Kollision an der Mesh-Geometrie. Er braucht
-        # das Extra `spotlab[sim]` und `spotsim` aus matura-spot; fehlt eines,
-        # sagt der Fehler, was zu tun ist.
-        from spotlab.backends.sim import SimBackend
-        from spotlab.config import startpose_aus
-        from spotlab.welt.raum import raum_laden
-
-        # Reihenfolge: Argument vor Umgebung vor Konfiguration. Ein Skript, das
-        # seinen Raum nennt, soll nicht davon abhaengen, was zuletzt in der GUI
-        # stand; die GUI wiederum soll nicht davon abhaengen, was zuletzt in der
-        # Konfiguration gelandet ist.
-        name = raum or os.environ.get(ENV_RAUM) or (cfg.raum if cfg else "")
-        gewaehlt = (raum_laden(name, workspace=cfg.workspace if cfg else None)
-                    if name else None)
-        roher_start = os.environ.get(ENV_RAUM_START) or (cfg.raum_start if cfg else "")
-        start = startpose_aus(roher_start)
-        if gewaehlt is not None and start is None:
-            start = gewaehlt.start
-
-        if art == "physics":
-            from spotlab.backends.physics import PhysicsBackend
-
-            try:
-                unten = PhysicsBackend(recorder=recorder, raum=gewaehlt, start=start,
-                                       ansicht_ziel=recorder.dir / "ansicht.jpg")
-            except BaseException as fehler:
-                recorder.finish("fehler", f"{type(fehler).__name__}: {fehler}")
-                protokoll.setze_ziel(None)
-                raise
-        elif art == "mujoco":
-            from spotlab.backends.mujoco import MujocoBackend
-
-            unten = MujocoBackend(
-                recorder, raum=gewaehlt, start=start, treppen=grenzen.treppen,
-                ansicht_ziel=recorder.dir / "ansicht.jpg",
-            )
-        else:
-            unten = SimBackend(recorder, raum=gewaehlt, start=start, treppen=grenzen.treppen)
-        roher_roboter = None
-        # Der Hinweis gehört in die Aufzeichnung, nicht nur in den Docstring:
-        # wer den Lauf später ansieht, muss sehen, dass hier nichts erprobt ist.
-        # Dasselbe fuer den Treppengang: die Puppe spielt auf Stufen den ebenen
-        # Gang, und der Lauf sagt es (Stufe 13, Wahl C des Autors).
-        zusatz = {"treppengang": unten.treppengang()} if unten.treppengang() else {}
-        recorder.event(
-            "verbunden", backend=art, raum=name or None,
-            hinweis=unten.hinweis_zur_gueltigkeit(), **zusatz,
+    # EIN Fang fuer jeden Aufbau, nicht einer je Backend: bis zum 23.09.2026
+    # hatten nur Physik und Roboter einen. Ein Tippfehler im Raumnamen, ein
+    # fehlendes spotsim oder Strg-C beim Laden der Puppe liessen den Lauf fuer
+    # immer auf „läuft“ stehen -- ohne Grund, und die GUI hielt ihn fuer lebend.
+    try:
+        roher_roboter, unten = _baue_backend(
+            art, recorder, cfg, grenzen, raum=raum, take=take, nur_lesen=nur_lesen,
         )
-    else:
-        from spotlab.backends.real import RealSpot
-
-        if cfg is None:
-            recorder.finish("fehler", "Keine Konfiguration")
-            raise ConfigMissing("Keine Konfiguration. Einrichten mit `spotlab login`.")
-        try:
-            # Zwei Einstiege, nicht ein Argument im selben Aufbau: der
-            # Lease-Erwerb steht in `connect`, und wer nur liest, kommt gar
-            # nicht erst daran vorbei (backends/real/session.py).
-            unten = (
-                RealSpot.nur_lesen(cfg, recorder=recorder) if nur_lesen
-                else RealSpot.connect(cfg, recorder=recorder, take=take)
-            )
-        except BaseException as fehler:
-            recorder.finish("fehler", f"{type(fehler).__name__}: {fehler}")
-            raise
-        roher_roboter = unten.robot
+    except BaseException as fehler:
+        _aufbau_gescheitert(recorder, fehler)
+        raise
 
     # Abtaster vor dem Spot: die Fassade braucht ihn, um im Messfenster die Rate
     # zu heben.
@@ -197,6 +141,13 @@ def connect(
         raise
     except SpotlabError as fehler:
         ergebnis, fehlertext = "fehler", str(fehler)
+        raise
+    except SystemExit as fehler:
+        # `sys.exit(0)` (und `sys.exit()`) ist ein ordentliches Ende, das ein
+        # Programm selbst gewählt hat -- etwa „Akku unter 95 %, heute nur
+        # stehen". Bis zum 23.09.2026 stand so ein Lauf als Fehler da.
+        if fehler.code not in (0, None):
+            ergebnis, fehlertext = "fehler", f"Programm beendet mit sys.exit({fehler.code!r})"
         raise
     except BaseException as fehler:
         ergebnis, fehlertext = "fehler", f"{type(fehler).__name__}: {fehler}"
@@ -231,6 +182,131 @@ def connect(
                     protokoll.notiere("Sim-Bericht nicht geschrieben", fehler)
                 recorder.finish(ergebnis, fehlertext)
                 protokoll.setze_ziel(None)
+
+
+def _baue_backend(art, recorder, cfg, grenzen, raum=None, take=False, nur_lesen=False):
+    """(roher Roboter oder None, Backend) -- und das `verbunden`-Ereignis.
+
+    Wirft, wenn der Aufbau scheitert; den Lauf beendet dann `connect()`.
+    """
+    from spotlab.errors import ConfigMissing
+
+    if art == "dryrun":
+        from spotlab.backends.dryrun import DryRunBackend
+
+        unten = DryRunBackend(recorder)
+        recorder.event("verbunden", backend="dryrun")
+        return None, unten
+
+    if art in ("sim", "mujoco", "physics"):
+        # `mujoco` ist der 2D-Sim mit einem 3D-Koerper (backends/mujoco.py):
+        # dieselben Kommandos, dieselbe Gangkennlinie, dieselbe Antwort — dazu
+        # Kameras, Tiefengitter und Kollision an der Mesh-Geometrie. Er braucht
+        # das Extra `spotlab[sim]` und `spotsim` aus matura-spot; fehlt eines,
+        # sagt der Fehler, was zu tun ist.
+        from spotlab.backends.sim import SimBackend
+        from spotlab.config import startpose_aus
+        from spotlab.welt.raum import raum_laden
+
+        # Reihenfolge: Argument vor Umgebung vor Konfiguration. Ein Skript, das
+        # seinen Raum nennt, soll nicht davon abhaengen, was zuletzt in der GUI
+        # stand; die GUI wiederum soll nicht davon abhaengen, was zuletzt in der
+        # Konfiguration gelandet ist.
+        name = raum or os.environ.get(ENV_RAUM) or (cfg.raum if cfg else "")
+        gewaehlt = (raum_laden(name, workspace=cfg.workspace if cfg else None)
+                    if name else None)
+        roher_start = os.environ.get(ENV_RAUM_START) or (cfg.raum_start if cfg else "")
+        start = startpose_aus(roher_start)
+        if gewaehlt is not None and start is None:
+            start = gewaehlt.start
+
+        if art == "physics":
+            from spotlab.backends.physics import PhysicsBackend
+
+            unten = PhysicsBackend(recorder=recorder, raum=gewaehlt, start=start,
+                                   ansicht_ziel=recorder.dir / "ansicht.jpg")
+        elif art == "mujoco":
+            from spotlab.backends.mujoco import MujocoBackend
+
+            unten = MujocoBackend(
+                recorder, raum=gewaehlt, start=start, treppen=grenzen.treppen,
+                ansicht_ziel=recorder.dir / "ansicht.jpg",
+            )
+        else:
+            unten = SimBackend(recorder, raum=gewaehlt, start=start, treppen=grenzen.treppen)
+        # Der Hinweis gehört in die Aufzeichnung, nicht nur in den Docstring:
+        # wer den Lauf später ansieht, muss sehen, dass hier nichts erprobt ist.
+        # Dasselbe fuer den Treppengang: die Puppe spielt auf Stufen den ebenen
+        # Gang, und der Lauf sagt es (Stufe 13, Wahl C des Autors).
+        zusatz = {"treppengang": unten.treppengang()} if unten.treppengang() else {}
+        recorder.event(
+            "verbunden", backend=art, raum=name or None,
+            hinweis=unten.hinweis_zur_gueltigkeit(), **zusatz,
+        )
+        return None, unten
+
+    # Nur noch "real": jeder andere Name ist in `_pruefe_backend` abgewiesen,
+    # bevor es einen RunRecorder gab.
+    from spotlab.backends.real import RealSpot
+
+    if cfg is None:
+        raise ConfigMissing("Keine Konfiguration. Einrichten mit `spotlab login`.")
+    # Zwei Einstiege, nicht ein Argument im selben Aufbau: der Lease-Erwerb
+    # steht in `connect`, und wer nur liest, kommt gar nicht erst daran vorbei
+    # (backends/real/session.py).
+    unten = (
+        RealSpot.nur_lesen(cfg, recorder=recorder) if nur_lesen
+        else RealSpot.connect(cfg, recorder=recorder, take=take)
+    )
+    return unten.robot, unten
+
+
+def _aufbau_gescheitert(recorder, fehler):
+    """Ein Lauf, dessen Backend nie zustande kam: Grund in `lauf.json`, Protokollziel weg.
+
+    Derselbe Text wie im Lauf selbst: eine SpotlabError sagt schon alles, bei
+    allem anderen gehört der Klassenname dazu. Wirft nie über den Fehler hinweg,
+    den der Aufrufer gleich weiterreicht -- der ist die Nachricht.
+    """
+    from spotlab import protokoll
+    from spotlab.errors import SpotlabError
+
+    if isinstance(fehler, KeyboardInterrupt):
+        ergebnis, text = "abgebrochen", "Beim Verbinden abgebrochen (Ctrl-C)"
+    elif isinstance(fehler, SpotlabError):
+        ergebnis, text = "fehler", str(fehler)
+    else:
+        ergebnis, text = "fehler", f"{type(fehler).__name__}: {fehler}"
+    try:
+        recorder.finish(ergebnis, text)
+    except Exception as folgefehler:
+        protokoll.notiere("Lauf nach gescheitertem Aufbau nicht abgeschlossen", folgefehler)
+    finally:
+        protokoll.setze_ziel(None)
+
+
+def _pruefe_backend(art, argument):
+    """Wirft SpotlabError, wenn `art` kein Backend ist -- mit den gültigen Namen.
+
+    Eine ERLAUBNISLISTE (`config.BACKENDS`), kein Raten: `"Sim"` ist nicht
+    `"sim"`. Wer den Namen stillschweigend korrigierte, müsste auch
+    entscheiden, was `"rael"` heissen soll.
+    """
+    from spotlab.config import BACKENDS
+    from spotlab.errors import SpotlabError
+
+    if art in BACKENDS:
+        return
+    if argument:
+        quelle = f"connect(backend={art!r})"
+    elif os.environ.get(ENV_BACKEND):
+        quelle = f"{ENV_BACKEND}={art!r}"
+    else:
+        quelle = f"default_backend={art!r}"
+    raise SpotlabError(
+        f"{quelle}: ein Backend {art!r} gibt es nicht. Gültig sind „dryrun“, „sim“, "
+        "„mujoco“, „physics“ und „real“ -- genau so, kleingeschrieben."
+    )
 
 
 def _skript_pfad():

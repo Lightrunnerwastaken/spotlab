@@ -21,6 +21,20 @@ from spotlab.workshop.project import create_project
 GRUEN, ROT, GRAU, AUS = "\033[32m", "\033[31m", "\033[90m", "\033[0m"
 
 
+def _positive_ganzzahl(text):
+    """argparse-Typ: eine ganze Zahl über 0. `--fps 0` teilte durch null,
+    `--fps -30` liess den Bildgenerator nie enden (Beta-Prüfung 23.09.2026)."""
+    try:
+        zahl = int(text)
+    except ValueError:
+        zahl = 0
+    if zahl <= 0:
+        raise argparse.ArgumentTypeError(
+            f"„{text}“ ist keine ganze Zahl über 0 -- etwa --fps 30"
+        )
+    return zahl
+
+
 def build_parser():
     parser = argparse.ArgumentParser(
         prog="spotlab", description="Den Spot programmieren — Kantonsschule"
@@ -40,7 +54,9 @@ def build_parser():
     starten = unter.add_parser("run", help="Skript starten und aufzeichnen")
     starten.add_argument("datei")
     starten.add_argument(
-        "--dryrun", action="store_true", help="ohne Roboter, nur Kommandos prüfen"
+        "--dryrun", action="store_true",
+        help="ohne Roboter, nur Kommandos prüfen -- auch ein backend im Skript "
+             "darf den Roboter dann nicht anfordern",
     )
 
     laeufe = unter.add_parser("runs", help="Läufe auflisten")
@@ -62,7 +78,8 @@ def build_parser():
 
     film = unter.add_parser("film", help="einen Lauf als 3D-Video rendern (braucht [sim])")
     film.add_argument("lauf", help="Lauf-Verzeichnis oder Lauf-ID")
-    film.add_argument("--fps", type=int, default=30)
+    film.add_argument("--fps", type=_positive_ganzzahl, default=30,
+                      help="Bilder je Sekunde, eine ganze Zahl über 0 (Vorgabe 30)")
     film.add_argument("--out", default=None, help="Zieldatei (Vorgabe: <lauf>/film.mp4)")
     return parser
 
@@ -260,18 +277,30 @@ def _gui():
 def _login():
     from dataclasses import replace
 
-    from spotlab.config import Config, load_config, save_config, save_password
+    from spotlab.config import Config, rette_config, save_config, save_password
+    from spotlab.errors import ConfigBroken, ConfigMissing
 
+    # `rette_config`, nicht `load_config`: login ist der Reparaturweg, auf den
+    # jede ConfigBroken-Meldung zeigt. Nach EINEM Tippfehler baute es bis zum
+    # 23.09.2026 alles neu -- Treppensperre, Tempo, Arbeitsordner, Karte und
+    # Raum fielen still auf die Vorgaben. Einen kaputten Sicherheitswert
+    # uebernimmt es gar nicht erst, statt ihn zu ueberschreiben.
     try:
-        alt = load_config()
-    except SpotlabError:
-        alt = None
-    ip = input(f"IP des Spot [{alt.ip if alt else '192.168.80.3'}]: ").strip() or (
-        alt.ip if alt else "192.168.80.3"
-    )
-    benutzer = input(f"Benutzername [{alt.username if alt else 'user'}]: ").strip() or (
-        alt.username if alt else "user"
-    )
+        alt, ersetzt = rette_config()
+    except ConfigMissing:
+        alt, ersetzt = None, []
+    except ConfigBroken as fehler:
+        raise ConfigBroken(
+            f"{fehler} `spotlab login` ändert daran nichts: ein Sicherheitswert wird "
+            "nie still auf die Vorgabe zurückgesetzt. Erst die Zeile korrigieren "
+            "(oder die Datei löschen), dann erneut `spotlab login`."
+        ) from fehler
+    for eintrag in ersetzt:
+        print(f"{GRAU}Ungültig in der alten Konfiguration, ersetzt: {eintrag}{AUS}")
+    ip_vorher = alt.ip if alt and alt.ip else "192.168.80.3"
+    benutzer_vorher = alt.username if alt and alt.username else "user"
+    ip = input(f"IP des Spot [{ip_vorher}]: ").strip() or ip_vorher
+    benutzer = input(f"Benutzername [{benutzer_vorher}]: ").strip() or benutzer_vorher
     spitzname = input(f"Spitzname [{alt.nickname if alt else 'Spot'}]: ").strip() or (
         alt.nickname if alt else "Spot"
     )

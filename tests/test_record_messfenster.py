@@ -105,6 +105,32 @@ def test_reservierte_feldnamen_werden_abgewiesen():
             pass
 
 
+@pytest.mark.parametrize("hz", [0, 0.0, -5, float("nan"), float("inf"), "fünfzig", None])
+def test_eine_unsinnige_rate_wird_abgewiesen_und_das_fenster_bleibt_frei(hz, tmp_path):
+    """Beta-Prüfung 23.09.2026 (p11): `hz=0` warf ZeroDivisionError im Abtaster
+    -- und `_offen` blieb gesetzt: jedes weitere Fenster des Laufs scheiterte an
+    „Es ist schon ein Messfenster offen“, einer Ursache, die es nicht gab.
+    `hz=-5` lief ungebremst. Der ECHTE Abtaster, keine Attrappe: nur er rechnet
+    1/hz (gestartet wird er nicht)."""
+    from types import SimpleNamespace
+
+    from spotlab.backends.dryrun import DryRunBackend
+    from spotlab.record.sampler import StateSampler
+
+    rec = FakeRecorder()
+    abtaster = StateSampler(DryRunBackend(), SimpleNamespace(dir=tmp_path))
+    vorher = abtaster.takt()
+    fenster = Messfenster(rec, abtaster)
+    with pytest.raises(SpotlabError, match="hz"):
+        with fenster.oeffne("G1", hz=hz):
+            pass
+    assert fenster.offen is None
+    assert abtaster.takt() == vorher
+    assert rec.ereignisse == []
+    with fenster.oeffne("G2", hz=50):                     # das naechste geht
+        assert abtaster.takt() == (50.0, True)
+
+
 def test_ohne_recorder_und_abtaster_laeuft_es_durch():
     """Tests bauen Spot ohne beides; das darf nicht werfen."""
     with Messfenster(None, None).oeffne("G3"):

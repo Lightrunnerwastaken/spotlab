@@ -203,6 +203,74 @@ def test_sitzen_haelt_an(uhr):
     assert zustand.kinematic_state.velocity_of_body_in_odom.linear.x == 0.0
 
 
+def _verhalten(backend):
+    from bosdyn.api import robot_state_pb2
+
+    return robot_state_pb2.BehaviorState.State.Name(backend.robot_state().behavior_state.state)
+
+
+def test_vor_power_on_steht_spot_nicht(uhr):
+    """Beta-Prüfung 23.09.2026 (p02): vor `power_on()` meldete der Sim
+    `STANDING` -- mit ausgeschalteten Motoren. Ein Programm, das auf den
+    Stand wartet, lief damit am Sim durch und hing am Roboter."""
+    from bosdyn.client.robot_command import RobotCommandBuilder
+
+    backend = SimBackend(jetzt=uhr)
+    assert _verhalten(backend) == "STATE_NOT_READY"
+    backend.power_on()
+    assert _verhalten(backend) == "STATE_NOT_READY"          # Motoren an heisst nicht stehen
+    backend.send_command(RobotCommandBuilder.synchro_stand_command())
+    assert _verhalten(backend) == "STATE_STANDING"
+
+
+def _koerperhoehe(backend):
+    from bosdyn.client.frame_helpers import BODY_FRAME_NAME, ODOM_FRAME_NAME, get_a_tform_b
+
+    return get_a_tform_b(backend.frame_tree_snapshot(), ODOM_FRAME_NAME, BODY_FRAME_NAME).position.z
+
+
+@pytest.mark.parametrize("gewuenscht, erwartet", [
+    (0.1, 0.1), (-0.1, -0.1), (2.0, 0.15), (-1.0, -0.15), (0.15, 0.15),
+])
+def test_die_standhoehe_bleibt_im_bereich_des_spot(uhr, gewuenscht, erwartet):
+    """p04: `stand(height=-1)` steckte den Koerper einen halben Meter in den
+    Boden, `height=2` hob ihn auf 2.5 m. Der Sim klemmt auf den Bereich, den
+    `pose()` an der Fassade zusichert (±0.15 m)."""
+    from bosdyn.client.robot_command import RobotCommandBuilder
+
+    backend = _sim(uhr)
+    normal = backend._modell.hoehe_m
+    backend.send_command(RobotCommandBuilder.synchro_stand_command(body_height=gewuenscht))
+    assert _koerperhoehe(backend) == pytest.approx(normal + erwartet)
+    fuss = backend.robot_state().foot_state[0].foot_position_rt_body.z
+    assert fuss == pytest.approx(-(normal + erwartet))
+
+
+@pytest.mark.parametrize("wert", [float("nan"), float("inf")])
+def test_eine_nicht_endliche_standhoehe_wird_abgewiesen(uhr, wert):
+    from bosdyn.client.robot_command import RobotCommandBuilder
+
+    backend = _sim(uhr)
+    vorher = _koerperhoehe(backend)
+    with pytest.raises(CommandRejected, match="endlich"):
+        backend.send_command(RobotCommandBuilder.synchro_stand_command(body_height=wert))
+    assert _koerperhoehe(backend) == pytest.approx(vorher)
+
+
+def test_gehen_nimmt_die_hoehe_aus_dem_fahrkommando(uhr):
+    """Wie am Roboter: ein Fahrkommando traegt seine eigene Koerperhoehe
+    (`mobility_params(body_height=0)` als Vorgabe des SDK). Wer geduckt steht
+    und losgeht, geht in normaler Hoehe."""
+    from bosdyn.client.robot_command import RobotCommandBuilder
+
+    backend = _sim(uhr)
+    normal = backend._modell.hoehe_m
+    backend.send_command(RobotCommandBuilder.synchro_stand_command(body_height=-0.1))
+    assert _koerperhoehe(backend) == pytest.approx(normal - 0.1)
+    _fahre(backend, uhr, vx=0.3, sekunden=0.5)
+    assert _koerperhoehe(backend) == pytest.approx(normal)
+
+
 # --------------------------------------------------------------- Es erfindet nichts
 
 
@@ -386,6 +454,51 @@ def test_move_dreht_auf_den_zielwinkel(uhr):
     assert _move(backend, uhr, drehen=math.pi / 2)
     _, _, yaw = _pose(backend)
     assert yaw == pytest.approx(math.pi / 2, abs=0.05)
+
+
+def _move_mit_spur(backend, uhr, vor=0.0, drehen=0.0, schritt=0.01):
+    """Wie `_move`, merkt sich aber jede Pose -- fuer die Frage nach dem Ueberschiessen."""
+    from bosdyn.client.robot_command import RobotCommandBuilder
+
+    kennung = backend.send_command(
+        RobotCommandBuilder.synchro_trajectory_command_in_body_frame(
+            vor, 0.0, drehen, backend.frame_tree_snapshot()),
+        end_time_secs=uhr.t + 30.0,
+    )
+    spur = []
+    while not backend.command_feedback(kennung).done:
+        assert len(spur) < 3000, "nicht angekommen"
+        spur.append(_pose(backend))
+        uhr.weiter(schritt)
+    spur.append(_pose(backend))
+    return spur
+
+
+@pytest.mark.parametrize("vor", [1.0, 0.5, 0.2, 0.05, -0.3])
+def test_move_kommt_auf_den_millimeter_an_ohne_ueberschiessen(uhr, vor):
+    """Beta-Prüfung 23.09.2026 (p03): `move()` blieb im Sim um die Toleranz von
+    2 cm zu kurz -- `move(forward=0.05)` fuhr 3 cm, zehnmal 0.1 m ergaben
+    0.8 m. Das Bremsprofil reicht bis zum Rest 0; die Toleranz ist nur noch
+    ein Millimeter. Und der letzte Schritt ist auf den Rest gedeckelt: kein
+    Pendeln um das Ziel, kein Ueberschiessen."""
+    backend = _sim(uhr)
+    spur = _move_mit_spur(backend, uhr, vor=vor)
+    x, y, _ = spur[-1]
+    assert x == pytest.approx(vor, abs=0.0011)
+    assert y == pytest.approx(0.0, abs=1e-6)
+    weiteste = max(abs(p[0]) for p in spur)
+    assert weiteste <= abs(vor) + 1e-9, f"ueber das Ziel hinaus: {weiteste:.5f} m"
+
+
+@pytest.mark.parametrize("grad", [90.0, 2.0, -45.0, 0.5])
+def test_move_dreht_auf_das_zehntelgrad_ohne_ueberschiessen(uhr, grad):
+    """p03: `move(turn=2)` drehte 0.3 Grad, `move(turn=90)` 88.3 -- die Toleranz
+    war 1.7 Grad. Jetzt 0.1 Grad."""
+    backend = _sim(uhr)
+    spur = _move_mit_spur(backend, uhr, drehen=math.radians(grad))
+    gedreht = [math.degrees(p[2]) for p in spur]
+    assert gedreht[-1] == pytest.approx(grad, abs=0.11)
+    assert max(abs(g) for g in gedreht) <= abs(grad) + 1e-6
 
 
 def test_move_faehrt_im_koerperframe(uhr):
@@ -624,6 +737,18 @@ def test_gitter_traegt_die_bekannt_maske():
     assert gitter.cell_size == pytest.approx(0.03)
     assert gitter.known is not None
     assert gitter.cells.shape == gitter.known.shape
+
+
+def test_dicht_vor_dem_koerper_sieht_der_2d_sim_nichts_wie_mujoco(uhr):
+    """p10: `look()` meldete im 2D-Sim „clear“ und „blocked“ ab 0 m, MuJoCo
+    und der echte Spot „unknown“ -- dasselbe Programm verhielt sich in den
+    beiden Uebungsraeumen verschieden. Die freie Strecke ueber den Schatten
+    hinweg bleibt dieselbe."""
+    backend = SimBackend(jetzt=uhr, raum=_uebungsraum(), start=(5.0, 5.0, 0.0))
+    gitter = backend.local_grid()
+    assert gitter.distance_at(5.3, 5.0) is None                    # 0.3 m voraus: Schatten
+    assert gitter.distance_at(5.8, 5.0) is not None                # 0.8 m voraus: gesehen
+    assert gitter.free_distance(5.0, 5.0, 90.0) == pytest.approx(1.8)   # links frei bis zum Deckel
 
 
 def test_anstossen_wird_genau_einmal_gemeldet():

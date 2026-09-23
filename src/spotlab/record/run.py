@@ -42,13 +42,23 @@ def _freies_verzeichnis(runs_dir, kennung):
     Ohne Skript ist die Kurzkennung immer "interakt", und auch dasselbe Skript
     zweimal in derselben Sekunde ergäbe dieselbe ID. Beide Läufe schrieben dann
     in dieselben jsonl-Dateien und überschrieben gegenseitig lauf.json.
+
+    Belegt wird mit `mkdir(exist_ok=False)` -- Prüfen und Anlegen in EINEM
+    Schritt des Dateisystems. Bis zum 23.09.2026 stand hier erst `exists()`,
+    dann (im Aufrufer) `mkdir(exist_ok=True)`: zwei PROZESSE in derselben
+    Sekunde (zweimal `skript_starten` über MCP) passten dazwischen und
+    bekamen dasselbe Verzeichnis (Beta-Prüfung).
     """
+    runs_dir.mkdir(parents=True, exist_ok=True)
     ziel = runs_dir / kennung
     nummer = 2
-    while ziel.exists():
-        ziel = runs_dir / f"{kennung}-{nummer}"
-        nummer += 1
-    return ziel.name, ziel
+    while True:
+        try:
+            ziel.mkdir()
+            return ziel.name, ziel
+        except FileExistsError:
+            ziel = runs_dir / f"{kennung}-{nummer}"
+            nummer += 1
 
 
 class RunRecorder:

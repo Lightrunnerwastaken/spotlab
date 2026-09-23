@@ -283,6 +283,7 @@ class MujocoBackend(SimBackend):
         puppe = _puppe_laden()
         self.puppe = puppe.SpotPuppe(welt_aus_raum(raum, puppe))
         self._fassung = puppe.FASSUNG
+        self._hocke = None                 # (Versatz und Winkel, gebeugte Winkel)
         self._synchronisiere()
         self._ansicht = None
         if ansicht_ziel:
@@ -341,11 +342,54 @@ class MujocoBackend(SimBackend):
         return self._modell.gelenke(math.hypot(vx, vy), wz, self._phase)
 
     def _setze_puppe(self, pose, winkel, z):
-        """Die Puppe auf Pose, Boden und Neigung setzen -- Hoehe aus Boden plus Kinematik."""
+        """Die Puppe auf Pose, Boden und Neigung setzen -- Hoehe aus Boden plus Kinematik.
+
+        Die Koerperhoehe aus `stand(height=...)` (im 2D-Sim `_hoehe`, dort schon
+        geklemmt) geht ueber die BEINE: Huefte und Knie beugen sich, bis die
+        Kinematik genau so hoch steht. Nur den Koerper zu verschieben, liesse
+        die Fuesse im Boden versinken oder in der Luft haengen. Bis zum
+        23.09.2026 ignorierte MuJoCo die Hoehe ganz.
+        """
         x, y, yaw = pose
+        winkel = self._gelenke_fuer_hoehe(winkel, self._hoehe - self._modell.hoehe_m)
         nick = nick_grad(self._raum, x, y, yaw, z_nahe=z) if self._raum is not None else 0.0
         self.puppe.setze(x, y, yaw, winkel, hoehe=z + self.puppe.standhoehe(winkel),
                          pitch=math.radians(nick))
+
+    def _gelenke_fuer_hoehe(self, winkel, versatz):
+        """Winkel, mit denen die Puppe um `versatz` Meter tiefer (oder hoeher) steht.
+
+        Je Bein Huefte um d, Knie um -2d -- so bleibt der Fuss fast unter der
+        Huefte (nachgerechnet: rund 1 cm Versatz bei ±0.15 m). Die Standhoehe faellt in d
+        streng, also genuegt eine Halbierung. Die Antwort wird fuer denselben
+        Stand gemerkt: im Stehen aendern sich die Winkel nicht, und je Abfrage
+        30 Kinematik-Rechnungen waeren Verschwendung. Beim Gehen ist der
+        Versatz 0 (das Fahrkommando traegt body_height=0), dort kostet es nichts.
+        """
+        if abs(versatz) < 1e-6:
+            return winkel
+        schluessel = (round(versatz, 6), tuple(sorted(winkel.items())))
+        if self._hocke is not None and self._hocke[0] == schluessel:
+            return self._hocke[1]
+        ziel = self.puppe.standhoehe(winkel) + versatz
+
+        def gebeugt(d):
+            neu = dict(winkel)
+            for bein in ("fl", "fr", "hl", "hr"):
+                neu[f"{bein}.hy"] = winkel[f"{bein}.hy"] + d
+                neu[f"{bein}.kn"] = winkel[f"{bein}.kn"] - 2.0 * d
+            return neu
+
+        tief, hoch = 0.6, -0.6                   # d = +0.6 ist tiefer als jede Klemme
+        for _ in range(40):
+            mitte = (tief + hoch) / 2.0
+            if self.puppe.standhoehe(gebeugt(mitte)) > ziel:
+                hoch = mitte
+            else:
+                tief = mitte
+        ergebnis = gebeugt((tief + hoch) / 2.0)
+        self._hocke = (schluessel, ergebnis)
+        return ergebnis
 
     def _synchronisiere(self):
         """Die Puppe auf den Stand des 2D-Sim bringen: Pose, Winkel, Hoehe, Nick."""
@@ -564,6 +608,15 @@ def _raum_des_laufs(lauf_dir):
             return name, None
 
 
+def _pruefe_fps(fps):
+    try:
+        gut = math.isfinite(float(fps)) and float(fps) > 0
+    except (TypeError, ValueError):
+        gut = False
+    if not gut:
+        raise SpotlabError(f"fps={fps!r} ist keine Bildrate. Gemeint ist eine Zahl über 0, etwa 30.")
+
+
 def _bilder_aus_lauf(lauf_dir, fps=FILM_FPS):
     """(t, (x, y, yaw), gelenke, hoehe, nick) je Bild — auf `fps` interpoliert.
 
@@ -571,9 +624,14 @@ def _bilder_aus_lauf(lauf_dir, fps=FILM_FPS):
     Lauf keine traegt: dann die Standhoehe der Kinematik), `nick` der Nick
     im Bogenmass. Beide Felder gibt es seit Stufe 7 in jeder Zeile; erst seit
     Stufe 13 tragen sie im Sim etwas anderes als Standhoehe und 0.
+
+    `fps` muss eine endliche Zahl ueber 0 sein: 0 teilte durch null, und bei
+    einer negativen Rate lief `t` rueckwaerts -- der Generator endete nie, und
+    `film_aus_lauf` sammelt ihn mit list() ein (Beta-Pruefung 23.09.2026).
     """
     from spotlab.kalibrierung.modell import lade_modell
 
+    _pruefe_fps(fps)
     proben = []
     for satz in _zeilen_jsonl(Path(lauf_dir) / "zustand.jsonl"):
         daten = satz.get("daten") or {}
