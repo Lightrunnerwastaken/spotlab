@@ -87,6 +87,13 @@ def connect(
     if NUR_TROCKEN and art not in OHNE_ROBOTER:
         raise SpotlabError(NUR_TROCKEN_MELDUNG)
 
+    # Ein unbekannter Name ist ein Fehler, keine Wahl. Bis zum 23.09.2026 fiel
+    # jeder Name, der nicht genau stimmte (`"Sim"`, `"mujoko"`, `"trocken"`),
+    # in den letzten Zweig unten -- und der verbindet mit dem ECHTEN Spot.
+    # Nach der Schranke (die sagt unter SPOTLAB_NUR_TROCKEN das Wichtigere) und
+    # VOR dem RunRecorder, aus demselben Grund wie sie.
+    _pruefe_backend(art, backend)
+
     grenzen = cfg.limits if cfg else Limits()
     spitzname = nickname or (cfg.nickname if cfg else "")
 
@@ -154,6 +161,8 @@ def connect(
             hinweis=unten.hinweis_zur_gueltigkeit(), **zusatz,
         )
     else:
+        # Nur noch "real": jeder andere Name ist oben in `_pruefe_backend`
+        # abgewiesen, bevor es einen RunRecorder gab.
         from spotlab.backends.real import RealSpot
 
         if cfg is None:
@@ -231,6 +240,30 @@ def connect(
                     protokoll.notiere("Sim-Bericht nicht geschrieben", fehler)
                 recorder.finish(ergebnis, fehlertext)
                 protokoll.setze_ziel(None)
+
+
+def _pruefe_backend(art, argument):
+    """Wirft SpotlabError, wenn `art` kein Backend ist -- mit den gültigen Namen.
+
+    Eine ERLAUBNISLISTE (`config.BACKENDS`), kein Raten: `"Sim"` ist nicht
+    `"sim"`. Wer den Namen stillschweigend korrigierte, müsste auch
+    entscheiden, was `"rael"` heissen soll.
+    """
+    from spotlab.config import BACKENDS
+    from spotlab.errors import SpotlabError
+
+    if art in BACKENDS:
+        return
+    if argument:
+        quelle = f"connect(backend={art!r})"
+    elif os.environ.get(ENV_BACKEND):
+        quelle = f"{ENV_BACKEND}={art!r}"
+    else:
+        quelle = f"default_backend={art!r}"
+    raise SpotlabError(
+        f"{quelle}: ein Backend {art!r} gibt es nicht. Gültig sind „dryrun“, „sim“, "
+        "„mujoco“, „physics“ und „real“ -- genau so, kleingeschrieben."
+    )
 
 
 def _skript_pfad():

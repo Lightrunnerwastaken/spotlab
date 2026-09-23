@@ -17,8 +17,11 @@ with connect(backend="dryrun") as spot:
 
 `connect(backend=None, runs_dir=None, script=None, take=False, config_path=None,
 nickname=None, raum=None, nur_lesen=False)` ist ein Context Manager. Backend-Auswahl: Argument,
-`SPOTLAB_BACKEND`, Konfiguration, sonst `dryrun`. Zulässige Betriebsarten sind
-`dryrun`, `sim`, `mujoco`, `real`. Für den echten Spot Konfiguration mit `spotlab login`
+`SPOTLAB_BACKEND`, Konfiguration (fehlt dort `[defaults]`, gilt `mujoco`), ohne
+Konfiguration `dryrun`. Zulässige Betriebsarten sind genau
+`dryrun`, `sim`, `mujoco`, `physics`, `real` — jeder andere Name (auch `Sim` oder
+`mujoko`) wird mit `SpotlabError` abgewiesen, bevor ein Lauf angelegt wird. Den echten
+Spot fährt nur, wer `real` wählt; dafür Konfiguration mit `spotlab login`
 einrichten. `connect()` schaltet die Motoren nicht ein.
 `runs_dir` setzt das Aufzeichnungsziel, `script` die zugehörige Skriptdatei,
 `config_path` eine andere Konfiguration, `nickname` den Namen im Lauf,

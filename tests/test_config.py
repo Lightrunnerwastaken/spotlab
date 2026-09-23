@@ -25,12 +25,19 @@ def test_fehlende_datei_meldet_klartext(tmp_path):
 
 
 def test_vorgabewerte_wenn_abschnitte_fehlen(tmp_path):
+    """Fehlt [defaults], gilt die Vorgabe von `Config` -- NICHT der echte Spot.
+
+    Bis zum 23.09.2026 stand hier `"real"`: eine von Hand angelegte oder alte
+    Konfiguration ohne [defaults] fuhr den Roboter, obwohl niemand ihn gewaehlt
+    hatte. Die Regel „wer nichts einstellt, faehrt NICHT den echten Spot" gilt
+    auch fuer eine Datei, in der die Zeile fehlt."""
     pfad = tmp_path / "config.toml"
     pfad.write_text('[robot]\nip = "10.0.0.1"\nusername = "u"\n', encoding="utf-8")
     cfg = load_config(pfad)
     assert cfg.limits == Limits()
     assert cfg.editor_command == "code"
-    assert cfg.default_backend == "real"
+    assert cfg.default_backend == Config.default_backend
+    assert cfg.default_backend != "real"
     assert cfg.nickname == "Spot"
 
 

@@ -158,7 +158,10 @@ def load_config(path=None):
             f"In {path} fehlen IP oder Benutzername. Neu einrichten mit `spotlab login`."
         )
     limits = roh.get("limits", {})
-    backend = roh.get("defaults", {}).get("backend", "real")
+    # Ohne Eintrag die Vorgabe von `Config`, nie "real": wer nichts einstellt,
+    # faehrt NICHT den echten Spot -- auch nicht mit einer Datei, in der die
+    # Zeile fehlt (von Hand angelegt oder aus einer Fassung vor dem 22.09.2026).
+    backend = roh.get("defaults", {}).get("backend", Config.default_backend)
     if backend not in BACKENDS:
         raise ConfigBroken(
             f"In {path} ist `backend = {backend!r}` unbekannt. Erlaubt: "
