@@ -207,3 +207,62 @@ def test_alle_ersetzen_in_der_offenen_datei(qapp):
     feld.suchleiste.ersatzfeld.setText("z")
     assert feld.suchleiste.ersetze_alle() == 3
     assert feld.toPlainText() == "z = 1\nb = z\nc = z\n"
+
+
+# ============ Suchen und Ersetzen nach DENSELBEN Regeln (Pruefung 23.09.2026, p01)
+#
+# Die Suche fand ohne Haekchen Spot, spot und SPOT; „Ersetzen" verglich die
+# Markierung exakt und tat nichts, „Alle ersetzen" zaehlte mit str.count und
+# erwischte nur die genaue Schreibweise.
+
+
+def _leiste(text, suchen, ersetzen, gross_klein=False):
+    feld = CodeEdit(DUNKEL)
+    feld.setPlainText(text)
+    feld.suchleiste_umschalten()
+    leiste = feld.suchleiste
+    leiste.suchfeld.setText(suchen)
+    leiste.ersatzfeld.setText(ersetzen)
+    leiste.gross_klein.setChecked(gross_klein)
+    return feld, leiste
+
+
+def test_alle_ersetzen_ohne_haekchen_trifft_was_die_suche_findet(qapp):
+    vorher = "Spot = 1\nspot = 2\nSPOT = 3\n"
+    feld, leiste = _leiste(vorher, "spot", "robo")
+    assert leiste.ersetze_alle() == 3
+    assert feld.toPlainText() == "robo = 1\nrobo = 2\nrobo = 3\n"
+    feld.undo()
+    assert feld.toPlainText() == vorher, "ein Strg+Z nimmt alle Ersetzungen zurueck"
+
+
+def test_alle_ersetzen_mit_haekchen_nur_die_genaue_schreibweise(qapp):
+    feld, leiste = _leiste("Spot = 1\nspot = 2\nSPOT = 3\n", "spot", "robo", gross_klein=True)
+    assert leiste.ersetze_alle() == 1
+    assert feld.toPlainText() == "Spot = 1\nrobo = 2\nSPOT = 3\n"
+
+
+def test_alle_ersetzen_endet_auch_wenn_der_ersatz_den_suchtext_enthaelt(qapp):
+    feld, leiste = _leiste("a a\n", "a", "aa")
+    assert leiste.ersetze_alle() == 2
+    assert feld.toPlainText() == "aa aa\n"
+
+
+def test_ersetzen_nimmt_den_gefundenen_treffer_jeder_schreibweise(qapp):
+    feld, leiste = _leiste("Spot = 1\n", "spot", "robo")
+    feld.moveCursor(QTextCursor.Start)
+    assert leiste.suche() is True
+    assert feld.textCursor().selectedText() == "Spot"
+    leiste.ersetze()
+    assert feld.toPlainText() == "robo = 1\n"
+
+
+def test_ersetzen_mit_haekchen_laesst_eine_andere_schreibweise_stehen(qapp):
+    feld, leiste = _leiste("Spot = spot\n", "spot", "robo", gross_klein=True)
+    cursor = feld.textCursor()
+    cursor.setPosition(0)
+    cursor.setPosition(4, QTextCursor.KeepAnchor)          # „Spot" von Hand markiert
+    feld.setTextCursor(cursor)
+    leiste.ersetze()
+    assert feld.toPlainText() == "Spot = spot\n"
+    assert feld.textCursor().selectedText() == "spot", "weiter zum naechsten Treffer"
