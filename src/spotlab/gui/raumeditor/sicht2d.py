@@ -62,8 +62,8 @@ class Sicht2D(QWidget):
         self._markierung = []        # Strecken der gewaehlten Luecke des Korrigierers
         self._kandidaten = []        # alle Kandidaten, duenn dahinter
         self._offen = []             # offene Raender des Gelaendes
-        self._gelaende_bild = None   # einmal je (Gelaende, Ebene) gerendert
-        self._gelaende_ref = None    # haelt das Gelaende, damit id() stabil bleibt
+        self._gelaende_bild = None   # einmal je (Hoehen, Ebene) gerendert
+        self._gelaende_ref = None    # haelt die Hoehen, damit id() stabil bleibt
         self._gelaende_schluessel = None
         self._pauspapier_bild = None     # die Punktwolke als Bild, einmal je Punktliste
         self._pauspapier_rechteck = None
@@ -91,6 +91,9 @@ class Sicht2D(QWidget):
 
     def setze_pauspapier(self, punkte):
         self._pauspapier = list(punkte)
+        # Das Bild gehoert zur alten Liste. Nach `id()` allein zu gehen reicht
+        # nicht: die neue Liste kann die Adresse der alten bekommen.
+        self._pauspapier_bild = None
         self.update()
 
     def setze_markierung(self, strecken):
@@ -231,10 +234,14 @@ class Sicht2D(QWidget):
         gelaende = self._raum.gelaende
         if gelaende is None:
             return
-        schluessel = (id(gelaende), self._ebene)
-        if self._gelaende_bild is None or schluessel != self._gelaende_schluessel:
+        # Nach den HOEHEN, nicht nach dem Gelaende-Objekt: G verschiebt nur den
+        # Ursprung und behaelt das Tupel -- das Relief je Mausbewegung neu zu
+        # rendern kostete auf den Katakomben 50 ms (23.09.2026).
+        schluessel = (id(gelaende.hoehen), gelaende.zeilen, gelaende.spalten, self._ebene)
+        if (self._gelaende_bild is None or schluessel != self._gelaende_schluessel
+                or self._gelaende_ref is not gelaende.hoehen):
             self._gelaende_bild = gelaende_bild(gelaende, self._p, self._ebene)
-            self._gelaende_ref, self._gelaende_schluessel = gelaende, schluessel
+            self._gelaende_ref, self._gelaende_schluessel = gelaende.hoehen, schluessel
         x1, y1, x2, y2 = gelaende_rechteck(gelaende)
         px1, py1 = self.meter_zu_schirm(x1, y2)      # links oben
         px2, py2 = self.meter_zu_schirm(x2, y1)      # rechts unten

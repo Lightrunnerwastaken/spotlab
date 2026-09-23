@@ -661,21 +661,36 @@ class RaumeditorView(QWidget):
         self.steuerung.setze_ebene(self.ebenenwahl.itemData(index))
         self._zeige()
 
-    def _fuelle_ebenen(self):
+    def _ebenen(self, raum):
+        """`hoehe.ebenen`, gemerkt je (Boeden, Gelaendehoehen): die Plateaus eines
+        Gelaendes zu suchen kostete auf den Katakomben 55 ms -- bei JEDEM Klick."""
         from spotlab.welt.hoehe import ebenen
 
+        hoehen = raum.gelaende.hoehen if raum.gelaende is not None else None
+        memo = self._ebenen_memo
+        if memo is None or memo[0] is not raum.boeden or memo[1] is not hoehen:
+            memo = self._ebenen_memo = (raum.boeden, hoehen, ebenen(raum))
+        return memo[2]
+
+    def _fuelle_ebenen(self):
         st = self.steuerung
+        hoehen = self._ebenen(st.raum)
+        gewaehlt = 0
+        if st.ebene is not None:
+            for i, hoehe in enumerate(hoehen, start=1):
+                if abs(hoehe - st.ebene) < 1e-6:
+                    gewaehlt = i
+        eintraege = [self.ebenenwahl.itemData(i) for i in range(1, self.ebenenwahl.count())]
+        if (self.ebenenwahl.count() and eintraege == hoehen
+                and self.ebenenwahl.currentIndex() == gewaehlt
+                and (gewaehlt or st.ebene is None)):
+            return                              # nichts Neues: die Liste bleibt, wie sie ist
         self._ebenen_sperre = True
         try:
             self.ebenenwahl.clear()
             self.ebenenwahl.addItem(ALLE_EBENEN, None)
-            for hoehe in ebenen(st.raum):
+            for hoehe in hoehen:
                 self.ebenenwahl.addItem(f"{hoehe:.2f} m", hoehe)
-            gewaehlt = 0
-            if st.ebene is not None:
-                for i in range(1, self.ebenenwahl.count()):
-                    if abs(self.ebenenwahl.itemData(i) - st.ebene) < 1e-6:
-                        gewaehlt = i
             if gewaehlt == 0:
                 st.setze_ebene(None)            # die Ebene gibt es nicht mehr
             self.ebenenwahl.setCurrentIndex(gewaehlt)
@@ -699,14 +714,27 @@ class RaumeditorView(QWidget):
 
     # ---------------------------------------------------------- Anzeige
 
-    def _zeige(self, nur_sicht=False):
+    def _klippen(self, raum):
+        """Die Klippen fuer die 2D-Sicht. Waehrend einer Geste, die nur das Gelaende
+        VERSCHIEBT (gleiche Hoehen, anderer Ursprung), werden die Klippen vom Anfang
+        der Geste mitgeschoben statt neu gerechnet -- 40 ms je Mausbewegung auf den
+        Katakomben. Nach dem Bestaetigen rechnet `klippen_von` sie genau."""
         from spotlab.welt.kollision import klippen_von
 
+        if raum is None or not (raum.boeden or raum.gelaende is not None):
+            return []
+        basis = self.steuerung.vorschau_basis
+        if (basis is not None and basis is not raum and raum.gelaende is not None
+                and basis.gelaende is not None and raum.gelaende is not basis.gelaende
+                and raum.gelaende.hoehen is basis.gelaende.hoehen):
+            dx, dy = raum.gelaende.x0 - basis.gelaende.x0, raum.gelaende.y0 - basis.gelaende.y0
+            return [(x1 + dx, y1 + dy, x2 + dx, y2 + dy) for x1, y1, x2, y2 in klippen_von(basis)]
+        return klippen_von(raum)
+
+    def _zeige(self, nur_sicht=False):
         st = self.steuerung
-        mit_hoehe = st.raum is not None and (st.raum.boeden or st.raum.gelaende is not None)
-        klippen_ = klippen_von(st.raum) if mit_hoehe else []
         self.sicht.zeige(st.raum, st.auswahl, st.griffe(), st.rahmen, st.kette,
-                         ebene=st.ebene, klippen_=klippen_)
+                         ebene=st.ebene, klippen_=self._klippen(st.raum))
         self.sicht3d.zeige(st.raum, st.auswahl)
         if nur_sicht or st.raum is None:
             return

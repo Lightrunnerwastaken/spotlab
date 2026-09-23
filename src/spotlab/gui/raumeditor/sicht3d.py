@@ -87,6 +87,81 @@ def _farbe(hexwert):
     return (c.redF(), c.greenF(), c.blueF())
 
 
+def _mit_normale(xyz, daten):
+    """Punkte (x, y, z, ...) mit der Normale (0, 0, 1) an `daten` haengen."""
+    for i in range(0, len(xyz), 3):
+        daten.extend((xyz[i], xyz[i + 1], xyz[i + 2], 0.0, 0.0, 1.0))
+
+
+# Das Gelaende als Dreiecke, gemerkt je Gelaende-Objekt: auf den Katakomben
+# rund 13 000 Dreiecke -- sie bei jeder Aenderung an einer Wand neu zu rechnen,
+# kostete mehr als der ganze Rest der Szene.
+_GELAENDE_MEMO = {}
+
+
+def _gelaende_kaesten(raum):
+    gelaende = raum.gelaende
+    if gelaende is None:
+        return []
+    treffer = _GELAENDE_MEMO.get("gelaende")
+    if treffer is None or treffer[0] is not gelaende:
+        treffer = (gelaende, [(("gelaende", band), vertices)
+                              for band, vertices in geo.gelaende_dreiecke(gelaende)])
+        _GELAENDE_MEMO["gelaende"] = treffer
+    return treffer[1]
+
+
+def szene_daten(raum, spur, anstoesse, palette):
+    """(daten, geometrie, linien) der Szene -- ohne GL, deshalb ohne Kontext pruefbar.
+
+    `daten`: array("f") mit (x, y, z, nx, ny, nz) je Vertex; `geometrie`:
+    [(schluessel, anfang, anzahl)] der Dreiecke; `linien`: [(farbe, anfang,
+    anzahl, "linien" | "punkte")]. Das Pauspapier steht NICHT darin: es hat
+    einen eigenen Puffer und wird einmal je Punktwolke hochgeladen -- mit
+    190 000 Punkten kostete es sonst 0.44 s bei jeder Mausbewegung (23.09.2026).
+    Die Auswahl auch nicht: sie ist eine Farbe beim Zeichnen, keine Geometrie.
+    """
+    daten = array("f")
+    geometrie, linien = [], []
+    if raum is not None:
+        from spotlab.welt.hoehe import boden_bei, boden_z
+
+        kaesten = _gelaende_kaesten(raum) + geo.kaesten_aus_raum(raum, frozenset(),
+                                                                  mit_gelaende=False)
+        for schluessel, vertices in kaesten:
+            geometrie.append((schluessel, len(daten) // 6, len(vertices) // 6))
+            daten.extend(vertices)
+        raster = geo.bodenraster(huelle(raum), z=boden_z(raum))
+        linien.append((palette.rand, len(daten) // 6, len(raster) // 3, "linien"))
+        _mit_normale(raster, daten)
+        start_z, _ = boden_bei(raum, raum.start[0], raum.start[1])
+        pfeil = geo.spot_pfeil(raum.start, z=start_z)
+        linien.append((palette.funktion, len(daten) // 6, 2, "linien"))
+        _mit_normale(pfeil, daten)
+    if len(spur) > 1:
+        punkte = []
+        for (x1, y1), (x2, y2) in zip(spur, spur[1:]):
+            punkte += [x1, y1, 0.01, x2, y2, 0.01]
+        linien.append((palette.akzent, len(daten) // 6, len(punkte) // 3, "linien"))
+        _mit_normale(punkte, daten)
+    if anstoesse:
+        punkte = []
+        for x, y in anstoesse:
+            punkte += [x - 0.1, y - 0.1, 0.02, x + 0.1, y + 0.1, 0.02,
+                       x - 0.1, y + 0.1, 0.02, x + 0.1, y - 0.1, 0.02]
+        linien.append((palette.gefahr, len(daten) // 6, len(punkte) // 3, "linien"))
+        _mit_normale(punkte, daten)
+    return daten, geometrie, linien
+
+
+def pauspapier_daten(punkte):
+    """array("f") der Punktwolke, ein Vertex je Punkt knapp ueber dem Boden."""
+    daten = array("f")
+    for x, y in punkte:
+        daten.extend((x, y, 0.02, 0.0, 0.0, 1.0))
+    return daten
+
+
 class Sicht3D(QOpenGLWidget):
     gedrueckt = Signal(float, float, str, bool, bool)
     bewegt = Signal(float, float, bool)
@@ -120,7 +195,11 @@ class Sicht3D(QOpenGLWidget):
         self._programm = None
         self._vao = None
         self._vbo = None
+        self._pp_vao = None         # das Pauspapier: eigener Puffer, einmal hochgeladen
+        self._pp_vbo = None
+        self._pp_anzahl = 0
         self._puffer_dirty = True
+        self._pauspapier_dirty = True
         self._geometrie = []        # [(schluessel, anfang, anzahl)] im VBO
         self._linien = []           # [(farbe, anfang, anzahl, art)]
         self._letzte_maus = None
@@ -130,8 +209,12 @@ class Sicht3D(QOpenGLWidget):
     # ------------------------------------------------------------ Fuellen
 
     def zeige(self, raum, auswahl=frozenset(), griffe=(), rahmen=None, kette=None):
+        """Neu gebaut wird nur, wenn sich der RAUM geaendert hat (unveraenderlich:
+        ein anderes Objekt). Eine Mausbewegung ohne Aenderung und eine neue
+        Auswahl kosten nur ein Neuzeichnen."""
+        if raum is not self._raum:
+            self._puffer_dirty = True
         self._raum, self._auswahl = raum, frozenset(auswahl)
-        self._puffer_dirty = True
         self.update()
 
     def setze_spur(self, punkte):
@@ -146,7 +229,7 @@ class Sicht3D(QOpenGLWidget):
 
     def setze_pauspapier(self, punkte):
         self._pauspapier = list(punkte)
-        self._puffer_dirty = True
+        self._pauspapier_dirty = True
         self.update()
 
     def alles_zeigen(self):
@@ -187,9 +270,12 @@ class Sicht3D(QOpenGLWidget):
         self._u = {name: programm.uniformLocation(name) for name in ("mvp", "licht", "farbe", "flach")}
         self._vao = GL.glGenVertexArrays(1)
         self._vbo = GL.glGenBuffers(1)
+        self._pp_vao = GL.glGenVertexArrays(1)
+        self._pp_vbo = GL.glGenBuffers(1)
         GL.glEnable(GL.GL_DEPTH_TEST)
         GL.glEnable(GL.GL_MULTISAMPLE)
         self._puffer_dirty = True
+        self._pauspapier_dirty = True
         self.verfuegbar = True
         self.bereit.emit(True)
 
@@ -199,62 +285,32 @@ class Sicht3D(QOpenGLWidget):
         self.tafel = TAFEL.format(grund=grund)
         self.bereit.emit(False)
 
-    @staticmethod
-    def _mit_normale(xyz):
-        aus = []
-        for i in range(0, len(xyz), 3):
-            aus += [xyz[i], xyz[i + 1], xyz[i + 2], 0.0, 0.0, 1.0]
-        return aus
-
-    def _baue_puffer(self):
-        """Alle Vertices in EINEN Puffer: Kaesten (mit Normale), dann Linien und Punkte."""
+    def _lade(self, vao, vbo, daten, art):
         GL = self._gl
-        daten = array("f")
-        self._geometrie = []
-        self._linien = []
-        if self._raum is not None:
-            for schluessel, vertices in geo.kaesten_aus_raum(self._raum, self._auswahl):
-                self._geometrie.append((schluessel, len(daten) // 6, len(vertices) // 6))
-                daten.extend(vertices)
-            from spotlab.welt.hoehe import boden_bei, boden_z
-
-            raster = geo.bodenraster(huelle(self._raum), z=boden_z(self._raum))
-            self._linien.append((self._p.rand, len(daten) // 6, len(raster) // 3, GL.GL_LINES))
-            daten.extend(self._mit_normale(raster))
-            start_z, _ = boden_bei(self._raum, self._raum.start[0], self._raum.start[1])
-            pfeil = geo.spot_pfeil(self._raum.start, z=start_z)
-            self._linien.append((self._p.funktion, len(daten) // 6, 2, GL.GL_LINES))
-            daten.extend(self._mit_normale(pfeil))
-        if len(self._spur) > 1:
-            punkte = []
-            for (x1, y1), (x2, y2) in zip(self._spur, self._spur[1:]):
-                punkte += [x1, y1, 0.01, x2, y2, 0.01]
-            self._linien.append((self._p.akzent, len(daten) // 6, len(punkte) // 3, GL.GL_LINES))
-            daten.extend(self._mit_normale(punkte))
-        if self._anstoesse:
-            punkte = []
-            for x, y in self._anstoesse:
-                punkte += [x - 0.1, y - 0.1, 0.02, x + 0.1, y + 0.1, 0.02,
-                           x - 0.1, y + 0.1, 0.02, x + 0.1, y - 0.1, 0.02]
-            self._linien.append((self._p.gefahr, len(daten) // 6, len(punkte) // 3, GL.GL_LINES))
-            daten.extend(self._mit_normale(punkte))
-        if self._pauspapier:
-            punkte = []
-            for x, y in self._pauspapier:
-                punkte += [x, y, 0.02]
-            self._linien.append((self._p.gedaempft, len(daten) // 6, len(punkte) // 3, GL.GL_POINTS))
-            daten.extend(self._mit_normale(punkte))
-        GL.glBindVertexArray(self._vao)
-        GL.glBindBuffer(GL.GL_ARRAY_BUFFER, self._vbo)
+        GL.glBindVertexArray(vao)
+        GL.glBindBuffer(GL.GL_ARRAY_BUFFER, vbo)
         roh = daten.tobytes()
-        GL.glBufferData(GL.GL_ARRAY_BUFFER, len(roh), roh, GL.GL_DYNAMIC_DRAW)
+        GL.glBufferData(GL.GL_ARRAY_BUFFER, len(roh), roh, art)
         schritt = 6 * 4
         GL.glEnableVertexAttribArray(0)
         GL.glVertexAttribPointer(0, 3, GL.GL_FLOAT, GL.GL_FALSE, schritt, ctypes.c_void_p(0))
         GL.glEnableVertexAttribArray(1)
         GL.glVertexAttribPointer(1, 3, GL.GL_FLOAT, GL.GL_FALSE, schritt, ctypes.c_void_p(12))
         GL.glBindVertexArray(0)
+
+    def _baue_puffer(self):
+        """Die Szene in ihren Puffer -- nur nach einer echten Aenderung (siehe `zeige`)."""
+        daten, self._geometrie, self._linien = szene_daten(
+            self._raum, self._spur, self._anstoesse, self._p)
+        self._lade(self._vao, self._vbo, daten, self._gl.GL_DYNAMIC_DRAW)
         self._puffer_dirty = False
+
+    def _baue_pauspapier(self):
+        """Das Pauspapier EINMAL je Punktwolke hochladen."""
+        daten = pauspapier_daten(self._pauspapier)
+        self._lade(self._pp_vao, self._pp_vbo, daten, self._gl.GL_STATIC_DRAW)
+        self._pp_anzahl = len(daten) // 6
+        self._pauspapier_dirty = False
 
     def _mvp(self):
         return self.kamera.projektion(self.width(), self.height()) * self.kamera.ansicht()
@@ -280,6 +336,8 @@ class Sicht3D(QOpenGLWidget):
         GL = self._gl
         if self._puffer_dirty:
             self._baue_puffer()
+        if self._pauspapier_dirty:
+            self._baue_pauspapier()
         p = self._programm
         u = self._u
         p.bind()
@@ -300,7 +358,11 @@ class Sicht3D(QOpenGLWidget):
             GL.glPointSize(2.0)
             for farbe, anfang, anzahl, art in self._linien:
                 GL.glUniform3f(u["farbe"], *_farbe(farbe))
-                GL.glDrawArrays(art, anfang, anzahl)
+                GL.glDrawArrays(GL.GL_POINTS if art == "punkte" else GL.GL_LINES, anfang, anzahl)
+            if self._pp_anzahl:
+                GL.glBindVertexArray(self._pp_vao)
+                GL.glUniform3f(u["farbe"], *_farbe(self._p.gedaempft))
+                GL.glDrawArrays(GL.GL_POINTS, 0, self._pp_anzahl)
         GL.glBindVertexArray(0)
         p.release()
 

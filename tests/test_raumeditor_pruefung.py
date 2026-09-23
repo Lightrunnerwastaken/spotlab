@@ -295,6 +295,102 @@ def test_pruefe_rechnet_die_klippen_nicht_je_klick(monkeypatch):
     assert len(gezaehlt) <= 1
 
 
+def test_3d_baut_den_puffer_nur_bei_echter_aenderung(qapp):
+    """p09: jede Mausbewegung baute den ganzen Puffer neu -- mit 190 000
+    Pauspapier-Punkten 0.44 s im GUI-Thread."""
+    from spotlab.gui.raumeditor.sicht3d import Sicht3D
+    from spotlab.gui.theme import DUNKEL
+
+    raum = raum_laden("moebliert")
+    sicht = Sicht3D(DUNKEL)
+    sicht.zeige(raum)
+    sicht._puffer_dirty = False
+    sicht.zeige(raum)                                     # Mausbewegung ohne Aenderung
+    assert not sicht._puffer_dirty
+    sicht.zeige(raum, frozenset({("block", 0)}))          # Auswahl ist eine Farbe, keine Geometrie
+    assert not sicht._puffer_dirty
+    sicht.zeige(b.verschiebe(raum, frozenset({("block", 0)}), 0.1, 0.0))
+    assert sicht._puffer_dirty
+
+
+def test_3d_das_pauspapier_steht_nicht_im_szenenpuffer(qapp):
+    import time
+
+    from spotlab.gui.raumeditor.sicht3d import Sicht3D, szene_daten
+    from spotlab.gui.theme import DUNKEL
+
+    punkte = [(0.001 * i, 0.5) for i in range(190_000)]
+    sicht = Sicht3D(DUNKEL)
+    sicht.setze_pauspapier(punkte)
+    assert sicht._pauspapier_dirty
+    raum = raum_laden("moebliert")
+    beginn = time.perf_counter()
+    daten, _geometrie, linien = szene_daten(raum, [], [], DUNKEL)
+    assert time.perf_counter() - beginn < 0.1
+    assert len(daten) // 6 < 10_000 and all(art != "punkte" for _f, _a, _n, art in linien)
+
+
+def test_2d_das_relief_wird_beim_verschieben_nicht_neu_gerendert(qapp):
+    from spotlab.gui.raumeditor.sicht2d import Sicht2D
+    from spotlab.gui.theme import DUNKEL
+
+    raum = _gelaende_raum()
+    sicht = Sicht2D(DUNKEL)
+    sicht.resize(400, 300)
+    sicht.zeige(raum)
+    sicht.alles_zeigen()
+    sicht.grab()
+    bild = sicht._gelaende_bild
+    verschoben = b.verschiebe(raum, frozenset({b.GELAENDE}), 0.5, 0.0)
+    assert verschoben.gelaende.x0 == raum.gelaende.x0 + 0.5
+    sicht.zeige(verschoben)
+    sicht.grab()
+    assert sicht._gelaende_bild is bild
+
+
+def test_ein_klick_sucht_die_ebenen_des_gelaendes_nicht_neu(qapp, monkeypatch):
+    """Die Plateaus eines Gelaendes zu suchen kostete auf den Katakomben 55 ms je Klick."""
+    from spotlab.gui.raumeditor import RaumeditorView
+    from spotlab.gui.theme import DUNKEL
+    from spotlab.welt import hoehe
+
+    gezaehlt = []
+    echt = hoehe.ebenen
+    monkeypatch.setattr(hoehe, "ebenen", lambda raum: gezaehlt.append(1) or echt(raum))
+    tab = RaumeditorView(DUNKEL)
+    tab._setze(_gelaende_raum(), "", False, False)
+    vorher = len(gezaehlt)
+    for _ in range(3):
+        tab._gedrueckt(1.0, 1.0, "links", False, False)
+        tab._losgelassen(1.0, 1.0, False, False)
+    assert len(gezaehlt) == vorher
+
+
+def test_g_auf_dem_gelaende_schiebt_die_klippen_mit(qapp, monkeypatch):
+    """Die Klippen eines Gelaendes je Mausbewegung neu zu rechnen kostete 40 ms."""
+    from spotlab.gui.raumeditor import RaumeditorView
+    from spotlab.gui.theme import DUNKEL
+    from spotlab.welt import hoehe
+
+    tab = RaumeditorView(DUNKEL)
+    tab._setze(_gelaende_raum(), "", False, False)
+    vorher = list(tab.sicht._klippen)
+    gezaehlt = []
+    echt = hoehe.klippen
+    monkeypatch.setattr(hoehe, "klippen", lambda *a, **k: gezaehlt.append(1) or echt(*a, **k))
+    st = tab.steuerung
+    st.auswahl = frozenset({b.GELAENDE})
+    st.zeiger = (1.0, 1.0)
+    tab._taste("g", False, False, False)
+    for i in range(1, 4):
+        tab._bewegt(1.0 + 0.5 * i, 1.0, False)
+    assert gezaehlt == []
+    x1, y1, x2, y2 = vorher[0]
+    assert tab.sicht._klippen[0] == pytest.approx((x1 + 1.5, y1, x2 + 1.5, y2))
+    tab._taste("return", False, False, False)
+    assert tab.sicht._klippen[0] == pytest.approx((x1 + 1.5, y1, x2 + 1.5, y2))
+
+
 # ------------------------------------------------- 10. Korrigieren abbrechen
 
 

@@ -147,7 +147,10 @@ def verschiebe(raum, auswahl, dx, dy):
         elif s[0] == "start":
             neu = (e[0] + dx, e[1] + dy, e[2])
         elif s[0] == "gelaende" and e is not None:
-            neu = verschoben(e, dx, dy, 0.0)
+            # Nur der Ursprung wandert; die Hoehen bleiben DASSELBE Tupel. Daran
+            # erkennt die 2D-Sicht, dass sie das Relief nicht neu rendern muss --
+            # bei G auf den Katakomben sonst je Mausbewegung (23.09.2026).
+            neu = replace(e, x0=e.x0 + dx, y0=e.y0 + dy)
         else:
             continue
         raum = _ersetze(raum, s, neu)

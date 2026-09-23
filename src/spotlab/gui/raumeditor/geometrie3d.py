@@ -95,17 +95,18 @@ def gelaende_dreiecke(gelaende, band_m=0.25):
     return sorted(baender.items())
 
 
-def kaesten_aus_raum(raum, auswahl):
+def kaesten_aus_raum(raum, auswahl, mit_gelaende=True):
     """[(schluessel, vertices)] fuer Gelaende, Boeden, Waende, Bloecke, Tags und den Spot am Start.
 
     Boeden kommen aus `hoehe.kaesten_fuer` -- derselben Zerlegung wie die
     MuJoCo-Welt; ein Boden hat mehrere Kaesten, alle mit seinem Schluessel.
-    Das Gelaende kommt zuerst, als Dreiecke je Hoehenband (`("gelaende", band)`).
+    Das Gelaende kommt zuerst, als Dreiecke je Hoehenband (`("gelaende", band)`);
+    `mit_gelaende=False` laesst es weg (die 3D-Sicht merkt es sich getrennt).
     """
     from spotlab.welt.hoehe import boden_bei, boden_z, kaesten_fuer
 
     kaesten = []
-    if raum.gelaende is not None:
+    if raum.gelaende is not None and mit_gelaende:
         for band, vertices in gelaende_dreiecke(raum.gelaende):
             kaesten.append((("gelaende", band), vertices))
     tiefster = boden_z(raum)
