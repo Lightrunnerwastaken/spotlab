@@ -37,8 +37,34 @@ NACHSENDE_INTERVALL_S = 0.4
 KOMMANDO_GUELTIGKEIT_S = 1.0
 
 
+def _endlich(wert, name):
+    """`wert` als float -- oder ValueError mit deutschem Text.
+
+    NaN und inf sind keine Geschwindigkeiten: `max(-0.8, min(0.8, nan))`
+    liefert 0.8, also VOLLE Drehrate aus einem NaN, und `inf` wird beim
+    Klemmen zu NaN (Beta-Prüfung 23.09.2026). Ein NaN entsteht leicht, etwa
+    als Mittelwert einer leeren Liste mit numpy; darum wird er abgewiesen,
+    bevor ein Kommando gebaut ist -- nie geklemmt oder zu 0 umgedeutet.
+    """
+    try:
+        zahl = float(wert)
+    except (TypeError, ValueError):
+        raise ValueError(f"{name} muss eine Zahl sein, nicht {wert!r}.") from None
+    if not math.isfinite(zahl):
+        raise ValueError(
+            f"{name} muss eine endliche Zahl sein, nicht {zahl}. Spot bekommt kein "
+            "Kommando. Den Wert vor dem Aufruf prüfen (z. B. mit math.isfinite) -- "
+            "NaN entsteht etwa als Mittelwert einer leeren Liste."
+        )
+    return zahl
+
+
 def clamp(vx, vy, wz, limits):
-    """Klemmt auf die Konfigurationsgrenzen und erhält dabei die Fahrtrichtung."""
+    """Klemmt auf die Konfigurationsgrenzen und erhält dabei die Fahrtrichtung.
+
+    Nicht endliche Werte weist sie ab (ValueError), statt sie zu klemmen.
+    """
+    vx, vy, wz = _endlich(vx, "vx"), _endlich(vy, "vy"), _endlich(wz, "wz")
     betrag = math.hypot(vx, vy)
     if betrag > limits.max_speed and betrag > 0.0:
         faktor = limits.max_speed / betrag
@@ -79,6 +105,8 @@ def walk(
     """
     require(backend, Capability.LOCOMOTION, "gehen")
     vx, vy, wz = clamp(vx, vy, wz, limits)
+    duration = _endlich(duration, "duration")
+    nick_grad = _endlich(nick_grad, "nick_grad")
     if recorder is not None:
         recorder.event("kommando", name="walk", vx=vx, vy=vy, wz=wz, duration=duration,
                        stop=stop, nick_grad=float(nick_grad))
@@ -100,10 +128,19 @@ def walk(
         einmal()
         return
 
-    ende = jetzt() + float(duration)
-    while jetzt() < ende:
+    # Der letzte Schlaf ist nur der REST bis zum Ende, nicht die volle
+    # Nachsendepause: sonst fuhr `duration=0.1` 0.4 s lang, `duration=1.0`
+    # 1.2 s -- jede Dauer aufgerundet auf ein Vielfaches von 0.4 s, auch am
+    # echten Roboter, denn der Stopp kam erst danach (Beta-Prüfung 23.09.2026).
+    # Der Rest wird VOR dem Senden gemessen: so bleibt es bei einer Uhrabfrage
+    # je Takt, und die Laufzeit des letzten Kommandos kommt hinzu, nicht 0.4 s.
+    ende = jetzt() + duration
+    while True:
+        rest = ende - jetzt()
+        if not rest > 0.0:
+            break
         einmal()
-        schlaf(NACHSENDE_INTERVALL_S)
+        schlaf(min(NACHSENDE_INTERVALL_S, rest))
     _anhalten(backend, recorder)
 
 
@@ -121,9 +158,13 @@ def move(backend, recorder, limits, forward=0.0, left=0.0, turn=0.0, timeout=30.
     `vel_limit` mitgeschickt werden.
     """
     require(backend, Capability.LOCOMOTION, "gehen")
+    forward, left = _endlich(forward, "forward"), _endlich(left, "left")
+    turn, timeout = _endlich(turn, "turn"), _endlich(timeout, "timeout")
+    if timeout <= 0.0:
+        raise ValueError(f"timeout muss grösser als 0 sein, nicht {timeout}.")
     if forward == 0.0 and left == 0.0 and turn == 0.0:
         return
-    winkel = math.radians(float(turn))
+    winkel = math.radians(turn)
     if recorder is not None:
         recorder.event(
             "kommando",

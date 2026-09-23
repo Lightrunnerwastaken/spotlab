@@ -94,8 +94,12 @@ normalerweise weglassen.
   `beep`, `close`: kein Nutzwert (`None`); `navigate_to` gibt True (angekommen) oder
   False (über `abbruch` abgebrochen). `stand`, `sit`, `move`, `pose` und `navigate_to`
   warten auf Rückmeldung bis zum Timeout.
-- `walk(stop=True)` wartet die Dauer und stoppt; `stop=False` kehrt sofort zurück,
+- `walk(stop=True)` wartet genau die Dauer (nicht auf 0.4 s aufgerundet) und stoppt;
+  `stop=False` kehrt sofort zurück,
   benötigt laufende neue Kommandos und begrenzt die Gültigkeit auf höchstens eine Sekunde.
+- `walk()` und `move()` weisen NaN, `inf` und Nicht-Zahlen mit `ValueError` ab, bevor
+  ein Kommando gebaut ist — ein NaN wird nie geklemmt oder zu 0 umgedeutet.
+  `move(timeout=...)` muss grösser als 0 sein.
 - `is_powered`: bool; `battery`: Prozent; `state`: neue State-Momentaufnahme;
   `robot`: SDK-Robot nur am echten Backend, sonst `None`.
 - `cameras()`: Liste bekannter Kurznamen; `camera(name)`: Image. Kurznamen:
