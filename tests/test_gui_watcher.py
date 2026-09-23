@@ -162,3 +162,93 @@ def test_die_ansicht_wird_gemeldet_wenn_sie_sich_aendert(tmp_path):
 
     bild.write_bytes(b"\xff\xd8zweites, laenger")
     assert [d for art, d in scanner.tick() if art == "ansicht"] == [str(bild)]
+
+
+def test_zeigt_das_fenster_einen_lauf_kommen_nur_dessen_daten(tmp_path, qapp):
+    """Pruefung 23.09.2026: zwei Laeufe (Fahrt am echten Spot plus F5 auf ein
+    MuJoCo-Programm) -- der Tab Fahren zeigte das MuJoCo-Bild und den Akku des
+    Uebungsraums (100 % statt 81 %). Man fuhr den Roboter mit dem falschen Bild."""
+    from spotlab.gui.watcher import RunWatcher
+
+    runs = _runs(tmp_path)
+    echt = RunRecorder(runs, None, backend="dryrun")
+    echt.sample({"battery": 81.0})
+    watcher = RunWatcher(tmp_path)
+    watcher._takt()
+    watcher.zeige_nur(echt.dir)
+
+    uebung = RunRecorder(runs, None, backend="dryrun")
+    uebung.sample({"battery": 100.0})
+    (uebung.dir / "ansicht.jpg").write_bytes(b"jpeg")
+    echt.sample({"battery": 80.0})
+    akkus, bilder = [], []
+    watcher.zustand.connect(lambda satz: akkus.append(satz["daten"]["battery"]))
+    watcher.ansicht.connect(bilder.append)
+    watcher._takt()
+    watcher._live_takt()
+    assert akkus == [80.0]
+    assert bilder == []
+
+
+def test_ein_lange_toter_lauf_wird_nicht_bei_jedem_takt_geprueft(tmp_path, monkeypatch):
+    """335 alte Laeufe kosteten 52 ms je 250-ms-Takt im GUI-Thread (21 %), 1500
+    mehr als der Takt selbst. Ein Ordner, der seit ueber einer Minute still ist,
+    wird nie wieder lebendig."""
+    import spotlab.gui.watcher as modul
+
+    rec = RunRecorder(_runs(tmp_path), None, backend="dryrun")
+    rec.sample({"battery": 90.0})
+    rec.finish("ok")
+    alt = time.time() - 600
+    for datei in [*rec.dir.iterdir(), rec.dir]:
+        os.utime(datei, (alt, alt))
+    scanner = RunScanner(tmp_path)
+    scanner.tick()
+    gefragt = []
+    echt = modul.ist_aktiv
+    monkeypatch.setattr(modul, "ist_aktiv", lambda d, *a, **k: gefragt.append(d) or echt(d, *a, **k))
+    scanner.tick()
+    assert gefragt == []
+
+
+def test_ein_junger_ordner_ohne_zustand_wird_weiter_beobachtet(tmp_path):
+    """Die Gegenprobe: ein Lauf, der gerade erst sein Verzeichnis anlegt, darf nicht
+    als tot vergessen werden, nur weil sein erster Abtastwert noch fehlt."""
+    rec = RunRecorder(_runs(tmp_path), None, backend="dryrun")
+    (rec.dir / "zustand.jsonl").unlink(missing_ok=True)
+    scanner = RunScanner(tmp_path)
+    assert "lauf_begonnen" not in _arten(scanner.tick())
+    rec.sample({"battery": 90.0})
+    assert "lauf_begonnen" in _arten(scanner.tick())
+
+
+def test_ein_langer_lauf_wird_ohne_die_ganze_vorgeschichte_aufgenommen(tmp_path):
+    """Die GUI startet mitten in einem 20-Minuten-Lauf: 60 000 Zeilen zustand.jsonl
+    gingen einzeln durch den GUI-Thread (8 s). Die Anzeige braucht den jetzigen
+    Stand, nicht die Geschichte."""
+    import json
+
+    rec = RunRecorder(_runs(tmp_path), None, backend="dryrun")
+    zeile = json.dumps({"t": 0.0, "daten": {"battery": 90.0, "pad": "x" * 200}}) + "\n"
+    with (rec.dir / "zustand.jsonl").open("a", encoding="utf-8") as datei:
+        datei.write(zeile * 3000)
+    rec.sample({"battery": 42.0})
+    zustaende = [d for art, d in RunScanner(tmp_path).tick() if art == "zustand"]
+    assert [z["daten"]["battery"] for z in zustaende] == [42.0]
+
+
+def test_ein_neuer_lauf_wird_auch_bei_grobem_zeitstempel_gefunden(tmp_path):
+    """FAT32 fuehrt Zeitstempel nur auf 2 s genau. Der Scanner merkt sich die
+    Auflistung je runs/-Ordner am Zeitstempel -- ein zweiter Lauf im selben
+    2-s-Fenster darf trotzdem nicht unsichtbar bleiben."""
+    runs = _runs(tmp_path)
+    erster = RunRecorder(runs, None, backend="dryrun")
+    erster.sample({"battery": 90.0})
+    scanner = RunScanner(tmp_path)
+    scanner.tick()
+    stand = runs.stat().st_mtime_ns
+    zweiter = RunRecorder(runs, None, backend="dryrun")
+    zweiter.sample({"battery": 80.0})
+    os.utime(runs, ns=(stand, stand))           # der grobe Zeitstempel aendert sich nicht
+    gefunden = [p for art, p in scanner.tick() if art == "lauf_begonnen"]
+    assert gefunden == [str(zweiter.dir)]

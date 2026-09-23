@@ -33,5 +33,5 @@ def test_der_letzte_stand_kommt_vor_dem_ende_auch_wenn_der_lauf_schon_tot_ist(tm
     lauf.dir.mkdir()
     navigation.schreibe_stand(lauf.dir, "gescheitert", text="kein GraphNav", jetzt=lambda: 1.0)
     scanner._offen[str(lauf.dir)] = lauf
-    arten = [art for art, _ in scanner._neuigkeiten(str(lauf.dir))]
+    arten = [art for art, *_ in scanner._neuigkeiten(str(lauf.dir))]
     assert arten.index("navigation") < arten.index("lauf_beendet")

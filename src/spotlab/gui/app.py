@@ -702,6 +702,10 @@ class MainWindow(QWidget):
 
     def _uebernimm_lauf(self, verzeichnis):
         self._aktiver_lauf = Path(verzeichnis)
+        if self._watcher is not None:
+            # Nur noch Bild, Zustand und Staende DIESES Laufs -- sonst zeigte der Tab
+            # Fahren das Bild und den Akku eines zweiten Laufs (Pruefung 23.09.2026).
+            self._watcher.zeige_nur(verzeichnis)
         if self.uebungsfenster is not None and self.uebungsfenster.isVisible():
             self.uebungsfenster.setze_lauf_dir(verzeichnis)
         # Skriptnamen aus lauf.json holen: „hallo_spot.py" sagt mehr als eine
@@ -775,6 +779,8 @@ class MainWindow(QWidget):
         self.kopf.zeige_getrennt()
         self._start_aus = None
         self._aktiver_lauf = None
+        if self._watcher is not None:
+            self._watcher.zeige_nur(None)
         # Jetzt darf ein wartender Lauf nachrücken — aber nur, wenn er noch lebt.
         while self._wartende_laeufe:
             naechster = self._wartende_laeufe.pop(0)

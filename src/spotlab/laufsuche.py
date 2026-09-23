@@ -17,6 +17,16 @@ from pathlib import Path
 from spotlab.anbindung.speicher import anbindungen, lauf_verzeichnisse_von
 
 
+def laeufe_in(runs):
+    """Die Lauf-Verzeichnisse in EINEM runs/-Ordner, nach Namen sortiert."""
+    return _laeufe_in(runs)
+
+
+def runs_wurzeln(workspace):
+    """Alle runs/-Ordner, in denen Laeufe liegen koennen (Projekte und Anbindungen)."""
+    return _runs_wurzeln(workspace)
+
+
 def _laeufe_in(runs):
     try:
         return sorted((p for p in Path(runs).iterdir() if p.is_dir()), key=lambda p: p.name)
