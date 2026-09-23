@@ -120,7 +120,8 @@ normalerweise weglassen.
 - `send(command, end_time_secs=None)`: Kommando-ID; nimmt RobotCommand-Protobuf
   und optional absolute lokale Ablaufzeit. Wartet nicht auf Abschluss.
 - `messfenster(name, hz=50, **felder)`: Context Manager für markierte Messung.
-  hz ist die angeforderte Abtastrate, keine zugesicherte effektive Rate.
+  hz ist die angeforderte Abtastrate, keine zugesicherte effektive Rate; eine Zahl
+  über 0, sonst `SpotlabError` (das Fenster bleibt dann ungeöffnet).
   Metadaten etwa `bedingung="A"` werden zur Messung gespeichert.
 
 `spot.state` einmal lesen und den Wert weiterverwenden, wenn mehrere Felder zur

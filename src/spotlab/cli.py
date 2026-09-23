@@ -21,6 +21,20 @@ from spotlab.workshop.project import create_project
 GRUEN, ROT, GRAU, AUS = "\033[32m", "\033[31m", "\033[90m", "\033[0m"
 
 
+def _positive_ganzzahl(text):
+    """argparse-Typ: eine ganze Zahl über 0. `--fps 0` teilte durch null,
+    `--fps -30` liess den Bildgenerator nie enden (Beta-Prüfung 23.09.2026)."""
+    try:
+        zahl = int(text)
+    except ValueError:
+        zahl = 0
+    if zahl <= 0:
+        raise argparse.ArgumentTypeError(
+            f"„{text}“ ist keine ganze Zahl über 0 -- etwa --fps 30"
+        )
+    return zahl
+
+
 def build_parser():
     parser = argparse.ArgumentParser(
         prog="spotlab", description="Den Spot programmieren — Kantonsschule"
@@ -64,7 +78,8 @@ def build_parser():
 
     film = unter.add_parser("film", help="einen Lauf als 3D-Video rendern (braucht [sim])")
     film.add_argument("lauf", help="Lauf-Verzeichnis oder Lauf-ID")
-    film.add_argument("--fps", type=int, default=30)
+    film.add_argument("--fps", type=_positive_ganzzahl, default=30,
+                      help="Bilder je Sekunde, eine ganze Zahl über 0 (Vorgabe 30)")
     film.add_argument("--out", default=None, help="Zieldatei (Vorgabe: <lauf>/film.mp4)")
     return parser
 

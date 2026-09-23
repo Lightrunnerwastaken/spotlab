@@ -84,6 +84,16 @@ def test_run_dryrun_haelt_auch_ein_backend_im_skript_vom_roboter_fern(tmp_path, 
     assert "ohne Roboter" in ausgabe.out + ausgabe.err
 
 
+@pytest.mark.parametrize("fps", ["0", "-30", "zehn", "2.5"])
+def test_film_nimmt_nur_eine_positive_bildrate(fps, capsys):
+    """p07: `--fps 0` endete in einer Division durch null, `--fps -30` in einem
+    Bildgenerator, der nie aufhoerte (t lief rueckwaerts)."""
+    with pytest.raises(SystemExit) as ende:
+        build_parser().parse_args(["film", "lauf", "--fps", fps])
+    assert ende.value.code == 2
+    assert "fps" in capsys.readouterr().err
+
+
 def test_doctor_gibt_stufen_aus(monkeypatch, capsys):
     from spotlab.workshop.doctor import Check
 

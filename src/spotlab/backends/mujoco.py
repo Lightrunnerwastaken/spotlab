@@ -608,6 +608,15 @@ def _raum_des_laufs(lauf_dir):
             return name, None
 
 
+def _pruefe_fps(fps):
+    try:
+        gut = math.isfinite(float(fps)) and float(fps) > 0
+    except (TypeError, ValueError):
+        gut = False
+    if not gut:
+        raise SpotlabError(f"fps={fps!r} ist keine Bildrate. Gemeint ist eine Zahl über 0, etwa 30.")
+
+
 def _bilder_aus_lauf(lauf_dir, fps=FILM_FPS):
     """(t, (x, y, yaw), gelenke, hoehe, nick) je Bild — auf `fps` interpoliert.
 
@@ -615,9 +624,14 @@ def _bilder_aus_lauf(lauf_dir, fps=FILM_FPS):
     Lauf keine traegt: dann die Standhoehe der Kinematik), `nick` der Nick
     im Bogenmass. Beide Felder gibt es seit Stufe 7 in jeder Zeile; erst seit
     Stufe 13 tragen sie im Sim etwas anderes als Standhoehe und 0.
+
+    `fps` muss eine endliche Zahl ueber 0 sein: 0 teilte durch null, und bei
+    einer negativen Rate lief `t` rueckwaerts -- der Generator endete nie, und
+    `film_aus_lauf` sammelt ihn mit list() ein (Beta-Pruefung 23.09.2026).
     """
     from spotlab.kalibrierung.modell import lade_modell
 
+    _pruefe_fps(fps)
     proben = []
     for satz in _zeilen_jsonl(Path(lauf_dir) / "zustand.jsonl"):
         daten = satz.get("daten") or {}

@@ -101,6 +101,23 @@ def test_ohne_gelenke_und_ohne_raum_gibt_es_trotzdem_ein_video(tmp_path):
     assert ergebnis["raum"] is None
 
 
+@pytest.mark.parametrize("fps", [0, -30, float("nan"), float("inf")])
+def test_eine_unsinnige_bildrate_wird_abgewiesen_bevor_gerendert_wird(tmp_path, fps):
+    """p07: `fps=0` teilte durch null, `fps=-30` liess den Bildgenerator nie
+    enden -- `film_aus_lauf` sammelt ihn mit list() ein. Auch die GUI ruft das."""
+    import itertools
+
+    from spotlab.backends.mujoco import _bilder_aus_lauf, film_aus_lauf
+    from spotlab.errors import SpotlabError
+
+    lauf = _lauf(tmp_path)
+    with pytest.raises(SpotlabError, match="fps"):
+        list(itertools.islice(_bilder_aus_lauf(lauf, fps), 10_000))
+    with pytest.raises(SpotlabError, match="fps"):
+        film_aus_lauf(lauf, fps=fps)
+    assert not (lauf / "film.mp4").exists()
+
+
 def test_ein_leerer_lauf_sagt_was_fehlt(tmp_path):
     from spotlab.backends.mujoco import film_aus_lauf
     from spotlab.errors import SpotlabError
