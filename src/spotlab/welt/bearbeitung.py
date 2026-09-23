@@ -156,12 +156,14 @@ def verschiebe(raum, auswahl, dx, dy):
 
 def hebe(raum, auswahl, dz):
     """Die Auswahl um `dz` in der Hoehe -- Blender "G, dann Z". Der Start bleibt:
-    seine Hoehe folgt aus dem Boden unter ihm. Das Gelaende hebt alle Knoten."""
+    seine Hoehe folgt aus dem Boden unter ihm. Das Gelaende hebt alle Knoten.
+    Eine Sperrzone bleibt ebenfalls: sie hat keine Hoehe (eine Regel fuer den
+    Ort, kein Koerper) -- nach „A" liegt sie trotzdem in der Auswahl."""
     for s in auswahl:
         e = element(raum, s)
         if s[0] == "gelaende" and e is not None:
             raum = _ersetze(raum, s, verschoben(e, 0.0, 0.0, dz))
-        elif s[0] in ("wand", "block", "boden", "sperrzone", "tag"):
+        elif s[0] in ("wand", "block", "boden", "tag"):
             raum = _ersetze(raum, s, replace(e, z=e.z + dz))
     return raum
 
@@ -612,6 +614,11 @@ class Modus:
     @property
     def aktiv(self):
         return self.art != self.RUHE
+
+    @property
+    def basis(self):
+        """Der Raum, auf dem die Vorschau aufsetzt (vor der Geste); in Ruhe None."""
+        return self._raum
 
     def beginne(self, art, raum, auswahl, zeiger):
         if not auswahl:

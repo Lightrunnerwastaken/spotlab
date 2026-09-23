@@ -124,6 +124,8 @@ class Sicht3D(QOpenGLWidget):
         self._geometrie = []        # [(schluessel, anfang, anzahl)] im VBO
         self._linien = []           # [(farbe, anfang, anzahl, art)]
         self._letzte_maus = None
+        self._letzter_boden = None  # der letzte Bodenpunkt unter der Maus
+        self._links_gedrueckt = False
 
     # ------------------------------------------------------------ Fuellen
 
@@ -404,6 +406,8 @@ class Sicht3D(QOpenGLWidget):
         boden = self.bodenpunkt(p.x(), p.y())
         if boden is None:
             return
+        self._letzter_boden = boden
+        self._links_gedrueckt = True
         self.klick_schluessel = self.treffer(p.x(), p.y())
         self.gedrueckt.emit(boden[0], boden[1], "links", shift, ctrl)
 
@@ -427,14 +431,21 @@ class Sicht3D(QOpenGLWidget):
         _shift, ctrl, _alt = self._tasten(ereignis)
         boden = self.bodenpunkt(p.x(), p.y())
         if boden is not None:
+            self._letzter_boden = boden
             self.bewegt.emit(boden[0], boden[1], ctrl)
 
     def mouseReleaseEvent(self, ereignis):
-        if ereignis.button() != Qt.LeftButton or not self.verfuegbar:
+        if ereignis.button() != Qt.LeftButton or not self.verfuegbar or not self._links_gedrueckt:
             return
+        self._links_gedrueckt = False
         shift, ctrl, _alt = self._tasten(ereignis)
         p = ereignis.position()
         boden = self.bodenpunkt(p.x(), p.y())
+        if boden is None:
+            # Ueber dem Horizont gibt es keinen Bodenpunkt -- losgelassen wird
+            # trotzdem, am letzten Punkt am Boden. Sonst klebte ein gezogener
+            # Block an der Maus und kam nie in den Verlauf (23.09.2026).
+            boden = self._letzter_boden
         if boden is not None:
             self.losgelassen.emit(boden[0], boden[1], shift, ctrl)
 

@@ -40,12 +40,58 @@ class Steuerung:
     # ------------------------------------------------------------ innen
 
     def uebernimm(self, raum):
-        """Eine bestaetigte Aenderung: in den Verlauf, als geaendert merken.
-        Auch der Korrigierer uebergibt sein Ergebnis so -- als EINEN Schritt."""
+        """Eine bestaetigte Aenderung: in den Verlauf, als geaendert merken."""
         self.raum = raum
         self.revision += 1
         self.verlauf.merke(raum)
         self.geaendert = True
+
+    def ersetze_raum(self, raum):
+        """Ein ganzer neuer Raum von aussen (der Korrigierer) -- als EIN Schritt.
+
+        Die Auswahl wird geleert wie bei `loesche`: ihre Indizes gelten fuer den
+        alten Raum. Nach einer Korrektur, die eine Wand loeschte, warf sonst jede
+        Mausbewegung IndexError, und Entf traf eine ANDERE Wand (23.09.2026).
+        Eine offene Geste endet vorher -- ihr Abbruch holte sonst den alten Raum
+        zurueck.
+        """
+        self._beende_geste()
+        self.auswahl = frozenset()
+        self.uebernimm(raum)
+
+    def breche_ab(self):
+        """Eine offene Geste (G/R/S oder Ziehen mit der Maus) verwerfen.
+
+        Vor dem Speichern: auf die Platte kommt nur, was bestaetigt ist. Sonst
+        stand die Vorschau in der Datei, der Editor zeigte nach Esc etwas anderes,
+        und `geaendert` war falsch. Die Wandkette bleibt -- sie steht noch nicht
+        im Raum. True, wenn es etwas abzubrechen gab.
+        """
+        if self.modus.aktiv:
+            self.raum = self.modus.abbruch()
+            return True
+        if self._zug is not None:
+            if "raum" in self._zug:
+                self.raum = self._zug["raum"]
+            self._zug = None
+            self.rahmen = None
+            return True
+        return False
+
+    @property
+    def zieht(self):
+        """Wahr, solange die Maustaste gedrueckt ist und etwas gezogen wird."""
+        return self._zug is not None
+
+    @property
+    def vorschau_basis(self):
+        """Der bestaetigte Raum unter einer laufenden Vorschau (G/R/S oder Ziehen) --
+        sonst None. Die Sicht darf teure Ableitungen davon mitschieben."""
+        if self.modus.aktiv:
+            return self.modus.basis
+        if self._zug is not None:
+            return self._zug.get("raum")
+        return None
 
     @staticmethod
     def _rast(wert, frei):
@@ -271,6 +317,12 @@ class Steuerung:
                 self.raum = self.modus.abbruch()
                 return True
             return self.modus.taste(name)
+        if self._zug is not None:
+            # Waehrend die Maus zieht, gehoert der Raum der Geste: Entf loeschte
+            # sonst aus der Vorschau, und die naechste Bewegung rechnete aus dem
+            # Schnappschuss -- der Block war wieder da (23.09.2026). Esc bricht
+            # das Ziehen ab, alles andere wartet aufs Loslassen.
+            return name == "escape" and self.breche_ab()
         if name == "escape":
             self.kette = None
             self.auswahl = frozenset()

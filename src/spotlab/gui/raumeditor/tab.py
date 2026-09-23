@@ -343,8 +343,9 @@ class RaumeditorView(QWidget):
         self.uebernimm_korrektur(korrektur)
 
     def uebernimm_korrektur(self, korrektur):
-        """Das Ergebnis des Korrigierers als EIN Verlaufsschritt, offene Raender sichtbar."""
-        self.steuerung.uebernimm(korrektur.raum)
+        """Das Ergebnis des Korrigierers als EIN Verlaufsschritt, offene Raender sichtbar.
+        Die Auswahl wird leer: ihre Indizes galten fuer den Raum vor der Korrektur."""
+        self.steuerung.ersetze_raum(korrektur.raum)
         self.sicht.setze_markierung([])
         self.sicht.setze_kandidaten([])
         self.sicht.setze_offen(korrektur.offene_raender)
@@ -393,13 +394,23 @@ class RaumeditorView(QWidget):
 
     # ---------------------------------------------------------- Speichern
 
+    def _beende_offenes(self):
+        """Eine offene Geste (G/R/S, Ziehen) vor dem Speichern verwerfen: auf die
+        Platte kommt nur, was bestaetigt ist. Bis zum 23.09.2026 speicherte Strg+S
+        waehrend G die Vorschau, und nach Esc zeigte der Editor etwas anderes als
+        die Datei -- mit `geaendert` falsch."""
+        if self.steuerung.breche_ab():
+            self._zeige()
+
     def speichern(self):
         """True, wenn der Raum danach auf der Platte liegt."""
+        self._beende_offenes()
         if not self._eigen or not self._raumname:
             return self.speichern_unter()
         return self._schreibe(self._raumname)
 
     def speichern_unter(self):
+        self._beende_offenes()
         if self._arbeitsordner is None:
             self.meldung.emit(
                 "Kein Arbeitsordner gewählt — unter „Projekte“ einen wählen, dann speichern."
@@ -467,6 +478,7 @@ class RaumeditorView(QWidget):
         """
         if self.steuerung.raum is None:
             return None
+        self._beende_offenes()       # gefahren wird, was bestaetigt ist -- wie beim Speichern
         im_weg = [h for h in self.steuerung.hinweise() if h.startswith("Der Start steht")]
         if im_weg:
             return im_weg[0]
