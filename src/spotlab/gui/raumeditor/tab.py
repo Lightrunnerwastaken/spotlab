@@ -341,8 +341,13 @@ class RaumeditorView(QWidget):
         from spotlab.gui.raumeditor.rekonstruktion_dialog import RekonstruktionsDialog
 
         dialog = RekonstruktionsDialog(self, self._arbeitsordner)
-        if dialog.exec() and dialog.ergebnis is not None:
-            self.uebernimm_rekonstruktion(dialog.ergebnis)
+        try:
+            if dialog.exec() and dialog.ergebnis is not None:
+                self.uebernimm_rekonstruktion(dialog.ergebnis)
+        finally:
+            # `exec` kehrt erst zurueck, wenn nichts mehr rechnet (`reject` wartet
+            # darauf) -- ohne das blieb jeder Dialog als Kind des Tabs haengen.
+            dialog.deleteLater()
 
     def uebernimm_rekonstruktion(self, ergebnis):
         """Das Ergebnis als neuen, ungespeicherten Raum oeffnen -- mit Pauspapier und Weg."""
@@ -371,10 +376,20 @@ class RaumeditorView(QWidget):
         basis, revision = self.steuerung.raum, self.steuerung.revision
         dialog.angewendet.connect(
             lambda korrektur: self._korrektur_fertig(dialog, basis, revision, korrektur))
-        dialog.finished.connect(lambda _ergebnis: (self.sicht.setze_markierung([]),
-                                                   self.sicht.setze_kandidaten([])))
+        dialog.finished.connect(lambda _ergebnis: self._korrektur_zu(dialog))
         self._korrektur_dialog = dialog
         dialog.show()
+
+    def _korrektur_zu(self, dialog):
+        """Der Dialog ist zu (angewendet, abgebrochen, ersetzt): Markierung weg, Dialog
+        abraeumen. Sein Arbeiter braucht ihn nicht mehr (`korrektur_dialog._LAUFENDE`)."""
+        self.sicht.setze_markierung([])
+        self.sicht.setze_kandidaten([])
+        if self._korrektur_dialog is dialog:
+            self._korrektur_dialog = None
+        if dialog.abgebrochen:
+            self.meldung.emit("Korrigieren abgebrochen — nichts übernommen, der Raum ist unverändert.")
+        dialog.deleteLater()
 
     def _korrektur_fertig(self, dialog, basis, revision, korrektur):
         if (dialog is not self._korrektur_dialog or self.steuerung.raum is not basis

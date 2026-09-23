@@ -419,6 +419,60 @@ def _tab_mit_weg(qapp):
     return tab
 
 
+@pytest.mark.parametrize("wie", ["escape", "schliessen"])
+def test_korrigieren_laesst_sich_abbrechen(qapp, monkeypatch, wie):
+    """p12/p12b: Esc versteckte den Dialog, das Ergebnis kam trotzdem; Schliessen
+    wartete im GUI-Thread auf den Arbeiter."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+
+    from tests_zeitgrenzen import warte_bis
+
+    frei = _langsamer_bau(monkeypatch)
+    tab = _tab_mit_weg(qapp)
+    raum = tab.steuerung.raum
+    meldungen = []
+    tab.meldung.connect(meldungen.append)
+    tab._korrigieren()
+    dialog = tab._korrektur_dialog
+    assert dialog.gelaende_bauen.isChecked()
+    angewendet = []
+    dialog.angewendet.connect(angewendet.append)
+    dialog.anwenden.click()
+    arbeiter = dialog._arbeiter
+    if wie == "escape":
+        QTest.keyClick(dialog, Qt.Key_Escape)
+    else:
+        dialog.schliessen.click()                          # darf nicht auf den Arbeiter warten
+    assert not dialog.isVisible() and arbeiter.isRunning()
+    frei.set()
+    warte_bis(lambda: not arbeiter.isRunning(), "das Ende des Gelaende-Arbeiters",
+              zwischendurch=qapp.processEvents)
+    qapp.processEvents()
+    assert angewendet == [] and tab.steuerung.raum is raum and not tab.steuerung.geaendert
+    assert any("abgebrochen" in m for m in meldungen)
+
+
+def test_dialoge_bleiben_nicht_am_tab_haengen(qapp, monkeypatch):
+    """p20: jeder Aufruf liess einen Dialog als Kind des Tabs zurueck."""
+    from PySide6.QtCore import QCoreApplication, QEvent
+
+    from spotlab.gui.raumeditor import RaumeditorView
+    from spotlab.gui.raumeditor.korrektur_dialog import KorrekturDialog
+    from spotlab.gui.raumeditor.rekonstruktion_dialog import RekonstruktionsDialog
+    from spotlab.gui.theme import DUNKEL
+
+    monkeypatch.setattr(RekonstruktionsDialog, "exec", lambda self: 0)
+    tab = RaumeditorView(DUNKEL)
+    for _ in range(3):
+        tab._rekonstruieren()
+        tab._korrigieren()
+    tab._korrektur_dialog.close()
+    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+    assert len(tab.findChildren(RekonstruktionsDialog)) == 0
+    assert len(tab.findChildren(KorrekturDialog)) == 0
+
+
 # ---------------------------------------------------- 11. Rueckgaengig nach Lauf
 
 
