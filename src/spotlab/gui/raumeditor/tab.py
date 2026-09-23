@@ -17,7 +17,10 @@ from dataclasses import replace
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
+    QAbstractSpinBox,
+    QApplication,
     QButtonGroup,
     QComboBox,
     QDoubleSpinBox,
@@ -68,6 +71,23 @@ _UNBEKANNT = object()            # app.py hat (noch) keine Datei gemeldet
 WERKZEUGE = (("auswahl", "Auswählen"), ("wand", "Wand"), ("block", "Block"),
              ("boden", "Boden"), ("sperrzone", "Sperrzone"), ("tag", "Tag"),
              ("start", "Start"))
+# Je Werkzeug die Bedienung -- die Tasten standen bis zum 23.09.2026 nirgends.
+WERKZEUG_TIPPS = {
+    "auswahl": "Auswählen — Klick wählt, Umschalt+Klick ergänzt, Ziehen im Leeren zieht einen "
+               "Rahmen. Griffe ziehen: Enden, Ecken, Drehung. G bewegt, R dreht, S skaliert, "
+               "Entf löscht.",
+    "wand": "Wand — Klick setzt Punkte, jeder weitere Klick eine Wand; Esc oder Rechtsklick "
+            "beendet. Enden fangen sich an anderen Wänden. Strg: ohne Raster.",
+    "block": "Block — ein Rechteck aufziehen (Tisch, Kiste); Höhe und Drehung rechts. "
+             "Strg: ohne Raster.",
+    "boden": "Boden — ein Rechteck aufziehen: ein Podest; mit Anstieg eine Rampe, mit Stufen "
+             "eine Treppe. Strg: ohne Raster.",
+    "sperrzone": "Sperrzone — ein Rechteck aufziehen, in das Spot nie fährt (Glasfront, "
+                 "Treppenabgang). Strg: ohne Raster.",
+    "tag": "Tag — Klick setzt einen AprilTag; die Richtung am Griff ziehen. Strg: ohne Raster.",
+    "start": "Start — Klick setzt Spots Startpunkt, Ziehen gibt die Blickrichtung. "
+             "Strg: ohne Raster.",
+}
 RECHTS_BREITE = 300              # die rechte Spalte springt nicht mit der Auswahl
 LINKS_BREITE = 132
 HINWEISE_HOEHE = 110
@@ -204,6 +224,7 @@ class RaumeditorView(QWidget):
             knopf = QPushButton(text)
             knopf.setCheckable(True)
             knopf.setObjectName(f"werkzeug_{name}")
+            knopf.setToolTip(WERKZEUG_TIPPS[name])
             self.werkzeuge.addButton(knopf)
             knopf.clicked.connect(lambda _=False, n=name: self._werkzeug(n))
             self._werkzeug_knoepfe[name] = knopf
@@ -216,7 +237,8 @@ class RaumeditorView(QWidget):
         self.dateimenue.addAction("Vorlage laden…", self._vorlage_laden)
         self.dateimenue.addAction("Öffnen…", self._oeffnen)
         self.dateimenue.addSeparator()
-        self.dateimenue.addAction("Speichern", self.speichern)
+        # Das Kuerzel selbst haengt am Tab (`_baue_kuerzel`); hier nur angezeigt.
+        self.dateimenue.addAction("Speichern\tStrg+S", self.speichern)
         self.dateimenue.addAction("Speichern unter…", self.speichern_unter)
         self.datei_knopf = QPushButton("Datei ▾")
         self.datei_knopf.setObjectName("knopf_datei")
@@ -261,10 +283,16 @@ class RaumeditorView(QWidget):
                                    "neue Elemente landen auf der gewählten Ebene")
         self._ebenen_sperre = False
         self.ebenenwahl.currentIndexChanged.connect(self._ebene_gewaehlt)
+        self.tasten_knopf = QPushButton("Tasten ?")
+        self.tasten_knopf.setObjectName("knopf_tasten")
+        self.tasten_knopf.setToolTip("Alle Tasten des Raumeditors auf einen Blick (F1)")
+        self.tasten_knopf.clicked.connect(lambda _=False: self.zeige_tasten())
+        self._tastentafel = None
         kopf = QHBoxLayout()
         kopf.addWidget(self.titel, 1)
         kopf.addWidget(self.ebenenwahl)
         kopf.addWidget(self.umschalter)
+        kopf.addWidget(self.tasten_knopf)
         self.sicht = Sicht2D(palette)
         self.sicht.gedrueckt.connect(self._gedrueckt)
         self.sicht.bewegt.connect(self._bewegt)
@@ -343,8 +371,73 @@ class RaumeditorView(QWidget):
         aussen.addLayout(knoepfe)
         self._startknopf_auffrischen()
 
+        self._baue_kuerzel()
         if vorlagen():
             self.waehle_raum(vorlagen()[0])
+
+    # ----------------------------------------------------------- Kuerzel
+
+    def _baue_kuerzel(self):
+        """Strg+S, Strg+Z, Strg+Y, Entf, Home und F1 wirken im GANZEN Tab, nicht nur
+        mit Fokus auf der Zeichenflaeche: wer eben in die Liste geklickt hatte,
+        drueckte Strg+Z ins Leere (UX-Pruefung 23.09.2026). Ein Eingabefeld behaelt
+        seine eigenen Tasten -- Qt fragt es zuerst (ShortcutOverride), deshalb
+        loescht Entf im Namensfeld einen Buchstaben und keine Wand."""
+        def kuerzel(text, tasten, ziel):
+            aktion = QAction(text, self)
+            aktion.setShortcuts([QKeySequence(t) for t in tasten])
+            aktion.setShortcutContext(Qt.WidgetWithChildrenShortcut)
+            aktion.triggered.connect(lambda _=False: ziel())
+            self.addAction(aktion)
+            return aktion
+
+        self.kuerzel = {
+            "speichern": kuerzel("Speichern", ("Ctrl+S",), self.speichern),
+            "rueckgaengig": kuerzel("Rückgängig", ("Ctrl+Z",), self._rueckgaengig),
+            "wiederholen": kuerzel("Wiederholen", ("Ctrl+Y", "Ctrl+Shift+Z"), self._wiederholen),
+            "loeschen": kuerzel("Löschen", ("Del",), self._loesche_auswahl),
+            "alles": kuerzel("Alles zeigen", ("Home",), self._alles_zeigen),
+            "tasten": kuerzel("Tasten", ("F1",), self.zeige_tasten),
+        }
+
+    def zeige_tasten(self):
+        from spotlab.gui.raumeditor.tastentafel import Tastentafel
+
+        if self._tastentafel is None:
+            self._tastentafel = Tastentafel(self)
+        self._tastentafel.show()
+        self._tastentafel.raise_()
+
+    @staticmethod
+    def _eingabe_hat_fokus():
+        return isinstance(QApplication.focusWidget(), (QLineEdit, QAbstractSpinBox))
+
+    def _uebernimm_offenes_feld(self):
+        """Ein getippter, noch nicht bestaetigter Wert gilt vor dem Speichern -- sonst
+        speicherte Strg+S im Feld den alten."""
+        fokus = QApplication.focusWidget()
+        for widget in self._felder.values():
+            if widget is fokus or (fokus is not None and widget.isAncestorOf(fokus)):
+                if isinstance(widget, QAbstractSpinBox):
+                    widget.interpretText()
+                widget.editingFinished.emit()
+                return
+
+    def _rueckgaengig(self):
+        self.steuerung.rueckgaengig()
+        self._zeige()
+
+    def _wiederholen(self):
+        self.steuerung.wiederholen()
+        self._zeige()
+
+    def _loesche_auswahl(self):
+        if self._eingabe_hat_fokus():
+            return
+        self._taste("delete", False, False, False)
+
+    def _alles_zeigen(self):
+        self.stapel.currentWidget().alles_zeigen()
 
     # ---------------------------------------------------------- Zustand
 
@@ -584,6 +677,7 @@ class RaumeditorView(QWidget):
 
     def speichern(self):
         """True, wenn der Raum danach auf der Platte liegt."""
+        self._uebernimm_offenes_feld()
         self._beende_offenes()
         if not self._eigen or not self._raumname:
             return self.speichern_unter()

@@ -237,7 +237,7 @@ def test_die_werkzeuge_sind_eine_gruppe_und_folgen_der_steuerung(tab):
 
 
 def test_das_dateimenue_hat_die_dateiaktionen(tab):
-    texte = [a.text() for a in tab.dateimenue.actions() if not a.isSeparator()]
+    texte = [a.text().split("\t")[0] for a in tab.dateimenue.actions() if not a.isSeparator()]
     for text in ("Neu", "Vorlage laden…", "Öffnen…", "Speichern", "Speichern unter…"):
         assert text in texte
     assert tab.datei_knopf.menu() is tab.dateimenue
@@ -263,3 +263,121 @@ def test_der_editor_passt_in_ein_kleines_fenster(tab):
     """1080 x 720 abzueglich Kopf (70), Seitenleiste (150) und Statuszeile (30)."""
     groesse = tab.minimumSizeHint()
     assert groesse.width() <= 930 and groesse.height() <= 600
+
+
+# ------------------------------------------------------------ Tasten finden
+
+
+def test_jedes_werkzeug_sagt_im_tooltip_wie_es_geht(tab):
+    for name, knopf in tab._werkzeug_knoepfe.items():
+        tipp = knopf.toolTip()
+        assert tipp.startswith(knopf.text()) and "—" in tipp, name
+    assert "Esc" in tab._werkzeug_knoepfe["wand"].toolTip()
+    for name in ("wand", "block", "boden", "sperrzone", "tag", "start"):
+        assert "Strg: ohne Raster" in tab._werkzeug_knoepfe[name].toolTip(), name
+    assert "G" in tab._werkzeug_knoepfe["auswahl"].toolTip()
+
+
+def test_die_tafel_nennt_alle_tasten():
+    from spotlab.gui.raumeditor.tastentafel import TAFEL
+
+    alles = " ".join(f"{taste} {was}" for _titel, zeilen in TAFEL for taste, was in zeilen)
+    for taste in ("G", "R", "S", "X / Y / Z", "Zahl", "Enter", "Umschalt+D", "A", "Alt+A",
+                  "Entf", "Esc", "Strg+Z", "Strg+Y", "Strg+S", "Home", "Tab", "Mausrad",
+                  "Mittlere Maustaste", "Leertaste", "Rechts", "Pfeiltasten", "F1", "Strg"):
+        assert taste in alles, taste
+
+
+def _gezeigt(tab, qapp):
+    tab.resize(1200, 760)
+    tab.show()
+    tab.activateWindow()
+    qapp.processEvents()
+    tab.waehle_raum("moebliert")
+    return tab
+
+
+def test_strg_z_wirkt_auch_mit_fokus_in_der_liste(tab, qapp):
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+
+    _gezeigt(tab, qapp)
+    tab.steuerung.setze_feld(("raum",), "beschreibung", "geändert")
+    tab.liste.setFocus()
+    qapp.processEvents()
+    QTest.keyClick(tab.liste, Qt.Key_Z, Qt.ControlModifier)
+    assert tab.raum().beschreibung != "geändert"
+    QTest.keyClick(tab.liste, Qt.Key_Y, Qt.ControlModifier)
+    assert tab.raum().beschreibung == "geändert"
+
+
+def test_entf_loescht_aus_der_liste_aber_nicht_aus_einem_eingabefeld(tab, qapp):
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QLineEdit
+
+    _gezeigt(tab, qapp)
+    bloecke = len(tab.raum().bloecke)
+    tab.steuerung.auswahl = frozenset({("block", 0)})
+    tab._zeige()
+    name = tab.eigenschaften.findChild(QLineEdit, "feld_name")
+    name.setFocus()
+    name.setCursorPosition(0)
+    qapp.processEvents()
+    QTest.keyClick(name, Qt.Key_Delete)
+    assert len(tab.raum().bloecke) == bloecke and name.text() == "isch"
+    tab.liste.setFocus()
+    qapp.processEvents()
+    QTest.keyClick(tab.liste, Qt.Key_Delete)
+    assert len(tab.raum().bloecke) == bloecke - 1
+
+
+def test_strg_s_im_feld_speichert_den_getippten_wert_mit(tab, qapp, tmp_path, monkeypatch):
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QAbstractSpinBox, QInputDialog
+
+    from spotlab.welt.raum import raum_laden
+
+    tab.setze_arbeitsordner(tmp_path)
+    _gezeigt(tab, qapp)
+    monkeypatch.setattr(QInputDialog, "getText", lambda *a, **k: ("mein raum", True))
+    tab.steuerung.auswahl = frozenset({("block", 0)})
+    tab._zeige()
+    x = tab.eigenschaften.findChild(QAbstractSpinBox, "feld_x")
+    x.setFocus()
+    qapp.processEvents()
+    x.selectAll()
+    QTest.keyClicks(x, "3.7")
+    assert x.text().startswith("3.7") and tab.raum().bloecke[0].x != pytest.approx(3.7)
+    QTest.keyClick(x, Qt.Key_S, Qt.ControlModifier)          # ohne Enter
+    assert raum_laden("mein raum", workspace=tmp_path).bloecke[0].x == pytest.approx(3.7)
+
+
+def test_home_zeigt_alles_auch_wenn_ein_knopf_den_fokus_hat(tab, qapp):
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+
+    _gezeigt(tab, qapp)
+    skala = tab.sicht.skala
+    tab.sicht.zoome(3.0, 100, 100)
+    tab.speichern_knopf.setFocus()
+    qapp.processEvents()
+    QTest.keyClick(tab.speichern_knopf, Qt.Key_Home)
+    assert tab.sicht.skala == pytest.approx(skala)
+
+
+def test_f1_und_der_knopf_zeigen_die_tastentafel(tab, qapp):
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+
+    _gezeigt(tab, qapp)
+    assert tab.tasten_knopf.text() == "Tasten ?" and "F1" in tab.tasten_knopf.toolTip()
+    tab.sicht.setFocus()
+    qapp.processEvents()
+    QTest.keyClick(tab.sicht, Qt.Key_F1)
+    assert tab._tastentafel is not None and tab._tastentafel.isVisible()
+    tab._tastentafel.close()
+    tab.tasten_knopf.click()
+    assert tab._tastentafel.isVisible()
+    tab._tastentafel.close()
