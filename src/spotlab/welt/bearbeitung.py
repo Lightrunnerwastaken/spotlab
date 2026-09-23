@@ -19,7 +19,7 @@ import math
 from dataclasses import replace
 
 from spotlab.welt.gelaende import umriss, verschoben
-from spotlab.welt.kollision import abstand_block, hindernis_bei, zone_bei
+from spotlab.welt.kollision import abstand_block, hindernis_bei, klippen_von, zone_bei
 from spotlab.welt.raum import BLOCK_HOEHE_M, MAX_STUFE_M, Block, Boden, RaumTag, Sperrzone, Wand
 
 RASTER_M = 0.05
@@ -351,7 +351,7 @@ def setze_feld(raum, schluessel, feld, wert):
     elif feld == "stufen":
         wert = int(wert)
         if wert < 0:
-            raise ValueError("Stufen koennen nicht negativ sein.")
+            raise ValueError("Stufen können nicht negativ sein. Gib 0 oder mehr ein.")
     elif feld in ("drehung", "grad"):
         wert = float(wert) % 360.0
     else:
@@ -492,12 +492,16 @@ def ziehe_ecke(raum, schluessel, ecke, x, y):
 
 def pruefe(raum):
     """Hinweise auf Unstimmiges -- als Liste, die der Editor zeigt."""
-    from spotlab.welt.hoehe import boden_bei, klippen
+    from spotlab.welt.hoehe import boden_bei
 
     hinweise = []
     z_start, _ = boden_bei(raum, raum.start[0], raum.start[1])
+    # Klippen gibt es an Boeden UND am Gelaende -- ein korrigierter Raum hat oft
+    # nur noch das Gelaende (Rampen und Podeste gingen darin auf). Gemerkt je
+    # Raum: der Editor fragt bei jedem Klick.
+    mit_hoehe = bool(raum.boeden) or raum.gelaende is not None
     getroffen = hindernis_bei(raum, raum.start[0], raum.start[1], z=z_start,
-                              klippen_=klippen(raum) if raum.boeden else None)
+                              klippen_=klippen_von(raum) if mit_hoehe else None)
     zone = zone_bei(raum, raum.start[0], raum.start[1])
     if zone is not None:
         hinweise.append(f"Der Start liegt in der Sperrzone „{zone}“. Verschiebe ihn.")
@@ -520,7 +524,7 @@ def pruefe(raum):
             )
     for i, wand in enumerate(raum.waende):
         if wand.laenge < MINDESTKANTE_M:
-            hinweise.append(f"Wand {i + 1} hat keine Laenge.")
+            hinweise.append(f"Wand {i + 1} hat keine Länge.")
         grund = raum.gelaende.hoehe_bei(*wand.mitte) if raum.gelaende is not None else None
         if grund is not None and wand.z - grund > MAX_STUFE_M:
             hinweise.append(f"Wand {i + 1} schwebt {wand.z - grund:.1f} m über dem Gelände.")

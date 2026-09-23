@@ -264,7 +264,35 @@ def _gelaende_raum():
                 waende=((0, 0, 6, 0), (6, 0, 6, 4), (6, 4, 0, 4), (0, 4, 0, 0)))
 
 
+def test_die_startpruefung_kennt_die_klippen_des_gelaendes():
+    """p13: ohne Boeden fehlten die Klippen -- der Start an einer 1-m-Kante galt als frei."""
+    assert any(h.startswith("Der Start steht an einer Kante") for h in b.pruefe(_gelaende_raum()))
+
+
+def test_das_uebungsfenster_zeichnet_die_klippen_des_gelaendes(qapp):
+    from spotlab.gui.raumplot import RaumPlot
+    from spotlab.gui.theme import DUNKEL
+
+    plot = RaumPlot(DUNKEL)
+    plot.setze_raum(_gelaende_raum())
+    assert len(plot._klippen) > 0
+
+
 # ------------------------------------------------------ 9. Arbeit im GUI-Thread
+
+
+def test_pruefe_rechnet_die_klippen_nicht_je_klick(monkeypatch):
+    from spotlab.welt import hoehe
+
+    gezaehlt = []
+    echt = hoehe.klippen
+    monkeypatch.setattr(hoehe, "klippen", lambda *a, **k: gezaehlt.append(1) or echt(*a, **k))
+    from spotlab.welt.raum import Boden
+
+    raum = replace(_gelaende_raum(), boeden=(Boden("P", 1.0, 1.0, 1.0, 1.0, z=0.1),))
+    for _ in range(3):
+        b.pruefe(raum)
+    assert len(gezaehlt) <= 1
 
 
 # ------------------------------------------------- 10. Korrigieren abbrechen

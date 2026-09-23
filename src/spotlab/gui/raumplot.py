@@ -49,7 +49,10 @@ class RaumPlot(QWidget):
         # Gelaende-Umriss, und `meter_zu_schirm` wird je gezeichnetem Punkt gerufen
         # -- auf den Katakomben 950-mal je Bild, 172 ms, die GUI stand (07.09.2026).
         self._huelle = huelle(raum) if raum is not None else None
-        self._klippen = klippen_von(raum) if raum is not None and raum.boeden else []
+        # Klippen an Boeden UND am Gelaende: ein korrigierter Raum hat oft nur
+        # noch das Gelaende, und ohne es fehlten die Kanten im Bild (23.09.2026).
+        mit_hoehe = raum is not None and (bool(raum.boeden) or raum.gelaende is not None)
+        self._klippen = klippen_von(raum) if mit_hoehe else []
         self.update()
 
     def setze_spur(self, punkte):
