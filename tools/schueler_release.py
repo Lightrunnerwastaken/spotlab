@@ -17,7 +17,7 @@ from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
 MODULES = frozenset('puppe sensors local_grid kinematics sim interpreter posture stability '
-                    'sdk_sim trot terrain_sdk terrain_step contact_metrics detect'.split())
+                    'sdk_sim trot terrain_sdk terrain_step contact_metrics detect modell'.split())
 # Erkennermodelle aus dem OpenCV-Zoo (Lizenzen: tools/modelle_lizenzen.txt), mit
 # Pruefsumme: der Zoo fuehrt sie ueber git-lfs, ein 132-Byte-Zeiger sieht aus wie eine Datei.
 MODELLE = {

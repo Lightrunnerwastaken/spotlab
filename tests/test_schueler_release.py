@@ -62,3 +62,10 @@ def test_release_launcher_uses_own_environment(tmp_path):
                             capture_output=True, text=True, timeout=30)
     assert result.returncode == 0, result.stderr
     assert 'einrichten.ps1' in result.stdout
+
+
+def test_die_modellvariante_reist_mit_der_simulation():
+    """Seit 23.09.2026 importieren sim.py und sensors.py `spotsim.modell` (die gemessene
+    Masse als Variante). Fehlt es in der Erlaubnisliste, bricht der naechste ZIP-Bau ab."""
+    assert "modell" in release.MODULES
+    release.validate_imports("def f():\n    from spotsim import modell as modellvariante")
