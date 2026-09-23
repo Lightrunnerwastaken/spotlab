@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QSplitter,
+    QStackedWidget,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -237,6 +238,7 @@ class EditorView(QWidget):
         for beschriftung, name in verfuegbare_backends():
             self.backendwahl.addItem(beschriftung, name)
         self.start_knopf = QPushButton("▶ Starten")
+        self.start_knopf.setObjectName("Primaer")
         self.start_knopf.clicked.connect(self._starten_oder_stoppen)
 
         werkzeuge = QHBoxLayout()
@@ -249,7 +251,23 @@ class EditorView(QWidget):
         mitte_anordnung = QVBoxLayout(mitte)
         mitte_anordnung.setContentsMargins(0, 0, 0, 0)
         mitte_anordnung.addLayout(werkzeuge)
-        mitte_anordnung.addWidget(self.reiter, 1)
+        # Ohne offene Datei ein Hinweis statt einer leeren Flaeche.
+        self.leer_hinweis = QLabel(
+            "Keine Datei offen.\n\nLinks eine Datei doppelklicken — "
+            "oder mit Rechtsklick im Baum eine neue anlegen."
+        )
+        self.leer_hinweis.setObjectName("Gedaempft")
+        self.leer_hinweis.setAlignment(Qt.AlignCenter)
+        self.leer_hinweis.setWordWrap(True)
+        self.mitte_stapel = QStackedWidget()
+        self.mitte_stapel.addWidget(self.leer_hinweis)
+        self.mitte_stapel.addWidget(self.reiter)
+        self.reiter.currentChanged.connect(
+            lambda _i: self.mitte_stapel.setCurrentWidget(
+                self.reiter if self.reiter.count() else self.leer_hinweis
+            )
+        )
+        mitte_anordnung.addWidget(self.mitte_stapel, 1)
 
         # -------------------------------------------------- rechts: Ausgabe
         self.ausgabe = Ausgabefeld(self._palette)

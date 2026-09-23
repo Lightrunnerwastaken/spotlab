@@ -1083,3 +1083,16 @@ def test_die_zusatzumgebung_sieht_das_backend_des_starts(qapp, tmp_path, monkeyp
     ansicht.starte_skript(projekt / "hallo_spot.py", backend="mujoco")
     assert beim_start == ["mujoco"] and gesehen["backend"] == "mujoco"
     assert ansicht.lauf_backend() == "real"      # nach dem Start wieder die Wahl
+
+
+def test_ohne_offene_datei_sagt_die_mitte_was_zu_tun_ist(qapp, tmp_path):
+    """Vorher eine leere graue Flaeche -- wer spotlab zum ersten Mal oeffnet, sah
+    nicht, dass links die Dateien liegen (UX-Pruefung 23.09.2026)."""
+    ansicht, _ordner, projekt = _ansicht(tmp_path)
+    assert ansicht.mitte_stapel.currentWidget() is ansicht.leer_hinweis
+    ansicht.oeffne(projekt / "hallo_spot.py")
+    assert ansicht.mitte_stapel.currentWidget() is ansicht.reiter
+    aktuell = ansicht.aktueller_reiter()
+    aktuell.feld.document().setModified(False)
+    ansicht._schliesse(ansicht.reiter.currentIndex())
+    assert ansicht.mitte_stapel.currentWidget() is ansicht.leer_hinweis
