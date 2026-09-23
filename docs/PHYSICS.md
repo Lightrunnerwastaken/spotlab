@@ -212,3 +212,23 @@ rutscht je Standphase im Median 0.24 mm, höchstens 17 mm (seine eigene Schätzu
 Weiterhin OFFEN und nicht gemessen: Momentgrenzen und Gelenktempo der Aktuatoren,
 ihre Steifigkeit, die Fussnachgiebigkeit und die Reibung. Eine Realismusfreigabe
 ist das nicht.
+
+
+## Trab nach Start-Stopp und Gier (24.09.2026)
+
+Geprüft am echten Spot: die `walk`-Folgen von 60 Läufen (Fahren, Folgen) im
+Physikkörper nachgespielt (`python -m spotlab.kalibrierung.nachspiel`, dort mit dem
+Kinematik-Sim; für die Physik dasselbe Verfahren). Zwei Fehler im Trab von
+matura-spot, beide behoben (Runde 5 in `matura-spot/notes/REALISMUS_GATES.md`):
+jeder neue Trab-Regler nach einem Stopp erbte ein verdrehtes Fußmuster (Stürze),
+und die Standbeine hielten die Gier nicht (Zittern im Gangtakt).
+
+| | echter Spot | vorher | jetzt |
+|---|---|---|---|
+| Stürze in 15 Folge-Läufen / 37 schnellen Fahrten | 0 / 0 | 8 / 15 | 0 / 0 |
+| Gierzittern geradeaus | 0.020 rad/s | 0.184 | 0.022 |
+| Verzug Drehen | 0.20 s | 0.40 s | 0.30 s |
+
+Weiter offen: der Trab kappt bei 0.4 m/s und 0.3 rad/s (dieser Adapter bei 0.3 m/s
+und 0.5 rad/s) — der echte Spot fährt 0.8 m/s und 1.1 rad/s voll.
+
