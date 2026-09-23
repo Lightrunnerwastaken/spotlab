@@ -155,3 +155,111 @@ def _leer():
     return raum_laden("leer")
 
 
+def test_die_rechte_spalte_ist_fest_und_die_sicht_springt_nicht(tab, qapp):
+    from spotlab.welt.raum import Boden
+
+    tab.resize(1080, 640)
+    tab.show()
+    raum = Raum(name="R", beschreibung="", start=(1.0, 1.0, 0.0), waende=((0, 0, 6, 0),),
+                boeden=(Boden("Eine Treppe mit einem sehr langen Namen, der nicht passt",
+                              3, 2, 2, 1, anstieg=0.6, stufen=4),))
+    tab._setze(raum, "", False, False)
+    qapp.processEvents()
+    breite = tab.sicht.width()
+    for auswahl in ({("boden", 0)}, {("wand", 0)}, {b.START}, set()):
+        tab.steuerung.auswahl = frozenset(auswahl)
+        tab._zeige()
+        qapp.processEvents()
+        assert tab.sicht.width() == breite, auswahl
+    assert tab.rechts.width() == 300
+
+
+def test_hinweise_sind_eine_liste_gleiche_zusammengefasst_ein_klick_waehlt(tab):
+    raum = Raum(name="H", beschreibung="", start=(2.0, 2.0, 0.0),
+                waende=((0, 0, 0, 0), (1, 1, 1, 1), (0, 0, 4, 0)),
+                bloecke=(Block("Tisch", 2.0, 2.0, 1.0, 1.0),))
+    tab._setze(raum, "", False, False)
+    texte = [tab.hinweisliste.item(i).text() for i in range(tab.hinweisliste.count())]
+    assert texte[0].startswith("Der Start steht in „Tisch“")
+    assert "Wände ohne Länge (2)" in texte and len(texte) == 2
+    assert tab.hinweis_titel.text() == "Hinweise (3)"
+    assert tab.hinweisliste.maximumHeight() <= 110
+    zeile = tab.hinweisliste.item(texte.index("Wände ohne Länge (2)"))
+    assert "Wand 1 hat keine Länge." in zeile.toolTip()
+    tab._hinweis_gewaehlt(zeile)
+    assert tab.steuerung.auswahl == {("wand", 0), ("wand", 1)}
+    tab._setze(_leer(), "", False, False)
+    assert tab.hinweis_titel.text() == "Keine Hinweise" and tab.hinweisliste.isHidden()
+
+
+def test_die_felder_haben_beschriftung_und_einheit(tab):
+    from PySide6.QtWidgets import QAbstractSpinBox
+
+    tab._zeige()                                           # nichts gewaehlt: der Raum
+    dicke = tab.eigenschaften.findChild(QAbstractSpinBox, "feld_wand_dicke")
+    assert tab._form.labelForField(dicke).text() == "Wanddicke" and dicke.suffix() == " m"
+    tab.steuerung.setze_raum(RAUM)
+    tab.steuerung.auswahl = frozenset({("block", 0)})
+    tab._zeige()
+    drehung = tab.eigenschaften.findChild(QAbstractSpinBox, "feld_drehung")
+    hoehe = tab.eigenschaften.findChild(QAbstractSpinBox, "feld_hoehe")
+    assert tab._form.labelForField(drehung).text() == "Drehung" and drehung.suffix() == " °"
+    assert tab._form.labelForField(hoehe).text() == "Höhe"
+    tab.steuerung.auswahl = frozenset({("tag", 0)})
+    tab._zeige()
+    hoehe = tab.eigenschaften.findChild(QAbstractSpinBox, "feld_hoehe")
+    assert tab._form.labelForField(hoehe).text() == "Hängehöhe"
+
+
+def test_der_startknopf_nennt_die_datei_und_ist_ohne_datei_gesperrt(tab):
+    assert tab.starten.objectName() == "Primaer" and tab.starten.isEnabled()
+    assert "starten" in tab.starten.text()                # app.py hat noch nichts gemeldet
+    tab.setze_datei("hallo_spot.py")
+    assert tab.starten.text() == "▶ hallo_spot.py im Übungsraum starten"
+    assert tab.starten.isEnabled()
+    tab.setze_datei(None)
+    assert not tab.starten.isEnabled() and "Code" in tab.starten.toolTip()
+    tab.setze_laeuft(True)
+    assert tab.starten.isEnabled() and "Stopp" in tab.starten.text()
+    tab.setze_laeuft(False)
+    assert not tab.starten.isEnabled()
+    assert tab.fahren.text() == "🎮 Selbst fahren" and "echten Spot" in tab.fahren.toolTip()
+
+
+def test_die_werkzeuge_sind_eine_gruppe_und_folgen_der_steuerung(tab):
+    knoepfe = tab.werkzeuge.buttons()
+    assert len(knoepfe) == 7 and tab.werkzeuge.exclusive()
+    assert all(k.isCheckable() for k in knoepfe)
+    tab._werkzeug_knoepfe["wand"].click()
+    assert tab.steuerung.werkzeug == "wand" and tab._werkzeug_knoepfe["wand"].isChecked()
+    tab.neu()                                              # neuer Raum: wieder Auswählen
+    assert tab._werkzeug_knoepfe["auswahl"].isChecked()
+
+
+def test_das_dateimenue_hat_die_dateiaktionen(tab):
+    texte = [a.text() for a in tab.dateimenue.actions() if not a.isSeparator()]
+    for text in ("Neu", "Vorlage laden…", "Öffnen…", "Speichern", "Speichern unter…"):
+        assert text in texte
+    assert tab.datei_knopf.menu() is tab.dateimenue
+
+
+def test_der_titel_nennt_vorlage_eigenen_raum_und_aenderungen(tab, tmp_path, monkeypatch):
+    from PySide6.QtWidgets import QInputDialog
+
+    tab.setze_arbeitsordner(tmp_path)
+    tab.waehle_raum("moebliert")
+    assert tab.titel.text() == "Möbliert · Vorlage"
+    tab.steuerung.setze_feld(("raum",), "beschreibung", "anders")
+    tab._zeige()
+    assert tab.titel.text() == "Möbliert · Vorlage ●"
+    monkeypatch.setattr(QInputDialog, "getText", lambda *a, **k: ("zimmer 3", True))
+    assert tab.speichern()
+    assert tab.titel.text() == "zimmer 3"
+    tab.neu()
+    assert tab.titel.text() == "Neuer Raum · nicht gespeichert ●"
+
+
+def test_der_editor_passt_in_ein_kleines_fenster(tab):
+    """1080 x 720 abzueglich Kopf (70), Seitenleiste (150) und Statuszeile (30)."""
+    groesse = tab.minimumSizeHint()
+    assert groesse.width() <= 930 and groesse.height() <= 600

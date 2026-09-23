@@ -1,5 +1,5 @@
-"""Der Tab „Raumeditor": Werkzeuge links, Sicht in der Mitte, Liste und
-Eigenschaften rechts, der Startknopf unten.
+"""Der Tab „Raumeditor": Werkzeuge links, Sicht mit Zustandszeile in der Mitte,
+Liste, Eigenschaften und Hinweise rechts (feste Breite), der Startknopf unten.
 
 Ersetzt die Ansicht „Übungsraum" und bietet app.py dieselbe Schnittstelle:
 `meldung`, `config_gespeichert`, `start_gewuenscht`, `setze_laeuft`,
@@ -22,14 +22,18 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
     QFormLayout,
+    QFrame,
     QHBoxLayout,
     QInputDialog,
     QLabel,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QMenu,
     QMessageBox,
     QPushButton,
+    QScrollArea,
+    QSizePolicy,
     QSpinBox,
     QStackedWidget,
     QVBoxLayout,
@@ -51,11 +55,33 @@ from spotlab.welt.raum import (
     vorlagen,
 )
 
-START_TEXT = "▶ Offene Datei starten"
+# Der Startknopf nennt die Datei, die er startet -- sobald app.py sie mitteilt
+# (`setze_datei`). Bis dahin der allgemeine Text, und der Knopf bleibt benutzbar.
+START_TEXT = "▶ Offene Datei im Übungsraum starten"
+START_DATEI = "▶ {name} im Übungsraum starten"
+START_OHNE_DATEI = "▶ Im Übungsraum starten"
+START_OHNE_DATEI_TIPP = ("Erst im Reiter „Code“ eine Datei öffnen — dieser Knopf startet sie "
+                         "dann im Übungsraum, in dem Raum, der hier offen ist.")
 STOPP_TEXT = "■ Stopp"
+FAHREN_TEXT = "🎮 Selbst fahren"
+_UNBEKANNT = object()            # app.py hat (noch) keine Datei gemeldet
 WERKZEUGE = (("auswahl", "Auswählen"), ("wand", "Wand"), ("block", "Block"),
              ("boden", "Boden"), ("sperrzone", "Sperrzone"), ("tag", "Tag"),
              ("start", "Start"))
+RECHTS_BREITE = 300              # die rechte Spalte springt nicht mit der Auswahl
+LINKS_BREITE = 132
+HINWEISE_HOEHE = 110
+# Beschriftung und Einheit der Felder. Die objectNames bleiben `feld_<name>`.
+FELD_BESCHRIFTUNG = {
+    "name": ("Name", ""), "beschreibung": ("Beschreibung", ""), "grund": ("Grund", ""),
+    "x": ("x", " m"), "y": ("y", " m"),
+    "x1": ("Anfang x", " m"), "y1": ("Anfang y", " m"), "x2": ("Ende x", " m"), "y2": ("Ende y", " m"),
+    "z": ("Ebene z", " m"), "breite": ("Breite", " m"), "tiefe": ("Tiefe", " m"),
+    "hoehe": ("Höhe", " m"), "drehung": ("Drehung", " °"), "grad": ("Richtung", " °"),
+    "anstieg": ("Anstieg", " m"), "stufen": ("Stufen", ""), "id": ("Tag-Nummer", ""),
+    "wand_dicke": ("Wanddicke", " m"), "wand_hoehe": ("Wandhöhe", " m"),
+}
+FELD_BESCHRIFTUNG_JE_ART = {("tag", "hoehe"): "Hängehöhe"}
 ALLE_EBENEN = "alle Ebenen"
 NEUER_RAUM = Raum(
     name="Neuer Raum", beschreibung="", start=(1.0, 1.0, 0.0),
@@ -108,6 +134,12 @@ class Zahlenfeld(QDoubleSpinBox):
         return text
 
 
+def _ueberschrift(text):
+    etikett = QLabel(text)
+    etikett.setObjectName("Gedaempft")
+    return etikett
+
+
 def _beschrifte(raum, schluessel):
     art = schluessel[0]
     if art == "wand":
@@ -149,25 +181,60 @@ class RaumeditorView(QWidget):
         self._korrektur_dialog = None
         self.steuerung = Steuerung()
 
-        # -- links: Werkzeuge und Dateien
-        links = QVBoxLayout()
+        self._datei = _UNBEKANNT
+
+        # -- links: Werkzeuge (eine Gruppe, genau eines gedrueckt), Datei, Karte.
+        # Kompakt und in fester Breite: vierzehn gleich grosse Knoepfe passten bei
+        # 1080 x 720 nicht mehr untereinander (UX-Pruefung 23.09.2026).
+        self.links = QWidget()
+        self.links.setObjectName("Werkzeugleiste")
+        self.links.setFixedWidth(LINKS_BREITE)
+        # Nur Abstaende, keine Farben -- die kommen aus dem Stylesheet der App.
+        self.links.setStyleSheet(
+            "#Werkzeugleiste QPushButton { padding: 5px 8px; text-align: left; }"
+            "#Werkzeugleiste QPushButton::menu-indicator { image: none; width: 0px; }")
+        links = QVBoxLayout(self.links)
+        links.setContentsMargins(0, 0, 0, 0)
+        links.setSpacing(4)
+        links.addWidget(_ueberschrift("Zeichnen"))
         self.werkzeuge = QButtonGroup(self)
+        self.werkzeuge.setExclusive(True)
+        self._werkzeug_knoepfe = {}
         for name, text in WERKZEUGE:
             knopf = QPushButton(text)
             knopf.setCheckable(True)
             knopf.setObjectName(f"werkzeug_{name}")
             self.werkzeuge.addButton(knopf)
             knopf.clicked.connect(lambda _=False, n=name: self._werkzeug(n))
+            self._werkzeug_knoepfe[name] = knopf
             links.addWidget(knopf)
-        self.werkzeuge.buttons()[0].setChecked(True)
-        links.addSpacing(12)
-        for text, ziel in (("Neu", self.neu), ("Vorlage laden…", self._vorlage_laden),
-                           ("Öffnen…", self._oeffnen), ("Speichern", self.speichern),
-                           ("Speichern unter…", self.speichern_unter),
-                           ("Rekonstruieren…", self._rekonstruieren)):
-            knopf = QPushButton(text)
-            knopf.clicked.connect(ziel)
-            links.addWidget(knopf)
+        self._werkzeug_knoepfe["auswahl"].setChecked(True)
+        links.addSpacing(8)
+        links.addWidget(_ueberschrift("Datei"))
+        self.dateimenue = QMenu(self)
+        self.dateimenue.addAction("Neu", self.neu)
+        self.dateimenue.addAction("Vorlage laden…", self._vorlage_laden)
+        self.dateimenue.addAction("Öffnen…", self._oeffnen)
+        self.dateimenue.addSeparator()
+        self.dateimenue.addAction("Speichern", self.speichern)
+        self.dateimenue.addAction("Speichern unter…", self.speichern_unter)
+        self.datei_knopf = QPushButton("Datei ▾")
+        self.datei_knopf.setObjectName("knopf_datei")
+        self.datei_knopf.setToolTip("Neu, Vorlage laden, Öffnen, Speichern unter")
+        self.datei_knopf.setMenu(self.dateimenue)
+        links.addWidget(self.datei_knopf)
+        self.speichern_knopf = QPushButton("Speichern")
+        self.speichern_knopf.setObjectName("knopf_speichern")
+        self.speichern_knopf.setToolTip("Den Raum unter seinem Namen speichern")
+        self.speichern_knopf.clicked.connect(lambda _=False: self.speichern())
+        links.addWidget(self.speichern_knopf)
+        links.addSpacing(8)
+        links.addWidget(_ueberschrift("Karte"))
+        rekonstruieren = QPushButton("Rekonstruieren…")
+        rekonstruieren.setObjectName("knopf_rekonstruieren")
+        rekonstruieren.setToolTip("Einen Raum aus einer aufgezeichneten GraphNav-Karte bauen")
+        rekonstruieren.clicked.connect(self._rekonstruieren)
+        links.addWidget(rekonstruieren)
         korrigieren = QPushButton("Korrigieren…")
         korrigieren.setObjectName("knopf_korrigieren")
         korrigieren.setToolTip("Wandlücken schliessen und das Gelände aus dem gelaufenen Weg bauen")
@@ -177,6 +244,7 @@ class RaumeditorView(QWidget):
 
         # -- Mitte: Titel, Umschalter, Sicht
         self.titel = QLabel("")
+        self.titel.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self.umschalter = QPushButton("3D")
         self.umschalter.setCheckable(True)
         # Vor dem ersten Zeigen nur die Kontextprobe; scheitert initializeGL
@@ -212,45 +280,68 @@ class RaumeditorView(QWidget):
         self.stapel.addWidget(self.sicht)
         self.stapel.addWidget(self.sicht3d)
         mitte = QVBoxLayout()
+        mitte.setSpacing(4)
         mitte.addLayout(kopf)
         mitte.addWidget(self.stapel, 1)
 
-        # -- rechts: Liste, Eigenschaften, Hinweise
+        # -- rechts, FESTE Breite: sonst wurde die Sicht bei jeder Auswahl mit
+        # langem Namen schmaler und sprang (UX-Pruefung 23.09.2026).
+        self.rechts = QWidget()
+        self.rechts.setFixedWidth(RECHTS_BREITE)
         self.liste = QListWidget()
         self.liste.setSelectionMode(QListWidget.ExtendedSelection)
         self.liste.itemSelectionChanged.connect(self._liste_gewaehlt)
         self.eigenschaften = QWidget()
         self._form = QFormLayout(self.eigenschaften)
+        self._form.setContentsMargins(0, 0, 4, 0)
         self._felder = {}                # Feldname -> Widget der gezeigten Auswahl
         self._form_signatur = None       # (Schluessel, Felder): gleich -> nur Werte nachtragen
-        self.hinweise = QLabel("")
-        self.hinweise.setWordWrap(True)
-        self.hinweise.setObjectName("Gedaempft")
-        rechts = QVBoxLayout()
-        rechts.addWidget(QLabel("Elemente"))
-        rechts.addWidget(self.liste, 2)
-        rechts.addWidget(QLabel("Eigenschaften"))
-        rechts.addWidget(self.eigenschaften, 1)
-        rechts.addWidget(self.hinweise)
+        rollbar = QScrollArea()
+        rollbar.setWidgetResizable(True)
+        rollbar.setFrameShape(QFrame.NoFrame)
+        rollbar.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        rollbar.setWidget(self.eigenschaften)
+        # Hinweise als Liste mit fester Hoehe: sechzehn gleiche Zeilen „Wand n hat
+        # keine Laenge" schoben vorher die ganze Spalte zusammen. Gleiche werden
+        # zusammengefasst, ein Klick waehlt die Elemente.
+        self.hinweis_titel = QLabel("Hinweise")
+        self.hinweisliste = QListWidget()
+        self.hinweisliste.setObjectName("hinweisliste")
+        self.hinweisliste.setMaximumHeight(HINWEISE_HOEHE)
+        self.hinweisliste.setWordWrap(True)
+        self.hinweisliste.itemClicked.connect(self._hinweis_gewaehlt)
+        rechts = QVBoxLayout(self.rechts)
+        rechts.setContentsMargins(0, 0, 0, 0)
+        rechts.setSpacing(4)
+        rechts.addWidget(_ueberschrift("Elemente"))
+        rechts.addWidget(self.liste, 3)
+        rechts.addWidget(_ueberschrift("Eigenschaften"))
+        rechts.addWidget(rollbar, 4)
+        rechts.addWidget(self.hinweis_titel)
+        rechts.addWidget(self.hinweisliste)
 
         self.starten = QPushButton(START_TEXT)
+        self.starten.setObjectName("Primaer")
         self.starten.clicked.connect(self._start_klick)
-        self.fahren = QPushButton("🎮 Fahren")
+        self.fahren = QPushButton(FAHREN_TEXT)
         self.fahren.setObjectName("knopf_fahren")
-        self.fahren.setToolTip("Selbst durch den Raum fahren: W/S vor und zurück, A/D seitwärts, "
-                               "Q/E drehen — im Übungsfenster, die Kamera folgt")
+        self.fahren.setToolTip("Selbst durch diesen Raum fahren — im Übungsfenster, nicht mit "
+                               "dem echten Spot: W/S vor und zurück, A/D seitwärts, Q/E drehen, "
+                               "die Kamera folgt")
         self.fahren.clicked.connect(self._fahren_klick)
 
         oben = QHBoxLayout()
-        oben.addLayout(links)
-        oben.addLayout(mitte, 4)
-        oben.addLayout(rechts, 1)
+        oben.setSpacing(10)
+        oben.addWidget(self.links)
+        oben.addLayout(mitte, 1)
+        oben.addWidget(self.rechts)
         aussen = QVBoxLayout(self)
         aussen.addLayout(oben, 1)
         knoepfe = QHBoxLayout()
         knoepfe.addWidget(self.starten, 1)
         knoepfe.addWidget(self.fahren)
         aussen.addLayout(knoepfe)
+        self._startknopf_auffrischen()
 
         if vorlagen():
             self.waehle_raum(vorlagen()[0])
@@ -260,8 +351,40 @@ class RaumeditorView(QWidget):
     def setze_laeuft(self, laeuft):
         """Waehrend eines Laufs haelt derselbe Knopf an."""
         self._laeuft = laeuft
-        self.starten.setText(STOPP_TEXT if laeuft else START_TEXT)
         self.fahren.setEnabled(not laeuft)   # Stopp heisst der Startknopf; ein Lauf zur Zeit
+        self._startknopf_auffrischen()
+
+    def setze_datei(self, name):
+        """Der Name der Datei, die im Reiter „Code" offen ist -- None, wenn keine.
+
+        Der Startknopf nennt sie („▶ hallo_spot.py im Übungsraum starten") und ist
+        ohne Datei gesperrt, mit einer Erklaerung im Tooltip: vorher stand dort
+        „Offene Datei starten", und wer keine offen hatte, bekam nur eine Meldung
+        in der Statuszeile. app.py ruft das, wenn im Reiter „Code" die Datei
+        wechselt; solange es nie gerufen wurde, bleibt der Knopf wie bisher.
+        """
+        self._datei = name or None
+        self._startknopf_auffrischen()
+
+    def _startknopf_auffrischen(self):
+        knopf = self.starten
+        if self._laeuft:
+            knopf.setText(STOPP_TEXT)
+            knopf.setEnabled(True)
+            knopf.setToolTip("Das laufende Programm anhalten")
+        elif self._datei is _UNBEKANNT:
+            knopf.setText(START_TEXT)
+            knopf.setEnabled(True)
+            knopf.setToolTip("Die Datei, die im Reiter „Code“ offen ist, in diesem Raum starten")
+        elif self._datei is None:
+            knopf.setText(START_OHNE_DATEI)
+            knopf.setEnabled(False)
+            knopf.setToolTip(START_OHNE_DATEI_TIPP)
+        else:
+            knopf.setText(START_DATEI.format(name=self._datei))
+            knopf.setEnabled(True)
+            knopf.setToolTip(f"{self._datei} in diesem Raum starten — im Übungsraum, nicht am "
+                             f"echten Spot")
 
     def setze_arbeitsordner(self, pfad):
         self._arbeitsordner = Path(pfad) if pfad else None
@@ -756,11 +879,56 @@ class RaumeditorView(QWidget):
         self._fuelle_ebenen()
         self._fuelle_liste()
         self._fuelle_eigenschaften()
-        hinweise = st.hinweise()
-        self.hinweise.setText("\n".join(hinweise) if hinweise else "Keine Hinweise.")
-        stern = " *" if st.geaendert else ""
-        name = self._raumname or "ohne Namen"
-        self.titel.setText(f"{st.raum.name} — {name}{stern}")
+        self._fuelle_hinweise()
+        knopf = self._werkzeug_knoepfe.get(st.werkzeug)
+        if knopf is not None and not knopf.isChecked():
+            knopf.setChecked(True)               # z. B. nach „Neu": zurueck auf Auswählen
+        self.titel.setText(self._titeltext())
+
+    def _titeltext(self):
+        """„Möbliert · Vorlage", „Katakomben" (ein eigener Raum heisst wie seine
+        Datei) oder „Neuer Raum · nicht gespeichert"; ● bei ungespeicherten
+        Aenderungen. Vorher „Möbliert — moebliert": zweimal dasselbe."""
+        st = self.steuerung
+        if not self._raumname:
+            text = f"{st.raum.name} · nicht gespeichert"
+        elif self._eigen:
+            text = self._raumname
+        else:
+            text = f"{st.raum.name} · Vorlage"
+        return text + (" ●" if st.geaendert else "")
+
+    def _fuelle_hinweise(self):
+        """Gleiche Befunde (dieselbe Gruppe) werden EINE Zeile: „Wände ohne Länge (16)".
+        Jede Zeile traegt ihre Elemente; ein Klick waehlt sie."""
+        gruppen = {}
+        reihe = []
+        for befund in self.steuerung.befunde():
+            schluessel = befund.gruppe or befund.text
+            if schluessel not in gruppen:
+                gruppen[schluessel] = []
+                reihe.append(schluessel)
+            gruppen[schluessel].append(befund)
+        self.hinweisliste.clear()
+        for schluessel in reihe:
+            befunde = gruppen[schluessel]
+            text = befunde[0].text if len(befunde) == 1 else f"{schluessel} ({len(befunde)})"
+            eintrag = QListWidgetItem(text)
+            eintrag.setToolTip("\n".join(f.text for f in befunde))
+            eintrag.setData(Qt.UserRole, [f.schluessel for f in befunde if f.schluessel])
+            self.hinweisliste.addItem(eintrag)
+        anzahl = sum(len(v) for v in gruppen.values())
+        self.hinweis_titel.setText(f"Hinweise ({anzahl})" if anzahl else "Keine Hinweise")
+        self.hinweis_titel.setObjectName("Warnung" if anzahl else "Gedaempft")
+        self.hinweis_titel.style().unpolish(self.hinweis_titel)
+        self.hinweis_titel.style().polish(self.hinweis_titel)
+        self.hinweisliste.setVisible(bool(anzahl))
+
+    def _hinweis_gewaehlt(self, eintrag):
+        schluessel = frozenset(eintrag.data(Qt.UserRole) or ()) & self.steuerung.auswaehlbare()
+        if schluessel:
+            self.steuerung.auswahl = schluessel
+            self._zeige()
 
     def _fuelle_liste(self):
         st = self.steuerung
@@ -805,6 +973,8 @@ class RaumeditorView(QWidget):
             self._form.addRow(hinweis)
             return
         for feld in b.FELDER[schluessel[0]]:
+            beschriftung, einheit = FELD_BESCHRIFTUNG.get(feld, (feld, ""))
+            beschriftung = FELD_BESCHRIFTUNG_JE_ART.get((schluessel[0], feld), beschriftung)
             if feld in TEXT_FELDER:
                 widget = QLineEdit()
             elif feld in ("id", "stufen"):
@@ -820,11 +990,12 @@ class RaumeditorView(QWidget):
                     widget.setDecimals(4)
                     widget.setRange(-1000.0, 1000.0)
                     widget.setSingleStep(0.05)
+                widget.setSuffix(einheit)
             widget.setObjectName(f"feld_{feld}")
             widget.editingFinished.connect(
                 lambda s=schluessel, f=feld, w=widget: self._feld_geaendert(s, f, w))
             self._felder[feld] = widget
-            self._form.addRow(feld, widget)
+            self._form.addRow(beschriftung, widget)
         self._trage_werte_ein(schluessel)
 
     def _trage_werte_ein(self, schluessel):
