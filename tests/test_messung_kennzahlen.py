@@ -167,3 +167,17 @@ def test_versatz_ist_vorzeichenbehaftet_je_achse():
     assert k["versatz_x_m"] == pytest.approx(-1.0, abs=1e-6)
     assert k["versatz_y_m"] == pytest.approx(0.2, abs=1e-6)
     assert k["netto_versatz_m"] == pytest.approx(1.0198, abs=1e-3)   # Betrag, unveraendert
+
+
+def test_tempo_aus_der_ausgleichsgerade():
+    """Der Kriechgang pendelt je Zyklus ±13 cm vor und zurück; ein Fenster über keine
+    ganze Zahl von Zyklen gibt aus den Endpunkten ein falsches Tempo (G2, 24.09.2026).
+    Die Ausgleichsgerade über alle Abtastungen trifft es."""
+    v, amplitude, periode = 0.02, 0.13, 4.8
+    saetze = [_satz(i * 0.02, x=v * i * 0.02 + amplitude * math.sin(2 * math.pi * i * 0.02 / periode),
+                    y=-0.5 * v * i * 0.02)
+              for i in range(1516)]                     # 30.3 s = 6.3 Zyklen
+    k = kennzahlen(saetze, [], "robot", 50.0)
+    assert abs(k["versatz_x_m"] / k["dauer_s"] - v) > 0.1 * v    # die Falle
+    assert k["tempo_x_gerade_m_s"] == pytest.approx(v, rel=0.03)
+    assert k["tempo_y_gerade_m_s"] == pytest.approx(-0.5 * v, rel=0.03)

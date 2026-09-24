@@ -90,6 +90,28 @@ def _mittel(werte):
     return sum(werte) / len(werte) if werte else 0.0
 
 
+def _ausgleichstempo(zeiten, orte):
+    """Steigung der Ausgleichsgeraden ort(t) (m/s), None ohne Zeitspanne.
+
+    Dieselbe Rechnung wie `spotsim.gates._ausgleichstempo` (G2): der Kriechgang pendelt
+    je Zyklus ±13 cm, und die Endpunkte eines Fensters über keine ganze Zahl von Zyklen
+    geben ein Tempo, das um ±0.4 cm/s daneben liegt (24.09.2026).
+    """
+    n = len(zeiten)
+    if n < 2:
+        return None
+    t_mittel = sum(zeiten) / n
+    o_mittel = sum(orte) / n
+    nenner = sum((t - t_mittel) ** 2 for t in zeiten)
+    if nenner <= 0:
+        return None
+    return sum((t - t_mittel) * (o - o_mittel) for t, o in zip(zeiten, orte)) / nenner
+
+
+def _gerundet(wert, stellen):
+    return None if wert is None else round(wert, stellen)
+
+
 def _gier_aufsummiert(winkel):
     """Fortlaufend, nicht Endwert minus Anfangswert.
 
@@ -261,6 +283,9 @@ def kennzahlen(saetze, kommandos, quelle, hz_soll):
         # real nicht nachrechnen, und der Vergleich waere keiner.
         "versatz_x_m": round(versatz_x, 4),
         "versatz_y_m": round(versatz_y, 4),
+        # Dasselbe als Steigung über ALLE Abtastungen: so misst der Sim G2 (Kriechen).
+        "tempo_x_gerade_m_s": _gerundet(_ausgleichstempo(zeiten, [p[0] for p in posen]), 5),
+        "tempo_y_gerade_m_s": _gerundet(_ausgleichstempo(zeiten, [p[1] for p in posen]), 5),
         "gierwinkel_grad": round(math.degrees(_gier_aufsummiert([p[2] for p in posen])), 2),
         # Ohne den Startwinkel ist nicht nachrechenbar, wie viel von `versatz_x`
         # und `versatz_y` nur daher kommt, dass der Roboter schräg zur odom-Achse
