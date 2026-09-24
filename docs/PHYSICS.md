@@ -259,6 +259,8 @@ Dieselben 60 Läufe nachgespielt, Befehlsfristen auf der Sim-Uhr:
 | Nachlauf beim Drehen, 2 s | 0.036 rad | 0.004 | 0.041 |
 
 Echtzeitfaktor in diesem Adapter (`realtime=False`, gemischte Tastaturfolge): Trab
-3.1, Kraftregler 2.1 — die GUI kommt mit. Offen: der Kraftregler gleitet im
-schnellen Bogen nach innen (+0.11 m/s quer, echt 0), und passiv steht er kleinere
+3.1, Kraftregler 2.1 — die GUI kommt mit. Das Gleiten nach innen im schnellen Bogen
+(0.12 m/s quer, echt 0.00) ist behoben: das Tempo-Soll steht über den Horizont fest wie
+im MIT-Regler (matura-spot `6125cde`; nachgespielt −0.015 statt +0.036 m/s, echt ±0).
+Offen: geradeaus 0.04 m/s seitliches Driften (echt 0), und passiv steht er kleinere
 Stösse aus als der Trab (G6 22.5 / 45 statt 30 / 60 N·s).
