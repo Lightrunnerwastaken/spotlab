@@ -37,8 +37,13 @@ Aufstehvorgang vom Boden. Der Körper bleibt physikalisch von den Beinen getrage
   verwendet private MjData und Kopien des berechneten Zustands.
 - Fester MuJoCo-Zeitschritt. Ist der Rechner zu langsam, läuft die Simulation
   langsamer; es werden keine Physikschritte übersprungen, um Echtzeit vorzutäuschen.
-- Kommandofristen werden aus lokaler Zeit in Simulationszeit übersetzt und auch
-  bei langsamer Simulation gegen die Wanduhr geprüft.
+- Kommandofristen laufen auf `backend.uhr()`: in Echtzeit (GUI, `connect()`) die
+  Wanduhr — die Frist wird in Simulationszeit übersetzt und auch bei langsamer
+  Simulation gegen die Wanduhr geprüft, wie am Roboter. Ohne Echtzeit
+  (`realtime=False`, `advance()`) die Sim-Zeit ab `SIM_UHR_NULL` (1 000 000 s): eine
+  Wanduhr mäße dort die Rechnerlast — dieselbe Tastaturfahrt stürzte unter Last bei
+  115 s und lief einzeln durch (24.09.2026). `motion.walk`/`move` nehmen diese Uhr
+  von selbst; eine Endzeit aus `time.time()` wird ohne Echtzeit abgewiesen.
 - Gelenke, Geschwindigkeiten und Fußkontakte kommen aus dem Physikzustand.
 - Sensorbilder und LocalGrid verwenden die bestehende Sensor-Pipeline. Aufträge
   werden im Physik-Worker verarbeitet; teure Bilder können Echtzeit verlangsamen.

@@ -590,8 +590,8 @@ versionsgepinntes Extra `spotlab[sim]`.
   Das SDK rechnet ihn über `time_sync.py::robot_timestamp_from_local_secs` in Roboterzeit
   um. Eine nackte Dauer bedeutet „gültig bis 1970" — der echte Spot weist jedes solche
   Kommando mit `ExpiredError` ab und bewegt sich nie. Deshalb führt `api/motion.py` **zwei**
-  injizierbare Uhren: `jetzt` (monoton) misst Dauern, `wanduhr` (`time.time`) stempelt
-  Endzeiten. Sie zu verschmelzen wäre bequem und wieder falsch. `DryRunBackend` weist
+  injizierbare Uhren: `jetzt` (monoton) misst Dauern, `wanduhr` (`time.time`, oder
+  `backend.uhr()`, wo ein Backend eine eigene hat) stempelt Endzeiten. Sie zu verschmelzen wäre bequem und wieder falsch. `DryRunBackend` weist
   abgelaufene Endzeiten ab — genau das hat 681 grüne Tests lang gefehlt.
 - **Der Geschwindigkeitsdeckel wirkt auf allen drei Wegen, und es gibt genau eine
   Formulierung davon.** `walk()` klemmt die Sollwerte, `move()` und die autonome Fahrt
@@ -736,11 +736,19 @@ versionsgepinntes Extra `spotlab[sim]`.
   mit dem alten Modell, rund 12 mm Versatz mit dem gemessenen — offene Modellprobleme,
   keine Toleranzen.
 - **Die Physik überspringt keine Schritte, um Echtzeit vorzutäuschen, und Fristen laufen
-  nach der WANDUHR.** Fester MuJoCo-Zeitschritt; ist der Rechner zu langsam, läuft die
-  Simulation langsamer. Eine Kommandofrist wird in Simulationszeit übersetzt UND gegen die
-  Wanduhr geprüft (`test_velocity_expiry_uses_wall_clock_even_when_sim_is_slow`): sonst
-  führe ein `walk(duration=1)` in einer langsamen Sim länger, als der Schüler es gemeint
-  hat. Nur der Worker fasst Regler und `MjData` an, der Renderer arbeitet auf Kopien, und je
+  auf `PhysicsBackend.uhr()` — in Echtzeit die WANDUHR, ohne Echtzeit die SIM-ZEIT.**
+  Fester MuJoCo-Zeitschritt; ist der Rechner zu langsam, läuft die Simulation langsamer.
+  In Echtzeit (GUI, `connect()`) wird eine Kommandofrist in Simulationszeit übersetzt UND
+  gegen die Wanduhr geprüft
+  (`test_velocity_expiry_uses_wall_clock_in_realtime_even_when_sim_is_slow`): sonst führe
+  ein `walk(duration=1)` in einer langsamen Sim länger, als der Schüler es gemeint hat.
+  Ohne Echtzeit (`realtime=False`, `advance()`) mass die Wanduhr die RECHNERLAST: dieselbe
+  echte Tastaturfahrt stürzte nachgespielt unter Last bei 115 s und lief einzeln durch
+  (24.09.2026); dort ist `uhr()` `SIM_UHR_NULL + sim.time`
+  (`test_ohne_echtzeit_gilt_ein_befehl_eine_sekunde_sim_zeit`). `motion.walk`/`move` nehmen
+  ohne übergebene `wanduhr` die Uhr des Backends, falls es eine hat; eine Endzeit aus
+  `time.time()` liegt auf der Sim-Uhr jenseits von `ZU_WEIT_S` und wird abgewiesen, statt
+  still nie abzulaufen. Nur der Worker fasst Regler und `MjData` an, der Renderer arbeitet auf Kopien, und je
   Takt gibt es höchstens EINE Sensorarbeit — Last erzeugt keinen Nachhol-Burst, dieselbe
   Regel wie beim Abtaster.
 - **Die Wahrnehmungs-API liefert Messwerte mit Maske, nie erfundene.** `depth()` gibt die
@@ -1201,8 +1209,9 @@ versionsgepinntes Extra `spotlab[sim]`.
   `TEST_TIMEOUT_S` als Netz gegen Hängen, und scheitert beim Ablauf mit dem Namen der
   Bedingung; `zwischendurch=qapp.processEvents` bei Qt. Eine feste Pause bleibt nur, wo
   Zeitverhalten selbst geprüft wird, und steht dann mit Begründung da. Ein Offline-Lauf
-  der Physik bekommt eine Uhr, die mit der Simulation läuft (`simuhr` in
-  `test_physics_single_step.py`, dazu eine eigene `timeout`-Marke); die Puppe in
+  der Physik stempelt Fristen mit `b.uhr()`, die ohne Echtzeit mit der Simulation läuft
+  (`test_physics_single_step.py`, dazu eine eigene `timeout`-Marke; bis zum 24.09.2026
+  flickte das ein Test-Helfer `simuhr`, der Fehler sass aber im Backend); die Puppe in
   `backends/mujoco.py` hat KEINE eigene Uhr (`jetzt=time.time`) — was dort unter Last
   einbricht, ist der Wahrnehmungszyklus gegen die 1-s-Gültigkeit eines Fahrbefehls, und
   ein lastunabhängiges Budget ist deshalb ein Weg in Metern, keine Zeit.

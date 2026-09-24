@@ -17,11 +17,19 @@ from bosdyn.client.robot_command import RobotCommandBuilder
 
 from spotlab.backends import mobility
 from spotlab.backends.base import Capability, Feedback, SafetyStatus
+from spotlab.backends.dryrun import ZU_WEIT_S
 from spotlab.errors import CommandRejected, NotPowered, SpotlabError, UnsupportedCapability
 
 HINWEIS = ('Experimenteller Physikmodus: eigener Fussplaner, kein Boston-Dynamics-Regler. '
            'Start im Stand; bisher ebener Boden. Sitzen, move-Zieltrajektorien, '
            'Treppen und Koerperpose noch nicht unterstuetzt. Keine Realismusfreigabe.')
+
+# Nullpunkt der Sim-Uhr ohne Echtzeit (`uhr()`). Nicht 0: eine nackte Dauer
+# (`end_time_secs=1.0`) ist damit abgelaufen. Weit weg von der Wanduhr (1.7e9):
+# `time.time() + 1` liegt dann jenseits von ZU_WEIT_S und wird abgewiesen, statt
+# um die Rechnerlast daneben zu liegen. Derselbe Nullpunkt wie
+# `kalibrierung.nachspiel.START` fuer den kinematischen Sim.
+SIM_UHR_NULL = 1_000_000.0
 
 
 class _Shutdown(BaseException):
@@ -143,6 +151,19 @@ class PhysicsBackend:
         with self._lock:
             return self._powered
 
+    def uhr(self):
+        """Die Uhr fuer `end_time_secs`; `motion.walk` nimmt sie als `wanduhr`.
+
+        In Echtzeit die Wanduhr, wie am Roboter: reisst die Verbindung ab, steht
+        Spot nach der Gueltigkeit still, auch wenn die Physik hinterherhinkt.
+        Ohne Echtzeit die Sim-Zeit: eine Wanduhr mass dort die Rechnerlast, und
+        dieselbe Tastaturfahrt stuerzte unter Last und lief einzeln durch
+        (24.09.2026).
+        """
+        if self._realtime:
+            return time.time()
+        return SIM_UHR_NULL + self.sim.time
+
     def send_command(self, command, end_time_secs=None):
         from bosdyn.api.spot import robot_command_pb2 as sp
 
@@ -171,8 +192,13 @@ class PhysicsBackend:
             values = (req.velocity.linear.x, req.velocity.linear.y, req.velocity.angular)
             if not all(math.isfinite(v) for v in values):
                 raise ValueError('Geschwindigkeiten muessen endlich sein.')
-            if end_time_secs is None or not math.isfinite(end_time_secs) or end_time_secs <= time.time():
+            jetzt = self.uhr()
+            if end_time_secs is None or not math.isfinite(end_time_secs) or end_time_secs <= jetzt:
                 raise CommandRejected('Velocity braucht eine gueltige absolute Ablaufzeit.')
+            if not self._realtime and end_time_secs > jetzt + ZU_WEIT_S:
+                raise CommandRejected('Ohne Echtzeit laeuft die Ablaufzeit auf der Sim-Uhr: '
+                                      'end_time_secs=backend.uhr() + Dauer, nicht time.time() + Dauer '
+                                      '(motion.walk: wanduhr=backend.uhr).')
             # Grenzen des bestehenden Forschungsreglers; Sättigung sichtbar melden.
             if self._terrain_steps and (abs(values[1]) > 1e-9 or abs(values[2]) > 1e-9):
                 raise UnsupportedCapability('Einzelstufenmodus bisher nur vorwaerts/rueckwaerts; kein Drehen/Seitwaerts.')
@@ -224,14 +250,14 @@ class PhysicsBackend:
                 with self._lock:
                     if not self._feedback[self._active].done:
                         self._feedback[self._active] = Feedback(False, 'ersetzt', True)
-            expiry = self.sim.time + max(0., deadline - time.time()) if deadline else None
+            expiry = self.sim.time + max(0., deadline - self.uhr()) if deadline else None
             self.sim.send_command(command, end_time_secs=expiry)
             self._active = key if key != 'off' else None
             self._deadline = deadline
             self._command_time = self.sim.time
             self._waiting_still = (command.full_body_command.HasField('stop_request')
                                    or command.synchronized_command.mobility_command.HasField('stand_request'))
-        if self._deadline is not None and time.time() >= self._deadline:
+        if self._deadline is not None and self.uhr() >= self._deadline:
             self.sim.send_command(RobotCommandBuilder.stop_command())
             self._deadline = None
             self._waiting_still = True

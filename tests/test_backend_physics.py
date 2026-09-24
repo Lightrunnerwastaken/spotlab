@@ -45,7 +45,7 @@ def test_walk_and_stop_use_physics_and_measured_feedback(backend):
     b = backend
     b.power_on()
     before = b.qpos().copy()
-    b.send_command(B.synchro_velocity_command(.15, 0, 0), end_time_secs=time.time()+60)
+    b.send_command(B.synchro_velocity_command(.15, 0, 0), end_time_secs=b.uhr()+60)
     b.advance(6)
     assert b.qpos()[0] - before[0] > .1
     assert not b.sim.metrics.fell
@@ -62,19 +62,57 @@ def test_unsupported_commands_do_not_fake_success(backend):
         with pytest.raises(UnsupportedCapability):
             b.send_command(cmd)
     with pytest.raises(CommandRejected):
-        b.send_command(B.synchro_velocity_command(.1, 0, 0), end_time_secs=time.time()-1)
+        b.send_command(B.synchro_velocity_command(.1, 0, 0), end_time_secs=b.uhr()-1)
 
 
-def test_velocity_expiry_uses_wall_clock_even_when_sim_is_slow(backend, monkeypatch):
+def _faehrt(b):
+    """Hat der Koerper noch den Fahrbefehl -- oder schon einen Stopp bekommen?"""
+    return b.sim.interp.setpoints().mode.value == 'velocity'
+
+
+def test_velocity_expiry_uses_wall_clock_in_realtime_even_when_sim_is_slow(monkeypatch):
+    # Echtzeit (GUI, connect): reisst die Verbindung ab, steht Spot nach der
+    # Gueltigkeit in WANDUHR still, auch wenn die Physik hinterherhinkt.
+    b = PhysicsBackend(autostart=False, realtime=True)
+    try:
+        b.power_on()
+        wall = time.time()
+        monkeypatch.setattr('spotlab.backends.physics.time.time', lambda: wall)
+        assert b.uhr() == wall
+        b.send_command(B.synchro_velocity_command(.15, 0, 0), end_time_secs=wall+.5)
+        b.advance(.2)
+        assert _faehrt(b)
+        wall += 1
+        b.advance(.05)
+        assert not _faehrt(b)
+    finally:
+        b.close()
+
+
+def test_ohne_echtzeit_gilt_ein_befehl_eine_sekunde_sim_zeit(backend, monkeypatch):
+    # Nachspielen unter Last (24.09.2026): zwischen zwei advance() vergeht
+    # Wanduhr, in der Simulation nicht. Die Gueltigkeit ist Sim-Zeit -- sonst
+    # haengt das Ergebnis davon ab, was der Rechner nebenher tut.
     b = backend
     b.power_on()
     wall = time.time()
     monkeypatch.setattr('spotlab.backends.physics.time.time', lambda: wall)
-    b.send_command(B.synchro_velocity_command(.15, 0, 0), end_time_secs=wall+.5)
+    b.send_command(B.synchro_velocity_command(.15, 0, 0), end_time_secs=b.uhr() + 1.0)
+    b.advance(.3)
+    wall += 5                       # der Rechner war mit anderem beschaeftigt
+    b.advance(.6)
+    assert _faehrt(b)
     b.advance(.2)
-    wall += 1
-    b.advance(5)
-    assert np.linalg.norm(b.sim.data.qvel[:2]) < .04
+    assert not _faehrt(b)
+
+
+def test_ohne_echtzeit_wird_eine_endzeit_der_wanduhr_abgewiesen(backend):
+    # time.time() + 1 laege auf der Sim-Uhr Wochen in der Zukunft: der Befehl
+    # liefe nie ab. Die Verwechslung meldet sich, statt still zu fahren.
+    b = backend
+    b.power_on()
+    with pytest.raises(CommandRejected, match=r'uhr\(\)'):
+        b.send_command(B.synchro_velocity_command(.1, 0, 0), end_time_secs=time.time() + 1)
 
 
 def test_terrain_is_explicitly_not_validated():

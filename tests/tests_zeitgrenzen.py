@@ -12,7 +12,6 @@ erzeugen. Die Grenze ist gegen HAENGEN gerichtet, nicht gegen Langsamkeit.
 import queue
 import threading
 import time
-from types import SimpleNamespace
 
 TEST_TIMEOUT_S = 120
 
@@ -78,22 +77,3 @@ def warte_bis(bedingung, worauf, grenze_s=TEST_TIMEOUT_S, takt_s=0.02, zwischend
             zwischendurch()
         time.sleep(takt_s)
 
-
-def simuhr(backend):
-    """Eine Wanduhr fuer `backends.physics`, die mit der Simulation laeuft.
-
-    Der Backend prueft `end_time_secs` und den Ablauf eines Kommandos an
-    `time.time()` -- am Roboter richtig (test_velocity_expiry_uses_wall_clock...),
-    im Offline-Lauf mit `realtime=False` aber ein Mass fuer Maschinenlast: ein
-    `advance(.001)` ist dort ein ganzer Beinschritt (rund 3.3 s Sim-Zeit, 1.2 s
-    Wanduhr allein, unter Last ein Vielfaches). Eine Frist von 120 s Wanduhr lief
-    unter Last ab, der Backend sandte Stopp, und die Fuesse hoben nicht mehr
-    (15.09.2026). Mit dieser Uhr sind Endzeit und Ablauf Sim-Zeit: `_tick` und
-    `send_command` sehen dieselbe Uhr wie die Physik.
-
-        uhr = simuhr(b); monkeypatch.setattr(physics, 'time', uhr)
-        b.send_command(..., end_time_secs=uhr.time() + 600)
-    """
-    wand0, sim0 = time.time(), backend.sim.time
-    return SimpleNamespace(time=lambda: wand0 + backend.sim.time - sim0,
-                           monotonic=time.monotonic, sleep=time.sleep)

@@ -127,6 +127,28 @@ def test_move_setzt_eine_endzeit_gleich_der_geduld():
     assert backend.endzeiten[0] == pytest.approx(FIXZEIT + 12.0)
 
 
+SIMZEIT = 1_000_042.0            # Uhr eines Backends, das nicht in Echtzeit laeuft
+
+
+def _backend_mit_uhr():
+    """Wie `PhysicsBackend(realtime=False)`: die Endzeit zaehlt auf SEINER Uhr."""
+    backend = _backend(jetzt=lambda: SIMZEIT)
+    backend.uhr = lambda: SIMZEIT
+    return backend
+
+
+def test_walk_nimmt_die_uhr_des_backends():
+    backend = _backend_mit_uhr()
+    walk(backend, None, Limits(), vx=0.3, stop=False)
+    assert backend.endzeiten[0] == pytest.approx(SIMZEIT + 1.0)
+
+
+def test_move_nimmt_die_uhr_des_backends():
+    backend = _backend_mit_uhr()
+    move(backend, None, Limits(), forward=1.0, timeout=12.0, schlaf=lambda _: None)
+    assert backend.endzeiten[0] == pytest.approx(SIMZEIT + 12.0)
+
+
 def test_walk_mit_echter_uhr_wird_nicht_abgewiesen():
     """Gegenprobe ohne Attrappe: der Trockenlauf weist abgelaufene Kommandos ab."""
     backend = _backend()

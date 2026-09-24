@@ -23,6 +23,11 @@ ZWEI UHREN, mit Absicht:
 
 Die beiden nicht zu verwechseln ist der Grund, warum sie getrennt injizierbar
 sind. Ein gemeinsamer Parameter wäre bequemer und wieder falsch.
+
+Ohne übergebene `wanduhr` gilt die Uhr des Backends (`backend.uhr()`), falls
+es eine hat, sonst `time.time`. Der Physikkörper ohne Echtzeit zählt seine
+Ablaufzeiten in Sim-Zeit; mit der Wanduhr hinge das Ergebnis dort von der
+Rechnerlast ab (24.09.2026).
 """
 
 import math
@@ -59,6 +64,13 @@ def _endlich(wert, name):
     return zahl
 
 
+def _uhr_von(backend, wanduhr):
+    """Die übergebene Uhr, sonst die des Backends, sonst die Wanduhr."""
+    if wanduhr is not None:
+        return wanduhr
+    return getattr(backend, "uhr", time.time)
+
+
 def clamp(vx, vy, wz, limits):
     """Klemmt auf die Konfigurationsgrenzen und erhält dabei die Fahrtrichtung.
 
@@ -85,7 +97,7 @@ def walk(
     nick_grad=0.0,
     schlaf=time.sleep,
     jetzt=time.monotonic,
-    wanduhr=time.time,
+    wanduhr=None,
 ):
     """Fährt `duration` Sekunden mit der gegebenen Geschwindigkeit.
 
@@ -115,6 +127,7 @@ def walk(
     # derselben Nachricht stehen. Der Deckel ist dieselbe Formulierung wie beim
     # Klemmen oben (`mobility.se2_grenze`), also kein zweiter Wert.
     params = backend.mobility_params(limits, nick_grad) if nick_grad else None
+    wanduhr = _uhr_von(backend, wanduhr)
 
     def einmal():
         backend.send_command(
@@ -145,7 +158,7 @@ def walk(
 
 
 def move(backend, recorder, limits, forward=0.0, left=0.0, turn=0.0, timeout=30.0,
-         schlaf=time.sleep, wanduhr=time.time):
+         schlaf=time.sleep, wanduhr=None):
     """Relatives Ziel im Körperframe. `turn` in GRAD (Schülerfreundlichkeit).
 
     Die Endzeit ist genau die Geduld des Aufrufers: läuft `timeout` ab, ist das
@@ -180,6 +193,7 @@ def move(backend, recorder, limits, forward=0.0, left=0.0, turn=0.0, timeout=30.
         frame_tree_snapshot=backend.frame_tree_snapshot(),
         params=backend.mobility_params(limits),
     )
+    wanduhr = _uhr_von(backend, wanduhr)
     kennung = backend.send_command(kommando, end_time_secs=wanduhr() + float(timeout))
     warte_auf(backend, kennung, timeout, "ankommen", schlaf)
     if recorder is not None:
