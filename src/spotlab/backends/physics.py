@@ -31,9 +31,16 @@ class _Shutdown(BaseException):
 class PhysicsBackend:
     def __init__(self, recorder=None, raum=None, start=None, ansicht_ziel=None,
                  realtime=True, autostart=True):
-        from spotlab.backends.mujoco import _Ansichtsschreiber, _physik_laden, welt_aus_raum
+        from spotlab.backends.mujoco import (
+            _Ansichtsschreiber,
+            _physik_grenzen,
+            _physik_laden,
+            welt_aus_raum,
+        )
 
         puppe, self._sensorik, SpotSdkSim, TerrainSdkSim = _physik_laden()
+        # Grenzen des Gangreglers aus spotsim (trab 0.3/0.5, kraft 0.85/1.0)
+        self._max_tempo, self._max_drehrate = _physik_grenzen()
 
         # Begrenzter Versuch: genau ein horizontales Podest bis 6 cm.
         # Der ebene Trab bleibt unveraendert; normale Treppen bleiben gesperrt.
@@ -173,19 +180,19 @@ class PhysicsBackend:
                 raise ValueError('Geschwindigkeiten muessen endlich sein.')
             if end_time_secs is None or not math.isfinite(end_time_secs) or end_time_secs <= time.time():
                 raise CommandRejected('Velocity braucht eine gueltige absolute Ablaufzeit.')
-            # Grenzen des bestehenden Forschungsreglers; Sättigung sichtbar melden.
+            # Grenzen des Gangreglers (spotsim.tempo_grenzen); Sättigung sichtbar melden.
             if self._terrain_steps and (abs(values[1]) > 1e-9 or abs(values[2]) > 1e-9):
                 raise UnsupportedCapability('Einzelstufenmodus bisher nur vorwaerts/rueckwaerts; kein Drehen/Seitwaerts.')
-            max_speed = .02 if self._terrain_steps else .3
+            max_speed = .02 if self._terrain_steps else self._max_tempo
             speed = math.hypot(*values[:2])
             factor = min(1., max_speed / speed) if speed else 1.
             req.velocity.linear.x *= factor
             req.velocity.linear.y *= factor
-            req.velocity.angular = max(-.5, min(.5, values[2]))
+            req.velocity.angular = max(-self._max_drehrate, min(self._max_drehrate, values[2]))
             if factor < 1 or req.velocity.angular != values[2]:
                 if self._recorder is not None:
                     self._recorder.event('kommando', name='physik_grenze',
-                                         max_speed=max_speed, max_turn_rate=.5)
+                                         max_speed=max_speed, max_turn_rate=self._max_drehrate)
         with self._lock:
             self._check()
             if not self._powered and not stop:
