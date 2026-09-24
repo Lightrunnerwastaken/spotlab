@@ -237,3 +237,28 @@ und die Standbeine hielten die Gier nicht (Zittern im Gangtakt).
 Weiter offen: der Trab kappt bei 0.4 m/s und 0.3 rad/s (dieser Adapter bei 0.3 m/s
 und 0.5 rad/s) — der echte Spot fährt 0.8 m/s und 1.1 rad/s voll.
 
+
+
+## Kraftregler als Vorgabe (24.09.2026)
+
+Der Physikkörper geht seit dem 24.09.2026 mit dem Kraftregler aus matura-spot
+(vorausgeplante Fusskräfte, Drehmoment-Aktuatoren mit den Motorgrenzen R1; Entscheid
+des Autors, `matura-spot/notes/ENTWURF_kraftregler.md`). Dieser Adapter kappt
+Kommandos auf `spotsim.tempo_grenzen()`: 0.85 m/s und 1.0 rad/s, der gemessene
+Bereich des echten Spot. `SPOTSIM_REGLER=trab` holt den alten Trab (0.3 m/s,
+0.5 rad/s) zurück; ältere gepinnte spotsim-Fassungen behalten 0.3 / 0.5.
+
+Dieselben 60 Läufe nachgespielt, Befehlsfristen auf der Sim-Uhr:
+
+| | echter Spot | Trab | Kraftregler |
+|---|---|---|---|
+| Stürze | – | 0 | 0 |
+| Endwert bei 0.8 m/s / 1.1 rad/s | 101 / 100 % | 31 / 32 % | 98 / 91 % |
+| Gierzittern geradeaus | 0.020 rad/s | 0.022 | 0.016 |
+| Verzug vx / wz | 0.30 / 0.20 s | 0.30 / 0.30 | 0.20 / 0.20 |
+| Nachlauf beim Drehen, 2 s | 0.036 rad | 0.004 | 0.041 |
+
+Echtzeitfaktor in diesem Adapter (`realtime=False`, gemischte Tastaturfolge): Trab
+3.1, Kraftregler 2.1 — die GUI kommt mit. Offen: der Kraftregler gleitet im
+schnellen Bogen nach innen (+0.11 m/s quer, echt 0), und passiv steht er kleinere
+Stösse aus als der Trab (G6 22.5 / 45 statt 30 / 60 N·s).

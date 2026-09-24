@@ -198,3 +198,43 @@ def test_failed_physics_start_closes_record(tmp_path):
     records = list(tmp_path.glob('*/lauf.json'))
     assert len(records) == 1
     assert 'fehler' in records[0].read_text(encoding='utf-8')
+
+
+def _gesendet(b):
+    """Die Geschwindigkeit, die der Adapter an den Regler weitergibt."""
+    v = b._pending[1].synchronized_command.mobility_command.se2_velocity_request.velocity
+    return v.linear.x, v.angular
+
+
+def test_die_grenzen_kommen_aus_spotsim(monkeypatch):
+    import spotlab.backends.mujoco as naht
+
+    monkeypatch.setattr(naht, '_physik_grenzen', lambda: (0.85, 1.0))
+    b = PhysicsBackend(autostart=False, realtime=False)
+    try:
+        b.power_on()
+        b.send_command(B.synchro_velocity_command(.8, 0, .9), end_time_secs=b.uhr()+1)
+        assert _gesendet(b) == pytest.approx((.8, .9))
+        b.send_command(B.synchro_velocity_command(1.2, 0, 1.5), end_time_secs=b.uhr()+1)
+        assert _gesendet(b) == pytest.approx((.85, 1.0))
+    finally:
+        b.close()
+
+
+def test_der_trab_behaelt_seine_grenzen(monkeypatch):
+    # Seit dem 24.09.2026 ist in spotsim der Kraftregler die Vorgabe; der Trab bleibt wählbar.
+    monkeypatch.setenv('SPOTSIM_REGLER', 'trab')
+    b = PhysicsBackend(autostart=False, realtime=False)
+    try:
+        b.power_on()
+        b.send_command(B.synchro_velocity_command(.8, 0, .9), end_time_secs=b.uhr()+1)
+        assert _gesendet(b) == pytest.approx((.3, .5))
+    finally:
+        b.close()
+
+
+def test_eine_gepinnte_spotsim_fassung_ohne_grenzen_bleibt_beim_trab(monkeypatch):
+    from spotlab.backends.mujoco import _physik_grenzen
+
+    monkeypatch.delattr(spotsim, 'tempo_grenzen', raising=False)
+    assert _physik_grenzen() == (0.3, 0.5)

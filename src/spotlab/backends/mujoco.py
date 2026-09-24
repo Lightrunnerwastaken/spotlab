@@ -97,6 +97,19 @@ def _physik_laden():
     return puppe, sensors, SpotSdkSim, TerrainSdkSim
 
 
+def _physik_grenzen():
+    """(Tempo m/s, Drehrate rad/s), die der Gangregler der Physik traegt.
+
+    Die Zahl steht dort, wo der Regler lebt (`spotsim.tempo_grenzen`, je nach
+    `SPOTSIM_REGLER`). Aeltere, gepinnte spotsim-Fassungen kennen die Funktion
+    nicht -- fuer sie gelten die Grenzen ihres Trab-Reglers, 0.3 und 0.5.
+    """
+    import spotsim
+
+    frage = getattr(spotsim, "tempo_grenzen", None)
+    return tuple(float(v) for v in frage()) if frage is not None else (0.3, 0.5)
+
+
 def welt_aus_raum(raum, puppe):
     """Ein `Raum` (Waende, Bloecke, Boeden, Tags) als `puppe.Welt`.
 
