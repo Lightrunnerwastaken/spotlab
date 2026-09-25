@@ -31,6 +31,7 @@ dieser Zeit legt Spot höchstens einen halben Meter zurück — der geprüfte
 Korridor reicht zwei Meter voraus.
 """
 
+import contextlib
 import math
 import time
 from dataclasses import dataclass
@@ -38,6 +39,7 @@ from pathlib import Path
 
 from spotlab.errors import SpotlabError
 from spotlab.record.run import STOPP_DATEI
+from spotlab.workshop import folgeaufnahme
 from spotlab.workshop.beispiele import ORDNER
 
 DATEINAME = "folgen.py"
@@ -276,15 +278,24 @@ def koerper_finder(ordner=None, quellen=GESICHT_QUELLEN, tiefe_quellen=TIEFE_QUE
         # als aktuelles stehen lassen.
         zuletzt["nummer"] += 1
         zuletzt["sicht"] = None
+        mit = folgeaufnahme.aktiv()
         aufnahme = aufnahme_holen(spot, gemerkt)
         if aufnahme is None:
             zuletzt["text"] = "keine Bilder (Kamera oder Tiefe fehlt)"
             return None
-        koerper_liste = holen(aufnahme.feld)
-        befunde = koerpermodul.beurteile(
-            koerper_liste, aufnahme.pano, aufnahme.punkte,
-            aufnahme.pano.kamerahoehe(aufnahme.blick_grad), blick_grad=aufnahme.blick_grad,
-        )
+        sicht_nr = mit.sicht(aufnahme, "koerper")
+        with mit.zeit("koerper"):
+            koerper_liste = holen(aufnahme.feld)
+        with mit.zeit("koerper_probe"):
+            befunde = koerpermodul.beurteile(
+                koerper_liste, aufnahme.pano, aufnahme.punkte,
+                aufnahme.pano.kamerahoehe(aufnahme.blick_grad), blick_grad=aufnahme.blick_grad,
+            )
+        # Spur oder volle Suche und das Skelett kennt nur der eingebaute Erkenner.
+        eingebaut = None if koerper_holen else erkenner.get("erkenner")
+        landmarken = getattr(eingebaut, "letzte_landmarken", None)
+        mit.koerper(sicht_nr, koerper_liste, befunde, weg=getattr(eingebaut, "letzter_weg", None),
+                    landmarken=None if landmarken is None else [landmarken])
         zuletzt["text"] = _koerperbefund(befunde)
         genommen = sorted(((b, k) for b, k in zip(befunde, koerper_liste) if b.genommen),
                           key=lambda paar: paar[0].distance)
@@ -337,19 +348,35 @@ def gesicht_finder(modell=None, mindestscore=None, quellen=GESICHT_QUELLEN,
     def finde(spot):
         from spotlab.backends.real import gesicht as gesichtsmodul
 
+        mit = folgeaufnahme.aktiv()
         aufnahme = gesichtsaufnahme(spot, gemerkt, quellen, tiefe_quellen,
                                     modell, mindestscore)
         if aufnahme is None:
             zuletzt["text"] = "keine Bilder (Kamera oder Tiefe fehlt)"
             return None
+        sicht_nr = mit.sicht(aufnahme, "gesicht")
+        erkenner_s = [0.0]
+
+        def kaesten_gezeitet(feld, erkenner_):
+            # YuNet und Gegenprobe getrennt: `beurteile` ruft beides in einem.
+            beginn = time.perf_counter()
+            try:
+                return gesichtsmodul.kaesten(feld, erkenner_)
+            finally:
+                erkenner_s[0] += time.perf_counter() - beginn
+
         # `beurteile` statt `gesichter`: dasselbe Ergebnis, aber mit dem Urteil je
         # Kasten. Ohne das ist „kein Gesicht" nicht von „alle verworfen" zu
         # unterscheiden -- genau die Frage, die am 16.09.2026 offen blieb.
+        beginn = time.perf_counter()
         befunde = gesichtsmodul.beurteile(
             aufnahme.feld, aufnahme.pano, aufnahme.erkenner, aufnahme.punkte,
             aufnahme.pano.kamerahoehe(aufnahme.blick_grad),
-            blick_grad=aufnahme.blick_grad,
+            blick_grad=aufnahme.blick_grad, kaesten_holen=kaesten_gezeitet,
         )
+        mit.zeit_eintragen("yunet", erkenner_s[0])
+        mit.zeit_eintragen("gesicht_probe", time.perf_counter() - beginn - erkenner_s[0])
+        mit.gesichter(sicht_nr, befunde)
         zuletzt["text"] = _gesichtsbefund(befunde)
         genommen = sorted((b for b in befunde if b.genommen),
                           key=lambda b: b.distance)
@@ -449,24 +476,30 @@ def bildaufnahme(spot, gemerkt, quellen=GESICHT_QUELLEN, tiefe_quellen=TIEFE_QUE
     # Grau mit Aufhellung fand, aber sieben Phantome weniger. Ein älterer Spot
     # ohne Farbkameras fällt in `images()` von selbst auf Grau zurück, und dort
     # greift die Aufhellung in `kaesten()` weiter.
-    kameras = spot.backend.images(list(quellen), farbe=True)
-    tiefe_antworten = spot.backend.images(list(tiefe_quellen))
+    mit = folgeaufnahme.aktiv()
+    with mit.zeit("kameras"):
+        kameras = spot.backend.images(list(quellen), farbe=True)
+    with mit.zeit("tiefe"):
+        tiefe_antworten = spot.backend.images(list(tiefe_quellen))
     nach_name = {a.source.name: a for a in list(kameras) + list(tiefe_antworten)}
     grau = [nach_name[q] for q in quellen if q in nach_name]
     tiefen = [nach_name[q] for q in tiefe_quellen if q in nach_name]
     if len(grau) < 2 or not tiefen:
         return None
-    if "pano" not in gemerkt:
-        gemerkt["pano"] = panorama.Panorama(
-            panorama.kalibrierung_aus(grau), zuschnitt=panorama.ALLES
-        )
-    feld = gemerkt["pano"].zusammensetzen(panorama.bilder_aus(grau))
-    punkte = np.vstack([tiefe.punkte_aus_bild(a) for a in tiefen])
+    with mit.zeit("panorama"):
+        if "pano" not in gemerkt:
+            gemerkt["pano"] = panorama.Panorama(
+                panorama.kalibrierung_aus(grau), zuschnitt=panorama.ALLES
+            )
+        feld = gemerkt["pano"].zusammensetzen(panorama.bilder_aus(grau))
+    with mit.zeit("punkte"):
+        punkte = np.vstack([tiefe.punkte_aus_bild(a) for a in tiefen])
     # Der GEMESSENE Nick, nicht der befohlene: so stimmt die Rechnung auch,
     # wenn Spot an einer Rampe steht oder unsere Neigung nicht ganz umsetzt.
     # `state.pitch` ist im Bogenmass, Nase hoch NEGATIV (Projektkonvention).
     # EINE Zustandsabfrage fuer Nick und Gier: beide gehoeren zu diesem Bild.
-    nick, gier = _lage(spot)
+    with mit.zeit("lage"):
+        nick, gier = _lage(spot)
     return Gesichtsaufnahme(feld, gemerkt["pano"], None, punkte, -math.degrees(nick), gier=gier)
 
 
@@ -824,8 +857,14 @@ def befehl(ziel, wunsch=WUNSCH_ABSTAND_M, mindest=MIN_ABSTAND_M, toleranz=TOLERA
 def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
           schlaf=time.sleep, takt_s=TAKT_S, laeuft=None, lauf_dir=None,
           kopfraum_takt_s=KOPFRAUM_TAKT_S, blick_grad=BLICK_GRAD, nachlauf_s=NACHLAUF_S,
-          gesten=None, licht=None):
+          gesten=None, licht=None, aufnahme=None):
     """Die Schleife: Ziel suchen, Abstand halten, bei jeder Schranke stehen bleiben.
+
+    `aufnahme=True` schreibt je Takt mit, was Spot sah und tat
+    (`workshop/folgeaufnahme.py`: Panorama, Tiefe, jeder Körper und jedes
+    Gesicht mit Urteil, Ziel, Befehl, Zeiten je Schritt) nach `<lauf>/folgen/`,
+    in den Lauf von `lauf_dir` oder des Schreibers; eine `Folgeaufnahme` geht
+    auch. Sie bremst keinen Takt, ein Schreibfehler wird einmal gesagt.
 
     `gesten` ist ein Leser `gesten(spot) -> "halt" | "weiter" | None`
     (`gesten_leser`). Die offene Hand hält Spot an — er steht, dreht nicht
@@ -882,6 +921,20 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
         def laeuft():
             return not stopp.exists()
 
+    # VOR dem ersten Befehl: ohne Ablage gibt es keine Aufnahme, und das soll man
+    # wissen, bevor der Roboter losgeht -- nicht nach dem Lauf.
+    aufnahme = _aufnahme_fuer(spot, aufnahme, lauf_dir)
+    mit = aufnahme if aufnahme else folgeaufnahme.aktiv()
+    aufnahme_gemeldet = False
+
+    def aufnahme_melden():
+        """Einen Schreibfehler der Aufnahme EINMAL sagen -- er haelt nie den Roboter an."""
+        nonlocal aufnahme_gemeldet
+        if aufnahme and aufnahme.fehler and not aufnahme_gemeldet:
+            aufnahme_gemeldet = True
+            melde(f"Die Folge-Aufnahme schreibt nicht ({aufnahme.letzter_fehler}) — "
+                  f"Spot folgt weiter, die Aufnahme ist lückenhaft.")
+
     zuletzt_gesehen = jetzt()
     je_gesehen = False              # hatte er ueberhaupt je ein Ziel?
     stille_gemeldet = None          # wann zuletzt ueber die Stille berichtet wurde
@@ -937,11 +990,16 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
     drehsperre = False
     ziel_gemeldet = False       # ob der letzte Takt ein Ziel hatte (fuer die Zeile `weg`)
 
+    stapel = contextlib.ExitStack()
     try:
+        if aufnahme:
+            # Finder und Bildaufnahme schreiben ueber `folgeaufnahme.aktiv()` mit.
+            stapel.enter_context(aufnahme.aktiviert())
         while laeuft():
             nun = jetzt()
             takt_dauer = max(takt_s, nun - takt_beginn) if takt_beginn is not None else takt_s
             takt_beginn = nun
+            mit.takt_beginnt()
             roh = _sicher(finder, spot)
             ziel, ungueltig = _gepruefter(roh)
             if ungueltig and not ungueltig_gemeldet:
@@ -956,7 +1014,8 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
                 # Direkt nach dem Finder: der Leser nimmt dessen Bild aus DIESEM Takt.
                 geste = None
                 try:
-                    geste = gesten(spot)
+                    with mit.zeit("gesten"):
+                        geste = gesten(spot)
                 except SpotlabError as fehler:
                     gesten = None
                     melde(f"Gesten aus — {fehler} Spot folgt ohne Gesten weiter.")
@@ -966,6 +1025,7 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
                         melde(f"Der Gestenleser stolpert ({type(fehler).__name__}: {fehler}) "
                               f"— Spot folgt weiter, das Zeichen kommt vielleicht später an.")
                 if geste is not None:
+                    mit.geste(geste)
                     angehalten, text = _geste_wirkt(geste, angehalten)
                     melde(text)
                     fehlschlag = _notiere_geste(spot, geste, angehalten)
@@ -979,7 +1039,8 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
             if ziel is None:
                 zeige(LICHT_ANGEHALTEN if angehalten else LICHT_SUCHT)
                 if faehrt:
-                    spot.stop()
+                    with mit.zeit("stop"):
+                        spot.stop()
                     faehrt = False
                 if ziel_gemeldet:
                     # EINMAL "weg", nicht jeden leeren Takt -- die Lehre der 135 world_objects.
@@ -997,7 +1058,9 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
                     # aufrecht stehenden Menschen und fand deshalb nie eines
                     # (drei Laeufe, null Fahrbefehle, Nick null). Tempo null:
                     # er steht, das Kommando verfaellt wie jedes andere.
-                    spot.walk(vx=0.0, vy=0.0, wz=0.0, stop=False, nick_grad=nick)
+                    with mit.zeit("walk"):
+                        spot.walk(vx=0.0, vy=0.0, wz=0.0, stop=False, nick_grad=nick)
+                mit.befehl(0.0, 0.0, nick if blick_grad else 0.0, angehalten=angehalten)
                 nun = jetzt()
                 seit = nun - zuletzt_gesehen
                 faellig = stille_gemeldet is None or nun - stille_gemeldet >= STILLE_TAKT_S
@@ -1014,6 +1077,8 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
                     if fehlschlag and not schreibfehler_gemeldet:
                         schreibfehler_gemeldet = True
                         melde(f"Die Stille liess sich nicht aufzeichnen: {fehlschlag}")
+                mit.takt_endet("angehalten" if angehalten else "sucht")
+                aufnahme_melden()
                 schlaf(_rest(takt_s, takt_beginn, jetzt))
                 continue
 
@@ -1034,8 +1099,10 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
             # vorige Befehl lief die ganze Zeit weiter. Abgezogen wird, was Spot seit
             # dem Bild GEMESSEN gedreht hat -- auch im Nachlauf, sonst drehte er blind
             # dem alten Winkel nach (17.09.2026: 35 Drehsinn-Wechsel in 100 s).
-            gier_jetzt = _gier(spot) if ziel.gier is not None else None
+            with mit.zeit("gier"):
+                gier_jetzt = _gier(spot) if ziel.gier is not None else None
             ziel_jetzt = nachgefuehrt(ziel, gier_jetzt)
+            mit.ziel(ziel, ziel_jetzt, echt=echt)
             # KREISSPERRE: seit das Ziel zuletzt vor ihm war, so viel gedreht?
             if abs(ziel_jetzt.bearing) <= SCHWENK_GRAD:
                 seitlich_gedreht, drehsperre = 0.0, False
@@ -1072,13 +1139,20 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
                 schreibfehler_gemeldet = True
                 melde(f"Das Ziel liess sich nicht aufzeichnen: {fehlschlag}")
 
+            schranke = ""
             if vx > 0.0:
                 if kopfraum_geprueft is None or jetzt() - kopfraum_geprueft >= kopfraum_takt_s:
-                    kopfraum = kopfraum_frei(spot)
+                    with mit.zeit("kopfraum"):
+                        kopfraum = kopfraum_frei(spot)
                     kopfraum_geprueft = jetzt()
-                for darf, grund in (frei_voraus(spot), kopfraum, zone_voraus(spot, raum)):
+                with mit.zeit("gitter"):
+                    frei = frei_voraus(spot)
+                with mit.zeit("zone"):
+                    zone = zone_voraus(spot, raum)
+                for darf, grund in (frei, kopfraum, zone):
                     if not darf:
                         vx = 0.0
+                        schranke = grund
                         if grund != letzter_grund:
                             melde(f"Stehen geblieben: {grund}.")
                             letzter_grund = grund
@@ -1088,12 +1162,19 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
 
             if (vx, wz) == (0.0, 0.0) and not blick_grad:
                 if faehrt:
-                    spot.stop()
+                    with mit.zeit("stop"):
+                        spot.stop()
                     faehrt = False
             else:
                 # Mit Neigung auch bei Tempo null: das haelt die Nase oben.
-                spot.walk(vx=vx, vy=0.0, wz=wz, stop=False, nick_grad=nick)
+                with mit.zeit("walk"):
+                    spot.walk(vx=vx, vy=0.0, wz=wz, stop=False, nick_grad=nick)
                 faehrt = True
+            mit.befehl(vx, wz, nick if blick_grad else 0.0, schranke=schranke,
+                       gesperrt=drehsperre, angehalten=angehalten)
+            mit.takt_endet("angehalten" if angehalten else "gesperrt" if drehsperre
+                           else "folgt" if echt else "nachlauf")
+            aufnahme_melden()
             schlaf(_rest(takt_s, takt_beginn, jetzt))
     finally:
         try:
@@ -1110,7 +1191,36 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
                     pass                  # die LEDs erloeschen ohnehin mit der Frist
         if licht:
             licht_melden()                # ein Fehler aus dem letzten Takt kommt auch noch an
+        stapel.close()
+        if aufnahme:
+            # NACH dem Anhalten: das Warten auf die Platte darf keinen Fahrbefehl verlaengern.
+            bericht = aufnahme.schliessen()
+            aufnahme_melden()
+            lauf = Path(bericht["ordner"]).parent
+            melde(f"Folge-Aufnahme: {bericht['takte']} Takte, {bericht['sichten']} Bilder in "
+                  f"{bericht['ordner']}. Das Video dazu: "
+                  f'python -m spotlab.workshop.folgenfilm "{lauf}"')
         melde("Folgen beendet.")
+
+
+def _aufnahme_fuer(spot, aufnahme, lauf_dir):
+    """Die `Folgeaufnahme` für diesen Lauf — oder None. Wirft, wenn True keine Ablage findet.
+
+    Abgelegt wird im Lauf-Verzeichnis (`lauf_dir`, sonst das des Schreibers),
+    gestempelt mit der Laufzeit des Schreibers: `t` hat dann dieselbe Basis wie
+    `ereignisse.jsonl`, und das Video findet zu jedem Ereignis sein Bild.
+    """
+    if not aufnahme:
+        return None
+    if aufnahme is not True:
+        return aufnahme
+    recorder = getattr(spot, "recorder", None)
+    ablage = lauf_dir if lauf_dir is not None else getattr(recorder, "dir", None)
+    if ablage is None:
+        raise ValueError("folge(aufnahme=True) braucht `lauf_dir` oder einen Lauf mit Aufzeichnung "
+                         "— sonst gibt es keinen Ort für die Aufnahme.")
+    uhr = getattr(recorder, "zeitmarke", None)
+    return folgeaufnahme.Folgeaufnahme(ablage, uhr=uhr if callable(uhr) else None)
 
 
 def _stille(je_gesehen, seit_s):

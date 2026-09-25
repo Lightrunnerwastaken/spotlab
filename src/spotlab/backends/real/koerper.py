@@ -206,7 +206,10 @@ class Koerpererkenner:
     werden die Zoo-Klassen mit den Modelldateien gebaut.
 
     Zähler: `suchen` (Takte, in denen der Erkenner lief) und `spuren` (Takte,
-    in denen die Spur getragen hat, ohne Erkenner).
+    in denen die Spur getragen hat, ohne Erkenner). Für die Folge-Aufnahme
+    (`workshop/folgeaufnahme.py`) dazu je `finde`: `letzter_weg` ("spur" oder
+    "suche") und `letzte_landmarken` — 33 × (x, y, Präsenz) im PANORAMA, auch
+    wenn die Pose auf einer Kachel lief; None ohne Körper.
     """
 
     def __init__(self, ordner=None, erkenner=None, pose=None, kacheln=True,
@@ -224,6 +227,8 @@ class Koerpererkenner:
         self._spur = None
         self.suchen = 0
         self.spuren = 0
+        self.letzter_weg = None
+        self.letzte_landmarken = None
 
     def _ausschnitte(self, bgr):
         """Das ganze Bild, dann drei quadratische Kacheln (links, Mitte, rechts)."""
@@ -235,16 +240,20 @@ class Koerpererkenner:
 
     def finde(self, feld):
         bgr = _dreikanalig(feld)
+        self.letzte_landmarken = None
         if self._spur is not None:
+            self.letzter_weg = "spur"
             ergebnis = self._pose(bgr, self._spur.copy())
             koerper = None if ergebnis is None else koerper_aus_pose(ergebnis[1], ergebnis[5])
             if koerper is not None:
                 self.spuren += 1
                 self._spur = person_aus_pose(ergebnis[1])
+                self.letzte_landmarken = _skelett(ergebnis[1])
                 return [koerper]
             self._spur = None
 
         self.suchen += 1
+        self.letzter_weg = "suche"
         kandidaten = []
         for x0, ausschnitt in self._ausschnitte(bgr):
             zeilen = np.asarray(self._erkenner(ausschnitt))
@@ -262,7 +271,14 @@ class Koerpererkenner:
         landmarken = np.asarray(ergebnis[1], dtype=float).copy()
         landmarken[:, 0] += x0                       # die Spur lebt im ganzen Panorama
         self._spur = person_aus_pose(landmarken)
+        self.letzte_landmarken = _skelett(landmarken)
         return [koerper]
+
+
+def _skelett(landmarken):
+    """Die 33 Körperpunkte als (x, y, Präsenz) — was die Folge-Aufnahme zeichnet."""
+    lm = np.asarray(landmarken, dtype=float)
+    return np.column_stack([lm[:33, 0], lm[:33, 1], lm[:33, 4]])
 
 
 # ------------------------------------------------------------ Gegenprobe

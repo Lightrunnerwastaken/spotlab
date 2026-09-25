@@ -165,6 +165,38 @@ def test_reisst_die_spur_ab_sucht_er_wieder():
     assert k.suchen == 2 and k.spuren == 0, "die Spur hat in keinem Takt getragen"
 
 
+def test_der_erkenner_merkt_sich_weg_und_skelett_fuer_die_folge_aufnahme():
+    """Spur oder volle Suche kostet 60 gegen 375 ms -- die Aufnahme muss es sagen
+    koennen, und das Video braucht das Skelett in PANORAMA-Koordinaten."""
+    erkenner = _Zaehlt([_erkenner_treffer(), np.empty((0, 13))])
+    pose = _Zaehlt([_pose_treffer(), _pose_treffer(), None])
+    k = koerper.Koerpererkenner(erkenner=erkenner, pose=pose, kacheln=False)
+    k.finde(_bild())
+    assert k.letzter_weg == "suche"
+    assert k.letzte_landmarken.shape == (33, 3)
+    assert k.letzte_landmarken[koerper.HUEFTE_L, :2] == pytest.approx((100.0, 400.0))
+    k.finde(_bild())
+    assert k.letzter_weg == "spur"
+    assert k.finde(_bild()) == []
+    assert k.letzter_weg == "suche" and k.letzte_landmarken is None
+
+
+def test_auf_einer_kachel_sitzt_das_skelett_im_panorama():
+    """Die Pose lief auf der rechten Kachel: ihre x-Werte sind um den Kachelrand versetzt."""
+    treffer = {"n": 0}
+
+    def erkenner(bild):
+        treffer["n"] += 1
+        # nur die letzte (rechte) Kachel findet jemanden
+        return _erkenner_treffer() if treffer["n"] == 4 else np.empty((0, 13))
+
+    k = koerper.Koerpererkenner(erkenner=erkenner, pose=_Zaehlt([_pose_treffer()]), kacheln=True)
+    [gefunden] = k.finde(_bild())
+    versatz = 1239 - 782
+    assert k.letzte_landmarken[koerper.HUEFTE_L, 0] == pytest.approx(100.0 + versatz)
+    assert gefunden.huefte[0] == pytest.approx(120.0 + versatz)
+
+
 def test_ohne_person_bleibt_die_liste_leer_und_es_wird_jedes_mal_gesucht():
     erkenner = _Zaehlt([np.empty((0, 13)), np.empty((0, 13))])
     pose = _Zaehlt([])
