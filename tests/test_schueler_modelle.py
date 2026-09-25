@@ -41,7 +41,7 @@ def _summe(daten):
 def test_das_zip_bringt_genau_die_modelle_die_spotlab_sucht():
     from spotlab.backends.real import gesicht, gesten, koerper
     gesucht = {gesicht.MODELL_DATEI, koerper.MODELL_ERKENNER, koerper.MODELL_POSE,
-               gesten.MODELL_HANDFLAECHE, gesten.MODELL_HANDPOSE}
+               koerper.MODELL_PERSONEN, gesten.MODELL_HANDFLAECHE, gesten.MODELL_HANDPOSE}
     assert set(release.MODELLE) == gesucht
 
 
@@ -51,6 +51,7 @@ def test_jedes_modell_steht_mit_seiner_lizenz_im_lizenztext():
         assert name in text
     assert 'MIT License' in text and 'Copyright (c) 2020 Shiqi Yu' in text
     assert 'Apache License' in text and 'END OF TERMS AND CONDITIONS' in text
+    assert 'Copyright (c) 2021-2022 Megvii Inc.' in text, 'YOLOX nennt seinen Urheber'
 
 
 def test_passende_modelle_werden_genommen(tmp_path, monkeypatch):

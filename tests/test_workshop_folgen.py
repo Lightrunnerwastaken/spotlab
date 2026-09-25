@@ -1314,3 +1314,23 @@ def test_die_vorlage_staffelt_koerper_vor_gesicht_und_braucht_kein_tag():
     zeile = next(z for z in quelle.splitlines() if "zuerst(" in z and "finder()" in z)
     assert zeile.index("koerper_finder()") < zeile.index("gesicht_finder()")
     assert "tag_finder()" not in zeile
+
+
+def test_ohne_yolox_sagt_der_koerperfinder_es_im_befund(monkeypatch):
+    """Fehlt das YOLOX-Modell, sucht er wie vor dem 25.09.2026 und uebersieht viele --
+    das muss in der Stille-Meldung stehen, sonst sucht man den Fehler am Menschen."""
+    from spotlab.backends.real import koerper as koerpermodul
+
+    class _Attrappe:
+        ohne_yolox = "Das YOLOX-Modell fehlt"
+
+        def __init__(self, *a, **kw):
+            pass
+
+        def finde(self, feld):
+            return []
+
+    monkeypatch.setattr(koerpermodul, "Koerpererkenner", _Attrappe)
+    finder = folgen.koerper_finder(aufnahme_holen=_koerperaufnahme)
+    assert finder(_Spot()) is None
+    assert "ohne YOLOX" in finder.befund()

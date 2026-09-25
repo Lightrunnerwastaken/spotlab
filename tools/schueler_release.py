@@ -26,6 +26,8 @@ MODELLE = {
     'pose_estimation_mediapipe_2023mar.onnx': '9d89c599319a18fb7d2e28451a883476164543182bafca5f09eb2cf767ed2f3f',
     'palm_detection_mediapipe_2023feb.onnx': '78ff51c38496b7fc8b8ebdb6cc8c1abb02fa6c38427c6848254cdaba57fcce7c',
     'handpose_estimation_mediapipe_2023feb.onnx': 'db0898ae717b76b075d9bf563af315b29562e11f8df5027a1ef07b02bef6d81c',
+    # YOLOX-S, seit 25.09.2026 die Personensuche im Folgemodus (`backends/real/koerper.py`).
+    'object_detection_yolox_2022nov.onnx': 'c5c2d13e59ae883e6af3b45daea64af4833a4951c92d116ec270d9ddbe998063',
 }
 ASSETS_PY = '''"""Robot model shipped inside the runtime wheel."""
 from pathlib import Path
@@ -210,6 +212,6 @@ if __name__ == '__main__':
     parser.add_argument('--sim-quelle', type=Path, required=True)
     parser.add_argument('--ausgabe', type=Path, default=Path('dist'))
     parser.add_argument('--modelle', type=Path, default=Path.home()/'.spotlab'/'modelle',
-                        help='Ordner mit den fuenf Erkennermodellen (Pruefsummen in MODELLE)')
+                        help='Ordner mit den sechs Erkennermodellen (Pruefsummen in MODELLE)')
     args = parser.parse_args()
     build(args.repo.resolve(), args.sim_quelle.resolve(), args.ausgabe.resolve(), args.modelle.resolve())

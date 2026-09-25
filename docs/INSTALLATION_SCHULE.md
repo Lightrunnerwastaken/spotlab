@@ -15,8 +15,9 @@ keine Forschungs-/Messskripte, kein pytest/Ruff und kein MCP-Zusatzpaket.**
 Die Pakete liegen in der eigenen `.venv`; das System-Python bleibt unverändert.
 Der Sim-Code ist als normales Python-Paket enthalten, keine verschlüsselte Software.
 
-Mit im ZIP liegen die fünf Erkennermodelle für Gesichter, Körper und Handzeichen
-(Ordner `modelle`, 26 MB, aus dem OpenCV Model Zoo; Lizenzen in `modelle/LIZENZEN.txt`).
+Mit im ZIP liegen die sechs Erkennermodelle für Gesichter, Körper, die Personensuche
+(YOLOX) und Handzeichen (Ordner `modelle`, 62 MB, aus dem OpenCV Model Zoo; Lizenzen in
+`modelle/LIZENZEN.txt`).
 Die Einrichtung legt sie nach `%USERPROFILE%\.spotlab\modelle`. Ohne sie findet der
 Folgemodus am echten Spot niemanden; die Simulation braucht sie nicht.
 

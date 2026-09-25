@@ -312,3 +312,153 @@ def test_der_echte_erkenner_laeuft_auf_der_aufzeichnung_ohne_person():
     k = koerper.Koerpererkenner()
     assert k.finde(bild) == []
     assert k.suchen == 1
+
+
+# ------------------------------------------------ Die Suche mit YOLOX (25.09.2026)
+#
+# Lauf 20260925T125326Z: in 190 von 226 Such-Takten meldete der MediaPipe-Erkenner
+# NICHTS, und auf 7 von 8 Stichproben stand der Mensch gut sichtbar 2-5 m voraus.
+# Offline ueber die 174 verpassten Bilder: MediaPipe 6, YOLOX-S (OpenCV-Zoo, ganzes
+# Bild) 141, bei derselben Zeit (240 gegen 245 ms); auf 38 Folge-Bildern 38 von 38,
+# im leeren Gang kein Fehlalarm. Der MediaPipe-Erkenner sucht einen KOPF; YOLOX
+# sucht den ganzen Menschen. Die Pose bleibt MediaPipe, die Spur auch.
+
+
+class _Personen:
+    """Attrappe fuer YOLOX: gibt die Kaesten zurueck und zaehlt die Aufrufe."""
+
+    def __init__(self, *kaesten):
+        self.kaesten = list(kaesten)
+        self.aufrufe = 0
+        self.formen = []
+
+    def __call__(self, rgb):
+        self.aufrufe += 1
+        self.formen.append(np.asarray(rgb).shape)
+        return list(self.kaesten)
+
+
+class _MerktZeile(_Zaehlt):
+    def __call__(self, bild, zeile):
+        self.zeilen = getattr(self, "zeilen", []) + [np.array(zeile)]
+        return super().__call__(bild, zeile)
+
+
+def test_mit_yolox_sucht_er_den_ganzen_menschen_und_legt_die_pose_in_den_kasten():
+    personen = _Personen((100.0, 100.0, 200.0, 500.0, 0.8))
+    erkenner = _Zaehlt([])
+    pose = _MerktZeile([_pose_treffer()])
+    k = koerper.Koerpererkenner(erkenner=erkenner, pose=pose, personen=personen, kacheln=True)
+    [gefunden] = k.finde(_bild())
+    assert erkenner.aufrufe == 0, "der MediaPipe-Erkenner laeuft nicht mehr"
+    assert personen.aufrufe == 1 and personen.formen[0] == (782, 1239, 3), "EIN Aufruf, ganzes Bild"
+    zeile = pose.zeilen[0]
+    assert zeile[4:6] == pytest.approx((150.0, 100.0 + 0.52 * 400.0)), "Hueftmitte im Kasten"
+    assert zeile[7] < 110.0, "der zweite Punkt liegt oben am Kasten, ueber dem Kopf"
+    assert gefunden.huefte == pytest.approx((120.0, 400.0)), "die Pose, nicht der Kasten"
+    assert k.letzter_weg == "yolox" and k.suchweg == "yolox"
+    assert k.letzte_landmarken is not None
+
+
+def test_nach_yolox_traegt_die_spur_wie_bisher():
+    personen = _Personen((100.0, 100.0, 200.0, 500.0, 0.8))
+    k = koerper.Koerpererkenner(erkenner=_Zaehlt([]), pose=_Zaehlt([_pose_treffer(), _pose_treffer()]),
+                                personen=personen)
+    assert k.finde(_bild()) and k.finde(_bild())
+    assert personen.aufrufe == 1, "gesucht wird nur, wenn die Spur abreisst"
+    assert k.letzter_weg == "spur"
+
+
+def test_ohne_pose_im_kasten_zaehlt_der_kasten_selbst():
+    """Bei 31 von 141 YOLOX-Treffern fand die Pose im Kasten kein Skelett. Dann zielt
+    Spot auf den Kasten: Huefte auf 52 %, keine Schulter (keine Handzeichen), keine Spur."""
+    personen = _Personen((100.0, 100.0, 200.0, 500.0, 0.8), (400.0, 50.0, 450.0, 200.0, 0.5))
+    k = koerper.Koerpererkenner(erkenner=_Zaehlt([]), pose=_Zaehlt([None]), personen=personen)
+    [gefunden] = k.finde(_bild())
+    assert gefunden.huefte == pytest.approx((150.0, 308.0)) and gefunden.schulter is None
+    assert gefunden.kasten == (100.0, 100.0, 200.0, 500.0) and gefunden.conf == pytest.approx(0.8)
+    assert k.letzter_weg == "yolox-kasten" and k.letzte_landmarken is None
+    k.finde(_bild())
+    assert personen.aufrufe == 2, "ohne Skelett keine Spur: im naechsten Takt wird wieder gesucht"
+
+
+def test_ohne_menschen_im_bild_bleibt_die_liste_leer():
+    k = koerper.Koerpererkenner(erkenner=_Zaehlt([]), pose=_Zaehlt([]), personen=_Personen())
+    assert k.finde(_bild()) == [] and k.letzter_weg == "yolox"
+
+
+def test_ein_graues_bild_geht_als_rgb_an_yolox():
+    personen = _Personen()
+    koerper.Koerpererkenner(erkenner=_Zaehlt([]), pose=_Zaehlt([]), personen=personen).finde(_bild())
+    assert personen.formen == [(782, 1239, 3)]
+
+
+def test_ohne_yolox_modell_sucht_er_wie_bisher_und_sagt_warum(monkeypatch, tmp_path):
+    """Das Modell kommt mit dem Schueler-ZIP. Fehlt es trotzdem, geht der alte Weg --
+    und der Grund steht am Erkenner, damit der Finder ihn sagen kann."""
+    monkeypatch.setattr(koerper, "MODELL_ORDNER", tmp_path / "leer")
+    monkeypatch.setattr(koerper, "modellpfade", lambda ordner=None, umgebung=None: ("e", "p"))
+
+    class _Det:
+        def __init__(self, *a, **kw):
+            pass
+
+        def infer(self, bild):
+            return np.empty((0, 13))
+
+    monkeypatch.setattr(koerper, "_zoo", lambda: (_Det, _Det))
+    k = koerper.Koerpererkenner()
+    assert k.suchweg == "mediapipe"
+    assert koerper.MODELL_PERSONEN in k.ohne_yolox
+    assert k.finde(_bild()) == [] and k.letzter_weg == "suche"
+
+
+def test_das_personenmodell_wird_gesucht_wie_die_anderen(monkeypatch, tmp_path):
+    (tmp_path / koerper.MODELL_PERSONEN).write_bytes(b"x")
+    assert koerper.personenmodell(tmp_path, umgebung={}) == tmp_path / koerper.MODELL_PERSONEN
+    monkeypatch.setattr(koerper, "MODELL_ORDNER", tmp_path / "leer")
+    with pytest.raises(SpotlabError, match="object_detection_yolox"):
+        koerper.personenmodell(umgebung={})
+
+
+class _YoloxAttrappe:
+    """Liefert, was `zoo/yolox.py::YoloX.infer` liefert: x, y, b, h, score, klasse --
+    in den Koordinaten des 640er-Quadrats."""
+
+    def __init__(self, zeilen):
+        self.zeilen = np.array(zeilen, dtype=float)
+        self.eingaben = []
+
+    def infer(self, bild):
+        self.eingaben.append(bild)
+        return self.zeilen
+
+
+def test_yolox_nimmt_nur_menschen_und_rechnet_in_panorama_pixel_zurueck():
+    """Letterbox wie im Zoo-Beispiel: Faktor 640/1239, oben links angelegt, Rand 114."""
+    r = 640.0 / 1239.0
+    modell = _YoloxAttrappe([
+        [10 * r, 20 * r, 100 * r, 300 * r, 0.9, 0],        # Mensch
+        [500 * r, 20 * r, 100 * r, 100 * r, 0.95, 56],     # Stuhl
+        [700 * r, 20 * r, 50 * r, 100 * r, 0.3, 0],        # zu unsicher
+    ])
+    personen = koerper.YoloxPersonen(modell=modell)
+    [kasten] = personen(np.zeros((782, 1239, 3), dtype=np.uint8))
+    assert kasten == pytest.approx((10.0, 20.0, 110.0, 320.0, 0.9))
+    eingabe = modell.eingaben[0]
+    assert eingabe.shape == (640, 640, 3) and eingabe.dtype == np.float32
+    assert eingabe[-1, -1, 0] == pytest.approx(114.0), "der Rand wie im Zoo"
+
+
+@pytest.mark.skipif(not (koerper.MODELL_ORDNER / koerper.MODELL_PERSONEN).is_file(),
+                    reason="YOLOX-Modell nicht abgelegt")
+def test_das_echte_yolox_sieht_im_leeren_gang_niemanden():
+    """Die Aufzeichnung vom 12.08.2026 zeigt einen leeren Gang -- kein Fehlalarm."""
+    from test_backend_panorama import _paar
+
+    from spotlab.backends.real import panorama
+
+    pano = panorama.Panorama(panorama.kalibrierung_aus(_paar(90)), zuschnitt=panorama.ALLES)
+    grau = pano.zusammensetzen(panorama.bilder_aus(_paar(90)))
+    personen = koerper.YoloxPersonen(koerper.personenmodell())
+    assert personen(np.stack([grau] * 3, axis=-1)) == []

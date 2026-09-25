@@ -241,6 +241,8 @@ class Folgeaufnahme:
             return
         self._takt = None
         takt["zustand"] = zustand
+        for eintrag in takt["sichten"]:
+            eintrag.pop("_feld", None)       # nur zum Wiedererkennen im Takt, nicht für die Platte
         takt["arbeit_s"] = _runde(self._jetzt() - self._t_beginn)
         try:
             with (self.dir / INDEX).open("a", encoding="utf-8") as ziel:
@@ -268,16 +270,23 @@ class Folgeaufnahme:
         """Eine Bildaufnahme des Takts — das Bild geht an den Schreiber. Gibt ihre Nummer."""
         if self._takt is None:
             return None
+        feld = getattr(aufnahme, "feld", None)
+        # Dieselbe Aufnahme für einen zweiten Finder (die Staffel teilt sie): ein Bild,
+        # beide Namen — sonst stünde dasselbe Panorama zweimal auf der Platte.
+        for eintrag in self._takt["sichten"]:
+            if feld is not None and eintrag.get("_feld") is feld:
+                if str(finder) not in eintrag["finder"].split("+"):
+                    eintrag["finder"] += f"+{finder}"
+                return eintrag["nr"]
         nr = len(self._takt["sichten"])
         stamm = f"{self._takt['takt']:05d}_{nr}"
-        feld = getattr(aufnahme, "feld", None)
         punkte = getattr(aufnahme, "punkte", None)
         form = getattr(feld, "shape", (None, None))
         eintrag = {"nr": nr, "t": _runde(self._jetzt()), "finder": str(finder),
                    "nick_grad": _runde(getattr(aufnahme, "blick_grad", None), 2),
                    "gier": _runde(getattr(aufnahme, "gier", None), 4),
                    "breite": form[1], "hoehe": form[0],
-                   "bild": None, "tiefe": None, "grund": None}
+                   "bild": None, "tiefe": None, "grund": None, "_feld": feld}
         self._takt["sichten"].append(eintrag)
         self._kameras_merken(getattr(aufnahme, "pano", None))
         if feld is not None:

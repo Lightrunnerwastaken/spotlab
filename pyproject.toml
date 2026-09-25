@@ -72,6 +72,8 @@ where = ["src"]
 # Das Fenstersymbol: ohne diese Zeile traegt ein installiertes spotlab das
 # Standardbild von Qt -- auf dem Schullaptop, nicht hier.
 "spotlab.gui" = ["spotlab.png", "bilder/*.svg"]
+# Die Lizenzen der unveraendert uebernommenen Zoo-Klassen (Apache 2.0) reisen mit dem Code.
+"spotlab.backends.real.zoo" = ["LICENSE", "LICENSE_YOLOX"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

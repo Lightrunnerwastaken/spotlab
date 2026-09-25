@@ -233,3 +233,44 @@ def test_der_echte_film_ist_eine_mp4_datei(tmp_path):
     assert ergebnis["pfad"] == tmp_path / folgenfilm.DATEI
     assert ergebnis["pfad"].stat().st_size > 1000
     assert (tmp_path / folgenfilm.BERICHT).is_file(), "der Bericht liegt neben dem Video"
+
+
+# ------------------------------------ Eine Aufnahme fuer beide Finder, YOLOX (25.09.2026)
+
+
+def test_eine_geteilte_sicht_zaehlt_fuer_das_gesicht_und_bekommt_kein_offline_gesicht(tmp_path):
+    """Seit die Staffel die Bilder teilt, heisst eine Sicht `koerper+gesicht`: das
+    Gesicht lief darauf schon im Lauf, offline waere es doppelt."""
+    uhr = _Uhr()
+    aufnahme = fa.Folgeaufnahme(tmp_path, uhr=uhr)
+    bild = Gesichtsaufnahme(_feld(), None, None, np.array([[2.0, 0.0, 0.2]] * 10), 15.0)
+    aufnahme.takt_beginnt()
+    aufnahme.sicht(bild, "koerper")
+    aufnahme.sicht(bild, "gesicht")
+    aufnahme.zeit_eintragen("bilder", 0.09)
+    aufnahme.takt_endet("sucht")
+    aufnahme.schliessen()
+    takte, _ = folgenfilm.takte_laden(tmp_path)
+    gezaehlt = []
+    anzahl = folgenfilm.gesicht_offline(tmp_path, takte, object(), erkenner_=object(),
+                                        kaesten_holen=lambda feld, e: gezaehlt.append(1) or [])
+    assert anzahl == 0 and not gezaehlt
+    text = folgenfilm.bericht(takte)
+    assert "Gesicht (im Lauf): 1 Sichten" in text
+    assert "Zwei Bildabrufe" not in text
+
+
+def test_der_bericht_nennt_die_suchwege_samt_yolox():
+    takte = [{"t": float(i), "arbeit_s": 0.3, "zustand": "folgt", "zeiten": [], "sichten": [],
+              "gesichter": [], "ziel": None, "befehl": None,
+              "koerper": [{"weg": w, "genommen": True, "grund": None, "sicht": 0}]}
+             for i, w in enumerate(["yolox", "spur", "spur", "yolox-kasten"])]
+    text = folgenfilm.bericht(takte)
+    assert "Spur 2" in text and "YOLOX 1" in text and "YOLOX ohne Skelett 1" in text
+
+
+def test_zwei_abrufe_zaehlen_auch_mit_dem_neuen_namen():
+    takte = [{"t": 0.0, "arbeit_s": 0.6, "zustand": "sucht", "sichten": [{}, {}],
+              "zeiten": [["bilder", 0.09], ["bilder", 0.09]], "koerper": [], "gesichter": [],
+              "ziel": None, "befehl": None}]
+    assert "Zwei Bildabrufe in einem Takt: 1" in folgenfilm.bericht(takte)

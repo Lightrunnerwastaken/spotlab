@@ -50,6 +50,7 @@ def main(argv=None):
     fehlend = []
     for name, suche in (('Gesicht', lambda: gesicht.modellpfad(umgebung={}, pfad=args.ziel/gesicht.MODELL_DATEI)),
                         ('Koerper', lambda: koerper.modellpfade(args.ziel, umgebung={})),
+                        ('Personensuche', lambda: koerper.personenmodell(args.ziel, umgebung={})),
                         ('Hand', lambda: gesten.modellpfade(args.ziel, umgebung={}))):
         try:
             suche()
@@ -59,7 +60,7 @@ def main(argv=None):
         print(zeile)
     if fehlend:
         return 1
-    print('Gesicht, Koerper und Hand finden ihre Modelle.')
+    print('Gesicht, Koerper, Personensuche und Hand finden ihre Modelle.')
     return 0
 
 

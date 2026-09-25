@@ -314,7 +314,19 @@ versionsgepinntes Extra `spotlab[sim]`.
   2.0, LICENSE dabei, `ruff: noqa`) — Ankerlogik nachzubauen wäre Fehlerquelle ohne Gewinn.
   `bildaufnahme` (Panorama + Punkte, ohne YuNet) ist die gemeinsame Grundlage beider Finder:
   ein fehlendes Gesichtsmodell darf den Körper-Weg nicht mitreissen. Die Zoo-Klassen wollen
-  BGR mit drei Kanälen — Grau wird verdreifacht, das RGB-Panorama gedreht.
+  BGR mit drei Kanälen — Grau wird verdreifacht, das RGB-Panorama gedreht. **Gesucht wird
+  seit dem 25.09.2026 mit YOLOX-S aus dem Zoo** (`koerper.YoloxPersonen`, Modell
+  `object_detection_yolox_2022nov.onnx`, Apache 2.0, Megvii; Zoo-Klasse unverändert in
+  `zoo/yolox.py`, Lizenz `zoo/LICENSE_YOLOX`), nicht mehr mit dem MediaPipe-Erkenner: in der
+  Folge-Aufnahme `20260925T125326Z` meldete jener in 190 von 226 Such-Takten NICHTS, obwohl der
+  Mensch auf 7 von 8 Stichproben gut sichtbar 2–5 m voraus stand — er sucht einen KOPF. Offline
+  über die 174 verpassten Bilder: MediaPipe 6, feinere Kacheln 41–59, YOLOX auf dem ganzen Bild
+  141 bei derselben Zeit (240 ms), 38 von 38 Folge-Bildern, kein Fehlalarm im leeren Gang. Die
+  Pose bleibt MediaPipe (`kasten_zeile`: Hüfte auf 52 %, Punkt über dem Kopf knapp unter der
+  Oberkante), die Spur auch; findet die Pose im Kasten kein Skelett, zählt der Kasten selbst
+  (`koerper_aus_kasten`, keine Schulter, keine Spur, Weg `yolox-kasten`). Fehlt das Modell,
+  sucht der Erkenner wie vorher (`suchweg`, `ohne_yolox`), und der Befund des Finders sagt
+  „Suche ohne YOLOX-Modell".
 - **Die Peilung wird vor dem Befehl um die GEMESSENE Drehung seit dem Bild nachgeführt
   (`Ziel.gier`, `nachgefuehrt`), und wer eine halbe Drehung lang seitlich bleibt, ist kein
   Mensch (`MAX_SUCHDREHUNG_GRAD`).** Befund vom 17.09.2026 (Läufe 09:41 und 09:49, Körper-Finder,
@@ -374,7 +386,12 @@ versionsgepinntes Extra `spotlab[sim]`.
   es; ein Schreibfehler wird gezählt und von `folge()` einmal gesagt, nie geworfen; geschlossen
   wird NACH `spot.stop()`. **Finder und Bildaufnahme schreiben über `folgeaufnahme.aktiv()`**
   (eine ContextVar, ohne Aufnahme ein Nichts) — so bleiben die Signaturen der Finder, und eine
-  Staffel aus `zuerst()` schreibt ohne Umbau mit. Das Video läuft in ECHTZEIT (jedes Bild steht,
+  Staffel aus `zuerst()` schreibt ohne Umbau mit. **Eine Staffel ist ein Takt** (`_TAKT_BILDER`,
+  seit 25.09.2026): der zweite Finder nimmt dieselbe `bildaufnahme` — in der Aufnahme holte das
+  Gesicht in 303 von 441 Takten die Bilder ein zweites Mal (je ~200 ms); die Sicht heisst dann
+  `koerper+gesicht` und liegt einmal auf der Platte. Farbe und Tiefe gehen GLEICHZEITIG hinaus
+  (`_bilder_holen`, ein Bote für die Tiefe; 32 und 89 ms statt ihrer Summe), der Schritt heisst
+  `bilder`. Das Video läuft in ECHTZEIT (jedes Bild steht,
   bis das nächste kam — sonst verschwiege es das Stocken) und rechnet YuNet samt Gegenprobe
   OFFLINE auf jeder Körper-Sicht: die Staffel fragt das Gesicht nur, wenn der Körper nichts
   fand. Ein alter Lauf ohne Aufnahme gibt Leiste und Zeitstrahl aus `ziel`, ohne Bild.
@@ -814,16 +831,17 @@ versionsgepinntes Extra `spotlab[sim]`.
   ein gleichnamiges Release wird nicht überschrieben. Lizenz des Modells und SHA-256 der
   Sim-Quellen liegen im Wheel. **Runtime-Wheel und editierbare Forschungsinstallation nie in
   derselben Umgebung** — beide heissen `spotsim`.
-- **Die fünf Erkennermodelle reisen im ZIP mit (seit 0.2.0b2; Lizenz MIT als `LICENSE.txt` seit 0.2.0b3), neben den Wheels, nicht darin.**
+- **Die sechs Erkennermodelle (seit 25.09.2026 mit YOLOX) reisen im ZIP mit (seit 0.2.0b2; Lizenz MIT als `LICENSE.txt` seit 0.2.0b3), neben den Wheels, nicht darin.**
   `schueler_release.py --modelle` (Vorgabe `~/.spotlab/modelle`) nimmt nur Dateien mit der
   Prüfsumme aus `MODELLE` — der OpenCV-Zoo führt sie über git-lfs, ein 132-Byte-Zeiger sähe
-  sonst wie ein Modell aus. Lizenzen (YuNet MIT, die vier MediaPipe-Modelle Apache 2.0) stehen
+  sonst wie ein Modell aus. Lizenzen (YuNet MIT, die vier MediaPipe-Modelle und YOLOX Apache 2.0) stehen
   in `tools/modelle_lizenzen.txt` und liegen als `modelle/LIZENZEN.txt` bei.
   `einrichten.ps1` ruft danach `modelle_einrichten.py` auf, das nach `~/.spotlab/modelle`
   kopiert, was fehlt oder abweicht, und spotlab fragt, ob Gesicht, Körper und Hand sie finden.
   Fehlen sie trotzdem, gibt es nur eine Warnung: die Simulation braucht sie nicht.
   `test_das_zip_bringt_genau_die_modelle_die_spotlab_sucht` hält `MODELLE` und die
-  Dateinamen in `gesicht.py`, `koerper.py`, `gesten.py` zusammen.
+  Dateinamen in `gesicht.py`, `koerper.py`, `gesten.py` zusammen. Die Lizenztexte der
+  unverändert übernommenen Zoo-Klassen liegen als package-data im Wheel (`zoo/LICENSE*`).
 - **Die Navigation aus dem Tab „Karten" hat keinen eigenen Weg zum Roboter.** Der Knopf
   startet `Beispiele/navigieren.py` über denselben einen Startweg wie „Starten" und „Fahren"
   (`app.py::_starte_navigation`, Backend `NAVIGATION_BACKEND` erzwungen, die Karte als

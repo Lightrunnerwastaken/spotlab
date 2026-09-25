@@ -32,8 +32,10 @@ Korridor reicht zwei Meter voraus.
 """
 
 import contextlib
+import contextvars
 import math
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -74,6 +76,11 @@ ZONE_VORAUS_M = 1.0
 # Tiefenkameras fuer die Entfernung -- in EINEM Abruf, nicht in zweien.
 GESICHT_QUELLEN = ("frontright_fisheye_image", "frontleft_fisheye_image")
 TIEFE_QUELLEN = ("frontleft_depth", "frontright_depth")
+# Die Bilder DIESES Takts, solange eine Staffel (`zuerst`) läuft: der zweite Finder nimmt
+# dieselbe Aufnahme, statt vier Bilder neu zu holen. Lauf 20260925T125326Z: in 303 von 441
+# Takten holte das Gesicht die Bilder ein zweites Mal, je rund 200 ms. Ausserhalb einer
+# Staffel ist der Wert None, und jeder Aufruf holt selbst — wie vorher.
+_TAKT_BILDER = contextvars.ContextVar("folgen_takt_bilder", default=None)
 TAKT_S = 0.2
 VERLOREN_S = 5.0                 # so lange ohne Ziel, dann sagt er es
 # ...und dann immer wieder. Einmal am Anfang genügt nicht: nach einer halben
@@ -297,6 +304,9 @@ def koerper_finder(ordner=None, quellen=GESICHT_QUELLEN, tiefe_quellen=TIEFE_QUE
         mit.koerper(sicht_nr, koerper_liste, befunde, weg=getattr(eingebaut, "letzter_weg", None),
                     landmarken=None if landmarken is None else [landmarken])
         zuletzt["text"] = _koerperbefund(befunde)
+        if getattr(eingebaut, "ohne_yolox", None):
+            # Die Suche lief mit dem alten Erkenner, der viele Menschen uebersieht.
+            zuletzt["text"] += " (Suche ohne YOLOX-Modell)"
         genommen = sorted(((b, k) for b, k in zip(befunde, koerper_liste) if b.genommen),
                           key=lambda paar: paar[0].distance)
         if not genommen:
@@ -316,7 +326,9 @@ def koerper_finder(ordner=None, quellen=GESICHT_QUELLEN, tiefe_quellen=TIEFE_QUE
         "Hinweis zu koerper_finder(): er braucht OpenCV (`pip install \"spotlab[gesicht]\"`) "
         "und zwei Modelldateien aus dem OpenCV-Zoo in ~/.spotlab/modelle/ "
         "(person_detection_mediapipe und pose_estimation_mediapipe). Fehlt eines davon, "
-        "findet er NIE etwas; der genaue Grund steht in `diagnose.log` des Laufs."
+        "findet er NIE etwas; der genaue Grund steht in `diagnose.log` des Laufs. Dazu "
+        "gehört object_detection_yolox für die Suche: ohne es übersieht er viele Menschen, "
+        "die gut sichtbar vor ihm stehen (`einrichten.cmd` legt alle Modelle ab)."
     )
     return finde
 
@@ -476,11 +488,13 @@ def bildaufnahme(spot, gemerkt, quellen=GESICHT_QUELLEN, tiefe_quellen=TIEFE_QUE
     # Grau mit Aufhellung fand, aber sieben Phantome weniger. Ein älterer Spot
     # ohne Farbkameras fällt in `images()` von selbst auf Grau zurück, und dort
     # greift die Aufhellung in `kaesten()` weiter.
+    takt = _TAKT_BILDER.get()
+    schluessel = (id(spot), tuple(quellen), tuple(tiefe_quellen))
+    if takt is not None and schluessel in takt:
+        return takt[schluessel]
     mit = folgeaufnahme.aktiv()
-    with mit.zeit("kameras"):
-        kameras = spot.backend.images(list(quellen), farbe=True)
-    with mit.zeit("tiefe"):
-        tiefe_antworten = spot.backend.images(list(tiefe_quellen))
+    with mit.zeit("bilder"):
+        kameras, tiefe_antworten = _bilder_holen(spot, quellen, tiefe_quellen)
     nach_name = {a.source.name: a for a in list(kameras) + list(tiefe_antworten)}
     grau = [nach_name[q] for q in quellen if q in nach_name]
     tiefen = [nach_name[q] for q in tiefe_quellen if q in nach_name]
@@ -500,7 +514,24 @@ def bildaufnahme(spot, gemerkt, quellen=GESICHT_QUELLEN, tiefe_quellen=TIEFE_QUE
     # EINE Zustandsabfrage fuer Nick und Gier: beide gehoeren zu diesem Bild.
     with mit.zeit("lage"):
         nick, gier = _lage(spot)
-    return Gesichtsaufnahme(feld, gemerkt["pano"], None, punkte, -math.degrees(nick), gier=gier)
+    aufnahme = Gesichtsaufnahme(feld, gemerkt["pano"], None, punkte, -math.degrees(nick), gier=gier)
+    if takt is not None:
+        takt[schluessel] = aufnahme
+    return aufnahme
+
+
+def _bilder_holen(spot, quellen, tiefe_quellen):
+    """(Kameras, Tiefe) — die zwei Anfragen GLEICHZEITIG, nicht nacheinander.
+
+    Zwei Anfragen bleiben es (siehe `bildaufnahme`: die Tiefe nie in Farbe), aber sie
+    wissen nichts voneinander: gemessen 32 ms für die Farbbilder und 89 ms für die Tiefe
+    (Lauf 20260925T125326Z), nacheinander also die Summe. Die Tiefe läuft in einem
+    Faden, die Farbe hier; ein Fehler dort kommt über `result()` an wie einer hier.
+    """
+    with ThreadPoolExecutor(max_workers=1) as bote:
+        tiefe = bote.submit(spot.backend.images, list(tiefe_quellen))
+        kameras = spot.backend.images(list(quellen), farbe=True)
+        return kameras, tiefe.result()
 
 
 def gesichtsaufnahme(spot, gemerkt, quellen=GESICHT_QUELLEN,
@@ -622,19 +653,24 @@ def zuerst(*finder):
     gemeldet = set()
 
     def finde(spot):
-        for nummer, einer in enumerate(finder):
-            try:
-                ziel = einer(spot)
-            except Exception as fehler:
-                if nummer not in gemeldet:
-                    from spotlab import protokoll
+        # Eine Staffel ist EIN Takt: alle Finder sehen dieselben Bilder (`_TAKT_BILDER`).
+        marke = _TAKT_BILDER.set({})
+        try:
+            for nummer, einer in enumerate(finder):
+                try:
+                    ziel = einer(spot)
+                except Exception as fehler:
+                    if nummer not in gemeldet:
+                        from spotlab import protokoll
 
-                    gemeldet.add(nummer)
-                    protokoll.notiere(f"Finder {nummer} faellt aus: {fehler}")
-                continue
-            if ziel is not None:
-                return ziel
-        return None
+                        gemeldet.add(nummer)
+                        protokoll.notiere(f"Finder {nummer} faellt aus: {fehler}")
+                    continue
+                if ziel is not None:
+                    return ziel
+            return None
+        finally:
+            _TAKT_BILDER.reset(marke)
 
     # Hinweise UND Befunde der Mitglieder wandern mit: sonst verschwände
     # ausgerechnet beim Staffeln die Auskunft, warum ein Finder nichts liefert --

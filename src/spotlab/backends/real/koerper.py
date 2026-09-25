@@ -22,6 +22,18 @@ vorgibt. Mit Spur kostet ein Takt rund 60 ms.
 Die Referenzklassen des Zoos liegen unverändert in `zoo/` (Apache 2.0). Hier
 steht nur, was spotlab dazutut: Modellsuche, Spur, Kacheln, und die Gegenprobe
 der Hüfte auf Bodenhöhe — dieselbe Rechnung wie beim Gesicht (`gesicht.py`).
+
+GESUCHT WIRD SEIT DEM 25.09.2026 MIT YOLOX, nicht mehr mit dem MediaPipe-Erkenner.
+Lauf 20260925T125326Z: in 190 von 226 Such-Takten meldete jener NICHTS, und auf 7
+von 8 Stichproben stand der Mensch gut sichtbar 2–5 m voraus. Offline über die
+174 verpassten Bilder: MediaPipe 6, mit feineren Kacheln 41–59, YOLOX-S aus dem
+Zoo auf dem ganzen Bild 141 — bei derselben Zeit (240 gegen 245 ms); auf 38
+Folge-Bildern 38, im leeren Gang kein Fehlalarm. Der MediaPipe-Erkenner sucht
+einen KOPF (kleiner Kopf auf 3 m, abgeschnittener Kopf nah: nichts), YOLOX den
+ganzen Menschen. Die Pose bleibt MediaPipe (`kasten_zeile` legt sie in den
+YOLOX-Kasten, 110 von 141 bekamen ein Skelett), die Spur auch. Ohne Skelett
+zählt der Kasten selbst (`koerper_aus_kasten`). Fehlt das YOLOX-Modell, sucht
+der Erkenner wie bisher und sagt es (`ohne_yolox`).
 """
 
 import math
@@ -36,6 +48,16 @@ from spotlab.errors import SpotlabError
 
 MODELL_ERKENNER = "person_detection_mediapipe_2023mar.onnx"     # 11 990 159 Bytes
 MODELL_POSE = "pose_estimation_mediapipe_2023mar.onnx"           #  5 557 238 Bytes
+MODELL_PERSONEN = "object_detection_yolox_2022nov.onnx"          # 35 858 002 Bytes, YOLOX-S
+# YOLOX: Klasse 0 ist "person" (COCO). Die Schwellen wie im Versuch vom 25.09.2026:
+# der Zoo filtert bei 0.35 (NMS), genommen wird ab 0.4.
+YOLOX_KONFIDENZ = 0.35
+YOLOX_MINDEST = 0.4
+YOLOX_EINGABE = 640
+# Wo im YOLOX-Kasten eines stehenden Menschen die Hüfte liegt (von oben), und wo der
+# Punkt über dem Kopf, den die Pose als Grösse und Drehung braucht (`person_aus_pose`).
+KASTEN_HUEFTE = 0.52
+KASTEN_OBEN = 0.02
 MODELL_ORDNER = gesicht.MODELL_ORDNER
 ENV_ORDNER = "SPOTLAB_KOERPERMODELLE"
 BEZUGSQUELLE = "https://github.com/opencv/opencv_zoo/tree/main/models"
@@ -111,10 +133,96 @@ def modellpfade(ordner=None, umgebung=None):
     )
 
 
+def personenmodell(ordner=None, umgebung=None):
+    """Der Pfad zum YOLOX-Modell — oder ein Fehler, der sagt, woher man es bekommt.
+
+    Dieselben drei Orte wie `modellpfade`. Der Erkenner fängt den Fehler und sucht
+    dann wie bisher mit MediaPipe: das Modell ist eine Verbesserung, keine Pflicht.
+    """
+    kandidaten = [ordner, (os.environ if umgebung is None else umgebung).get(ENV_ORDNER),
+                  MODELL_ORDNER]
+    for kandidat in kandidaten:
+        if kandidat and (Path(kandidat) / MODELL_PERSONEN).is_file():
+            return Path(kandidat) / MODELL_PERSONEN
+    raise SpotlabError(
+        f"Das YOLOX-Modell fehlt (gesucht in {MODELL_ORDNER}): `{MODELL_PERSONEN}` aus dem "
+        f"OpenCV-Zoo ({BEZUGSQUELLE}, Ordner object_detection_yolox; git-lfs, der gewöhnliche "
+        f"raw-Link liefert einen 132-Byte-Zeiger). Ohne es sucht spotlab Menschen wie vor dem "
+        f"25.09.2026 und übersieht dabei viele — das Schüler-ZIP bringt es mit."
+    )
+
+
 def _zoo():
     from spotlab.backends.real.zoo import mp_persondet, mp_pose
 
     return mp_persondet.MPPersonDet, mp_pose.MPPose
+
+
+def _rgb(feld):
+    """Drei Kanäle in RGB, wie YOLOX sie will: das Panorama ist RGB, Grau wird verdreifacht."""
+    feld = np.asarray(feld)
+    if feld.ndim == 2:
+        return np.ascontiguousarray(np.stack([feld] * 3, axis=-1))
+    return np.ascontiguousarray(feld)
+
+
+class YoloxPersonen:
+    """Menschen im ganzen Bild: `(rgb) -> [(x1, y1, x2, y2, score)]`, der sicherste zuerst.
+
+    Vor- und Nachbereitung wie im Zoo-Beispiel (`object_detection_yolox/demo.py`): das
+    Bild RGB, auf 640 skaliert, oben links in ein Quadrat mit Rand 114 gelegt; die Kästen
+    zurück in Bildpixel. `modell` ist die Testtür (`infer(bild) -> x, y, b, h, score,
+    klasse`); ohne sie wird die Zoo-Klasse mit der Modelldatei gebaut.
+    """
+
+    def __init__(self, pfad=None, modell=None, mindest=YOLOX_MINDEST):
+        if modell is None:
+            from spotlab.backends.real.zoo.yolox import YoloX
+
+            modell = YoloX(str(pfad), confThreshold=YOLOX_KONFIDENZ)
+        self._modell = modell
+        self._mindest = float(mindest)
+
+    def __call__(self, rgb):
+        import cv2
+
+        rgb = np.asarray(rgb)
+        faktor = min(YOLOX_EINGABE / rgb.shape[0], YOLOX_EINGABE / rgb.shape[1])
+        quadrat = np.full((YOLOX_EINGABE, YOLOX_EINGABE, 3), 114.0, dtype=np.float32)
+        klein = cv2.resize(rgb, (int(rgb.shape[1] * faktor), int(rgb.shape[0] * faktor)),
+                           interpolation=cv2.INTER_LINEAR).astype(np.float32)
+        quadrat[:klein.shape[0], :klein.shape[1]] = klein
+        kaesten = []
+        for zeile in np.asarray(self._modell.infer(quadrat)).reshape(-1, 6):
+            if int(zeile[5]) != 0 or zeile[4] < self._mindest:
+                continue
+            x, y, b, h = (float(v) / faktor for v in zeile[:4])
+            kaesten.append((x, y, x + b, y + h, float(zeile[4])))
+        return sorted(kaesten, key=lambda k: -k[4])
+
+
+def kasten_zeile(kasten):
+    """Die Erkenner-Zeile (13 Werte) für die Pose aus einem YOLOX-Kasten.
+
+    Dieselbe Form wie `person_aus_pose`: Hüftmitte und ein Punkt über dem Kopf, dessen
+    Abstand die Grösse trägt. Aus dem Kasten geschätzt (Hüfte auf 52 %, der Punkt knapp
+    unter der Oberkante) — die Pose findet die echten Punkte darin selbst.
+    """
+    x1, y1, x2, y2, score = kasten
+    mitte, hoehe = (x1 + x2) / 2.0, y2 - y1
+    return np.array([x1, y1, x2, y2, mitte, y1 + KASTEN_HUEFTE * hoehe, mitte,
+                     y1 + KASTEN_OBEN * hoehe, 0.0, 0.0, 0.0, 0.0, score], dtype=np.float32)
+
+
+def koerper_aus_kasten(kasten):
+    """Ein `Koerper` aus dem Kasten allein — wenn die Pose darin kein Skelett fand.
+
+    Die Hüfte auf 52 % (die Gegenprobe prüft sie wie jede andere), keine Schulter: ohne
+    Skelett gibt es keine Schulterlinie für die Nase und keinen Rumpf für Handzeichen.
+    """
+    x1, y1, x2, y2, score = kasten
+    huefte = ((x1 + x2) / 2.0, y1 + KASTEN_HUEFTE * (y2 - y1))
+    return Koerper(huefte, None, float(score), (float(x1), float(y1), float(x2), float(y2)))
 
 
 # ------------------------------------------------------ Aus der Pose lesen
@@ -203,26 +311,38 @@ class Koerpererkenner:
 
     `erkenner` und `pose` sind die Testtüren: `erkenner(bgr) -> Zeilen (N×13)`,
     `pose(bgr, zeile) -> (kasten, landmarken, …, conf)` oder None. Ohne sie
-    werden die Zoo-Klassen mit den Modelldateien gebaut.
+    werden die Zoo-Klassen mit den Modelldateien gebaut. `personen(rgb) ->
+    [(x1, y1, x2, y2, score)]` ist die Suche mit YOLOX (`YoloxPersonen`); ohne
+    Testtüren wird sie aus `personenmodell()` gebaut, und fehlt das Modell, sucht
+    der MediaPipe-Erkenner wie bisher — `suchweg` sagt welcher, `ohne_yolox` warum.
 
     Zähler: `suchen` (Takte, in denen der Erkenner lief) und `spuren` (Takte,
     in denen die Spur getragen hat, ohne Erkenner). Für die Folge-Aufnahme
-    (`workshop/folgeaufnahme.py`) dazu je `finde`: `letzter_weg` ("spur" oder
-    "suche") und `letzte_landmarken` — 33 × (x, y, Präsenz) im PANORAMA, auch
+    (`workshop/folgeaufnahme.py`) dazu je `finde`: `letzter_weg` ("spur",
+    "yolox", "yolox-kasten" ohne Skelett, oder "suche" mit MediaPipe) und `letzte_landmarken` — 33 × (x, y, Präsenz) im PANORAMA, auch
     wenn die Pose auf einer Kachel lief; None ohne Körper.
     """
 
     def __init__(self, ordner=None, erkenner=None, pose=None, kacheln=True,
-                 mindestsicherheit=MINDESTSICHERHEIT):
-        if erkenner is None or pose is None:
+                 mindestsicherheit=MINDESTSICHERHEIT, personen=None):
+        self.ohne_yolox = None
+        if personen is None and (erkenner is None or pose is None):
+            try:
+                personen = YoloxPersonen(personenmodell(ordner))
+            except SpotlabError as fehler:
+                self.ohne_yolox = str(fehler)
+        if pose is None or (erkenner is None and personen is None):
             pfad_erkenner, pfad_pose = modellpfade(ordner)
             MPPersonDet, MPPose = _zoo()
-            det = MPPersonDet(str(pfad_erkenner), scoreThreshold=float(mindestsicherheit))
-            pos = MPPose(str(pfad_pose), confThreshold=float(mindestsicherheit))
-            erkenner = erkenner or det.infer
-            pose = pose or pos.infer
+            if pose is None:
+                pose = MPPose(str(pfad_pose), confThreshold=float(mindestsicherheit)).infer
+            if erkenner is None and personen is None:
+                erkenner = MPPersonDet(str(pfad_erkenner),
+                                       scoreThreshold=float(mindestsicherheit)).infer
         self._erkenner = erkenner
         self._pose = pose
+        self._personen = personen
+        self.suchweg = "mediapipe" if personen is None else "yolox"
         self._kacheln = kacheln
         self._spur = None
         self.suchen = 0
@@ -253,6 +373,8 @@ class Koerpererkenner:
             self._spur = None
 
         self.suchen += 1
+        if self._personen is not None:
+            return self._suche_yolox(feld, bgr)
         self.letzter_weg = "suche"
         kandidaten = []
         for x0, ausschnitt in self._ausschnitte(bgr):
@@ -272,6 +394,23 @@ class Koerpererkenner:
         landmarken[:, 0] += x0                       # die Spur lebt im ganzen Panorama
         self._spur = person_aus_pose(landmarken)
         self.letzte_landmarken = _skelett(landmarken)
+        return [koerper]
+
+    def _suche_yolox(self, feld, bgr):
+        """Der sicherste Mensch aus YOLOX, das Skelett aus der Pose in seinem Kasten."""
+        self.letzter_weg = "yolox"
+        kaesten = self._personen(_rgb(feld))
+        if not kaesten:
+            return []
+        kasten = max(kaesten, key=lambda k: k[4])
+        ergebnis = self._pose(bgr, kasten_zeile(kasten))
+        koerper = None if ergebnis is None else koerper_aus_pose(ergebnis[1], ergebnis[5])
+        if koerper is None:
+            # Kein Skelett: der Kasten selbst ist das Ziel, eine Spur gibt es nicht.
+            self.letzter_weg = "yolox-kasten"
+            return [koerper_aus_kasten(kasten)]
+        self._spur = person_aus_pose(ergebnis[1])
+        self.letzte_landmarken = _skelett(ergebnis[1])
         return [koerper]
 
 

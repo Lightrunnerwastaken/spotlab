@@ -62,7 +62,7 @@ ZUSTAND_FARBE = {"folgt": BLAU, "sucht": GELB, "angehalten": ROT, "nachlauf": GR
 
 # Gruppen der Schritte im Zeitbalken — Reihenfolge wie im Takt.
 GRUPPEN = (
-    ("Bilder", ("kameras", "tiefe"), (80, 130, 255)),
+    ("Bilder", ("bilder", "kameras", "tiefe"), (80, 130, 255)),
     ("Panorama", ("panorama", "punkte"), (110, 200, 225)),
     ("Zustand", ("lage", "gier"), (150, 150, 150)),
     ("Körper", ("koerper", "koerper_probe"), GRUEN),
@@ -79,6 +79,15 @@ LEGENDE = ("Zeitstrahl oben: blau folgt · grau Nachlauf · gelb sucht · rot an
 KNOCHEN = ((11, 12), (11, 23), (12, 24), (23, 24), (11, 13), (13, 15), (12, 14), (14, 16),
            (23, 25), (25, 27), (24, 26), (26, 28), (27, 31), (28, 32), (0, 11), (0, 12))
 PRAESENZ = 0.5
+# Die Suchwege des Koerpererkenners in Worten (`koerper.Koerpererkenner.letzter_weg`).
+WEGE = {"spur": "Spur", "suche": "Suche", "yolox": "YOLOX", "yolox-kasten": "YOLOX ohne Skelett"}
+# Bildabrufe hiessen bis zum 25.09.2026 `kameras` + `tiefe`, seither EIN Schritt `bilder`.
+ABRUFE = ("bilder", "kameras")
+
+
+def _finder_der(sicht):
+    """Die Finder einer Sicht — seit die Staffel die Bilder teilt, auch `koerper+gesicht`."""
+    return set((sicht.get("finder") or "").split("+"))
 
 
 # ------------------------------------------------------------------ Laden
@@ -198,8 +207,9 @@ def gesicht_offline(lauf_dir, takte, pano, erkenner_=None, kaesten_holen=None):
     for takt in takte:
         offline = []
         for sicht in takt.get("sichten") or []:
-            if sicht.get("finder") != "koerper" or not sicht.get("bild"):
-                continue
+            if "koerper" not in _finder_der(sicht) or "gesicht" in _finder_der(sicht) \
+                    or not sicht.get("bild"):
+                continue          # das Gesicht lief darauf schon im Lauf
             feld = _bild_laden(lauf, sicht["bild"])
             punkte = None
             if sicht.get("tiefe"):
@@ -259,7 +269,7 @@ def bericht(takte, name=""):
             z.append(f"  {schritt:<14}{statistics.median(werte) * 1000:6.0f} ms  "
                      f"{100 * sum(werte) / max(gesamt, 1e-9):4.0f} %  ({len(werte)} Takte)")
     doppelt = sum(1 for t in takte
-                  if sum(1 for name_, _ in t.get("zeiten") or [] if name_ == "kameras") >= 2)
+                  if sum(1 for name_, _ in t.get("zeiten") or [] if name_ in ABRUFE) >= 2)
     if doppelt:
         z.append(f"Zwei Bildabrufe in einem Takt: {doppelt} (der Körper fand nichts, "
                  f"das Gesicht holte eigene Bilder)")
@@ -278,10 +288,10 @@ def bericht(takte, name=""):
         wege = collections.Counter(k.get("weg") for k in koerper)
         verworfen = collections.Counter(k["grund"] for k in koerper if not k.get("genommen"))
         z.append(f"Körper: {len(koerper)} erkannt, {sum(1 for k in koerper if k.get('genommen'))} "
-                 f"genommen · Spur {wege.get('spur', 0)}, Suche {wege.get('suche', 0)}"
+                 f"genommen · " + ", ".join(f"{WEGE.get(w, w)} {n}" for w, n in wege.most_common() if w)
                  + (" · verworfen: " + ", ".join(f"{v}× {k}" for k, v in verworfen.most_common())
                     if verworfen else ""))
-    gesicht_sichten = sum(1 for t in takte for s in t.get("sichten") or [] if s.get("finder") == "gesicht")
+    gesicht_sichten = sum(1 for t in takte for s in t.get("sichten") or [] if "gesicht" in _finder_der(s))
     gesichter = [g for t in takte for g in t.get("gesichter") or []]
     if gesicht_sichten:
         verworfen = collections.Counter(g["grund"] for g in gesichter if not g.get("genommen"))
@@ -291,7 +301,7 @@ def bericht(takte, name=""):
                     if verworfen else ""))
     if any("gesichter_offline" in t for t in takte):
         koerper_sichten = [(t, s) for t in takte for s in t.get("sichten") or []
-                           if s.get("finder") == "koerper" and s.get("bild")]
+                           if "koerper" in _finder_der(s) and s.get("bild")]
         mit_gesicht = [(t, s) for t, s in koerper_sichten
                        if any(g["sicht"] == s.get("nr") and g.get("genommen")
                               for g in t.get("gesichter_offline") or [])]
@@ -465,7 +475,7 @@ class _Maler:
                 px, py = self._xy(*punkt)
                 maler.ellipse((px - 5, py - 5, px + 5, py + 5), outline=farbe, width=3)
         teil = "Hüfte" if k.get("punkt") == "huefte" else "Schulter"
-        weg = {"spur": " · Spur", "suche": " · Suche"}.get(k.get("weg"), "")
+        weg = f" · {WEGE[k['weg']]}" if k.get("weg") in WEGE else ""
         if k.get("genommen"):
             text = (f"Körper {k['conf']:.2f} · {_zahl(k.get('abstand'), '{:.2f} m')} · {teil} "
                     f"{_zahl(k.get('hoehe'), '{:.2f} m hoch')}{weg}")
