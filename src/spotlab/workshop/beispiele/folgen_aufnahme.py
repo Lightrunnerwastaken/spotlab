@@ -1,6 +1,6 @@
 """Folgen MIT Aufnahme: dasselbe wie `folgen.py` — und hinterher siehst du, was Spot sah.
 
-Spot folgt dir genau wie in `folgen.py` (Körper vor Gesicht, Handzeichen, LEDs,
+Spot folgt dir genau wie in `folgen.py` (Körper mit YOLOX, Handzeichen, LEDs,
 alle Schranken). Zusätzlich schreibt er je Takt mit, was er gesehen und daraus
 gemacht hat — das Panorama der Frontkameras, jeden erkannten Körper und jedes
 Gesicht mit Urteil (genommen oder warum verworfen), das Ziel, den Fahrbefehl,
@@ -39,11 +39,11 @@ with spotlab.connect() as spot:
     spot.power_on()
     spot.stand()
     print('Folgen mit Aufnahme: stell dich vor Spot und geh los. Offene Hand = Halt, Daumen hoch = Weiter. Stopp beendet.')
-    staffel = folgen.zuerst(folgen.koerper_finder(), folgen.gesicht_finder())
+    finder = folgen.koerper_finder()
     folgen.folge(
         spot,
-        staffel,
-        gesten=folgen.gesten_leser(staffel),
+        finder,
+        gesten=folgen.gesten_leser(finder),
         lauf_dir=spot.recorder.dir,
         aufnahme=True,
     )

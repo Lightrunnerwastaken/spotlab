@@ -1304,16 +1304,21 @@ def test_der_vorgabeweg_des_koerperfinders_baut_den_echten_erkenner(monkeypatch)
     assert len(gebaut) == 1, "ein Erkenner fuer den ganzen Lauf, nicht je Takt"
 
 
-def test_die_vorlage_staffelt_koerper_vor_gesicht_und_braucht_kein_tag():
-    """Jede Stufe dort, wo sie stark ist: Koerper nah und kopflos, Gesicht weit. Das Tag
-    ist seit dem 17.09.2026 nicht mehr in der Vorlage (Wunsch des Menschen: ein Schueler
-    soll ohne AprilTag losgehen koennen); `tag_finder()` bleibt fuer den Vergleich."""
+def test_die_vorlage_sucht_nur_den_koerper():
+    """Seit dem 25.09.2026 (YOLOX) sucht die Vorlage nur den Koerper. In der zweiten
+    Folge-Aufnahme (20260925T155416Z) lief das Gesicht in 139 Takten, setzte 8 Kaesten
+    und nahm keinen; offline auf allen 601 Koerper-Sichten fand es nie ein Ziel, das der
+    Koerper nicht schon hatte -- und kostete je Lauf 75 ms. Das Tag ist seit dem
+    17.09.2026 draussen (ein Schueler soll ohne AprilTag losgehen koennen). Beide
+    Finder bleiben im Code, fuer den Vergleich."""
     from pathlib import Path
 
-    quelle = (Path(folgen.__file__).parent / "beispiele" / "folgen.py").read_text(encoding="utf-8")
-    zeile = next(z for z in quelle.splitlines() if "zuerst(" in z and "finder()" in z)
-    assert zeile.index("koerper_finder()") < zeile.index("gesicht_finder()")
-    assert "tag_finder()" not in zeile
+    for name in ("folgen.py", "folgen_aufnahme.py"):
+        quelle = (Path(folgen.__file__).parent / "beispiele" / name).read_text(encoding="utf-8")
+        code = quelle[quelle.index('"""', 3) + 3:]
+        assert "finder = folgen.koerper_finder()" in code, name
+        assert "gesicht_finder()" not in code and "tag_finder()" not in code, name
+        assert "gesten=folgen.gesten_leser(finder)" in code, "die Handzeichen hängen am Koerper"
 
 
 def test_ohne_yolox_sagt_der_koerperfinder_es_im_befund(monkeypatch):

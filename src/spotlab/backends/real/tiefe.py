@@ -120,15 +120,24 @@ def kopfraum(punkte, von=KORRIDOR_VON_M, bis=KORRIDOR_BIS_M,
 
     None heisst „im Korridor haengt nichts", NICHT „keine Daten": ohne Bilder
     kommt man hier gar nicht erst her (`ueberhang_aus_bildern` wirft).
+
+    Gemeldet wird der Abstand, bis zu dem `min_punkte` Punkte liegen -- der
+    `min_punkte`-naechste Punkt, nicht der naechste. Bis zum 25.09.2026 zaehlten
+    die 20 Punkte den GANZEN Korridor und der Abstand kam vom naechsten
+    EINZELNEN: im Folgemodus stand der Mensch mit Hunderten Punkten 1.5-2 m
+    voraus, und drei, vier Rauschpunkte bei 0.56 m hielten Spot in zwoelf Takten
+    an (Folge-Aufnahme 20260925T125326Z). Eine echte Flaeche hat ihre 20 Punkte
+    dort, wo sie ist; der Abstand verschiebt sich damit um Millimeter.
     """
     punkte = np.asarray(punkte, dtype=float)
     if punkte.size == 0:
         return None
     x, y = punkte[:, 0], punkte[:, 1]
     im_korridor = (x > von) & (x < bis) & (np.abs(y) < halb)
-    if int(im_korridor.sum()) < min_punkte:
+    x = x[im_korridor]
+    if len(x) < min_punkte:
         return None
-    return float(x[im_korridor].min())
+    return float(np.partition(x, min_punkte - 1)[min_punkte - 1])
 
 
 # ------------------------------------------------------------- Protobuf-Ebene

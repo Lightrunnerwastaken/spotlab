@@ -128,6 +128,17 @@ def test_ein_paar_pixel_sind_noch_kein_tisch():
     assert tiefe.kopfraum(np.array([[1.0, 0.0, 0.2]] * tiefe.MIN_PUNKTE)) == pytest.approx(1.0)
 
 
+def test_ein_paar_rauschpunkte_vor_dem_menschen_halten_ihn_nicht_an():
+    """Folge-Aufnahme 20260925T125326Z: zwölf Takte „Überhang 0.56/0.75 m voraus",
+    gebremst von DREI BIS VIER Punkten, während der Mensch mit Hunderten Punkten
+    1.5-2 m voraus stand. Die 20 Punkte zählten den ganzen Korridor, der Abstand kam
+    vom nächsten EINZELNEN Punkt. Eine Fläche muss es dort geben, wo gemeldet wird."""
+    punkte = np.array([[0.55, 0.16, 0.24]] * 4 + [[1.8, 0.0, 0.3]] * 600)
+    assert tiefe.kopfraum(punkte) == pytest.approx(1.8)
+    tisch = np.array([[0.72, 0.0, 0.2]] * tiefe.MIN_PUNKTE + [[1.8, 0.0, 0.3]] * 600)
+    assert tiefe.kopfraum(tisch) == pytest.approx(0.72), "eine echte Fläche davor zählt weiter"
+
+
 # ------------------------------------------------- gegen die echte Aufnahme
 
 

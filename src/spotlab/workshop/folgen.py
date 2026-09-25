@@ -247,8 +247,10 @@ def koerper_finder(ordner=None, quellen=GESICHT_QUELLEN, tiefe_quellen=TIEFE_QUE
     Gemessen am 16.09.2026 über 510 Panoramen: das Gesicht fand den Menschen in
     149 Takten, der Körper in 134 — in ANDEREN Momenten. 33-mal nur der Körper:
     die kopflosen Bilder, 1.3–2 m, aufrecht, in der Naht-Kerbe. 47-mal nur das
-    Gesicht: weit weg. Deshalb steht dieser Finder in der Staffel VOR dem
-    Gesicht — `zuerst(koerper_finder(), gesicht_finder(), tag_finder())`.
+    Gesicht: weit weg. Deshalb stand dieser Finder in der Staffel VOR dem
+    Gesicht. Seit dem 25.09.2026 sucht er mit YOLOX (`koerper.YoloxPersonen`)
+    und findet auch weit weg und kopflos; das Gesicht brachte in zwei
+    aufgenommenen Fahrten nichts mehr dazu, und die Vorlage nimmt ihn ALLEIN.
 
     Das Ziel ist die Hüftmitte (`backends/real/koerper.py`), geprüft auf
     0.6–1.3 m über dem Boden; `bild_oben` ist die Schulterlinie, nicht die

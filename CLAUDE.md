@@ -326,7 +326,14 @@ versionsgepinntes Extra `spotlab[sim]`.
   Oberkante), die Spur auch; findet die Pose im Kasten kein Skelett, zählt der Kasten selbst
   (`koerper_aus_kasten`, keine Schulter, keine Spur, Weg `yolox-kasten`). Fehlt das Modell,
   sucht der Erkenner wie vorher (`suchweg`, `ohne_yolox`), und der Befund des Finders sagt
-  „Suche ohne YOLOX-Modell".
+  „Suche ohne YOLOX-Modell". **Seit dem Abend des 25.09.2026 sucht die Vorlage NUR den Körper**
+  (`folgen.py`, `folgen_aufnahme.py`: `koerper_finder()` allein, die Handzeichen hängen an
+  ihm): in der zweiten Folge-Aufnahme (`20260925T155416Z`, mit YOLOX) lief das Gesicht in 139
+  Takten, setzte 8 Kästen und nahm keinen, offline auf allen 601 Körper-Sichten fand es nie
+  ein Ziel, das der Körper nicht schon hatte — und kostete je Lauf 75 ms. `gesicht_finder()`
+  und `zuerst()` bleiben für den Vergleich. Die int8-Fassung von YOLOX aus dem Zoo wurde
+  geprüft und verworfen: 12 % schneller (204 gegen 233 ms), aber 132 statt 141 der 174
+  verpassten Bilder.
 - **Die Peilung wird vor dem Befehl um die GEMESSENE Drehung seit dem Bild nachgeführt
   (`Ziel.gier`, `nachgefuehrt`), und wer eine halbe Drehung lang seitlich bleibt, ist kein
   Mensch (`MAX_SUCHDREHUNG_GRAD`).** Befund vom 17.09.2026 (Läufe 09:41 und 09:49, Körper-Finder,
@@ -921,7 +928,13 @@ versionsgepinntes Extra `spotlab[sim]`.
   Korridor, davon 71 näher als ein Meter. **Der eigene Rumpf zählt nie mit** (dieselbe
   Blindzone-Ellipse wie beim Tiefengitter) — die Kameras sehen den eigenen Rücken, und wer
   den mitzählt, meldet dauernd Überhang. **Glas sieht auch das nicht:** die Tiefenkameras
-  schauen hindurch wie das Gitter, das bleibt eine physikalische Lücke.
+  schauen hindurch wie das Gitter, das bleibt eine physikalische Lücke. **Gemeldet wird
+  der Abstand, bis zu dem `MIN_PUNKTE` Punkte liegen** (`tiefe.kopfraum`, seit 25.09.2026),
+  nicht der nächste einzelne: bis dahin zählten die 20 Punkte den ganzen Korridor — der
+  Mensch, dem Spot folgte, stand mit Hunderten Punkten 1.5–2 m voraus —, und drei, vier
+  Rauschpunkte bei 0.56 m bremsten ihn in zwölf Takten (Folge-Aufnahme `20260925T125326Z`;
+  nachgerechnet an den gespeicherten Tiefenpunkten: diese zwölf fallen weg, die 30 Takte vor
+  einer echten Glastür bei 0.70 m bleiben).
 - **`ObstacleGrid.free_distance` übergeht Unbekanntes nur im Körperschatten (bis
   `FREI_AB_M`), Bekanntes nie.** Dicht am Körper sieht Spot nichts — die Frontkameras
   treffen den Boden erst 0.9 m vor der Mitte; ein Strahl, der deshalb 0.0 meldete, wäre

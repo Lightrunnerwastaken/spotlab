@@ -4,14 +4,15 @@ Stell dich vor Spot, starte dieses Programm und geh los. Spot dreht sich zu dir
 und hält ungefähr anderthalb Meter Abstand. Näher als einen Meter kommt er nie,
 und rückwärts fährt er nicht — nach hinten sieht er nichts.
 
-Gesucht wird in einer STAFFEL: zuerst der Körper, dann ein Gesicht. Das hat
-einen gemessenen Grund. Spots Frontkameras schauen rund 20 Grad nach unten;
-nah und genau voraus ist ein Gesicht über dem Bild oder in der Naht der beiden
-Kameras — die Hüfte nicht. Weit weg ist der Körper für den Erkenner zu klein,
-das Gesicht nicht. Fehlt ein Modell oder OpenCV, fällt der betroffene Finder
-aus und die nächste Stufe trägt; warum, steht im Protokoll und in der Zeile
-„Noch kein Ziel". Ein AprilTag braucht es nicht mehr — wer den Tag-Weg zum
-Vergleich will, nimmt `folgen.tag_finder()` (unten).
+Gesucht wird dein KÖRPER, nicht dein Gesicht. Spots Frontkameras schauen rund
+20 Grad nach unten; nah und genau voraus ist ein Gesicht über dem Bild oder in
+der Naht der beiden Kameras — die Hüfte nicht. Den Menschen findet YOLOX im
+ganzen Bild, auch weit weg und auch ohne Kopf im Bild; das Skelett legt danach
+die Pose hinein. Am 25.09.2026 fand das Gesicht in zwei aufgenommenen Fahrten
+nichts mehr, was der Körper nicht schon hatte — es kostete nur Zeit, deshalb
+ist es draussen. Fehlt ein Modell oder OpenCV, steht der Grund im Protokoll
+und in der Zeile „Noch kein Ziel". Ein AprilTag braucht es nicht — wer den
+Tag- oder Gesichts-Weg zum Vergleich will, nimmt die Zeilen unten.
 
 Die LEDS AM KOPF sagen dir, was er gerade denkt — du brauchst dafür keinen
 Blick auf den Laptop:
@@ -54,11 +55,11 @@ with spotlab.connect() as spot:
     spot.power_on()
     spot.stand()
     print('Folgen: stell dich vor Spot und geh los. Offene Hand = Halt, Daumen hoch = Weiter. Stopp beendet.')
-    staffel = folgen.zuerst(folgen.koerper_finder(), folgen.gesicht_finder())
+    finder = folgen.koerper_finder()
     folgen.folge(
         spot,
-        staffel,
-        gesten=folgen.gesten_leser(staffel),
+        finder,
+        gesten=folgen.gesten_leser(finder),
         lauf_dir=spot.recorder.dir,
     )
     spot.sit()
