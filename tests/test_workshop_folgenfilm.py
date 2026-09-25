@@ -101,6 +101,24 @@ def test_der_film_laeuft_in_echtzeit_und_haelt_jedes_bild_bis_zum_naechsten(tmp_
     assert not np.array_equal(sammler.bilder[0], sammler.bilder[-1]), "der Zustand aendert sich"
 
 
+def test_ein_takt_ueber_eine_sekunde_sprengt_den_balken_nicht(tmp_path):
+    """Lauf 20260925T125326Z: ein Takt mit 1.1 s Arbeit, der Balken lief ueber seinen
+    Rand, und PIL brach das ganze Video ab (x1 < x0)."""
+    uhr = _Uhr()
+    aufnahme = fa.Folgeaufnahme(tmp_path, uhr=uhr)
+    uhr.t = 1.0
+    aufnahme.takt_beginnt()
+    aufnahme.sicht(Gesichtsaufnahme(_feld(), None, None, None, 15.0), "koerper")
+    for name in ("kameras", "koerper", "yunet", "walk"):
+        aufnahme.zeit_eintragen(name, 0.4)
+    uhr.t = 2.6
+    aufnahme.takt_endet("sucht")
+    aufnahme.schliessen()
+    sammler = _Sammler()
+    folgenfilm.film(tmp_path, fps=5, breite=320, gesicht=False, schreiber=sammler)
+    assert sammler.bilder
+
+
 def test_der_zeitplan_zeigt_das_letzte_bild_vor_jedem_zeitpunkt():
     takte = [{"t": 0.0, "arbeit_s": 0.3, "sichten": [{"nr": 0, "t": 0.1, "bild": "a.jpg"}]},
              {"t": 1.0, "arbeit_s": 0.3, "sichten": []},

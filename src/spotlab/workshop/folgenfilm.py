@@ -516,8 +516,9 @@ class _Maler:
             teile.append(("ganzer Takt, keine Aufteilung", _dauer(takt), GRAU))
         links = x
         for _name, dauer, farbe in teile:
-            rechts = links + dauer / BALKEN_S * breite
-            maler.rectangle((links, y, min(rechts, x + breite), y + hoehe), fill=farbe)
+            rechts = min(links + dauer / BALKEN_S * breite, x + breite)
+            if rechts > links:         # ueber 1 s endet der Balken am Rand, der Text sagt den Rest
+                maler.rectangle((links, y, rechts, y + hoehe), fill=farbe)
             links = rechts
         summe = sum(d for _, d, _ in teile)
         text = f"{summe * 1000:.0f} ms: " + " · ".join(f"{n} {d * 1000:.0f}" for n, d, _ in teile)
