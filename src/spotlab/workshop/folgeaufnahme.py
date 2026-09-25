@@ -114,6 +114,15 @@ def _punkt(p):
     return None if p is None else [_runde(p[0], 1), _runde(p[1], 1)]
 
 
+def gesicht_als_daten(sicht, befund):
+    """Ein Gesichts-`Befund` als Zeile — dieselbe Form im Lauf und offline im Video."""
+    b = befund
+    return {"sicht": sicht, "kasten": [_runde(v, 1) for v in b.box], "score": _runde(b.score),
+            "peilung": _runde(b.bearing, 2), "hoehenwinkel": _runde(b.elevation, 2),
+            "abstand": _runde(b.distance), "hoehe": _runde(b.height),
+            "genommen": bool(b.genommen), "grund": b.grund}
+
+
 def jpeg_schreiben(pfad, feld, guete=GUETE):
     """Das Panorama als JPEG — RGB bleibt RGB, Grau bleibt Grau."""
     import numpy as np
@@ -306,13 +315,7 @@ class Folgeaufnahme:
     def gesichter(self, sicht, befunde):
         if self._takt is None:
             return
-        for b in befunde:
-            self._takt["gesichter"].append({
-                "sicht": sicht, "kasten": [_runde(v, 1) for v in b.box], "score": _runde(b.score),
-                "peilung": _runde(b.bearing, 2), "hoehenwinkel": _runde(b.elevation, 2),
-                "abstand": _runde(b.distance), "hoehe": _runde(b.height),
-                "genommen": bool(b.genommen), "grund": b.grund,
-            })
+        self._takt["gesichter"].extend(gesicht_als_daten(sicht, b) for b in befunde)
 
     def ziel(self, ziel, ziel_jetzt=None, echt=True):
         if self._takt is None or ziel is None:

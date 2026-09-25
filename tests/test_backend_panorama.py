@@ -179,6 +179,16 @@ def test_eine_spalte_ist_ein_azimut_und_eine_zeile_ein_hoehenwinkel(kameras):
     assert oben > 0 > unten, "Hoehenwinkel nach oben positiv"
 
 
+def test_aus_der_peilung_wird_wieder_die_spalte(kameras):
+    """Das Video der Folge-Aufnahme zeichnet die nachgefuehrte Peilung ein -- eine
+    Zahl in Grad, die es auf die Spalte zurueckrechnen muss. Die Umkehrung von
+    `winkel`, nicht eine zweite Formulierung."""
+    pano = panorama.Panorama(kameras, zuschnitt=panorama.ALLES)
+    for spalte in (0.0, 123.4, pano.breite / 2, pano.breite - 1.0):
+        peilung, _ = pano.winkel(spalte, pano.hoehe / 2)
+        assert pano.spalte(peilung) == pytest.approx(spalte, abs=1e-6)
+
+
 def test_die_kamerahoehe_kommt_aus_der_kalibrierung(kameras):
     pano = panorama.Panorama(kameras, zuschnitt=panorama.ALLES)
     # Koerpermitte 0.51 m ueber dem Boden, die Kameras sitzen knapp darunter.

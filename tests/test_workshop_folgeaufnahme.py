@@ -230,6 +230,23 @@ def test_die_kameras_stehen_einmal_da_und_bauen_dasselbe_panorama(tmp_path):
     assert nachgebaut.kamerahoehe(15.0) == pytest.approx(pano.kamerahoehe(15.0))
 
 
+def test_das_beispiel_mit_aufnahme_faehrt_dieselbe_staffel_wie_folgen():
+    """Eine Aufnahme, die etwas ANDERES fährt als `folgen.py`, misst den falschen Lauf."""
+    from pathlib import Path
+
+    ordner = Path(folgen.__file__).parent / "beispiele"
+    vorlage = (ordner / "folgen.py").read_text(encoding="utf-8")
+    beispiel = (ordner / "folgen_aufnahme.py").read_text(encoding="utf-8")
+
+    def code(text):
+        return text[text.index('"""', 3) + 3:]
+
+    assert "aufnahme=True" in beispiel
+    ohne = code(beispiel).replace("        aufnahme=True,\n", "")
+    assert [z for z in ohne.splitlines() if "print(" not in z] == \
+        [z for z in code(vorlage).splitlines() if "print(" not in z], "sonst genau wie folgen.py"
+
+
 # ------------------------------------------------------------ Im Folgemodus
 
 

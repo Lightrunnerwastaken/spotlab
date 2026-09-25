@@ -148,6 +148,10 @@ class Panorama:
         tangens = (self._oben + zeile - HORIZONT * self._voll_hoehe) / self.brennweite
         return -math.degrees(azimut), -math.degrees(math.atan(tangens))
 
+    def spalte(self, peilung):
+        """Die Bildspalte zu einer Peilung in Grad — die Umkehrung von `winkel`."""
+        return -math.radians(float(peilung)) * self.brennweite - self._links + self._voll_breite / 2.0
+
     def kamerahoehe(self, blick_grad=0.0, standhoehe_m=STANDHOEHE_M):
         """Wie hoch die virtuelle Kamera über dem Boden sitzt, in Metern.
 

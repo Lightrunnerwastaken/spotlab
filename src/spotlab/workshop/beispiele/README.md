@@ -12,6 +12,8 @@ bleibt. Löschst du eine Datei, kommt das Original beim nächsten Start wieder.
 | `fahren.py` | selbst fahren: W/S, A/D, Q/E im Übungsfenster — der Knopf „🎮 Fahren" startet es |
 | `batteriewechsel.py` | Akku wechseln: Spot setzt sich, rollt auf die Seite und schaltet die Motoren selbst ab (`links`/`rechts`) |
 | `aufrichten.py` | das Gegenstück: Spot rollt sich zurück und setzt sich hin |
+| `folgen.py` | Spot geht dir hinterher (Körper, dann Gesicht), Handzeichen, LEDs — nur am echten Spot |
+| `folgen_aufnahme.py` | dasselbe, und Spot schreibt mit, was er sah; danach `python -m spotlab.workshop.folgenfilm runs/<lauf>` für das Video |
 
 Starten: Datei öffnen, über dem Editor „Wo läuft es?" wählen, ▶ Starten.
 Für `durchgang_finden.py` vorher im Raumeditor den Raum `durchgang` wählen,

@@ -360,6 +360,24 @@ versionsgepinntes Extra `spotlab[sim]`.
   lange mit dem letzten Befehl); `aus()` wartet höchstens `LICHT_AUS_WARTE_S` auf den Boten.
   `test_ein_haengendes_licht_verlaengert_keinen_takt` lässt die Anfrage am Kopf hängen, bis alle
   Takte durch sind.
+- **Die Folge-Aufnahme ist eine Beigabe und bremst keinen Takt** (`workshop/folgeaufnahme.py`,
+  `folge(aufnahme=True)`, Beispiel `folgen_aufnahme.py`, Video und Bericht
+  `python -m spotlab.workshop.folgenfilm <lauf>`, seit 25.09.2026). Anlass: der Folgelauf vom
+  25.09.2026 hatte einen Takt-Median von 0.57 s und Lücken bis 100 s, und `ziel` konnte nicht
+  sagen, was im Bild war und wohin die Zeit ging — 16 von 21 Verlusten geschahen mit dem Menschen
+  fast VORAUS (|Peilung| ≤ 15°, 1.1–2.9 m), also nicht am Bildrand. Je Takt EINE Zeile in
+  `folgen/takte.jsonl` (Zeiten je Schritt in ihrer Reihenfolge, Sichten, jeder Körper und jedes
+  Gesicht mit Urteil, Ziel roh/nachgeführt, Befehl samt bremsender Schranke, Zustand), Panorama
+  als JPEG und Tiefe als float16-NPZ unter `folgen/sichten/`, die Kalibrierung EINMAL in
+  `kameras.json` — `panorama_laden` baut daraus dasselbe Panorama, keinen Nachbau. **Bilder
+  schreibt ein Faden über eine begrenzte Warteschlange**: voll heisst Bild weg und die Zeile sagt
+  es; ein Schreibfehler wird gezählt und von `folge()` einmal gesagt, nie geworfen; geschlossen
+  wird NACH `spot.stop()`. **Finder und Bildaufnahme schreiben über `folgeaufnahme.aktiv()`**
+  (eine ContextVar, ohne Aufnahme ein Nichts) — so bleiben die Signaturen der Finder, und eine
+  Staffel aus `zuerst()` schreibt ohne Umbau mit. Das Video läuft in ECHTZEIT (jedes Bild steht,
+  bis das nächste kam — sonst verschwiege es das Stocken) und rechnet YuNet samt Gegenprobe
+  OFFLINE auf jeder Körper-Sicht: die Staffel fragt das Gesicht nur, wenn der Körper nichts
+  fand. Ein alter Lauf ohne Aufnahme gibt Leiste und Zeitstrahl aus `ziel`, ohne Bild.
 - **Handzeichen gibt es nur beim gefolgten Körper, und ein Zeichen ist kein Fahrbefehl.**
   `backends/real/gesten.py` (MediaPipe-Handfläche und -Handpose aus dem Zoo, ONNX über
   `cv2.dnn`) und `folgen.gesten_leser(finder)`: offene Hand = Halt, Daumen hoch = Weiter.
