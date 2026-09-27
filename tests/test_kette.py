@@ -30,7 +30,7 @@ with spotlab.connect() as spot:
 """
 
 
-def _warte_bis(bedingung, grenze_s=15.0, takt_s=0.1):
+def _warte_bis(bedingung, grenze_s=TEST_TIMEOUT_S, takt_s=0.1):
     ende = time.monotonic() + grenze_s
     while time.monotonic() < ende:
         wert = bedingung()
