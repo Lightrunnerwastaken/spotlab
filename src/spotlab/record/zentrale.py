@@ -27,7 +27,12 @@ LAGEBILD_BILD = "lagebild.png"
 # oder ein eingefrorenes Fenster halten die Klickfahrt an.
 TOTMANN_S = 0.5
 FARBEN = ("aus", "blau", "gruen", "gelb", "rot")
-ZUSTAENDE = ("keine", "unterwegs", "angekommen", "abgelehnt", "versperrt", "abgebrochen")
+ZUSTAENDE = ("keine", "unterwegs", "angekommen", "abgelehnt", "versperrt", "abgebrochen", "folgt")
+# Die Menschensuche (Teil 2): wie viel Rechenzeit sie bekommt -- aus, vorne selten, vorne so oft
+# es geht, dazu Seiten- und Rückkamera.
+SUCHSTUFEN = ("aus", "sparsam", "normal", "rundum")
+# Ein Klick meint einen Ort (Klickfahrt) oder einen Menschen (folgen).
+KLICKARTEN = ("ort", "mensch")
 # Die Farbnummern im Bild: 0 unbekannt, 1..ALTERSSTUFEN frei (frisch -> alt),
 # ALTERSSTUFEN+1..2*ALTERSSTUFEN Wand. Die Farben legt die GUI darueber
 # (`gui/lagebild.py`, aus `gui/theme.py`) -- so stimmen sie in hell und dunkel.
@@ -41,10 +46,14 @@ class Klickziel:
     ziel: tuple | None           # (x, y) im Rahmen der Skizze („vision“), None = abbrechen
     stufe: str                   # Tempostufe aus `record/fahrt.STUFEN`
     lebt: float                  # Wanduhr des Tabs beim letzten Auffrischen
+    art: str = "ort"             # "ort" (Klickfahrt) oder "mensch" (folgen)
 
 
-def schreibe_klickziel(lauf_dir, nummer, ziel, stufe, jetzt=time.time):
+def schreibe_klickziel(lauf_dir, nummer, ziel, stufe, jetzt=time.time, art="ort"):
+    if art not in KLICKARTEN:
+        raise ValueError(f"Klickart {art!r} -- erwartet eine von {list(KLICKARTEN)}.")
     daten = {
+        "art": art,
         "nummer": int(nummer),
         "ziel": None if ziel is None else [float(ziel[0]), float(ziel[1])],
         "stufe": str(stufe),
@@ -59,7 +68,10 @@ def lies_klickziel(lauf_dir):
         roh = json.loads((Path(lauf_dir) / KLICKZIEL).read_text(encoding="utf-8"))
         ziel = roh["ziel"]
         ziel = None if ziel is None else (float(ziel[0]), float(ziel[1]))
-        return Klickziel(int(roh["nummer"]), ziel, str(roh["stufe"]), float(roh["lebt"]))
+        art = str(roh.get("art", "ort"))
+        if art not in KLICKARTEN:
+            return None
+        return Klickziel(int(roh["nummer"]), ziel, str(roh["stufe"]), float(roh["lebt"]), art)
     except _FEHLER:
         return None
 
@@ -69,20 +81,28 @@ def lebt(klickziel, jetzt=time.time):
     return klickziel is not None and jetzt() - klickziel.lebt <= TOTMANN_S
 
 
-def schreibe_aktion(lauf_dir, nummer, art, farbe=None):
-    """Licht (`farbe` aus FARBEN) oder Ton. Unbekanntes wird abgewiesen, nicht geschrieben."""
-    if art not in ("licht", "ton"):
-        raise ValueError(f"Aktion {art!r} -- erwartet „licht“ oder „ton“.")
+def schreibe_aktion(lauf_dir, nummer, art, farbe=None, stufe=None):
+    """Licht (`farbe` aus FARBEN), Ton oder die Suchstufe (`stufe` aus SUCHSTUFEN).
+    Unbekanntes wird abgewiesen, nicht geschrieben."""
+    if art not in ("licht", "ton", "suche"):
+        raise ValueError(f"Aktion {art!r} -- erwartet „licht“, „ton“ oder „suche“.")
     if art == "licht" and farbe not in FARBEN:
         raise ValueError(f"Farbe {farbe!r} -- erwartet eine von {list(FARBEN)}.")
+    if art == "suche" and stufe not in SUCHSTUFEN:
+        raise ValueError(f"Suchstufe {stufe!r} -- erwartet eine von {list(SUCHSTUFEN)}.")
     daten = {"nummer": int(nummer), "art": art, "farbe": farbe if art == "licht" else None}
+    if art == "suche":
+        daten["stufe"] = stufe
     return atomar.schreibe_atomar(Path(lauf_dir) / AKTION, json.dumps(daten))
 
 
 def lies_aktion(lauf_dir):
     try:
         roh = json.loads((Path(lauf_dir) / AKTION).read_text(encoding="utf-8"))
-        return {"nummer": int(roh["nummer"]), "art": str(roh["art"]), "farbe": roh.get("farbe")}
+        aktion = {"nummer": int(roh["nummer"]), "art": str(roh["art"]), "farbe": roh.get("farbe")}
+        if roh.get("stufe") is not None:
+            aktion["stufe"] = str(roh["stufe"])
+        return aktion
     except _FEHLER:
         return None
 

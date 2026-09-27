@@ -75,3 +75,33 @@ def test_ein_halb_geschriebenes_lagebild_ist_keins(tmp_path):
     assert z.lies_lagebild(tmp_path) is None
     (tmp_path / z.LAGEBILD).write_text("[1, 2]", encoding="utf-8")
     assert z.lies_lagebild(tmp_path) is None
+
+
+# ------------------------------------------------ Teil 2: Menschen (27.09.2026)
+
+
+def test_ein_klickziel_kennt_seine_art(tmp_path):
+    z.schreibe_klickziel(tmp_path, 5, (1.0, 2.0), "normal", jetzt=lambda: 1.0, art="mensch")
+    assert z.lies_klickziel(tmp_path).art == "mensch"
+    z.schreibe_klickziel(tmp_path, 6, (1.0, 2.0), "normal", jetzt=lambda: 1.0)
+    assert z.lies_klickziel(tmp_path).art == "ort"
+    with pytest.raises(ValueError):
+        z.schreibe_klickziel(tmp_path, 7, (1.0, 2.0), "normal", art="hund")
+
+
+def test_ein_altes_klickziel_ohne_art_ist_ein_ort(tmp_path):
+    (tmp_path / z.KLICKZIEL).write_text(
+        '{"nummer": 1, "ziel": [1, 2], "stufe": "normal", "lebt": 1.0}', encoding="utf-8")
+    assert z.lies_klickziel(tmp_path).art == "ort"
+
+
+def test_die_suchstufe_ist_eine_aktion(tmp_path):
+    assert z.SUCHSTUFEN == ("aus", "sparsam", "normal", "rundum")
+    z.schreibe_aktion(tmp_path, 3, "suche", stufe="rundum")
+    assert z.lies_aktion(tmp_path) == {"nummer": 3, "art": "suche", "farbe": None, "stufe": "rundum"}
+    with pytest.raises(ValueError):
+        z.schreibe_aktion(tmp_path, 4, "suche", stufe="turbo")
+
+
+def test_folgen_ist_ein_zustand():
+    assert "folgt" in z.ZUSTAENDE
