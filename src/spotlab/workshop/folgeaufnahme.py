@@ -84,6 +84,9 @@ class _Keine:
     def ziel(self, ziel, ziel_jetzt=None, echt=True):
         pass
 
+    def merkpunkt(self, bericht):
+        pass
+
     def befehl(self, vx, wz, nick_grad, schranke="", gesperrt=False, angehalten=False):
         pass
 
@@ -334,6 +337,11 @@ class Folgeaufnahme:
                               "peilung_jetzt": _runde(jetzt_.bearing, 2),
                               "abstand": _runde(ziel.distance), "bild_oben": _runde(ziel.bild_oben, 2),
                               "echt": bool(echt)}
+
+    def merkpunkt(self, bericht):
+        """Der gemerkte Punkt im Raum (`workshop/merkpunkt.py`): x, y, Tempo, Alter."""
+        if self._takt is not None and bericht is not None:
+            self._takt["merkpunkt"] = dict(bericht)
 
     def befehl(self, vx, wz, nick_grad, schranke="", gesperrt=False, angehalten=False):
         if self._takt is None:

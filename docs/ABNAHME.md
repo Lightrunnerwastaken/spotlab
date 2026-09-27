@@ -1112,6 +1112,21 @@ einem Zollstock danebenstellen, um die Körperneigung grob abzulesen.
 pendelt, sind `LENKUNG` und `SCHWENK_GRAD` die Stellschrauben; die Werte hier sind gesetzt,
 nicht gemessen. Ebenso notieren, ab welcher Gehgeschwindigkeit er nicht mehr mitkommt.
 
+**Teil 5 — Merkpunkt und Tempo (seit 27.09.2026).** Mit `Beispiele/folgen_aufnahme.py`,
+danach das Video (`python -m spotlab.workshop.folgenfilm <lauf>`) ansehen.
+- (15) Hinter einer Säule oder einem Menschen kurz verschwinden (1–2 s): Spot fährt höchstens
+  eine Sekunde blind weiter, dreht dann nur noch zum gemerkten Punkt (Zeitstrahl hellgrau,
+  „hält"), und nach 3 s ohne Bild steht er und sucht (gelb).
+- (16) Seitlich um Spot herumgehen, bis man aus dem Bild ist: er dreht in die Laufrichtung
+  weiter, nicht zurück.
+- (17) Eine zweite Person tritt näher vor Spot, während er folgt: er bleibt beim ersten
+  Menschen (im Video bleibt die Peilungslinie bei ihm).
+- (18) Zügig weggehen (1 m/s): ab 3.5 m Abstand fährt Spot bis 1.0 m/s; nahe einer Wand
+  oder in einem engen Durchgang fährt er 0.5 („langsamer: …" in der Schranke der Aufnahme).
+  Mit Schüler-Konfiguration (`max_speed = 0.6`) bleibt es bei 0.6.
+
+**Ergebnis Teil 5** _(offen)_
+
 **Ergebnis** _(offen)_
 
 ---

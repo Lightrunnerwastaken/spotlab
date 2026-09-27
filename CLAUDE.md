@@ -402,6 +402,26 @@ versionsgepinntes Extra `spotlab[sim]`.
   bis das nächste kam — sonst verschwiege es das Stocken) und rechnet YuNet samt Gegenprobe
   OFFLINE auf jeder Körper-Sicht: die Staffel fragt das Gesicht nur, wenn der Körper nichts
   fand. Ein alter Lauf ohne Aufnahme gibt Leiste und Zeitstrahl aus `ziel`, ohne Bild.
+- **Beim Folgen merkt sich Spot den Menschen als Punkt im Raum** (`workshop/merkpunkt.py`,
+  seit 27.09.2026, freigegeben vom Menschen). Anlass: in den zwei Folge-Aufnahmen vom 25.09.
+  stand der Mensch bei 70 von 74 Verlusten über 1 s VOR Spot und war nur ein, zwei Bilder
+  lang übersehen, in der Lücke ging er im Mittel 0.4 m. Der Punkt liegt in der Odometrie
+  (`Ziel.ort` + `Ziel.gier`, aus DERSELBEN Zustandsabfrage wie das Bild, `_volle_lage`),
+  gilt `HALTEN_S` (3 s) ohne neues Bild, und Peilung und Abstand rechnen sich aus Spots
+  eigener Fahrt. **Blind FAHREN nur den Nachlauf lang (1 s)**, danach dreht er nur mit
+  (Zustand `haelt`, hellgrau im Film), dann steht er und sucht. Vorhergesagt wird höchstens
+  `VORHERSAGE_S` (1 s) voraus — über längere Lücken war die Vorhersage in den Aufnahmen
+  schlechter als „steht noch dort". **Wer ER ist, entscheidet der Punkt** (`waehle_ziel`,
+  ContextVar `_WAHL` wie `_TAKT_BILDER`): der Mensch im Fangkreis um Erwartung ODER
+  letzten Ort, nicht der nächste — erst ab zwei passenden Erkennungen (ein Ausreisser der
+  Tiefe in 7–8 m hätte sonst den echten Menschen drei Sekunden lang ausgesperrt:
+  nachgespielt 5 von 8 Fehlwahlen in Fahrt 2). Die Sicht für die Handzeichen ist die des
+  GEWÄHLTEN. Ein Ziel ohne Ort (Tag) hält wie bisher den Nachlauf. **Weit weg schneller**:
+  `tempo_deckel` 0.5 m/s bis 2.5 m, 1.0 ab 3.5 m, dazu das Tempo des Menschen vom Roboter
+  weg (`weg_tempo`, auf ihn zu bremst es); über 0.5 m/s prüfen Gitter, Kopfraum (je Takt
+  frisch) und Sperrzonen `vorausschau_m` weiter voraus (bei 1 m/s 1.8 m frei), sonst fährt
+  er 0.5 („langsamer: …"). Nachgespielt durch `folge()` (offene Schleife): „sucht" 246 → 175
+  und 93 → 55 Takte. Am Gerät: A34 Teil 5.
 - **Handzeichen gibt es nur beim gefolgten Körper, und ein Zeichen ist kein Fahrbefehl.**
   `backends/real/gesten.py` (MediaPipe-Handfläche und -Handpose aus dem Zoo, ONNX über
   `cv2.dnn`) und `folgen.gesten_leser(finder)`: offene Hand = Halt, Daumen hoch = Weiter.

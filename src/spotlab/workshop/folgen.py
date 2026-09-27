@@ -17,18 +17,24 @@ anderer Fall als ein Roboter, den jemand fährt. Deshalb, alle gleichzeitig:
 
 - Näher als `MIN_ABSTAND_M` geht er nie. Rückwärts fährt er auch nicht — nach
   hinten sieht er nichts; kommt der Mensch näher, bleibt Spot stehen.
-- Ohne Ziel steht er. SOFORT, in demselben Takt, nicht nach einer Frist. Das
-  ist derselbe Totmann-Gedanke wie im Fahrmodus.
+- Ohne Ziel steht er. Blind weiter FAHREN darf er nur den Nachlauf lang
+  (`NACHLAUF_S`, 1 s); der Merkpunkt (`workshop/merkpunkt.py`) lässt ihn danach
+  bis `merkpunkt.HALTEN_S` nur noch zum gemerkten Menschen DREHEN, dann steht
+  er und sucht. Das ist derselbe Totmann-Gedanke wie im Fahrmodus.
 - Vorwärts nur, wenn das Hindernisgitter voraus Platz meldet, wenn über dem
   Weg genug Kopfraum ist und wenn keine Sperrzone davorliegt. Jede Schranke,
   die ihre Daten NICHT lesen kann, verbietet die Fahrt (fail-closed) — eine
   Schranke, die bei Störung durchwinkt, ist keine.
-- Das Tempo deckelt zusätzlich `config.toml`, wie bei jedem `walk()`.
+- Das Tempo: nah höchstens `MAX_TEMPO_M_S`, weit weg bis `MAX_TEMPO_WEIT_M_S`
+  (`tempo_deckel`); schneller als `MAX_TEMPO_M_S` prüfen alle drei Schranken
+  weiter voraus (`vorausschau_m`), und reicht der Platz nicht, fährt er das alte
+  Tempo. `config.toml` deckelt zusätzlich, wie bei jedem `walk()`.
 
-Der Kopfraum wird nicht in jedem Takt geprüft: zwei Tiefenbilder über WLAN
-kosten mehr Zeit als ein Takt. Er gilt `KOPFRAUM_TAKT_S` lang weiter, und in
-dieser Zeit legt Spot höchstens einen halben Meter zurück — der geprüfte
-Korridor reicht zwei Meter voraus.
+Der Kopfraum wird bis `MAX_TEMPO_M_S` nicht in jedem Takt geprüft: zwei
+Tiefenbilder über WLAN kosten mehr Zeit als ein Takt. Er gilt `KOPFRAUM_TAKT_S`
+lang weiter, und in dieser Zeit legt Spot höchstens einen halben Meter zurück —
+der geprüfte Korridor reicht zwei Meter voraus. Wer schneller fährt, holt ihn
+jeden Takt frisch.
 """
 
 import contextlib
@@ -41,7 +47,7 @@ from pathlib import Path
 
 from spotlab.errors import SpotlabError
 from spotlab.record.run import STOPP_DATEI
-from spotlab.workshop import folgeaufnahme
+from spotlab.workshop import folgeaufnahme, merkpunkt
 from spotlab.workshop.beispiele import ORDNER
 
 DATEINAME = "folgen.py"
@@ -51,6 +57,18 @@ MIN_ABSTAND_M = 1.0              # näher NIE
 TOLERANZ_M = 0.25                # innerhalb davon fährt er gar nicht
 MAX_TEMPO_M_S = 0.5              # zusätzlich zum Deckel aus config.toml
 ANNAEHERUNG = 0.6                # m/s je Meter Abstandsfehler
+# WEIT WEG DARF ER SCHNELLER (27.09.2026, freigegeben vom Menschen): in der zweiten
+# Folge-Aufnahme (20260925T155416Z) fuhr Spot 116 Takte am Deckel von 0.5 m/s, und
+# zweimal wuchs der Abstand dabei auf 7-8 m -- genau dort ging der Mensch verloren.
+# Bis WEIT_AB_M bleibt es bei MAX_TEMPO_M_S, bis WEIT_VOLL_M steigt der Deckel auf
+# MAX_TEMPO_WEIT_M_S. `config.toml` deckelt weiter alles (Schueler 0.6 m/s).
+MAX_TEMPO_WEIT_M_S = 1.0
+WEIT_AB_M = 2.5
+WEIT_VOLL_M = 3.5
+# Wer schneller faehrt als MAX_TEMPO_M_S, prueft so viele Sekunden des Mehrtempos
+# weiter voraus -- Gitter, Kopfraum und Sperrzonen: bei 1 m/s 1.8 m statt 0.8 m frei.
+# Darunter bleibt alles wie bisher. Reicht der Platz nicht, faehrt er MAX_TEMPO_M_S.
+VORAUS_JE_TEMPO_S = 2.0
 MAX_DREHRATE_GRAD = 45.0
 LENKUNG = 1.2                    # Grad/s je Grad Peilung
 # Je Takt hoechstens diesen Anteil der Peilung wegdrehen. Mit dem Tag dauert ein
@@ -81,6 +99,11 @@ TIEFE_QUELLEN = ("frontleft_depth", "frontright_depth")
 # Takten holte das Gesicht die Bilder ein zweites Mal, je rund 200 ms. Ausserhalb einer
 # Staffel ist der Wert None, und jeder Aufruf holt selbst — wie vorher.
 _TAKT_BILDER = contextvars.ContextVar("folgen_takt_bilder", default=None)
+# WER ist das Ziel, wenn ein Finder mehrere Menschen sieht? In `folge()` entscheidet
+# der Merkpunkt (`workshop/merkpunkt.py`: der, der dort steht, wo der gefolgte erwartet
+# wird), ausserhalb der naechste. Eine ContextVar wie `_TAKT_BILDER`: die Signatur der
+# Finder bleibt, und ein selbstgebauter Finder bekommt die Wahl ueber `waehle_ziel`.
+_WAHL = contextvars.ContextVar("folgen_wahl", default=None)
 TAKT_S = 0.2
 VERLOREN_S = 5.0                 # so lange ohne Ziel, dann sagt er es
 # ...und dann immer wieder. Einmal am Anfang genügt nicht: nach einer halben
@@ -160,6 +183,10 @@ class Ziel:
     # `folge()` zieht davon ab, was Spot seither gedreht hat: das Bild ist beim Befehl
     # einen halben Takt alt, und der vorige Befehl lief die ganze Zeit weiter.
     gier: float = None
+    # Wo der Roboter stand, als das Bild kam: (x, y) in Metern aus `state.pose`
+    # (Odometrie) -- mit `gier` zusammen legt das den Menschen als Punkt in den
+    # Raum (`workshop/merkpunkt.py`). None wie bei `gier`.
+    ort: tuple = None
 
 
 @dataclass(frozen=True)
@@ -309,15 +336,22 @@ def koerper_finder(ordner=None, quellen=GESICHT_QUELLEN, tiefe_quellen=TIEFE_QUE
         if getattr(eingebaut, "ohne_yolox", None):
             # Die Suche lief mit dem alten Erkenner, der viele Menschen uebersieht.
             zuletzt["text"] += " (Suche ohne YOLOX-Modell)"
-        genommen = sorted(((b, k) for b, k in zip(befunde, koerper_liste) if b.genommen),
-                          key=lambda paar: paar[0].distance)
-        if not genommen:
+        paare = []
+        for b, k in zip(befunde, koerper_liste):
+            if b.genommen:
+                teil = "Hüfte" if b.punkt == "huefte" else "Schulter"
+                paare.append((Ziel(b.bearing, b.distance, f"Körper, {teil} auf {b.height:.2f} m",
+                                   bild_oben=b.bild_oben, gier=aufnahme.gier, ort=aufnahme.ort), k))
+        if not paare:
             return None
-        b, k = genommen[0]
+        ziel = waehle_ziel([z for z, _ in paare])
+        if ziel is None:
+            zuletzt["text"] += ", keiner beim Merkpunkt (ein anderer Mensch?)"
+            return None
+        k = next(k for z, k in paare if z is ziel)
+        # Die Sicht ist die des GEWAEHLTEN Menschen: an ihr liest der Gestenleser die Hand.
         zuletzt["sicht"] = Sicht(zuletzt["nummer"], aufnahme, k)
-        teil = "Hüfte" if b.punkt == "huefte" else "Schulter"
-        return Ziel(b.bearing, b.distance, f"Körper, {teil} auf {b.height:.2f} m",
-                    bild_oben=b.bild_oben, gier=aufnahme.gier)
+        return ziel
 
     finde.befund = lambda: zuletzt["text"]
     finde.letzte = lambda: zuletzt["sicht"]
@@ -392,12 +426,14 @@ def gesicht_finder(modell=None, mindestscore=None, quellen=GESICHT_QUELLEN,
         mit.zeit_eintragen("gesicht_probe", time.perf_counter() - beginn - erkenner_s[0])
         mit.gesichter(sicht_nr, befunde)
         zuletzt["text"] = _gesichtsbefund(befunde)
-        genommen = sorted((b for b in befunde if b.genommen),
-                          key=lambda b: b.distance)
-        if not genommen:
+        kandidaten = [_ziel_aus_befund(b, aufnahme.pano, aufnahme.gier, aufnahme.ort)
+                      for b in befunde if b.genommen]
+        if not kandidaten:
             return None
-        kopf = genommen[0]
-        return _ziel_aus_befund(kopf, aufnahme.pano, aufnahme.gier)
+        ziel = waehle_ziel(kandidaten)
+        if ziel is None:
+            zuletzt["text"] += ", keiner beim Merkpunkt (ein anderer Mensch?)"
+        return ziel
 
     finde.befund = lambda: zuletzt["text"]
     finde.hinweis = (
@@ -409,7 +445,7 @@ def gesicht_finder(modell=None, mindestscore=None, quellen=GESICHT_QUELLEN,
     return finde
 
 
-def _ziel_aus_befund(kopf, pano, gier=None):
+def _ziel_aus_befund(kopf, pano, gier=None, ort=None):
     """Ein genommener Befund als Ziel — samt der Oberkante des Kastens im Bild.
 
     `pano.winkel` rechnet Spalte/Zeile in Peilung und Hoehenwinkel um, koerperfest.
@@ -419,7 +455,7 @@ def _ziel_aus_befund(kopf, pano, gier=None):
     x, y, breite, _hoehe = kopf.box
     _, oben = pano.winkel(x + breite / 2.0, y)
     return Ziel(kopf.bearing, kopf.distance, f"Gesicht auf {kopf.height:.2f} m",
-                bild_oben=float(oben), gier=gier)
+                bild_oben=float(oben), gier=gier, ort=ort)
 
 
 def _koerperbefund(befunde):
@@ -467,6 +503,7 @@ class Gesichtsaufnahme:
     punkte: object            # Nx3 Tiefenpunkte im aufgerichteten Körperrahmen
     blick_grad: float         # der GEMESSENE Nick, nach oben positiv
     gier: float = None        # der Gierwinkel (rad) beim Bild -- fuer `Ziel.gier`
+    ort: tuple = None         # (x, y) des Roboters beim Bild (odom) -- fuer `Ziel.ort`
 
 
 def bildaufnahme(spot, gemerkt, quellen=GESICHT_QUELLEN, tiefe_quellen=TIEFE_QUELLEN):
@@ -515,8 +552,9 @@ def bildaufnahme(spot, gemerkt, quellen=GESICHT_QUELLEN, tiefe_quellen=TIEFE_QUE
     # `state.pitch` ist im Bogenmass, Nase hoch NEGATIV (Projektkonvention).
     # EINE Zustandsabfrage fuer Nick und Gier: beide gehoeren zu diesem Bild.
     with mit.zeit("lage"):
-        nick, gier = _lage(spot)
-    aufnahme = Gesichtsaufnahme(feld, gemerkt["pano"], None, punkte, -math.degrees(nick), gier=gier)
+        nick, gier, ort = _volle_lage(spot)
+    aufnahme = Gesichtsaufnahme(feld, gemerkt["pano"], None, punkte, -math.degrees(nick),
+                                gier=gier, ort=ort)
     if takt is not None:
         takt[schluessel] = aufnahme
     return aufnahme
@@ -570,10 +608,19 @@ def _lage(spot):
     Der Nick ohne Wert ist 0.0 (die Rechnung läuft dann flach weiter), die Gier
     ohne Wert ist None: ohne sie wird nicht nachgeführt, und das darf man wissen.
     """
+    return _volle_lage(spot)[:2]
+
+
+def _volle_lage(spot):
+    """(Nick, Gier, Ort) aus EINER Zustandsabfrage — Ort ist (x, y) aus `state.pose` (odom).
+
+    Wie bei `_lage`: ohne Wert ist der Nick 0.0, Gier und Ort sind None. Ohne Ort
+    gibt es keinen Merkpunkt (`workshop/merkpunkt.py`), gefolgt wird wie bisher.
+    """
     try:
         zustand = spot.state
     except Exception:
-        return 0.0, None
+        return 0.0, None, None
     try:
         nick = float(zustand.pitch)
     except Exception:
@@ -582,8 +629,14 @@ def _lage(spot):
         gier = float(zustand.pose[2])
     except Exception:
         gier = None
+    try:
+        ort = (float(zustand.pose[0]), float(zustand.pose[1]))
+    except Exception:
+        ort = None
+    if ort is not None and not all(_endlich(w) for w in ort):
+        ort = None
     # Ein NaN rechnet sich ueberall hindurch, ohne je aufzufallen: kein Wert statt eines falschen.
-    return (nick if _endlich(nick) else 0.0), (gier if _endlich(gier) else None)
+    return (nick if _endlich(nick) else 0.0), (gier if _endlich(gier) else None), ort
 
 
 def _endlich(wert):
@@ -639,6 +692,20 @@ def nachgefuehrt(ziel, gier_jetzt):
 
     gedreht = math.degrees(_wickle(float(gier_jetzt) - float(ziel.gier)))
     return replace(ziel, bearing=ziel.bearing - gedreht)
+
+
+def waehle_ziel(kandidaten):
+    """Welcher der gesehenen Menschen ist das Ziel? Das Ziel oder None.
+
+    In `folge()` entscheidet der Merkpunkt — er bleibt bei dem Menschen, dem Spot
+    folgt, auch wenn ein anderer näher steht, und sagt None, wenn keiner dort steht,
+    wo er ihn erwartet. Ausserhalb von `folge()` ist es der nächste, wie bisher.
+    """
+    kandidaten = list(kandidaten)
+    wahl = _WAHL.get()
+    if wahl is not None:
+        return wahl(kandidaten)
+    return min(kandidaten, key=lambda z: z.distance) if kandidaten else None
 
 
 def zuerst(*finder):
@@ -861,9 +928,26 @@ def zone_voraus(spot, raum, strecke=ZONE_VORAUS_M):
 # ------------------------------------------------------------------ Regler
 
 
+def tempo_deckel(abstand):
+    """Das Höchsttempo bei diesem Abstand: MAX_TEMPO_M_S nah, bis MAX_TEMPO_WEIT_M_S weit weg."""
+    anteil = (float(abstand) - WEIT_AB_M) / (WEIT_VOLL_M - WEIT_AB_M)
+    anteil = min(1.0, max(0.0, anteil))
+    return MAX_TEMPO_M_S + anteil * (MAX_TEMPO_WEIT_M_S - MAX_TEMPO_M_S)
+
+
+def vorausschau_m(vx):
+    """So viel weiter voraus als sonst prüfen die Schranken bei diesem Tempo (0 bis MAX_TEMPO_M_S)."""
+    return max(0.0, float(vx) - MAX_TEMPO_M_S) * VORAUS_JE_TEMPO_S
+
+
 def befehl(ziel, wunsch=WUNSCH_ABSTAND_M, mindest=MIN_ABSTAND_M, toleranz=TOLERANZ_M,
-           takt_s=None):
+           takt_s=None, weg_tempo=0.0):
     """(vx, wz) aus Peilung und Abstand — ohne Roboter prüfbar.
+
+    `weg_tempo` ist, wie schnell sich der Mensch entfernt (m/s, auf Spot zu negativ,
+    aus dem Merkpunkt): es kommt zum Tempo dazu, damit Spot Schritt hält, statt
+    hinterherzuhinken — und kommt der Mensch näher, bremst es. Gedeckelt wird nach
+    Abstand (`tempo_deckel`): nah wie bisher 0.5 m/s, weit weg bis 1.0.
 
     Rückwärts gibt es nicht: nach hinten sieht Spot nichts. Ist der Mensch zu
     nah, bleibt er stehen und dreht sich höchstens mit.
@@ -889,14 +973,25 @@ def befehl(ziel, wunsch=WUNSCH_ABSTAND_M, mindest=MIN_ABSTAND_M, toleranz=TOLERA
     fehler = ziel.distance - wunsch
     if fehler <= toleranz or ziel.distance <= mindest:
         return 0.0, wz
-    return min(MAX_TEMPO_M_S, ANNAEHERUNG * fehler), wz
+    weg = float(weg_tempo) if _endlich(weg_tempo) else 0.0
+    return max(0.0, min(tempo_deckel(ziel.distance), ANNAEHERUNG * fehler + weg)), wz
 
 
 def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
           schlaf=time.sleep, takt_s=TAKT_S, laeuft=None, lauf_dir=None,
           kopfraum_takt_s=KOPFRAUM_TAKT_S, blick_grad=BLICK_GRAD, nachlauf_s=NACHLAUF_S,
-          gesten=None, licht=None, aufnahme=None):
+          gesten=None, licht=None, aufnahme=None, halten_s=merkpunkt.HALTEN_S):
     """Die Schleife: Ziel suchen, Abstand halten, bei jeder Schranke stehen bleiben.
+
+    DER MERKPUNKT (27.09.2026, `workshop/merkpunkt.py`): trägt das Ziel seinen Ort
+    (`Ziel.ort`, der Körper- und der Gesichtsfinder tun es), merkt sich Spot den
+    Menschen als Punkt im Raum. Sieht er ihn nicht, gilt der Punkt `halten_s` lang
+    weiter — Peilung und Abstand rechnen sich aus Spots eigener Fahrt, und läuft der
+    Mensch seitlich weg, zeigt der Punkt eine Sekunde in seine Laufrichtung voraus.
+    Blind FAHREN darf Spot nur den Nachlauf lang (`nachlauf_s`), danach dreht er nur
+    noch mit (Zustand `haelt`), und ist der Punkt abgelaufen, steht er und sucht.
+    Sieht der Finder mehrere Menschen, nimmt Spot den beim Punkt (`waehle_ziel`),
+    nicht den nächsten. Ein Ziel ohne Ort (Tag) hält wie bisher den Nachlauf.
 
     `aufnahme=True` schreibt je Takt mit, was Spot sah und tat
     (`workshop/folgeaufnahme.py`: Panorama, Tiefe, jeder Körper und jedes
@@ -984,6 +1079,7 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
     faehrt = False
     takt_beginn = None          # wann der letzte Takt begann: so lange dreht Spot blind
     letztes_ziel = None         # fuer den Nachlauf: das zuletzt ECHT gesehene Ziel
+    merk = merkpunkt.Merkpunkt(halten_s=halten_s)
     angehalten = False          # per Handzeichen -- bis zum Daumen hoch
     gesten_stolpern_gemeldet = False
     licht_stolpern_gemeldet = False
@@ -1038,7 +1134,11 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
             takt_dauer = max(takt_s, nun - takt_beginn) if takt_beginn is not None else takt_s
             takt_beginn = nun
             mit.takt_beginnt()
-            roh = _sicher(finder, spot)
+            wahl_marke = _WAHL.set(lambda kandidaten, t=nun: merk.waehle(t, kandidaten))
+            try:
+                roh = _sicher(finder, spot)
+            finally:
+                _WAHL.reset(wahl_marke)
             ziel, ungueltig = _gepruefter(roh)
             if ungueltig and not ungueltig_gemeldet:
                 ungueltig_gemeldet = True
@@ -1047,6 +1147,8 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
                 melde(f"{getattr(roh, 'name', 'Ziel')}: ungültige Zahl vom Finder ({ungueltig}) "
                       f"— {was}. Den Finder prüfen.")
             echt = ziel is not None
+            if echt:
+                merk.aufnehmen(nun, ziel)      # ohne Ort (Tag) vergisst er den Punkt
 
             if gesten is not None:
                 # Direkt nach dem Finder: der Leser nimmt dessen Bild aus DIESEM Takt.
@@ -1070,10 +1172,14 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
                     if fehlschlag and not schreibfehler_gemeldet:
                         schreibfehler_gemeldet = True
                         melde(f"Die Geste liess sich nicht aufzeichnen: {fehlschlag}")
-            if not echt and letztes_ziel is not None and nun - zuletzt_gesehen < nachlauf_s:
-                # Nachlauf: aus dem letzten Ziel weiter -- der Regler rechnet
-                # neu und ALLE Schranken werden unten wie sonst geprueft.
-                ziel = letztes_ziel
+            if not echt and letztes_ziel is not None:
+                if merk.aktiv(nun):
+                    # Der Merkpunkt haelt ihn fest; wo er steht, rechnet unten
+                    # `merk.ziel` aus Spots eigener Lage -- alle Schranken gelten.
+                    ziel = letztes_ziel
+                elif letztes_ziel.ort is None and nun - zuletzt_gesehen < nachlauf_s:
+                    # Nachlauf fuer Ziele ohne Ort (Tag): aus dem letzten Ziel weiter.
+                    ziel = letztes_ziel
             if ziel is None:
                 zeige(LICHT_ANGEHALTEN if angehalten else LICHT_SUCHT)
                 if faehrt:
@@ -1138,9 +1244,21 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
             # dem Bild GEMESSEN gedreht hat -- auch im Nachlauf, sonst drehte er blind
             # dem alten Winkel nach (17.09.2026: 35 Drehsinn-Wechsel in 100 s).
             with mit.zeit("gier"):
-                gier_jetzt = _gier(spot) if ziel.gier is not None else None
-            ziel_jetzt = nachgefuehrt(ziel, gier_jetzt)
+                _, gier_jetzt, ort_jetzt = (_volle_lage(spot) if ziel.gier is not None
+                                            else (0.0, None, None))
+            weg_tempo = 0.0
+            gemerkt = (ziel.ort is not None and merk.aktiv(nun) and gier_jetzt is not None
+                       and ort_jetzt is not None)
+            if gemerkt:
+                # Aus dem Punkt im Raum: Drehung UND Fahrt seit dem Bild sind heraus.
+                ziel_jetzt = merk.ziel(nun, ort_jetzt, gier_jetzt, ziel)
+                weg_tempo = merk.weg_tempo(ort_jetzt)
+            else:
+                ziel_jetzt = nachgefuehrt(ziel, gier_jetzt)
+            # Blind FAHREN nur den Nachlauf lang; danach dreht er nur noch mit.
+            nur_drehen = not echt and nun - zuletzt_gesehen >= nachlauf_s
             mit.ziel(ziel, ziel_jetzt, echt=echt)
+            mit.merkpunkt(merk.bericht(nun))
             # KREISSPERRE: seit das Ziel zuletzt vor ihm war, so viel gedreht?
             if abs(ziel_jetzt.bearing) <= SCHWENK_GRAD:
                 seitlich_gedreht, drehsperre = 0.0, False
@@ -1152,7 +1270,9 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
                           f"seitlich — das ist kein Mensch. Er dreht nicht weiter, bis etwas "
                           f"vor ihm ist.")
             gier_vorher = gier_jetzt
-            vx, wz = befehl(ziel_jetzt, takt_s=takt_dauer)
+            vx, wz = befehl(ziel_jetzt, takt_s=takt_dauer, weg_tempo=weg_tempo)
+            if nur_drehen:
+                vx = 0.0
             if drehsperre:
                 vx, wz = 0.0, 0.0
             if (blick_grad and ziel.bild_oben is not None
@@ -1179,24 +1299,42 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
 
             schranke = ""
             if vx > 0.0:
-                if kopfraum_geprueft is None or jetzt() - kopfraum_geprueft >= kopfraum_takt_s:
-                    with mit.zeit("kopfraum"):
-                        kopfraum = kopfraum_frei(spot)
-                    kopfraum_geprueft = jetzt()
-                with mit.zeit("gitter"):
-                    frei = frei_voraus(spot)
-                with mit.zeit("zone"):
-                    zone = zone_voraus(spot, raum)
-                for darf, grund in (frei, kopfraum, zone):
-                    if not darf:
-                        vx = 0.0
-                        schranke = grund
-                        if grund != letzter_grund:
-                            melde(f"Stehen geblieben: {grund}.")
-                            letzter_grund = grund
+                # Schneller als MAX_TEMPO_M_S: erst weiter voraus pruefen; reicht der
+                # Platz nicht, das alte Tempo mit den alten Strecken -- erst dann stehen.
+                versuche = [vx, MAX_TEMPO_M_S] if vx > MAX_TEMPO_M_S else [vx]
+                verworfen = ""              # warum das schnellere Tempo nicht ging
+                for versuch in versuche:
+                    mehr = vorausschau_m(versuch)
+                    if mehr:
+                        # Jeden Takt frisch: ein Kopfraum von vor einer Sekunde reicht bei
+                        # 1 m/s nicht mehr.
+                        with mit.zeit("kopfraum"):
+                            kopf = kopfraum_frei(spot, meter=KOPFRAUM_M + mehr)
+                    else:
+                        if (kopfraum_geprueft is None
+                                or jetzt() - kopfraum_geprueft >= kopfraum_takt_s):
+                            with mit.zeit("kopfraum"):
+                                kopfraum = kopfraum_frei(spot)
+                            kopfraum_geprueft = jetzt()
+                        kopf = kopfraum
+                    with mit.zeit("gitter"):
+                        frei = frei_voraus(spot, meter=FREIRAUM_M + mehr)
+                    with mit.zeit("zone"):
+                        zone = zone_voraus(spot, raum, strecke=ZONE_VORAUS_M + mehr)
+                    grund = next((g for darf, g in (frei, kopf, zone) if not darf), "")
+                    if not grund:
+                        if versuch < vx:
+                            schranke = f"langsamer: {verworfen}"
+                        vx = versuch
+                        letzter_grund = ""
                         break
+                    verworfen = grund
                 else:
-                    letzter_grund = ""
+                    vx = 0.0
+                    schranke = grund
+                    if grund != letzter_grund:
+                        melde(f"Stehen geblieben: {grund}.")
+                        letzter_grund = grund
 
             if (vx, wz) == (0.0, 0.0) and not blick_grad:
                 if faehrt:
@@ -1211,7 +1349,7 @@ def folge(spot, finder=None, raum=None, melde=print, jetzt=time.monotonic,
             mit.befehl(vx, wz, nick if blick_grad else 0.0, schranke=schranke,
                        gesperrt=drehsperre, angehalten=angehalten)
             mit.takt_endet("angehalten" if angehalten else "gesperrt" if drehsperre
-                           else "folgt" if echt else "nachlauf")
+                           else "folgt" if echt else "haelt" if nur_drehen else "nachlauf")
             aufnahme_melden()
             schlaf(_rest(takt_s, takt_beginn, jetzt))
     finally:

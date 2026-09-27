@@ -20,7 +20,7 @@ from spotlab.workshop.folgen import Ziel
 def test_weit_weg_geht_er_vorwaerts():
     vx, wz = folgen.befehl(Ziel(0.0, 3.0))
     assert vx > 0.0 and wz == 0.0
-    assert vx <= folgen.MAX_TEMPO_M_S, "das Tempo ist gedeckelt"
+    assert vx <= folgen.tempo_deckel(3.0), "das Tempo ist gedeckelt (weit weg hoeher, 27.09.2026)"
 
 
 def test_im_wunschabstand_bleibt_er_stehen():
@@ -567,14 +567,16 @@ def test_ohne_lauf_verzeichnis_und_ohne_laeuft_ist_es_ein_fehler():
 
 
 def test_der_kopfraum_wird_nicht_in_jedem_takt_geholt(monkeypatch):
-    """Zwei Tiefenbilder ueber WLAN kosten mehr Zeit als ein Takt."""
+    """Zwei Tiefenbilder ueber WLAN kosten mehr Zeit als ein Takt. Das gilt bis
+    `MAX_TEMPO_M_S`; wer schneller faehrt, prueft ihn je Takt frisch und weiter voraus
+    (`test_workshop_folgen_merkpunkt.py`) -- deshalb steht das Tag hier auf 2.4 m."""
     from spotlab.backends.real import tiefe
 
     abrufe = []
     monkeypatch.setattr(tiefe, "ueberhang_aus_bildern",
                         lambda *a, **kw: abrufe.append(1) or "punkte")
     monkeypatch.setattr(tiefe, "kopfraum", lambda punkte: None)
-    spot = _Spot(tags=[_tag(3, 0.0, 3.0)], faehigkeiten=Capability.DEPTH_CAMERAS,
+    spot = _Spot(tags=[_tag(3, 0.0, 2.4)], faehigkeiten=Capability.DEPTH_CAMERAS,
                  kopfraum=["bild"])
     folgen.folge(spot, folgen.tag_finder(), melde=lambda _t: None,
                  schlaf=lambda _s: None, laeuft=_laeuft_takte(6),

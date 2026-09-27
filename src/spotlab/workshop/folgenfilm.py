@@ -57,8 +57,10 @@ GELB = (245, 205, 30)
 ROT = (230, 55, 55)
 LILA = (175, 95, 225)
 
+# `haelt` (seit 27.09.2026): der Merkpunkt haelt den Menschen, Spot dreht nur noch mit.
+HELLGRAU = (205, 205, 205)
 ZUSTAND_FARBE = {"folgt": BLAU, "sucht": GELB, "angehalten": ROT, "nachlauf": GRAU,
-                 "gesperrt": LILA, "abbruch": GRAU}
+                 "haelt": HELLGRAU, "gesperrt": LILA, "abbruch": GRAU}
 
 # Gruppen der Schritte im Zeitbalken — Reihenfolge wie im Takt.
 GRUPPEN = (
@@ -72,8 +74,9 @@ GRUPPEN = (
     ("Fahren", ("walk", "stop"), ROT),
 )
 
-LEGENDE = ("Zeitstrahl oben: blau folgt · grau Nachlauf · gelb sucht · rot angehalten · "
-           "lila Kreissperre — unten: grün Körper, türkis Gesicht · Balken: volle Breite 1 s")
+LEGENDE = ("Zeitstrahl oben: blau folgt · grau Nachlauf · hellgrau hält (dreht nur) · gelb sucht · "
+           "rot angehalten · lila Kreissperre — unten: grün Körper, türkis Gesicht · "
+           "Balken: volle Breite 1 s")
 
 # Die Knochen des MediaPipe-Skeletts (33 Punkte), ohne Gesicht und Finger.
 KNOCHEN = ((11, 12), (11, 23), (12, 24), (23, 24), (11, 13), (13, 15), (12, 14), (14, 16),
