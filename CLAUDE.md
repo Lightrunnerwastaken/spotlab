@@ -1187,6 +1187,26 @@ versionsgepinntes Extra `spotlab[sim]`.
   NICHT auf der Seite" (Not-Aus am Tablet, Fehler). Bis zum 22.09.2026 galt jedes Motor-Aus als
   Seitenlage — bei 2° Rollwinkel (p12). Und eine Fehlermeldung sagt, was mit den Motoren
   GESCHIEHT (`NACH_DEM_FEHLER`: der Abbau schaltet sie sicher aus), nicht „noch an".
+- **Der Tab „Fahren“ ist seit dem 27.09.2026 die STEUERZENTRALE** (Entwurf
+  `docs/superpowers/specs/2026-09-27-steuerzentrale-design.md`, Plan
+  `docs/superpowers/plans/2026-09-27-steuerzentrale-teil1.md`). EIN Programm
+  `workshop/zentrale.py` (PAKETCODE mit `--runs`, wie der Akku-Knopf) hält die Verbindung; die
+  Platte ist der Kanal in beide Richtungen (`record/zentrale.py`: `klickziel.json` mit
+  Lebenszeichen, `aktion.json`, `lagebild.json` + `.png`; nur Standardbibliothek, atomar).
+  **Vorgabe ist der Übungsraum** (Wahl im Tab, `FahrenView.ort()`), der echte Spot nur
+  ausdrücklich; `--uebernehmen` nur dort; im Übungsraum öffnet sich KEIN Übungsfenster
+  (`_fahrt_erwartet == "zentrale"`). Die Skizze (`workshop/skizze.py`) sammelt jedes
+  Hindernisgitter in 5-cm-Zellen im Rahmen „vision“ — die neueste Beobachtung gewinnt, das PNG
+  trägt nur Farbnummern, die Farben legt `gui/lagebild.py` aus dem Thema darüber. Die
+  Klickfahrt (`workshop/wegsuche.py` A* auf 10 cm mit 0.3 m Rand, Unbekanntes zu ausser im
+  Körperschatten; `workshop/klickfahrt.py`) fährt nur mit frischem Lebenszeichen (0.5 s, der
+  Tab frischt es nur sichtbar und aktiv auf) und mit den Schranken des Folgens, fail-closed;
+  **hält eine Schranke, dreht Spot trotzdem weiter zum Weg** (schräg vor einer Tür lief der
+  Strahl sonst auf die Kante), und **ein Lesekonflikt beim Ersetzen von `klickziel.json` bricht
+  nichts ab** (das zuletzt lesbare gilt, sein Lebenszeichen altert weiter) — beides gefunden
+  an der Kette im 2D-Übungsraum. Jede Taste übernimmt und bricht die Klickfahrt ab. Plätze für
+  Menschen (Teil 2) und Karte (Teil 3) stehen leer im Lagebild. `fahren.py` bleibt für den
+  Raumeditor. Am Gerät: A38.
 - **Das Fenstersymbol ist FREIGESTELLT und liegt im Paket** (`gui/spotlab.png`, runde
   Ecken mit Transparenz aussen, dazu `package-data`). Ein Symbol mit eigenem
   Hintergrund sitzt in der Taskleiste in einem grauen Kasten, und ohne den

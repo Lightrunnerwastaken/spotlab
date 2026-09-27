@@ -1279,6 +1279,35 @@ was der ECHTE Roboter tut, steht erst hier.
 9. **Umwelt.** „Umgebung abfragen“ im Reiter „Umwelt“. Erwartung: Liste und Gitter
    erscheinen nach dem Lauf; der Lauf liegt unter `Beispiele/runs/`.
 
+## A38 — Steuerzentrale: Lagebild und Klickfahrt am Gerät
+
+**Voraussetzung** A1, A29. Seit dem 27.09.2026 ist der Tab „Fahren“ die Steuerzentrale
+(`workshop/zentrale.py`, Entwurf `docs/superpowers/specs/2026-09-27-steuerzentrale-design.md`).
+Im Übungsraum ist alles geprüft (`tests/test_workshop_zentrale.py`, Kette durch eine Tür); am
+Gerät offen sind Gitter, Lage im Rahmen „vision“, Licht und Ton am echten Dienst.
+
+1. **Lagebild.** „🐕 Echter Spot“ wählen, Fahrt beginnen, mit W A S D Q E einen Gang
+   entlang. Erwartung: die Draufsicht füllt sich mit Boden (hell) und Wänden (dunkel),
+   Spot als Pfeil in Blickrichtung, gesehene Tags als Kästchen mit Nummer; hinter Spot
+   bleibt der Gang stehen und wird mit der Zeit blasser. Notieren, wie stark die Skizze
+   über 20 m verzieht.
+2. **Klick in freien Boden** 2–3 m voraus. Erwartung: Linie des Wegs, Spot dreht, geht,
+   wird langsamer, „angekommen“ auf ±0.25 m.
+3. **Klick hinter eine Ecke** (die Stelle vorher gesehen haben). Erwartung: der Weg geht um
+   die Ecke, Spot stösst nirgends an.
+4. **Klick in eine Wand und ins Unbekannte.** Erwartung: „Klick abgelehnt: in der Wand …“
+   bzw. „unbekannt …“, Spot bewegt sich nicht.
+5. **Abbrechen.** Während einer Klickfahrt W drücken → Spot fährt mit der Taste, die
+   Klickfahrt ist „abgebrochen“. Eine neue Klickfahrt, dann den Reiter wechseln oder Alt-Tab
+   → Spot steht innerhalb einer halben Sekunde („kein Lebenszeichen vom Tab“).
+6. **Hindernis in den Weg.** Während der Klickfahrt tritt ein Mensch vor Spot. Erwartung:
+   Spot steht („nur … m frei voraus“), plant neu oder meldet nach 6 s „versperrt“.
+7. **Licht und Ton.** Farbwahl grün → LEDs grün; „🔔 Piep“ → Ton; „Licht aus“. Nach dem
+   Stopp sind die LEDs aus. Im Übungsraum sind beide Knöpfe grau.
+8. **Tischkante / Überhang.** Klick unter einen Tisch: die Kopfraum-Schranke hält an.
+
+**Ergebnis** _(offen)_
+
 ## Nach der Abnahme
 
 Ergebnisse hier eintragen, Abweichungen als Befund in die Spec zurückspielen, und erst
