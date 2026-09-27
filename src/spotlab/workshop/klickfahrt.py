@@ -128,8 +128,10 @@ class Klickfahrt:
         else:
             grund = ""
         if grund:
+            # Stehen, aber weiter zum Weg hin DREHEN: schräg vor einer Tür läuft der
+            # Strahl auf die Kante, geradeaus ist frei (Kette im Übungsraum, 27.09.2026).
             self._gesperrt(lage, skizze, t, grund)
-            return 0.0, 0.0
+            return 0.0, (wz if self.unterwegs else 0.0)
         self._gesperrt_seit = None
         tempo_max = fahrtdatei.TEMPO_M_S * faktor
         vx = min(tempo_max, max(MIN_TEMPO_M_S, LANGSAM_JE_M * rest))

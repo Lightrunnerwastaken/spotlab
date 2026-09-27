@@ -100,6 +100,15 @@ def test_versperrt_plant_er_neu_und_gibt_dann_auf(monkeypatch):
     assert len(geplant) >= int(kf.VERSPERRT_NACH_S / kf.NEU_PLANEN_S) - 1, "zwischendurch neu geplant"
 
 
+def test_haelt_die_schranke_dreht_er_trotzdem_zum_weg():
+    """Kette im Übungsraum, 27.09.2026: Spot stand 19 Grad schräg vor einer Tür, der schräge
+    Strahl lief auf die Türkante (0.48 m frei), und weil nichts ging, drehte er auch nicht --
+    nach 6 s „versperrt“. Drehen auf der Stelle braucht keinen Freiraum."""
+    k, s = _unterwegs(ziel=(2.0, 1.0))
+    vx, wz = k.schritt((1.0, 1.0, math.radians(-20.0)), s, 0.1, 0.48)
+    assert vx == 0.0 and wz > 0.0
+
+
 def test_nah_am_ziel_reicht_weniger_freiraum():
     """Das Ziel liegt 0.3 m vor einer Wand: auf den letzten Zentimetern ist voraus nie 0.8 m frei."""
     k, s = _unterwegs(ziel=(2.0, 1.0))
