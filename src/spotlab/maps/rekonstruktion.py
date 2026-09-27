@@ -749,19 +749,25 @@ def _duenne(punkte, hoechstens):
     return punkte[::schritt]
 
 
-def rekonstruiere(ordner, einstellungen=None, fortschritt=None):
-    """Ein `Ergebnis` aus dem Kartenordner. `fortschritt(text)` wird je Schnappschuss gerufen."""
-    e = einstellungen or Einstellungen()
-    t0 = time.monotonic()
-    ordner = Path(ordner)
-    graph, schnappschuesse, fehlend = lade_karte(ordner)
-    if not graph.waypoints:
-        raise SpotlabError("Diese Karte enthält keine Wegpunkte.")
-    posen_, quelle_posen = posen(graph)
-    hinweise = [] if quelle_posen == "anker" else [HINWEIS_KETTE]
+@dataclass(frozen=True)
+class Wandbefund:
+    """Was die Punktwolken einer Karte an Wand hergeben — im Seed-Rahmen."""
 
+    zellen: object           # (M, 2) Zellmitten nach Band und Sichtprüfung
+    band: object             # (K, 3) alle Punkte im Band (Pauspapier, Treppenbreite)
+    gesamt: int              # Punkte in allen Wolken
+    durchquert: int | None   # von der Sichtprüfung verworfene Zellen (None ohne Prüfung)
+
+
+def wandzellen(graph, schnappschuesse, posen_, e=None, fortschritt=None):
+    """Die Wandzellen einer Karte (`Wandbefund`) — oder None, wenn keine Wolke etwas hergibt.
+
+    Je Schnappschuss das Band über SEINEM Boden, dann `belegte_zellen` und die Sichtprüfung.
+    EINE Formulierung für die Rekonstruktion und die Steuerzentrale (Teil 3,
+    `workshop/kartenabgleich.py`): beide sollen dieselben Wände sehen.
+    """
+    e = e or Einstellungen()
     baender, gesamt = [], 0
-    boeden = {}                      # wegpunkt_id -> Bodenhoehe dort
     treffer_s, treffer_i, frei_s, frei_i = [], [], [], []
     for i, wp in enumerate(graph.waypoints):
         if fortschritt is not None:
@@ -777,7 +783,6 @@ def rekonstruiere(ordner, einstellungen=None, fortschritt=None):
         # einen Boden. Zeigt die Wolke keinen (zu wenige Punkte), gilt der
         # Wegpunkt minus Koerperhoehe.
         boden_hier = boden_hoehe(wolke[:, 2]) if len(wolke) >= 200 else seed_tform_wp.z - KOERPER_UEBER_BODEN_M
-        boeden[wp.id] = boden_hier
         z = wolke[:, 2]
         band_hier = wolke[(z >= boden_hier + e.band[0]) & (z <= boden_hier + e.band[1])]
         baender.append(band_hier)
@@ -790,6 +795,34 @@ def rekonstruiere(ordner, einstellungen=None, fortschritt=None):
                                   (zellen_hier + 0.5) * e.zelle, e.zelle)
             frei_s.append(frei)
             frei_i.append(np.full(len(frei), i))
+    if not baender:
+        return None
+    band = np.vstack(baender)
+    zellen = belegte_zellen(band[:, :2], e.zelle, e.mindestens_punkte)
+    durchquert_anzahl = None
+    if e.sichtpruefung and treffer_s:
+        getroffen = _je_schluessel(np.concatenate(treffer_s), np.concatenate(treffer_i))
+        durchquert = _je_schluessel(np.concatenate(frei_s), np.concatenate(frei_i))
+        schluessel = _schluessel(np.floor(zellen / e.zelle).astype(np.int64))
+        solide = np.array([durchquert.get(k, 0) < getroffen.get(k, 0)
+                           for k in schluessel.tolist()], dtype=bool)
+        durchquert_anzahl = int((~solide).sum())
+        zellen = zellen[solide]
+    return Wandbefund(zellen=zellen, band=band, gesamt=gesamt, durchquert=durchquert_anzahl)
+
+
+def rekonstruiere(ordner, einstellungen=None, fortschritt=None):
+    """Ein `Ergebnis` aus dem Kartenordner. `fortschritt(text)` wird je Schnappschuss gerufen."""
+    e = einstellungen or Einstellungen()
+    t0 = time.monotonic()
+    ordner = Path(ordner)
+    graph, schnappschuesse, fehlend = lade_karte(ordner)
+    if not graph.waypoints:
+        raise SpotlabError("Diese Karte enthält keine Wegpunkte.")
+    posen_, quelle_posen = posen(graph)
+    hinweise = [] if quelle_posen == "anker" else [HINWEIS_KETTE]
+
+    befund = wandzellen(graph, schnappschuesse, posen_, e, fortschritt)
 
     bericht = {
         "wegpunkte": len(graph.waypoints), "schnappschuesse": len(schnappschuesse),
@@ -799,17 +832,10 @@ def rekonstruiere(ordner, einstellungen=None, fortschritt=None):
         "boeden": 0, "treppen": 0, "rampen": 0, "ebenen": [0.0], "gefaelle_grad": 0.0,
         "stufe_m": e.stufe,
     }
-    if baender:
-        band = np.vstack(baender)
-        zellen = belegte_zellen(band[:, :2], e.zelle, e.mindestens_punkte)
-        if e.sichtpruefung and treffer_s:
-            getroffen = _je_schluessel(np.concatenate(treffer_s), np.concatenate(treffer_i))
-            durchquert = _je_schluessel(np.concatenate(frei_s), np.concatenate(frei_i))
-            schluessel = _schluessel(np.floor(zellen / e.zelle).astype(np.int64))
-            solide = np.array([durchquert.get(k, 0) < getroffen.get(k, 0)
-                               for k in schluessel.tolist()], dtype=bool)
-            bericht["durchquert"] = int((~solide).sum())
-            zellen = zellen[solide]
+    if befund is not None:
+        band, zellen, gesamt = befund.band, befund.zellen, befund.gesamt
+        if befund.durchquert is not None:
+            bericht["durchquert"] = befund.durchquert
         if fortschritt is not None:
             fortschritt(f"Linien in {len(zellen)} Zellen suchen")
         linien = linien_ransac(zellen, e.inlier, rng=np.random.default_rng(0))
@@ -824,7 +850,6 @@ def rekonstruiere(ordner, einstellungen=None, fortschritt=None):
         bericht.update(punkte=gesamt, im_band=int(len(band)), zellen=int(len(zellen)),
                        linien=len(linien), verworfen=verworfen + (vorher - len(waende)))
     else:
-        boeden = {wp_id: p.z - KOERPER_UEBER_BODEN_M for wp_id, p in posen_.items()}
         waende = schlauch(graph, posen_, e.schlauch_breite)
         pauspapier = np.zeros((0, 2))
         bericht["quelle"] = "schlauch"
@@ -837,7 +862,7 @@ def rekonstruiere(ordner, einstellungen=None, fortschritt=None):
     weg_ = weg(graph)
     profil_ = profil(graph, posen_)
     z_min = min(profil_.values()) if profil_ else 0.0
-    band_xy = band[:, :2] if baender else None
+    band_xy = band[:, :2] if befund is not None else None
     treppen, treppen_kanten = treppen_aus(graph, weg_, posen_, profil_, band_xy, e)
     treppen = verschmelze_treppen(treppen)
     rampen, podeste, gefaelle = rampen_und_podeste_aus(
