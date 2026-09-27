@@ -1205,7 +1205,18 @@ versionsgepinntes Extra `spotlab[sim]`.
   Strahl sonst auf die Kante), und **ein Lesekonflikt beim Ersetzen von `klickziel.json` bricht
   nichts ab** (das zuletzt lesbare gilt, sein Lebenszeichen altert weiter) — beides gefunden
   an der Kette im 2D-Übungsraum. Jede Taste übernimmt und bricht die Klickfahrt ab.
-  `fahren.py` bleibt für den Raumeditor. Am Gerät: A38.
+  `fahren.py` bleibt für den Raumeditor. Am Gerät: A38. **Flüssig (27.09.2026):** gemessen lädt
+  und zeichnet der Tab in ≤ 10 bzw. < 2 ms — geruckelt hat das Nachführen. Die Wahrnehmung
+  wartet nur den REST von `WAHRNEHMUNG_S` (0.25 s, mindestens 0.05 s; bis dahin nach der Arbeit
+  immer volle 0.5 s), und **Spots Pfeil hängt nicht am Lagebild**: das Lagebild trägt
+  `vision_von_odom` aus DEMSELBEN Rahmenbaum wie die Lage, der Tab setzt damit die Lage aus
+  `zustand.jsonl` (10 je s) in die Skizze, der Pfeil gleitet in `GLEIT_S`, die Ansicht folgt.
+  Gemessen: 2D 1.9 → 3.9 Lagebilder je s, 3D 2.2. **Im MuJoCo-Backend rendert nur der
+  Sensorfaden** (`_Sensorfaden`: erzeugt, benutzt und schliesst die Renderer; `local_grid()`
+  und `images()` geben Aufträge ab, ohne die Sperre der Puppe zu halten). Bis dahin entstand
+  der Renderer im Wahrnehmungsfaden der Zentrale und wurde im Hauptfaden geschlossen —
+  Zugriffsverletzung in `glfwDestroyWindow`, jeder 3D-Lauf der Zentrale stürzte ab
+  (`test_die_zentrale_laeuft_im_3d_uebungsraum_und_endet_sauber` startet das echte Programm).
   **Teil 2 (27.09.2026): Menschen sehen und ihnen per Klick folgen** (Entwurf
   `docs/superpowers/specs/2026-09-27-steuerzentrale-menschen-design.md`). Die Suche ist ein
   dritter Faden IM Programm (`workshop/menschensuche.py`), dieselbe Kette wie beim Folgen
