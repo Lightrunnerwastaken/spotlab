@@ -169,3 +169,60 @@ def test_unbekanntes_hebt_sich_von_der_seite_ab(qapp):
         ecke = QColor(w.grab().toImage().pixel(20, 20))
         assert ecke == QColor(palette.flaeche)
         assert ecke != QColor(palette.hintergrund)
+
+
+# ------------------------------------------------------------ Menschen (Teil 2)
+
+
+def _mensch(x, y, alter_s=0.0, gefolgt=False):
+    return {"x": x, "y": y, "alter_s": alter_s, "quelle": "vorne", "gefolgt": gefolgt}
+
+
+def test_mensch_bei_findet_den_naechsten_im_umkreis(qapp):
+    w = _widget(qapp)
+    w.zeige(_daten(menschen=[_mensch(3.0, 3.0), _mensch(4.0, 3.0)]), None)
+    assert w.mensch_bei(3.3, 3.1, 0.5)["x"] == 3.0
+    assert w.mensch_bei(3.9, 3.0, 0.5)["x"] == 4.0
+    assert w.mensch_bei(3.0, 4.0, 0.5) is None
+
+
+def test_klein_gezoomt_trifft_ein_klick_den_gezeichneten_kreis(qapp):
+    """Bei 8 px je Meter sind 0.5 m nur 4 px -- getroffen wird, was man sieht."""
+    w = _widget(qapp)
+    w.px_je_m = 8.0
+    w.zeige(_daten(menschen=[_mensch(3.0, 3.0)]), None)
+    assert w.mensch_bei(3.0 + 10 / 8.0, 3.0, 0.5) is not None
+
+
+def _pixel(w, x, y):
+    from PySide6.QtGui import QColor
+
+    p = w.welt_zu_schirm(x, y)
+    return QColor(w.grab().toImage().pixel(round(p.x()), round(p.y())))
+
+
+def _nah(a, b, toleranz=40):
+    return all(abs(u - v) <= toleranz for u, v in zip(a.getRgb()[:3], b.getRgb()[:3]))
+
+
+def test_ein_mensch_ist_ein_kreis_und_verblasst_mit_dem_alter(qapp):
+    from PySide6.QtGui import QColor
+
+    palette = palette_fuer(False)
+    w = _widget(qapp)
+    w.zeige(_daten(menschen=[_mensch(3.0, 3.0), _mensch(1.0, 3.0, alter_s=2.8)]), None)
+    frisch, alt = _pixel(w, 3.0, 3.0), _pixel(w, 1.0, 3.0)
+    assert _nah(frisch, QColor(palette.warnung)), frisch.name()
+    flaeche = QColor(palette.flaeche)
+    abstand = lambda c: sum(abs(u - v) for u, v in zip(c.getRgb()[:3], flaeche.getRgb()[:3]))  # noqa: E731
+    assert abstand(alt) < abstand(frisch), "der alte ist blasser"
+
+
+def test_der_gefolgte_hat_einen_ring(qapp):
+    from PySide6.QtGui import QColor
+
+    palette = palette_fuer(False)
+    w = _widget(qapp)
+    w.zeige(_daten(menschen=[_mensch(3.0, 3.0, gefolgt=True)]), None)
+    ring = w.mensch_radius_px() + lb.RING_ABSTAND_PX
+    assert _nah(_pixel(w, 3.0 + ring / w.px_je_m, 3.0), QColor(palette.ok))

@@ -11,7 +11,11 @@ also Lease, Not-Aus-Endpunkt, Geschwindigkeitsdeckel aus `config.toml` und die
 Aufzeichnung wie bei jedem Programm. Die Tasten gehen als `fahrt.json` ins
 Lauf-Verzeichnis (`gui/tastenfahrt.py`, `record/fahrt.py`), ein Klick in die
 Draufsicht als `klickziel.json`, Licht und Ton als `aktion.json` (`record/zentrale.py`);
-zurück kommt `lagebild.json` + `.png`. **Ein Befehl aelter als eine halbe Sekunde heisst
+zurück kommt `lagebild.json` + `.png`. Der Regler „Menschen“ (Teil 2) geht als Aktion
+`suche` hinaus; weicht die Stufe im Lagebild ab (eine Aktion kann überschrieben werden, bevor
+das Programm sie liest), schickt der Tab sie nach, höchstens alle `SUCHE_NACHSENDEN_S`. Ein
+Klick auf einen Menschen wird ein Klickziel der Art `mensch`, an dessen Ort, nicht am
+Klickpunkt: dann folgt Spot ihm. **Ein Befehl aelter als eine halbe Sekunde heisst
 Stopp** -- für die Klickfahrt frischt der Tab alle 200 ms ein Lebenszeichen auf, aber nur,
 solange er sichtbar ist und das Fenster aktiv. Jedes Kommando traegt eine Endzeit von
 rund einer Sekunde: stirbt die GUI oder der Lauf, steht der Roboter.
@@ -41,10 +45,12 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QSizePolicy,
+    QSlider,
     QVBoxLayout,
     QWidget,
 )
 
+from spotlab.gui.kurztext import Kurztext
 from spotlab.gui.lagebild import Lagebild
 from spotlab.gui.tastenfahrt import Tastenfahrt
 from spotlab.gui.tastenfeld import Tastenfeld
@@ -62,13 +68,32 @@ ORT_WERKZEUG = (
     "Wo gefahren wird. Übungsraum: der Raum aus dem Raumeditor, nichts bewegt sich wirklich. "
     "Echter Spot: mit Lease, Not-Aus-Endpunkt und den Tempogrenzen aus der Konfiguration."
 )
-KLICK_HINWEIS = "Klick in die Draufsicht: Spot geht dorthin (höchstens 5 m, nur auf gesehenen Boden)."
+KLICK_HINWEIS = ("Klick in die Draufsicht: Spot geht dorthin (höchstens 5 m, nur auf gesehenen "
+                 "Boden). Klick auf einen Menschen: Spot folgt ihm.")
+# Die Menschensuche: wie viel Rechenzeit sie bekommt. Vorgabe sparsam -- wer mehr will,
+# schiebt; der Laptop soll neben dem Fahren nicht voll ausgelastet sein.
+VORGABE_SUCHE = "sparsam"
+SUCHSTUFEN_TEXT = {"aus": "Aus", "sparsam": "Sparsam — vorne, alle 2 s",
+                   "normal": "Normal — vorne, so oft es geht",
+                   "rundum": "Rundum — vorne, links, rechts, hinten"}
+SUCHE_WERKZEUG = (
+    "Wie viel Rechenzeit die Menschensuche bekommt. Aus: keine. Sparsam: die Frontkameras, "
+    "eine Runde alle 2 s. Normal: die Frontkameras, so oft es geht (rund ein Rechenkern). "
+    "Rundum: dazu die Seiten- und die Rückkamera, über eine Sekunde je Runde. Gefunden wird "
+    "wie beim Folgen: YOLOX, Skelett, Abstand aus der Tiefenkamera. Ein Klick auf einen "
+    "Menschen in der Draufsicht: Spot folgt ihm."
+)
+SUCHE_NACHSENDEN_S = 1.5
+MENSCH_KLICK_M = 0.5                  # so weit neben einem Menschen gilt ein Klick als seiner
 
 HINWEIS = (
     "Startet die Steuerzentrale (Programm „zentrale.py“) im Übungsraum oder am ECHTEN Spot — "
     "am Roboter mit Lease, Not-Aus-Endpunkt und den Tempogrenzen aus der Konfiguration, "
     "aufgezeichnet wie jeder Lauf. Links die Draufsicht: hell ist gesehener Boden, dunkel eine "
     "Wand, grau unbekannt; ein Klick schickt Spot dorthin, er geht um Hindernisse herum. "
+    "Unter der Draufsicht der Regler „Menschen“: wie viel Rechenzeit die Menschensuche "
+    "bekommt (am echten Spot); ein Klick auf einen Menschen, und Spot folgt ihm, bis eine "
+    "Taste, ein neuer Klick oder Stopp kommt. "
     "Tasten: W/S vor und zurück · A/D seitwärts · Q/E drehen · 1/2/3 Tempo · "
     "Leertaste oder Esc hält, jede Taste beendet eine Klickfahrt. "
     "Losgelassen heisst Stopp (Totmannschalter, ½ s); stirbt die GUI, steht Spot nach einer "
@@ -187,7 +212,9 @@ class FahrenView(QWidget):
         self._lage_laeuft = False
         self._klick_nummer = 0
         self._klick_ziel = None
+        self._klick_art = "ort"
         self._aktion_nummer = 0
+        self._suche_gesendet = None      # (Stufe, Uhr) der zuletzt geschickten Suchstufe
         self._lagebild_stempel = None
         self._app_aktiv = True
 
@@ -343,6 +370,20 @@ class FahrenView(QWidget):
         self.klick_zeile = QLabel(KLICK_HINWEIS)
         self.klick_zeile.setObjectName("Gedaempft")
         self.klick_zeile.setWordWrap(True)
+        # Der Regler der Menschensuche: vier Stufen, grau, bis das Lagebild sagt, dass
+        # der Lauf Menschen suchen KANN (Bild- und Tiefenkameras).
+        self.suche_regler = QSlider(Qt.Horizontal)
+        self.suche_regler.setRange(0, len(protokoll.SUCHSTUFEN) - 1)
+        self.suche_regler.setPageStep(1)
+        self.suche_regler.setTickPosition(QSlider.TicksBelow)
+        self.suche_regler.setTickInterval(1)
+        self.suche_regler.setMaximumWidth(140)
+        self.suche_regler.setValue(protokoll.SUCHSTUFEN.index(VORGABE_SUCHE))
+        self.suche_regler.setEnabled(False)
+        self.suche_regler.setToolTip(SUCHE_WERKZEUG)
+        self.suche_regler.valueChanged.connect(self._suche_gewaehlt)
+        self.suche_text = Kurztext(SUCHSTUFEN_TEXT[VORGABE_SUCHE])
+        self.suche_text.setObjectName("Gedaempft")
         self.licht = QComboBox()
         for name, wert in LICHTER:
             self.licht.addItem(name, wert)
@@ -372,6 +413,13 @@ class FahrenView(QWidget):
 
         lagespalte = QVBoxLayout()
         lagespalte.addWidget(self.lagebild, 1)
+        menschen_zeile = QHBoxLayout()
+        menschen_beschriftung = QLabel("👥 Menschen")
+        menschen_beschriftung.setToolTip(SUCHE_WERKZEUG)
+        menschen_zeile.addWidget(menschen_beschriftung)
+        menschen_zeile.addWidget(self.suche_regler)
+        menschen_zeile.addWidget(self.suche_text, 1)
+        lagespalte.addLayout(menschen_zeile)
         unter_lage = QHBoxLayout()
         unter_lage.addWidget(self.klick_zeile, 1)
         unter_lage.addWidget(self.mitte_knopf)
@@ -439,6 +487,8 @@ class FahrenView(QWidget):
         # erkennte nichts -- ein Schalter, der lügt.
         self._schreibe_schalter()
         self._klick_nummer, self._klick_ziel, self._aktion_nummer = 0, None, 0
+        self._klick_art = "ort"
+        self._suche_gesendet = None
         self._lagebild_stempel = None
         self.lagebild.leeren()
         self.klick_zeile.setText(KLICK_HINWEIS)
@@ -461,8 +511,11 @@ class FahrenView(QWidget):
         self._lauf_dir = None
         self.herzschlag_takt.stop()
         self._klick_nummer, self._klick_ziel = 0, None
+        self._klick_art = "ort"
         self.lagebild.leeren()
         self.klick_zeile.setText(KLICK_HINWEIS)
+        self.suche_regler.setEnabled(False)
+        self.suche_text.setText(SUCHSTUFEN_TEXT[self.suchstufe()])
         self.hinweis_bild.setText(KEIN_BILD)
         self.ort_wahl.setEnabled(True)
         self._faehigkeiten({})
@@ -693,24 +746,34 @@ class FahrenView(QWidget):
     # --------------------------------------------------- Steuerzentrale
 
     def _klick(self, x, y):
-        """Ein Klick in die Draufsicht: ein neues Klickziel -- nur, solange ein Lauf lebt."""
+        """Ein Klick in die Draufsicht: ein neues Klickziel -- nur, solange ein Lauf lebt.
+        Neben einem Menschen heisst es „folge ihm“, und das Ziel ist SEIN Ort."""
         if not self._laeuft or self._lauf_dir is None:
             return
         self._klick_nummer += 1
-        self._klick_ziel = (float(x), float(y))
+        mensch = self.lagebild.mensch_bei(x, y, MENSCH_KLICK_M)
+        if mensch is not None:
+            self._klick_art = "mensch"
+            self._klick_ziel = (float(mensch["x"]), float(mensch["y"]))
+            text = "Klick auf einen Menschen — Spot sucht ihn und folgt …"
+        else:
+            self._klick_art = "ort"
+            self._klick_ziel = (float(x), float(y))
+            text = f"Klick nach ({x:.1f}, {y:.1f}) m — wird geprüft …"
         self._schreibe_klickziel()
-        self.klick_zeile.setText(f"Klick nach ({x:.1f}, {y:.1f}) m — wird geprüft …")
+        self.klick_zeile.setText(text)
 
     def _klick_abbrechen(self):
         if self._klick_ziel is None or self._lauf_dir is None:
             return
         self._klick_nummer += 1
         self._klick_ziel = None
+        self._klick_art = "ort"
         self._schreibe_klickziel()
 
     def _schreibe_klickziel(self, jetzt=time.time):
         protokoll.schreibe_klickziel(self._lauf_dir, self._klick_nummer, self._klick_ziel,
-                                     self.tastenfahrt.stufe, jetzt=jetzt)
+                                     self.tastenfahrt.stufe, jetzt=jetzt, art=self._klick_art)
 
     def _herzschlag(self, jetzt=time.time):
         """Das Lebenszeichen der Klickfahrt -- nur bei sichtbarem Tab und aktivem Fenster."""
@@ -747,6 +810,47 @@ class FahrenView(QWidget):
         if not self.bild.hat_bild():
             self.hinweis_bild.setText(KEIN_BILD if faehig.get("kamera") else KEINE_KAMERA)
         self.klick_zeile.setText(_klick_text(daten.get("klickfahrt") or {}))
+        self._zeige_suche(daten.get("suche"))
+
+    # --------------------------------------------------- Menschensuche
+
+    def suchstufe(self):
+        return protokoll.SUCHSTUFEN[self.suche_regler.value()]
+
+    def _suche_gewaehlt(self, _wert):
+        self.suche_text.setText(SUCHSTUFEN_TEXT[self.suchstufe()])
+        if self._lauf_dir is not None and self.suche_regler.isEnabled():
+            self._sende_suche()
+
+    def _sende_suche(self, jetzt=time.monotonic):
+        self._aktion_nummer += 1
+        protokoll.schreibe_aktion(self._lauf_dir, self._aktion_nummer, "suche",
+                                  stufe=self.suchstufe())
+        self._suche_gesendet = (self.suchstufe(), jetzt())
+
+    def _zeige_suche(self, suche, jetzt=time.monotonic):
+        """Regler, Zeile und Nachsenden nach dem Stand der Suche im Lagebild."""
+        if not suche or self._lauf_dir is None:
+            self.suche_regler.setEnabled(False)
+            return
+        kann = bool(suche.get("kann")) and self._laeuft
+        self.suche_regler.setEnabled(kann)
+        grund = suche.get("grund") or ""
+        if not kann:
+            self.suche_text.setText(grund or SUCHSTUFEN_TEXT[self.suchstufe()])
+            return
+        text = SUCHSTUFEN_TEXT[self.suchstufe()]
+        runde = suche.get("runde_s")
+        if suche.get("stufe") == self.suchstufe() and self.suchstufe() != "aus" \
+                and runde is not None:
+            text += f" · Runde {float(runde):.1f} s"
+        if grund:
+            text += f" — {grund}"
+        self.suche_text.setText(text)
+        if suche.get("stufe") != self.suchstufe():
+            gesendet = self._suche_gesendet
+            if gesendet is None or jetzt() - gesendet[1] > SUCHE_NACHSENDEN_S:
+                self._sende_suche(jetzt)
 
     def _faehigkeiten(self, faehig):
         for knopf, schluessel in ((self.licht, "licht"), (self.ton, "ton")):
@@ -780,6 +884,10 @@ def _klick_text(klickfahrt):
         return f"Klick abgelehnt: {grund}."
     if zustand == "versperrt":
         return f"Klickfahrt: {grund}."
+    if zustand == "folgt":
+        return f"Spot {grund} — eine Taste, ein Klick oder „■ Stopp“ beendet das Folgen."
     if zustand == "abgebrochen":
+        if grund.startswith("Folgen beendet"):
+            return f"{grund}."
         return f"Klickfahrt abgebrochen: {grund}."
     return KLICK_HINWEIS

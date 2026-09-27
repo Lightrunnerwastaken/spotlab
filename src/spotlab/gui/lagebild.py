@@ -1,4 +1,5 @@
-"""Die Draufsicht der Steuerzentrale: die Skizze aus `lagebild.png`, darüber Spot, Tags, Weg und Ziel.
+"""Die Draufsicht der Steuerzentrale: die Skizze aus `lagebild.png`, darüber Spot, Tags,
+Menschen, Weg und Ziel.
 
 Das Widget rechnet nichts ausser Umrechnen und Zeichnen — die Skizze baut das Programm
 (`workshop/zentrale.py`), hier kommt sie als Datei an. Das PNG trägt Farbnummern
@@ -8,6 +9,11 @@ so stimmt die Skizze in hell und dunkel, und im Code steht kein Farbwert.
 Oben ist +y, rechts +x (Rahmen „vision“ wie die Skizze). Die Ansicht folgt Spot, bis
 man sie verschiebt; „Mitte“ (`mitte()`) holt sie zurück. Mausrad zoomt um den Zeiger.
 Ein Klick ohne Ziehen meldet die Weltkoordinate über `klick`.
+
+Menschen (Teil 2) sind Kreise, so breit wie ein Mensch, aber nie kleiner als lesbar; sie
+werden mit dem Alter blasser (das Programm schickt sie höchstens 3 s alt), der Gefolgte trägt einen
+Ring in Spots Farbe. `mensch_bei` sagt, ob ein Klick einen trifft — getroffen wird, was
+man SIEHT: klein gezoomt ist der Kreis grösser als ein halber Meter.
 
 Kein `bosdyn`, kein `spotlab.backends`: die GUI liest nur Dateien.
 """
@@ -26,6 +32,11 @@ MASSSTAB_VORGABE = 60.0          # Pixel je Meter
 MASSSTAB_GRENZEN = (8.0, 400.0)
 ZOOM_JE_RAST = 1.15
 BLASS_ALPHA = 110                # die älteste Altersstufe
+MENSCH_M = 0.22                  # Halbmesser eines Menschen von oben
+MENSCH_MIN_PX = 6.0
+MENSCH_ALTER_S = 3.0             # so alt wird ein Mensch im Lagebild höchstens
+MENSCH_BLASS_ALPHA = 70
+RING_ABSTAND_PX = 5.0
 
 
 class Lagebild(QWidget):
@@ -77,6 +88,24 @@ class Lagebild(QWidget):
 
     def hat_bild(self):
         return self._bild is not None
+
+    def mensch_radius_px(self):
+        return max(MENSCH_MIN_PX, MENSCH_M * self.px_je_m)
+
+    def mensch_bei(self, x, y, umkreis_m):
+        """Der Mensch (dict aus dem Lagebild), den ein Klick bei (x, y) meint — oder None.
+
+        Im Umkreis `umkreis_m`, mindestens aber so weit, wie sein Kreis gezeichnet ist."""
+        menschen = (self._daten or {}).get("menschen") or []
+        if not menschen:
+            return None
+        umkreis = max(umkreis_m, (self.mensch_radius_px() + RING_ABSTAND_PX) / self.px_je_m)
+
+        def weite(m):
+            return math.hypot(float(m["x"]) - x, float(m["y"]) - y)
+
+        bester = min(menschen, key=weite)
+        return bester if weite(bester) <= umkreis else None
 
     def mitte(self):
         """Die Ansicht folgt wieder Spot."""
@@ -134,6 +163,7 @@ class Lagebild(QWidget):
             maler.drawText(self.rect(), Qt.AlignCenter, "Noch kein Lagebild — Fahrt beginnen.")
         self._zeichne_klickfahrt(maler, daten.get("klickfahrt") or {})
         self._zeichne_tags(maler, daten.get("tags") or [])
+        self._zeichne_menschen(maler, daten.get("menschen") or [])
         self._zeichne_spot(maler, daten.get("spot"))
         maler.setPen(QPen(QColor(p.rand), 1))
         maler.setBrush(Qt.NoBrush)
@@ -168,6 +198,25 @@ class Lagebild(QWidget):
             maler.setPen(QColor(p.text))
             maler.drawText(QRectF(q.x() + 9, q.y() - 9, 40, 18), Qt.AlignLeft | Qt.AlignVCenter,
                            str(tag["id"]))
+        maler.setBrush(Qt.NoBrush)
+
+    def _zeichne_menschen(self, maler, menschen):
+        p = self._palette
+        r = self.mensch_radius_px()
+        fuellung, rand = QColor(p.warnung), QColor(p.text)
+        for m in menschen:
+            q = self.welt_zu_schirm(float(m["x"]), float(m["y"]))
+            anteil = min(1.0, max(0.0, float(m.get("alter_s") or 0.0)) / MENSCH_ALTER_S)
+            alpha = round(255 - (255 - MENSCH_BLASS_ALPHA) * anteil)
+            fuellung.setAlpha(alpha)
+            rand.setAlpha(alpha)
+            maler.setPen(QPen(rand, 1))
+            maler.setBrush(fuellung)
+            maler.drawEllipse(q, r, r)
+            if m.get("gefolgt"):
+                maler.setPen(QPen(QColor(p.ok), 3))
+                maler.setBrush(Qt.NoBrush)
+                maler.drawEllipse(q, r + RING_ABSTAND_PX, r + RING_ABSTAND_PX)
         maler.setBrush(Qt.NoBrush)
 
     def _zeichne_spot(self, maler, spot):

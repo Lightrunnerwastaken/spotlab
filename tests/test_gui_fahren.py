@@ -598,3 +598,99 @@ def test_ohne_kamera_verspricht_der_tab_kein_bild(qapp, tmp_path):
     assert ansicht.hinweis_bild.text() == KEIN_BILD
     ansicht.lauf_beendet()
     assert ansicht.hinweis_bild.text() == KEIN_BILD
+
+
+# ------------------------------------------------ Menschen und Folgen (Teil 2)
+
+
+def _suche(stufe="aus", kann=True, runde_s=None, grund=None):
+    return {"stufe": stufe, "runde_s": runde_s, "kann": kann, "grund": grund}
+
+
+def test_der_regler_ist_grau_bis_der_lauf_menschen_suchen_kann(qapp, tmp_path):
+    ansicht = FahrenView()
+    assert not ansicht.suche_regler.isEnabled()
+    ansicht.lauf_beginnt(tmp_path)
+    _lagebild_schreiben(tmp_path, suche=_suche(kann=False, grund="Keine Bild- und "
+                                                                "Tiefenkameras (Übungsraum)"))
+    ansicht._lade_lagebild()
+    assert not ansicht.suche_regler.isEnabled() and "Übungsraum" in ansicht.suche_text.toolTip()
+    _lagebild_schreiben(tmp_path, t=2.0, suche=_suche(kann=True))
+    ansicht._lagebild_stempel = None
+    ansicht._lade_lagebild()
+    assert ansicht.suche_regler.isEnabled()
+    ansicht.lauf_beendet()
+    assert not ansicht.suche_regler.isEnabled()
+
+
+def test_der_regler_hat_vier_stufen_und_schickt_die_gewaehlte(qapp, tmp_path):
+    from spotlab.gui.views.fahren import VORGABE_SUCHE
+    from spotlab.record import zentrale as protokoll
+
+    ansicht = FahrenView()
+    assert ansicht.suche_regler.maximum() - ansicht.suche_regler.minimum() == 3
+    assert ansicht.suchstufe() == VORGABE_SUCHE
+    ansicht.lauf_beginnt(tmp_path)
+    _lagebild_schreiben(tmp_path, suche=_suche(stufe="aus"))
+    ansicht._lade_lagebild()
+    aktion = protokoll.lies_aktion(tmp_path)
+    assert (aktion["art"], aktion["stufe"]) == ("suche", VORGABE_SUCHE), "nachgeschickt"
+    ansicht.suche_regler.setValue(3)
+    aktion = protokoll.lies_aktion(tmp_path)
+    assert aktion["stufe"] == "rundum" and aktion["nummer"] == 2
+
+
+def test_eine_verlorene_stufe_wird_nachgeschickt_aber_nicht_jeden_takt(qapp, tmp_path):
+    from spotlab.record import zentrale as protokoll
+
+    ansicht = FahrenView()
+    ansicht.lauf_beginnt(tmp_path)
+    ansicht._zeige_suche(_suche(stufe="aus"), jetzt=lambda: 10.0)
+    ansicht._zeige_suche(_suche(stufe="aus"), jetzt=lambda: 10.5)
+    assert protokoll.lies_aktion(tmp_path)["nummer"] == 1
+    ansicht._zeige_suche(_suche(stufe="aus"), jetzt=lambda: 12.0)
+    assert protokoll.lies_aktion(tmp_path)["nummer"] == 2
+
+
+def test_unter_dem_regler_steht_die_rundenzeit_und_was_fehlt(qapp, tmp_path):
+    ansicht = FahrenView()
+    ansicht.lauf_beginnt(tmp_path)
+    ansicht.suche_regler.setValue(3)
+    ansicht._zeige_suche(_suche(stufe="rundum", runde_s=1.24, grund="hinten: Kamera weg"))
+    assert "1.2 s" in ansicht.suche_text.text() and "hinten" in ansicht.suche_text.toolTip()
+
+
+def test_ein_klick_neben_einen_menschen_folgt_ihm(qapp, tmp_path):
+    from spotlab.record import zentrale as protokoll
+
+    ansicht = FahrenView()
+    ansicht.show()
+    ansicht.lauf_beginnt(tmp_path)
+    mensch = {"x": 2.0, "y": 1.0, "alter_s": 0.2, "quelle": "vorne", "gefolgt": False}
+    _lagebild_schreiben(tmp_path, menschen=[mensch], suche=_suche(stufe="sparsam"))
+    ansicht._lade_lagebild()
+    ansicht.lagebild.klick.emit(2.3, 1.2)
+    kz = protokoll.lies_klickziel(tmp_path)
+    assert (kz.art, kz.ziel) == ("mensch", (2.0, 1.0)), "der Mensch, nicht der Klickpunkt"
+    ansicht._herzschlag(jetzt=lambda: 50.0)
+    assert protokoll.lies_klickziel(tmp_path).art == "mensch", "das Lebenszeichen behält die Art"
+    ansicht.lagebild.klick.emit(0.5, 0.5)
+    assert protokoll.lies_klickziel(tmp_path).art == "ort"
+    ansicht.hide()
+
+
+def test_die_zeile_sagt_wem_spot_folgt_und_warum_er_aufhoerte(qapp, tmp_path):
+    ansicht = FahrenView()
+    ansicht.lauf_beginnt(tmp_path)
+    _lagebild_schreiben(tmp_path, klickfahrt={"nummer": 1, "zustand": "folgt",
+                                              "grund": "folgt dem angeklickten Menschen",
+                                              "ziel": [2.0, 1.0], "weg": []})
+    ansicht._lade_lagebild()
+    assert "folgt dem angeklickten" in ansicht.klick_zeile.text()
+    assert "Taste" in ansicht.klick_zeile.text()
+    _lagebild_schreiben(tmp_path, t=2.0, klickfahrt={"nummer": 1, "zustand": "abgebrochen",
+                                                     "grund": "Folgen beendet: Stopp",
+                                                     "ziel": None, "weg": []})
+    ansicht._lagebild_stempel = None
+    ansicht._lade_lagebild()
+    assert ansicht.klick_zeile.text() == "Folgen beendet: Stopp."
