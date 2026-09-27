@@ -347,3 +347,138 @@ def test_eine_leere_antwort_ebenso(tmp_path):
     with pytest.raises(MapError, match="keine Wegpunkte"):
         download_map(_RobotMitDiensten(_GraphNavMitDownload(wegpunkte=0)), ordner)
     assert (ordner / "graph").read_bytes() == vorher
+
+
+# ------------------------------------------ "Karte verbessern" vom 27.09.2026
+#
+# Befund: in allen vier Laeufen von `karte_verbessern.py` (16.09. und 25.09.2026)
+# scheiterte der Schleifenschluss mit MapModifiedError ("The map was modified on the
+# server by another client during processing. Please try again."), direkt nach dem
+# Hochladen. Dieselbe Karte (flurneu = EingangTest, gleiche 36 Wegpunkte) bekam auf
+# dem Roboter OHNE Hochladen davor 15 neue Kanten. Nochmal versucht wurde nie.
+
+
+def _veraendert():
+    from bosdyn.api.graph_nav import map_processing_pb2
+    from bosdyn.client.map_processing import MapModifiedError
+
+    antwort = map_processing_pb2.ProcessTopologyResponse(
+        status=map_processing_pb2.ProcessTopologyResponse.STATUS_MAP_MODIFIED_DURING_PROCESSING)
+    return MapModifiedError(response=antwort, error_message="The map was modified on the server "
+                            "by another client during processing. Please try again.")
+
+
+class _ErstVeraendert(FakeProcessingClient):
+    """Die ersten `topologie_fehler` Schleifensuchen und `anker_fehler` Ankerrechnungen
+    scheitern mit MapModifiedError, danach geht es."""
+
+    def __init__(self, topologie_fehler=1, anker_fehler=0, **kw):
+        super().__init__(**kw)
+        self._fehler = {"topology": topologie_fehler, "anchoring": anker_fehler}
+
+    def _vielleicht(self, was):
+        if self._fehler[was] > 0:
+            self._fehler[was] -= 1
+            raise _veraendert()
+
+    def process_topology(self, **kw):
+        self.protokoll.append("topology")
+        self._vielleicht("topology")
+        self.protokoll.pop()
+        return super().process_topology(**kw)
+
+    def process_anchoring(self, **kw):
+        self.protokoll.append("anchoring")
+        self._vielleicht("anchoring")
+        self.protokoll.pop()
+        return super().process_anchoring(**kw)
+
+
+def test_eine_waehrend_der_rechnung_veraenderte_karte_wird_nochmal_versucht():
+    from spotlab.maps import nachbearbeitung
+
+    prozessor = _ErstVeraendert(topologie_fehler=1, neue_kanten=15, schritte=9)
+    geschlafen = []
+    bericht = nachbearbeitung.nachbearbeiten(prozessor, schlaf=geschlafen.append)
+    assert bericht.neue_kanten == 15 and bericht.schritte == 9
+    assert prozessor.protokoll == ["topology", "topology", "anchoring"]
+    assert geschlafen and geschlafen[0] > 0, "vor dem zweiten Versuch wartet er"
+    assert any("noch einmal" in m for m in bericht.meldungen)
+
+
+def test_nach_lauter_veraenderten_versuchen_sagt_er_was_zu_tun_ist():
+    from spotlab.maps import nachbearbeitung
+
+    prozessor = _ErstVeraendert(topologie_fehler=99, schritte=9)
+    bericht = nachbearbeitung.nachbearbeiten(prozessor, schlaf=lambda _s: None)
+    assert bericht.neue_kanten is None and bericht.schritte == 9, "die Anker laufen trotzdem"
+    assert prozessor.protokoll.count("topology") == nachbearbeitung.VERSUCHE
+    letzte = next(m for m in bericht.meldungen if m.startswith("Schleifen nicht geschlossen"))
+    assert "Karte verbessern" in letzte, "sagt, was zu tun ist"
+
+
+def test_auch_die_anker_werden_nochmal_versucht():
+    from spotlab.maps import nachbearbeitung
+
+    prozessor = _ErstVeraendert(topologie_fehler=0, anker_fehler=1, schritte=9)
+    bericht = nachbearbeitung.nachbearbeiten(prozessor, schlaf=lambda _s: None)
+    assert bericht.schritte == 9
+    assert prozessor.protokoll == ["topology", "anchoring", "anchoring"]
+
+
+def test_ein_anderer_fehler_wird_nicht_wiederholt():
+    from spotlab.maps import nachbearbeitung
+
+    class _Kaputt(FakeProcessingClient):
+        def process_topology(self, **kw):
+            self.protokoll.append("topology")
+            raise RuntimeError("Netz weg")
+
+    prozessor = _Kaputt()
+    bericht = nachbearbeitung.nachbearbeiten(prozessor, schlaf=lambda _s: None)
+    assert prozessor.protokoll.count("topology") == 1
+    assert bericht.neue_kanten is None
+
+
+class _MerktAnker(FakeGraphNav):
+    def upload_graph(self, graph=None, generate_new_anchoring=False, **kw):
+        self.neue_anker = generate_new_anchoring
+        return super().upload_graph(graph=graph, generate_new_anchoring=generate_new_anchoring, **kw)
+
+
+def test_eine_karte_mit_ankern_behaelt_sie_beim_hochladen(tmp_path):
+    """Wie `graph_nav_command_line.py` im SDK: neue Anker nur, wenn die Karte keine hat.
+    Sonst warf das Hochladen die optimierten Anker weg und liess den Roboter neue
+    rechnen -- mitten in die Schleifensuche hinein."""
+    ordner = _karte(tmp_path)
+    graph = map_pb2.Graph.FromString((ordner / "graph").read_bytes())
+    anker = graph.anchoring.anchors.add()
+    anker.id = "wp0"
+    (ordner / "graph").write_bytes(graph.SerializeToString())
+    fake = _MerktAnker()
+    upload_map(FakeRobot(fake), ordner)
+    assert fake.neue_anker is False
+
+
+def test_eine_karte_ohne_anker_bekommt_neue_beim_hochladen(tmp_path):
+    fake = _MerktAnker()
+    upload_map(FakeRobot(fake), _karte(tmp_path))
+    assert fake.neue_anker is True
+
+
+def test_herunterladen_behaelt_name_und_aufnahmedatum(tmp_path):
+    """Bis zum 27.09.2026 ersetzte das Herunterladen den ganzen Ordner, und `karte.json`
+    verlor alles ausser den Zahlen: flurneu und flur2 hatten keinen Namen und kein
+    Aufnahmedatum mehr."""
+    import json
+
+    from spotlab.backends.real.graphnav import download_map
+    from spotlab.maps.store import METADATEN
+
+    ordner = _gespeicherte_karte(tmp_path)
+    vorher = json.loads((ordner / METADATEN).read_text(encoding="utf-8"))
+    download_map(_RobotMitDiensten(_GraphNavMitDownload(wegpunkte=4)), ordner)
+    nachher = json.loads((ordner / METADATEN).read_text(encoding="utf-8"))
+    for feld in ("name", "roboter", "aufgezeichnet", "spotlab_version"):
+        assert nachher[feld] == vorher[feld], feld
+    assert nachher["wegpunkte"] == 4 and "nachbearbeitet" in nachher

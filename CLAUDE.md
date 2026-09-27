@@ -468,6 +468,15 @@ versionsgepinntes Extra `spotlab[sim]`.
   `recording_command_line.py` nicht). Deshalb läuft das Nachziehen einer alten Karte als
   PROGRAMM (`workshop/karte.py`, Knopf im Tab startet es über den einen Startweg) und nicht
   in der GUI, die nie ein Lease hält (H1).
+  **Der Dienst meldet `MapModifiedError` („Please try again“), und dann wird nochmal
+  versucht** (`nachbearbeitung.VERSUCHE`, Pausen `WARTEN_S`, beide Schritte). Befund vom
+  27.09.2026: in allen vier Läufen von „Karte verbessern“ scheiterte der Schleifenschluss so,
+  direkt nach dem Hochladen, und wurde nie wiederholt — flurneu blieb eine Kette (36 Wegpunkte,
+  35 Kanten), dieselbe Aufnahme bekam auf dem Roboter ohne Hochladen davor 15 neue Kanten
+  (EingangTest). Und **hochgeladen wird mit `generate_new_anchoring` nur, wenn die Karte keine
+  Anker hat** (wie `graph_nav_command_line.py`): sonst warf das Hochladen die optimierten
+  Anker weg und der Roboter rechnete neue, während schon Schleifen gesucht wurden.
+  `karte.json` zieht beim Herunterladen mit um (bis dahin verlor sie Name und Aufnahmedatum).
 - **Eine heruntergeladene Karte wird NEBENAN geschrieben und erst am Schluss getauscht**
   (`maps/store.py::ersetze_inhalt`, `graphnav.download_map`). Der Ordner ist die einzige
   Kopie der Aufnahme; ein Abbruch mitten im Herunterladen liesse den Schüler ohne beides

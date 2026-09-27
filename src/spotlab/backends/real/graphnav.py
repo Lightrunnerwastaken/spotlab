@@ -66,7 +66,11 @@ def upload_map(robot, kartenordner):
 
     client = _client(robot)
     _versuche(client.clear_graph)
-    antwort = _versuche(client.upload_graph, graph=graph, generate_new_anchoring=True)
+    # Neue Anker nur, wenn die Karte keine hat -- wie `graph_nav_command_line.py` im SDK.
+    # Bis zum 27.09.2026 immer: das Hochladen warf die optimierten Anker weg, und der
+    # Roboter rechnete neue, waehrend `karte_verbessern.py` schon Schleifen suchte.
+    antwort = _versuche(client.upload_graph, graph=graph,
+                        generate_new_anchoring=not graph.anchoring.anchors)
 
     for kennung in antwort.unknown_waypoint_snapshot_ids:
         pfad = ordner / "waypoint_snapshots" / kennung
@@ -114,7 +118,7 @@ def download_map(robot, kartenordner):
     Aufnahme, und ein Abbruch mitten im Herunterladen liesse den Schüler ohne
     beides zurück.
     """
-    from spotlab.maps.store import aktualisiere_zahlen, ersetze_inhalt
+    from spotlab.maps.store import METADATEN, aktualisiere_zahlen, ersetze_inhalt
 
     ordner = Path(kartenordner)
     neben = ordner.with_name(ordner.name + ".neu")
@@ -136,6 +140,10 @@ def download_map(robot, kartenordner):
             "Die heruntergeladene Karte hat keine Wegpunkte — die gespeicherte "
             "bleibt, wie sie war."
         )
+    # `karte.json` kommt nicht vom Roboter: sie zieht mit um, sonst verloere die Karte
+    # Name und Aufnahmedatum (flurneu und flur2 bis zum 27.09.2026).
+    if (ordner / METADATEN).exists():
+        shutil.copy2(ordner / METADATEN, neben / METADATEN)
     ersetze_inhalt(ordner, neben)
     aktualisiere_zahlen(ordner, graph)
     return graph

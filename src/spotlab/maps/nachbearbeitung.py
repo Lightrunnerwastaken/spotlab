@@ -17,6 +17,7 @@ gebaut, keine Sitzung geöffnet und nichts besessen. Genau deshalb darf diese
 Datei unter `maps/` liegen.
 """
 
+import time
 from dataclasses import dataclass
 
 from bosdyn.api.graph_nav import map_processing_pb2
@@ -27,6 +28,14 @@ from google.protobuf import wrappers_pb2
 # was er hat), die RPC-Frist liegt darüber und ist nur das Netz darunter.
 SERVER_FRIST_S = 90.0
 RPC_FRIST_S = 120.0
+# NOCHMAL VERSUCHEN, wenn der Dienst meldet, die Karte sei waehrend der Rechnung
+# veraendert worden (MapModifiedError: "Please try again"). Befund vom 27.09.2026:
+# in allen vier Laeufen von `karte_verbessern.py` scheiterte der Schleifenschluss
+# genau so, direkt nach dem Hochladen -- und es wurde nie nochmal versucht. Dieselbe
+# Karte bekam auf dem Roboter ohne Hochladen davor 15 neue Kanten. Gewartet wird vor
+# dem zweiten und dritten Versuch so lange wie in `WARTEN_S`.
+VERSUCHE = 3
+WARTEN_S = (3.0, 8.0)
 
 OHNE_DIENST = (
     "Dieser Roboter bietet die Kartennachbearbeitung nicht an "
@@ -47,7 +56,8 @@ class Nachbearbeitung:
         return self.neue_kanten is not None or self.schritte is not None
 
 
-def schliesse_schleifen(client, fiducial=True, odometrie=True, frist_s=RPC_FRIST_S):
+def schliesse_schleifen(client, fiducial=True, odometrie=True, frist_s=RPC_FRIST_S,
+                        melde=None, schlaf=time.sleep):
     """Schleifen im Graphen suchen und schliessen. Gibt (neue Kanten, abgelaufen).
 
     Der Aufzeichnungsdienst legt Wegpunkte in einer KETTE an: er weiss nicht,
@@ -64,13 +74,16 @@ def schliesse_schleifen(client, fiducial=True, odometrie=True, frist_s=RPC_FRIST
         do_odometry_loop_closure=wrappers_pb2.BoolValue(value=bool(odometrie)),
         timeout_seconds=SERVER_FRIST_S,
     )
-    antwort = _dienst(client).process_topology(
-        params=params, modify_map_on_server=True, timeout=frist_s
+    antwort = _wiederholt(
+        lambda: _dienst(client).process_topology(
+            params=params, modify_map_on_server=True, timeout=frist_s
+        ),
+        "Schleifensuche", melde, schlaf,
     )
     return len(antwort.new_subgraph.edges), bool(antwort.timed_out)
 
 
-def optimiere_anker(client, frist_s=RPC_FRIST_S):
+def optimiere_anker(client, frist_s=RPC_FRIST_S, melde=None, schlaf=time.sleep):
     """Die Anker global optimieren. Gibt die Zahl der Rechenschritte zurück.
 
     Anker sind die Lage jedes Wegpunkts in EINEM gemeinsamen Rahmen. Ohne die
@@ -79,16 +92,52 @@ def optimiere_anker(client, frist_s=RPC_FRIST_S):
     hängt mehr als die Zeichnung: `maps/geometry.py` bevorzugt die Anker, und
     die Rekonstruktion eines Raums rechnet im selben Rahmen.
     """
-    antwort = _dienst(client).process_anchoring(
-        params=map_processing_pb2.ProcessAnchoringRequest.Params(),
-        modify_anchoring_on_server=True,
-        stream_intermediate_results=False,
-        timeout=frist_s,
+    antwort = _wiederholt(
+        lambda: _dienst(client).process_anchoring(
+            params=map_processing_pb2.ProcessAnchoringRequest.Params(),
+            modify_anchoring_on_server=True,
+            stream_intermediate_results=False,
+            timeout=frist_s,
+        ),
+        "Ankerrechnung", melde, schlaf,
     )
     return int(antwort.iteration)
 
 
-def nachbearbeiten(client, melde=None, fiducial=True, odometrie=True):
+def _wiederholt(aufruf, was, melde, schlaf):
+    """`aufruf()` — bei MapModifiedError bis zu VERSUCHE-mal, mit Pause dazwischen.
+
+    Jeder andere Fehler geht sofort durch: nur diesen einen erklärt der Dienst
+    selbst für vorübergehend.
+    """
+    from bosdyn.client.map_processing import MapModifiedError
+
+    for versuch in range(1, VERSUCHE + 1):
+        try:
+            return aufruf()
+        except MapModifiedError:
+            if versuch == VERSUCHE:
+                raise
+            pause = WARTEN_S[min(versuch - 1, len(WARTEN_S) - 1)]
+            if melde is not None:
+                melde(f"Die Karte wurde auf dem Roboter während der {was} noch verändert — "
+                      f"in {pause:.0f} s noch einmal ({versuch + 1}. von {VERSUCHE} Versuchen).")
+            schlaf(pause)
+    raise AssertionError("unerreichbar")
+
+
+def _warum(fehler, was):
+    """Der Grund in Worten — und bei einer veränderten Karte, was zu tun ist."""
+    from bosdyn.client.map_processing import MapModifiedError
+
+    if isinstance(fehler, MapModifiedError):
+        return (f"die Karte wurde auf dem Roboter während der {was} verändert, "
+                f"{VERSUCHE}-mal hintereinander. „Karte verbessern“ im Tab Karten "
+                f"noch einmal starten.")
+    return str(fehler)
+
+
+def nachbearbeiten(client, melde=None, fiducial=True, odometrie=True, schlaf=time.sleep):
     """Beides nacheinander — der Schritt, der aus einer Kette eine Karte macht.
 
     Wirft NIE. Jeder Schritt einzeln gekapselt, wie der Abbau in
@@ -106,7 +155,8 @@ def nachbearbeiten(client, melde=None, fiducial=True, odometrie=True):
 
     sagen("Schleifen werden gesucht…")
     try:
-        neue_kanten, abgelaufen = schliesse_schleifen(client, fiducial, odometrie)
+        neue_kanten, abgelaufen = schliesse_schleifen(client, fiducial, odometrie,
+                                                      melde=sagen, schlaf=schlaf)
         sagen(
             f"{neue_kanten} neue Verbindung{'en' if neue_kanten != 1 else ''}."
             if neue_kanten
@@ -115,14 +165,14 @@ def nachbearbeiten(client, melde=None, fiducial=True, odometrie=True):
         if abgelaufen:
             sagen("Die Suche brach nach der Frist ab — die Karte ist trotzdem brauchbar.")
     except Exception as fehler:
-        sagen(f"Schleifen nicht geschlossen: {fehler}")
+        sagen(f"Schleifen nicht geschlossen: {_warum(fehler, 'Schleifensuche')}")
 
     sagen("Anker werden optimiert…")
     try:
-        schritte = optimiere_anker(client)
+        schritte = optimiere_anker(client, melde=sagen, schlaf=schlaf)
         sagen(f"Anker optimiert ({schritte} Rechenschritte).")
     except Exception as fehler:
-        sagen(f"Anker nicht optimiert: {fehler}")
+        sagen(f"Anker nicht optimiert: {_warum(fehler, 'Ankerrechnung')}")
 
     return Nachbearbeitung(neue_kanten, schritte, tuple(meldungen))
 
