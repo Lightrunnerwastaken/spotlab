@@ -9,8 +9,8 @@ Die Platte ist der einzige Kanal zum Tab, in beide Richtungen (`record/zentrale.
 
     fahrt.json       Tab → hier  Tasten W A S D Q E, 20-mal je Sekunde gelesen
     klickziel.json   Tab → hier  Klick in die Draufsicht, mit Lebenszeichen
-    aktion.json      Tab → hier  Licht und Ton, jede Nummer einmal
-    lagebild.json    hier → Tab  Skizze, Spot, Tags, Klickfahrt, Fähigkeiten (2-mal je s)
+    aktion.json      Tab → hier  Licht, Ton und die Suchstufe, jede Nummer einmal
+    lagebild.json    hier → Tab  Skizze, Spot, Tags, Menschen, Klickfahrt, Fähigkeiten (2-mal je s)
     lagebild.png     hier → Tab  die Skizze (`workshop/skizze.py`)
 
 **Vorrang:** eine Taste vor der Klickfahrt vor dem Stillstand. Eine Taste bricht die
@@ -20,8 +20,12 @@ dem letzten Hindernisgitter, Kopfraum) — unlesbar heisst stehen. Die Tasten fa
 in `fahren.py` ohne diese Schranken: dort steuert der Mensch.
 
 Die Wahrnehmung läuft in einem eigenen Faden (Gitter, Lage, Tags, Kopfraum dauern am
-Roboter je 30–100 ms), der Fahrtakt hier. Am Ende hält Spot IMMER — erst anhalten,
-dann Licht aus, dann den Faden abbauen.
+Roboter je 30–100 ms), der Fahrtakt hier. Die MENSCHENSUCHE (Teil 2,
+`workshop/menschensuche.py`) hat einen dritten Faden: eine Runde kostet vorne rund 0.3 s,
+rundum über eine Sekunde, und sie darf weder den Fahrtakt noch das Lagebild aufhalten.
+Wie viel sie rechnet, sagt die Stufe aus dem Tab (Vorgabe hier: aus). Ein Mensch steht
+bis `MENSCH_ALTER_S` im Lagebild und wird blasser; ein neuer Fund in `GLEICH_M` ersetzt
+ihn. Am Ende hält Spot IMMER — erst anhalten, dann Licht aus, dann die Fäden abbauen.
 """
 
 import math
@@ -34,7 +38,7 @@ from spotlab.errors import SpotlabError
 from spotlab.record import fahrt
 from spotlab.record import zentrale as protokoll
 from spotlab.record.run import STOPP_DATEI
-from spotlab.workshop import blick, folgen, klickfahrt
+from spotlab.workshop import blick, folgen, klickfahrt, menschensuche
 from spotlab.workshop import skizze as skizzenmodul
 
 SKRIPT = Path(__file__)
@@ -44,6 +48,12 @@ KOPFRAUM_S = 1.0
 KOPFRAUM_GILT_S = 3.0      # älter oder nie gemessen: die Klickfahrt steht (fail-closed)
 GITTER_GILT_S = 1.5        # ebenso für das Hindernisgitter
 LICHTFARBEN = {"blau": "blue", "gruen": "green", "gelb": "yellow", "rot": "red"}
+SUCHE_LEERLAUF_S = 0.2     # aus, ohne Kameras oder beim Folgen: so oft schaut der Faden nach
+SUCHE_MIN_S = 0.02         # auch „so oft es geht“ lässt den anderen Fäden Luft
+MENSCH_ALTER_S = 3.0       # so lange steht ein Mensch ohne neuen Fund im Lagebild
+GLEICH_M = 1.0             # ein neuer Fund so nah an einem alten ist derselbe Mensch
+KEINE_KAMERAS = ("Keine Bild- und Tiefenkameras (Übungsraum) — Menschen sucht nur der "
+                 "echte Spot.")
 
 
 def _im_hintergrund(arbeit):
@@ -52,7 +62,7 @@ def _im_hintergrund(arbeit):
 
 class Zentrale:
     def __init__(self, spot, lauf_dir, jetzt=time.time, melde=print, licht=None,
-                 hintergrund=_im_hintergrund):
+                 hintergrund=_im_hintergrund, suche=None):
         self.spot = spot
         self.lauf_dir = Path(lauf_dir)
         self.jetzt = jetzt
@@ -72,7 +82,16 @@ class Zentrale:
         self._aktion_nummer = None
         self._faehrt = False
         self._gesagt = set()
+        self._suchstufe = "aus"
+        self._menschen = []
+        self._runde_s = None
+        self._suche_grund = None
+        self._folgt = False
         self.faehigkeiten = self._faehigkeiten()
+        self._suche_kann = self._kann_suchen()
+        if suche is None and self._suche_kann:
+            suche = menschensuche.Menschensuche(spot)
+        self._suche = suche
         if licht is None and self.faehigkeiten["licht"]:
             from spotlab.api.signals import Statuslicht
 
@@ -92,6 +111,15 @@ class Zentrale:
             kann = Capability.NONE
         return {"licht": gefragt("lights"), "ton": gefragt("beep"),
                 "kamera": bool(kann & Capability.CAMERAS)}
+
+    def _kann_suchen(self):
+        """Bild- UND Tiefenkameras: ohne Tiefe gäbe es keinen Abstand, also keinen Ort."""
+        try:
+            kann = self.spot.backend.capabilities()
+        except Exception:
+            return False
+        bilder = Capability.GRAY_CAMERAS | Capability.COLOR_CAMERAS
+        return bool(kann & Capability.DEPTH_CAMERAS) and bool(kann & bilder)
 
     def _einmal(self, schluessel, text):
         if schluessel not in self._gesagt:
@@ -155,10 +183,51 @@ class Zentrale:
             "tags": [{"id": i, "x": xy[0], "y": xy[1]} for i, xy in sorted(self._tags.items())],
             "klickfahrt": self.klick.stand.als_daten(),
             "faehigkeiten": dict(self.faehigkeiten),
-            "menschen": [],           # Teil 2
+            "menschen": [{"x": round(m.x, 3), "y": round(m.y, 3),
+                          "alter_s": round(max(0.0, t - m.t), 2), "quelle": m.quelle,
+                          "gefolgt": False}
+                         for m in self._menschen if t - m.t <= MENSCH_ALTER_S],
+            "suche": {"stufe": self._suchstufe, "runde_s": self._runde_s,
+                      "kann": self._suche_kann,
+                      "grund": self._suche_grund if self._suche_kann else KEINE_KAMERAS},
             "karte": None,            # Teil 3
         }
         return daten, (None if leer else skizze.png(t))
+
+    # ------------------------------------------------------------ Menschensuche
+
+    def suchen(self, t=None):
+        """Eine Runde der Menschensuche — oder keine (aus, ohne Kameras, beim Folgen).
+        Gibt zurück, wie lange der Faden danach wartet. Wirft nie."""
+        stufe = self._suchstufe
+        if stufe == "aus" or not self._suche_kann or self._folgt or self._suche is None:
+            return SUCHE_LEERLAUF_S
+        anfang = self.jetzt()
+        t = anfang if t is None else t
+        try:
+            menschen, gruende = self._suche.runde(stufe, t)
+        except Exception as fehler:
+            menschen, gruende = [], {"Suche": f"{type(fehler).__name__}: {fehler}"}
+            self._einmal("suche_fehler", f"Die Menschensuche stolpert ({fehler}) — Spot fährt "
+                                         f"weiter, nur ohne Menschen im Lagebild.")
+        dauer = max(0.0, self.jetzt() - anfang)
+        with self._sperre:
+            if self._suchstufe == stufe:       # inzwischen aus? dann nichts eintragen
+                self._merke_menschen(menschen, t)
+            self._runde_s = round(dauer, 2)
+            self._suche_grund = "; ".join(f"{q}: {g}" for q, g in gruende.items()) or None
+        return menschensuche.pause_s(stufe)
+
+    def _merke_menschen(self, neu, t):
+        """Neue Funde ersetzen alte in `GLEICH_M`; die übrigen bleiben bis `MENSCH_ALTER_S`."""
+        bleiben = [m for m in self._menschen
+                   if t - m.t <= MENSCH_ALTER_S
+                   and all(math.hypot(m.x - n.x, m.y - n.y) > GLEICH_M for n in neu)]
+        self._menschen = bleiben + list(neu)
+
+    def _suche_schleife(self, halt):
+        while not halt.is_set():
+            halt.wait(max(self.suchen(), SUCHE_MIN_S))
 
     def _lage_jetzt(self):
         try:
@@ -258,6 +327,14 @@ class Zentrale:
                     self._licht.setze(LICHTFARBEN.get(aktion["farbe"], "blue"))
             except Exception as fehler:
                 self._einmal("licht_fehler", f"Das Licht geht nicht ({fehler}) — Spot fährt weiter.")
+        elif aktion["art"] == "suche":
+            stufe = aktion.get("stufe")
+            if stufe in protokoll.SUCHSTUFEN:
+                with self._sperre:
+                    self._suchstufe = stufe
+                    if stufe == "aus":
+                        self._menschen = []
+                        self._suche_grund = None
         elif aktion["art"] == "ton":
             if not self.faehigkeiten["ton"]:
                 self._einmal("ton", "Ton gibt es nur am echten Spot (Dienst audio-visual).")
@@ -288,6 +365,9 @@ class Zentrale:
         faden = threading.Thread(target=self._wahrnehmung_schleife, args=(halt,), daemon=True,
                                  name="zentrale-wahrnehmung")
         faden.start()
+        sucher = threading.Thread(target=self._suche_schleife, args=(halt,), daemon=True,
+                                  name="zentrale-menschensuche")
+        sucher.start()
         try:
             while laeuft():
                 self.takt()
@@ -303,6 +383,7 @@ class Zentrale:
                         pass
                 halt.set()
                 faden.join(timeout=2.0)
+                sucher.join(timeout=2.0)
                 if seher is not None:
                     seher.beenden()
 

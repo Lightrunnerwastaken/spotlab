@@ -1,6 +1,7 @@
 """Das Programm der Steuerzentrale: Wahrnehmung, Tasten, Klickfahrt, Licht und Ton."""
 
 import threading
+import time
 from types import SimpleNamespace
 
 import numpy as np
@@ -12,7 +13,7 @@ from spotlab.errors import SpotlabError
 from spotlab.record import fahrt
 from spotlab.record import zentrale as protokoll
 from spotlab.workshop import zentrale
-from tests_zeitgrenzen import warte_bis
+from tests_zeitgrenzen import TEST_TIMEOUT_S, warte_bis
 
 T0 = 1000.0
 
@@ -244,6 +245,164 @@ def test_am_ende_erst_anhalten_dann_licht_aus(tmp_path):
 
     z.lauf(laeuft, schlaf=lambda _s: None, mit_blick=False)
     assert spot.kommandos[-2:] == ["stop", "licht aus"]
+
+
+# ------------------------------------------------------------ Menschensuche (Teil 2)
+
+
+class _KameraSpot(_Spot):
+    """Ein Spot mit Bild- und Tiefenkameras -- nur dann gibt es eine Menschensuche."""
+
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        self.backend.capabilities = lambda: (Capability.LOCOMOTION | Capability.LOCAL_GRID
+                                             | Capability.CAMERAS)
+
+
+class _Suche:
+    """Eine Such-Attrappe: gibt je Runde die nächste Liste aus `runden` zurück."""
+
+    def __init__(self, *runden):
+        self.runden = list(runden)
+        self.gefragt = []
+
+    def runde(self, stufe, t):
+        self.gefragt.append((stufe, t))
+        if not self.runden:
+            return [], {}
+        return self.runden.pop(0)
+
+
+def _mensch(x, y, t=T0, quelle="vorne"):
+    from spotlab.workshop.menschensuche import Mensch
+
+    return Mensch(x, y, 2.0, 0.0, quelle, t)
+
+
+def _stufe(z, tmp_path, stufe, nummer=1):
+    protokoll.schreibe_aktion(tmp_path, nummer, "suche", stufe=stufe)
+    z.takt()
+
+
+def test_die_suche_ist_aus_bis_der_tab_eine_stufe_schickt(tmp_path):
+    suche = _Suche(([_mensch(2.0, 1.0)], {}))
+    z = _zentrale(_KameraSpot(), tmp_path, suche=suche)
+    z.suchen(T0)
+    z.wahrnehmen()
+    assert suche.gefragt == []
+    bild = protokoll.lies_lagebild(tmp_path)
+    assert bild["suche"]["stufe"] == "aus" and bild["suche"]["kann"] is True
+    assert bild["menschen"] == []
+
+
+def test_eine_stufe_kommt_ueber_die_aktion_und_die_menschen_ins_lagebild(tmp_path):
+    suche = _Suche(([_mensch(2.0, 1.0)], {}))
+    z = _zentrale(_KameraSpot(), tmp_path, suche=suche)
+    _stufe(z, tmp_path, "normal")
+    z.suchen(T0)
+    z.wahrnehmen(T0 + 0.5)
+    assert suche.gefragt == [("normal", T0)]
+    bild = protokoll.lies_lagebild(tmp_path)
+    assert bild["menschen"] == [{"x": 2.0, "y": 1.0, "alter_s": 0.5, "quelle": "vorne",
+                                 "gefolgt": False}]
+    assert bild["suche"]["stufe"] == "normal" and bild["suche"]["grund"] is None
+
+
+def test_die_rundenzeit_steht_im_lagebild(tmp_path):
+    uhr = {"t": T0}
+
+    class _Langsam(_Suche):
+        def runde(self, stufe, t):
+            uhr["t"] += 0.8                  # die Runde dauert 0.8 s
+            return [], {}
+
+    z = _zentrale(_KameraSpot(), tmp_path, suche=_Langsam(), jetzt=lambda: uhr["t"])
+    _stufe(z, tmp_path, "rundum")
+    z.suchen()
+    z.wahrnehmen(T0 + 1.0)
+    assert protokoll.lies_lagebild(tmp_path)["suche"]["runde_s"] == pytest.approx(0.8)
+
+
+def test_ein_mensch_verblasst_und_ist_nach_drei_sekunden_weg(tmp_path):
+    z = _zentrale(_KameraSpot(), tmp_path, suche=_Suche(([_mensch(2.0, 1.0)], {}), ([], {})))
+    _stufe(z, tmp_path, "normal")
+    z.suchen(T0)
+    z.suchen(T0 + 2.0)                     # nichts gefunden: der alte bleibt, blasser
+    z.wahrnehmen(T0 + 2.0)
+    assert protokoll.lies_lagebild(tmp_path)["menschen"][0]["alter_s"] == pytest.approx(2.0)
+    z.wahrnehmen(T0 + 3.5)
+    assert protokoll.lies_lagebild(tmp_path)["menschen"] == []
+
+
+def test_ein_neuer_fund_ersetzt_den_alten_in_der_naehe(tmp_path):
+    z = _zentrale(_KameraSpot(), tmp_path, suche=_Suche(
+        ([_mensch(2.0, 1.0), _mensch(6.0, 1.0)], {}),
+        ([_mensch(2.4, 1.1, t=T0 + 0.5)], {})))
+    _stufe(z, tmp_path, "normal")
+    z.suchen(T0)
+    z.suchen(T0 + 0.5)
+    z.wahrnehmen(T0 + 0.5)
+    orte = sorted((m["x"], m["y"]) for m in protokoll.lies_lagebild(tmp_path)["menschen"])
+    assert orte == [(2.4, 1.1), (6.0, 1.0)], "derselbe Mensch einmal, der ferne bleibt"
+
+
+def test_ohne_kameras_ist_die_suche_grau_und_sagt_warum(tmp_path):
+    suche = _Suche(([_mensch(2.0, 1.0)], {}))
+    z = _zentrale(_Spot(), tmp_path, suche=suche)
+    _stufe(z, tmp_path, "normal")
+    z.suchen(T0)
+    z.wahrnehmen()
+    stand = protokoll.lies_lagebild(tmp_path)["suche"]
+    assert suche.gefragt == [] and stand["kann"] is False and "kamera" in stand["grund"].lower()
+
+
+def test_der_grund_einer_quelle_steht_im_lagebild(tmp_path):
+    z = _zentrale(_KameraSpot(), tmp_path,
+                  suche=_Suche(([_mensch(2.0, 1.0)], {"hinten": "RuntimeError: Kamera weg"})))
+    _stufe(z, tmp_path, "rundum")
+    z.suchen(T0)
+    z.wahrnehmen()
+    bild = protokoll.lies_lagebild(tmp_path)
+    assert "hinten" in bild["suche"]["grund"] and len(bild["menschen"]) == 1
+
+
+def test_eine_stolpernde_suche_haelt_die_zentrale_nicht_an(tmp_path):
+    class _Kaputt:
+        def runde(self, stufe, t):
+            raise RuntimeError("Modell fehlt")
+
+    gesagt = []
+    z = _zentrale(_KameraSpot(), tmp_path, suche=_Kaputt(), melde=gesagt.append)
+    _stufe(z, tmp_path, "normal")
+    z.suchen(T0)
+    z.suchen(T0 + 1)
+    z.wahrnehmen()
+    assert "Modell fehlt" in protokoll.lies_lagebild(tmp_path)["suche"]["grund"]
+    assert len([m for m in gesagt if "Modell fehlt" in m]) == 1
+
+
+def test_die_pause_nach_einer_runde(tmp_path):
+    from spotlab.workshop import menschensuche
+
+    z = _zentrale(_KameraSpot(), tmp_path, suche=_Suche())
+    assert z.suchen(T0) == zentrale.SUCHE_LEERLAUF_S
+    _stufe(z, tmp_path, "sparsam")
+    assert z.suchen(T0) == menschensuche.SPARSAM_PAUSE_S
+    _stufe(z, tmp_path, "normal", nummer=2)
+    assert z.suchen(T0) == 0.0
+
+
+def test_im_lauf_sucht_ein_eigener_faden(tmp_path):
+    suche = _Suche(*[([_mensch(2.0, 1.0)], {})] * 50)
+    z = _zentrale(_KameraSpot(), tmp_path, suche=suche)
+    protokoll.schreibe_aktion(tmp_path, 1, "suche", stufe="normal")
+    ende = time.monotonic() + TEST_TIMEOUT_S
+
+    def laeuft():
+        return not suche.gefragt and time.monotonic() < ende
+
+    z.lauf(laeuft, schlaf=lambda _s: time.sleep(0.01), mit_blick=False)
+    assert suche.gefragt, "der Suchfaden hat gesucht, während der Fahrtakt lief"
 
 
 # ------------------------------------------------------------ Hauptprogramm
