@@ -9,6 +9,8 @@ klickziel.json  Tab → Programm: wohin Spot per Klick gehen soll, mit Lebenszei
 aktion.json     Tab → Programm: Licht und Ton, jede Nummer genau einmal.
 lagebild.json   Programm → Tab: Skizze (Bild daneben), Spot, Tags, Klickfahrt.
 lagebild.png    Programm → Tab: die Skizze, ein Pixel je Zelle, Farbnummer = Zustand und Alter.
+kartenauftrag.json  Tab → Programm: Karte laden, Aufnahme starten/beenden, Wegpunkt (Teil 3).
+lagebild_karte.png  Programm → Tab: die geladene Karte im Raster der Skizze, Farbnummer = Abgleich.
 """
 
 import json
@@ -22,6 +24,14 @@ KLICKZIEL = "klickziel.json"
 AKTION = "aktion.json"
 LAGEBILD = "lagebild.json"
 LAGEBILD_BILD = "lagebild.png"
+# Teil 3: eine EIGENE Datei für Kartenaufträge -- in `aktion.json` könnte ein Licht-Klick ein
+# „Aufnahme beenden“ überschreiben, bevor das Programm es gelesen hat.
+KARTENAUFTRAG = "kartenauftrag.json"
+KARTENAUFTRAEGE = ("laden", "aufnahme_start", "aufnahme_stopp", "wegpunkt")
+LAGEBILD_KARTE = "lagebild_karte.png"
+# Die Farbnummern im Kartenbild (0 = nichts): Kartenwand ausserhalb des Blickfelds, erkannt,
+# fehlt jetzt, und eine Wand, die Spot sieht, die aber nicht in der Karte steht.
+KARTE_UNGEPRUEFT, KARTE_ERKANNT, KARTE_FEHLT, KARTE_NEU = 1, 2, 3, 4
 # Wie bei `fahrt.json`: ein Lebenszeichen, das aelter ist, heisst Stopp. Der Tab
 # frischt es alle 200 ms auf, solange er sichtbar ist -- Reiterwechsel, Alt-Tab
 # oder ein eingefrorenes Fenster halten die Klickfahrt an.
@@ -107,13 +117,38 @@ def lies_aktion(lauf_dir):
         return None
 
 
-def schreibe_lagebild(lauf_dir, daten, bild):
-    """Erst das Bild, dann die Beschreibung: wer ein neues `lagebild.json` sieht, findet das
-    Bild dazu schon vor. `bild=None` (noch keine Skizze) schreibt nur die Beschreibung."""
+def schreibe_kartenauftrag(lauf_dir, nummer, was, name=None):
+    """Ein Kartenauftrag (`was` aus KARTENAUFTRAEGE). Unbekanntes wird abgewiesen."""
+    if was not in KARTENAUFTRAEGE:
+        raise ValueError(f"Kartenauftrag {was!r} -- erwartet einer von {list(KARTENAUFTRAEGE)}.")
+    daten = {"nummer": int(nummer), "was": was, "name": None if name is None else str(name)}
+    return atomar.schreibe_atomar(Path(lauf_dir) / KARTENAUFTRAG, json.dumps(daten))
+
+
+def lies_kartenauftrag(lauf_dir):
+    """{nummer, was, name} — oder None (fehlt, halb geschrieben, kaputt, unbekanntes `was`)."""
+    try:
+        roh = json.loads((Path(lauf_dir) / KARTENAUFTRAG).read_text(encoding="utf-8"))
+        was = str(roh["was"])
+        if was not in KARTENAUFTRAEGE:
+            return None
+        name = roh.get("name")
+        return {"nummer": int(roh["nummer"]), "was": was,
+                "name": None if name is None else str(name)}
+    except _FEHLER:
+        return None
+
+
+def schreibe_lagebild(lauf_dir, daten, bild, kartenbild=None):
+    """Erst die Bilder, dann die Beschreibung: wer ein neues `lagebild.json` sieht, findet die
+    Bilder dazu schon vor. `bild=None` (noch keine Skizze) schreibt nur die Beschreibung,
+    `kartenbild=None` (keine Karte geladen) lässt das Kartenbild weg."""
     lauf_dir = Path(lauf_dir)
     gut = True
     if bild is not None:
         gut = atomar.schreibe_atomar(lauf_dir / LAGEBILD_BILD, bytes(bild))
+    if kartenbild is not None:
+        gut = atomar.schreibe_atomar(lauf_dir / LAGEBILD_KARTE, bytes(kartenbild)) and gut
     return atomar.schreibe_atomar(lauf_dir / LAGEBILD, json.dumps(daten, ensure_ascii=False)) and gut
 
 

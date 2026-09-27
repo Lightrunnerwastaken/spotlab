@@ -105,3 +105,41 @@ def test_die_suchstufe_ist_eine_aktion(tmp_path):
 
 def test_folgen_ist_ein_zustand():
     assert "folgt" in z.ZUSTAENDE
+
+
+# ------------------------------------------------------------ Karten (Teil 3)
+
+
+def test_ein_kartenauftrag_hin_und_zurueck(tmp_path):
+    z.schreibe_kartenauftrag(tmp_path, 3, "aufnahme_start", name="flur-2")
+    assert z.lies_kartenauftrag(tmp_path) == {"nummer": 3, "was": "aufnahme_start",
+                                                      "name": "flur-2"}
+    z.schreibe_kartenauftrag(tmp_path, 4, "aufnahme_stopp")
+    assert z.lies_kartenauftrag(tmp_path)["name"] is None
+
+
+def test_ein_unbekannter_kartenauftrag_wird_nicht_geschrieben(tmp_path):
+    with pytest.raises(ValueError):
+        z.schreibe_kartenauftrag(tmp_path, 1, "loeschen")
+    assert z.lies_kartenauftrag(tmp_path) is None
+
+
+def test_ein_kaputter_kartenauftrag_ist_keiner(tmp_path):
+    (tmp_path / z.KARTENAUFTRAG).write_text('{"nummer": 1, "was": "sprengen"}',
+                                                    encoding="utf-8")
+    assert z.lies_kartenauftrag(tmp_path) is None
+    (tmp_path / z.KARTENAUFTRAG).write_text("{halb", encoding="utf-8")
+    assert z.lies_kartenauftrag(tmp_path) is None
+
+
+def test_das_kartenbild_liegt_vor_der_beschreibung(tmp_path):
+    z.schreibe_lagebild(tmp_path, {"t": 1.0}, b"skizze", kartenbild=b"karte")
+    assert (tmp_path / z.LAGEBILD_KARTE).read_bytes() == b"karte"
+    assert (tmp_path / z.LAGEBILD_BILD).read_bytes() == b"skizze"
+    assert z.lies_lagebild(tmp_path) == {"t": 1.0}
+
+
+def test_die_kartennummern_sind_verschieden_und_nicht_null():
+    nummern = {z.KARTE_UNGEPRUEFT, z.KARTE_ERKANNT, z.KARTE_FEHLT,
+               z.KARTE_NEU}
+    assert len(nummern) == 4 and 0 not in nummern
