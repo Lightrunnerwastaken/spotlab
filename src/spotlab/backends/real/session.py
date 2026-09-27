@@ -408,6 +408,12 @@ class RealSpot:
 
         return graphnav.localization(self._robot)
 
+    def verortung(self):
+        """Lage in der Karte UND im Rahmen „vision“, dazu das Urteil des Roboters — oder None."""
+        from spotlab.backends.real import graphnav
+
+        return graphnav.verortung(self._robot)
+
     def process_map(self, melde=None, fiducial=True, odometrie=True):
         from spotlab.backends.real import graphnav
 

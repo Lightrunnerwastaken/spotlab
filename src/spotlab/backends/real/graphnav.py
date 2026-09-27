@@ -219,6 +219,44 @@ def localization_pose(robot):
     return (float(pose.x), float(pose.y), math.degrees(pose.rot.to_yaw()) % 360.0)
 
 
+def verortung(robot):
+    """`Verortung` aus EINER Antwort des Dienstes — oder None, solange nicht verortet.
+
+    Die Lage im Seed-Rahmen der Karte kommt aus `localization.seed_tform_body`, die im
+    Rahmen „vision“ aus `robot_kinematics.transforms_snapshot` DERSELBEN Antwort — zwei
+    Abfragen hintereinander gehörten zu zwei Augenblicken, und bei 0.5 m/s läge die Karte
+    dann um den Weg dazwischen neben der Skizze. Das Urteil des Roboters, ob er die Umgebung
+    in der Karte wiederfindet, steht in `lost_detector_state`.
+    """
+    from bosdyn.client.frame_helpers import BODY_FRAME_NAME, VISION_FRAME_NAME, get_a_tform_b
+    from bosdyn.client.math_helpers import SE3Pose
+
+    from spotlab.backends.base import Verortung
+
+    antwort = _versuche(_client(robot).get_localization_state)
+    ortung = antwort.localization
+    if not ortung.waypoint_id:
+        return None
+    seed = SE3Pose.from_proto(ortung.seed_tform_body)
+    vision = None
+    try:
+        v = get_a_tform_b(antwort.robot_kinematics.transforms_snapshot,
+                          VISION_FRAME_NAME, BODY_FRAME_NAME)
+        if v is not None:
+            vision = (float(v.x), float(v.y), float(v.rot.to_yaw()))
+    except Exception:
+        vision = None               # kein „vision“ im Baum: nur die Einblendung fällt weg
+    verloren = antwort.lost_detector_state
+    return Verortung(
+        wegpunkt=ortung.waypoint_id,
+        seed=(float(seed.x), float(seed.y), float(seed.rot.to_yaw())),
+        vision=vision,
+        verloren=bool(verloren.is_lost),
+        angenommen=int(verloren.total_num_accepted_localizations),
+        abgelehnt=int(verloren.total_num_rejected_localizations),
+    )
+
+
 def localization(robot):
     """(Wegpunkt-ID, (dx, dy, grad)) -- wo der Körper relativ zu SEINEM Wegpunkt steht.
 

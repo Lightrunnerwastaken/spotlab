@@ -57,6 +57,24 @@ class NavStatus:
     gescheitert: bool = False
 
 
+@dataclass(frozen=True)
+class Verortung:
+    """Wo Spot in einer geladenen Karte steht — und im Rahmen „vision“, aus DERSELBEN Antwort.
+
+    Für die Steuerzentrale (Teil 3): aus beiden Lagen zusammen fällt die Karte deckungsgleich
+    auf die Skizze. `seed`/`vision` sind (x, y, Gier in RAD); `vision` ist None, wenn der
+    Rahmenbaum der Antwort keinen Rahmen „vision“ hat. `angenommen`/`abgelehnt` zählen die
+    Abgleiche des Roboters seit dem Start (sein eigenes Urteil, `lost_detector_state`).
+    """
+
+    wegpunkt: str
+    seed: tuple
+    vision: tuple | None
+    verloren: bool
+    angenommen: int
+    abgelehnt: int
+
+
 def richtung(x, y):
     """Aus einer Position im Koerper-Frame: (Peilung in Grad, Distanz in Meter).
 
