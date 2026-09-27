@@ -63,6 +63,10 @@ class _Shutdown(BaseException):
 
 
 class PhysicsBackend:
+    # Der Kraftregler kann (noch) nicht sitzen -- `api/posture.sit` haelt dann an
+    # und sagt es, statt abzubrechen (Stufe A, 28.09.2026; Sitzen ist Stufe B).
+    kann_sitzen = False
+
     def __init__(self, recorder=None, raum=None, start=None, ansicht_ziel=None,
                  realtime=True, autostart=True):
         from spotlab.backends.mujoco import (

@@ -5,6 +5,7 @@ eine geschätzte Zeit vergangen ist. sleep() lügt, Rückmeldung nicht.
 """
 
 import time
+import weakref
 
 from bosdyn.client.robot_command import RobotCommandBuilder
 
@@ -13,6 +14,9 @@ from spotlab.backends.base import Capability, require
 from spotlab.errors import VERHALTENSFEHLER_HINWEIS, CommandRejected, SpotlabError
 
 POLL_S = 0.25
+
+SITZEN_FEHLT_PHYSIK = "Sitzen kann der Physikmodus noch nicht — Spot bleibt stehen."
+_SITZEN_GESAGT = weakref.WeakSet()     # je Backend einmal: ein Programm ruft sit() oft
 
 # Die Ursachen, wie der Roboter sie nennt — in Worten, die ein Schüler versteht.
 URSACHEN = {
@@ -91,8 +95,24 @@ def stand(backend, recorder, height=0.0, timeout=10.0, schlaf=time.sleep):
         recorder.event("rückmeldung", name="stand", status="steht")
 
 
-def sit(backend, recorder, timeout=10.0, schlaf=time.sleep):
+def sit(backend, recorder, timeout=10.0, schlaf=time.sleep, melde=print):
+    """Setzt sich hin -- wo das Backend es nicht kann (`kann_sitzen`), haelt es nur an.
+
+    Der Physikmodus kann noch nicht sitzen. Ein Schuelerprogramm endet aber fast
+    immer mit `sit()`; abbrechen hiesse, dass jedes Beispiel im Physikmodus mit
+    einem Fehler endet. Deshalb: anhalten, einmal sagen, stehen bleiben -- und die
+    Rueckmeldung sagt "steht", nie "sitzt".
+    """
     require(backend, Capability.POSTURE, "hinsetzen")
+    if not getattr(backend, "kann_sitzen", True):
+        _protokolliere(recorder, "sit")
+        backend.send_command(RobotCommandBuilder.stop_command())
+        if backend not in _SITZEN_GESAGT:
+            _SITZEN_GESAGT.add(backend)
+            melde(SITZEN_FEHLT_PHYSIK)
+        if recorder is not None:
+            recorder.event("rückmeldung", name="sit", status="steht (Sitzen im Physikmodus noch nicht)")
+        return
     kommando = RobotCommandBuilder.synchro_sit_command()
     _protokolliere(recorder, "sit")
     kennung = backend.send_command(kommando)

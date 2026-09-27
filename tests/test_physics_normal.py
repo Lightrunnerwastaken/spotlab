@@ -208,3 +208,33 @@ def test_move_haelt_vor_einer_sperrzone_und_sagt_es():
         assert b.qpos()[0] < 1.8
     finally:
         b.close()
+
+
+# -------------------------------------------------------------------- sit()
+
+
+def test_sit_haelt_an_bleibt_stehen_und_sagt_es_einmal(tmp_path):
+    from bosdyn.client.robot_command import RobotCommandBuilder as B
+
+    from spotlab.api import posture
+    from spotlab.record.run import RunRecorder
+
+    rec = RunRecorder(tmp_path, None, backend='physics')
+    b = PhysicsBackend(recorder=rec, autostart=False, realtime=False)
+    try:
+        assert b.kann_sitzen is False
+        b.power_on()
+        b.send_command(B.synchro_velocity_command(.4, 0, 0), end_time_secs=b.uhr() + 20)
+        b.advance(2)
+        gesagt = []
+        posture.sit(b, rec, melde=gesagt.append)
+        posture.sit(b, rec, melde=gesagt.append)
+        b.advance(3)
+        assert gesagt == [posture.SITZEN_FEHLT_PHYSIK]
+        assert abs(b.sim.data.qvel[0]) < .05, 'sit() haelt an'
+        assert b.qpos()[2] > .3, 'und Spot steht noch'
+        rueck = [e for e in _ereignisse(rec, 'rückmeldung') if e.get('name') == 'sit']
+        assert rueck and 'steht' in rueck[0]['status']
+    finally:
+        b.close()
+        rec.finish('ok')
