@@ -7,8 +7,9 @@ Forschungsregler, Messreihen, Raumrekonstruktion und Wiedergabe bleiben unverän
 
 ## Start
 
-Im Code-Fenster unter „Wo läuft es?“ **Physik 3D (experimentell)**
-wählen. Für ebenen Boden einen Raum ohne Höhenflächen/Gelände/Sperrzonen verwenden.
+Im Code-Fenster unter „Wo läuft es?“ **Physik 3D** wählen, oder im Tab „Fahren“ den Ort
+**⚙ 3D-Physik**. Ebene Räume mit Wänden, Blöcken, Tags und Sperrzonen gehen; welche Räume,
+entscheidet `welt/physik.py::tauglich` — vor dem Start, im Tab und im Backend dieselbe Regel.
 Neu: Die Szene `physik_einzelstufe` unterstützt einen begrenzten 6-cm-Podestversuch.
 Neue Vorlage: `physik_gehen.py` (erscheint beim nächsten GUI-Start).
 
@@ -54,15 +55,17 @@ Aufstehvorgang vom Boden. Der Körper bleibt physikalisch von den Beinen getrage
 Schwungziele auf einer festen Fußbodenhöhe. Ein separater TerrainStepper ergänzt
 jetzt kleine Podeste. Andere Höhenflächen und Treppen werden weiterhin abgelehnt.
 
-Unterstützt: stand() in Neutralhöhe, walk() mit HINT_AUTO/HINT_TROT, stop(), State,
-Tiefen-/Graukameras, LocalGrid obstacle_distance und GUI-Livebild.
-Noch nicht unterstützt: sit(), move()-Zieltrajektorien, Körperpose, frei konfigurierbarer Kriechgang,
-WorldObjects/Tags, GraphNav und Treppen. UnsupportedCapability benennt die Grenze.
+Unterstützt: stand() in Neutralhöhe, walk() mit HINT_AUTO/HINT_TROT, move() (seit
+28.09.2026, siehe unten), stop(), State, Tiefen-/Graukameras, LocalGrid obstacle_distance,
+AprilTags über world_objects()/tags(), Sperrzonen und GUI-Livebild. sit() hält an und
+bleibt stehen (mit Hinweis).
+Noch nicht unterstützt: Sitzen und Aufstehen im Regler, Körperpose, frei konfigurierbarer
+Kriechgang, GraphNav, Rampen, Gelände und Treppen. UnsupportedCapability benennt die Grenze.
 Die grobe Capability POSTURE/LOCOMOTION garantiert nicht sämtliche Einzelbefehle.
 
-Die Adaptergrenzen betragen vorerst 0.30 m/s und 0.50 rad/s; Begrenzungen werden
-protokolliert. Das sind Versuchsgrenzen dieses Reglers, keine Eigenschaften des
-realen Spot. Geschwindigkeits-Tracking und Anfahren weichen ab. Ein Sturz stoppt
+Die Tempogrenzen kommen aus `spotsim.tempo_grenzen()` (Kraftregler 0.85 m/s und
+1.0 rad/s, Trab 0.3 / 0.5); Begrenzungen werden protokolliert. Das sind Grenzen dieses
+Reglers, keine Eigenschaften des realen Spot. Geschwindigkeits-Tracking und Anfahren weichen ab. Ein Sturz stoppt
 den Versuch mit Fehler. Der Modell-Massenwert steht im Laufbericht; der Adapter passt ihn nie an.
 Seit 0.2.0b5 ist das Modell aus matura-spot das GEMESSENE (33.2 kg statt 50.34 kg,
 offen entschieden, siehe unten „Gemessenes Modell“). Nicht als Sim-zu-Real-Nachweis
@@ -264,3 +267,22 @@ Echtzeitfaktor in diesem Adapter (`realtime=False`, gemischte Tastaturfolge): Tr
 im MIT-Regler (matura-spot `6125cde`; nachgespielt −0.015 statt +0.036 m/s, echt ±0).
 Offen: geradeaus 0.04 m/s seitliches Driften (echt 0), und passiv steht er kleinere
 Stösse aus als der Trab (G6 22.5 / 45 statt 30 / 60 N·s).
+
+## Normaler Übungsort — Stufe A (28.09.2026)
+
+Entwurf `docs/superpowers/specs/2026-09-28-physik-normal-design.md`. Der Kraftregler aus
+matura-spot bleibt unverändert; alles Neue sitzt im Adapter und in `welt/`.
+
+| Was | Wie | Gemessen (`realtime=False`, Sim-Uhr) |
+|---|---|---|
+| Räume | `welt/physik.py::tauglich` — ebene Räume mit Wänden, Blöcken, Tags, Sperrzonen, dazu die zwei Stufenszenen; sonst ein Grund vor dem Start | Tab, Editor und Backend fragen dieselbe Regel |
+| Tags | `SpotPuppe.sichtbare_tags` auf Modell und Zustand der Physik, im Physik-Faden | Tag 2 m voraus gefunden, hinter einer Wand nicht |
+| Sperrzonen | `welt.kollision.zone_im_weg` auf den Punkt nach 0.5 s (Bremsweg); nur wenn gemessene UND befohlene Richtung auf die Zone zeigen | Zone ab x = 2.00: Körpermitte hält bei 1.49 (0.3 m/s) bzw. 1.57 (0.85 m/s); rückwärts heraus frei |
+| move() | der Takt regelt alle 0.1 s Sim-Zeit zum odom-Ziel (Gehbefehle mit Mindesttempo); angekommen bei 5 cm und 3°, gezählt wenn er steht, bis zu zwei Nachsetzer | 1 m: 4.9 s, 1 Anlauf · 90°: 10.7 s, 3 Anläufe · 0.5 m links + 45°: 9.2 s, 2 Anläufe |
+| „steht“ | `RUHE_S` = 0.3 s ohne Bewegung | vorher zählte ein ruhiger Takt mitten im Absetzen; danach rutschte er noch 5 cm |
+| sit() | anhalten, einmal „Sitzen kann der Physikmodus noch nicht — Spot bleibt stehen“, Rückmeldung „steht“ | — |
+
+Beim Anhalten setzt der Regler noch Schritte ab und verschiebt den Körper um 2–7 cm; deshalb
+zählt bei move() die Lage im Stand, und Drehen auf der Stelle braucht oft alle drei Anläufe.
+Das ist eine Eigenschaft dieses Reglers, nicht gemessen am echten Spot. Offen (Stufe B, C):
+Sitzen und Aufstehen im Regler, Körperpose, Rampen, Gelände, Treppen.

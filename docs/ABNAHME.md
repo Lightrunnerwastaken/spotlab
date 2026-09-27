@@ -1398,9 +1398,19 @@ Noch am echten Spot zu prüfen, ohne Bewegungsbefehle:
 - Dienstfehler und fehlende Daten bleiben Fehler; keine Interpretation als freie
   Fläche. Aufnahmen sind Momentaufnahmen und keine zusätzliche Fahrfreigabe.
 
-## Physikmodus (experimentell)
+## Physikmodus
 
 Stand, Gehen, Drehen und Stopp in der GUI mit Livebild pruefen.
+
+Stufe A (28.09.2026), im Tab „Fahren“ mit dem Ort „⚙ 3D-Physik“ (ohne Roboter):
+
+- Raum „moebliert“: die Zentrale startet, Lagebilder kommen, ein Klick in die Draufsicht
+  fährt Spot hin; Tags erscheinen im Lagebild, sobald einer im Blick ist.
+- Raum „treppe“: kein Start; im Tab steht der Grund mit dem Hinweis auf „3D-Wiedergabe“.
+- Ein eigener Raum mit Sperrzone quer vor Spot: mit W darauf zu — Spot hält davor, im
+  Protokoll steht `angestossen` „Sperrzone ‹Name›“, rückwärts kommt er heraus.
+- Ein Programm mit `spot.move(forward=1)` und `spot.sit()` im Editor mit „Physik 3D“: er
+  fährt rund einen Meter, hält, sagt einmal, dass Sitzen noch nicht geht, und steht.
 Echtzeitfaktor und Ausgabe des Sturzfalls kontrollieren. Vergleiche gegen den
 echten Spot sind offen; keine Treppenfreigabe. Weitere Kriterien und bewusste
 Modellgrenzen: [PHYSICS.md](PHYSICS.md).

@@ -246,9 +246,11 @@ local_grid. Es prüft den Diensttyp, nicht jede einzelne Grid-Ebene.
 `map_pose()` (bestehender Navigationszugang) gibt (x, y, Grad) im Kartenrahmen
 oder None zurück, solange keine Lokalisierung vorliegt.
 
-## Experimenteller Physikmodus
+## Physikmodus
 
-`connect(backend="physics")` verwendet echte MuJoCo-Dynamik auf ebenem Boden.
-Unterstuetzt stand in Neutralhoehe, walk, stop, State, Kameras und LocalGrid;
-noch kein sit, move, pose oder Treppenlauf. Start bereits im Stand.
+`connect(backend="physics")` verwendet echte MuJoCo-Dynamik mit einem eigenen Kraftregler
+(nicht dem von Boston Dynamics), in ebenen Räumen mit Wänden, Blöcken, Tags und Sperrzonen.
+Unterstützt stand in Neutralhöhe, walk, move, stop, State, Kameras, LocalGrid und Tags;
+`sit()` hält an und bleibt stehen (einmal ein Hinweis, kein Fehler). Noch keine pose,
+Rampen, Treppen oder Gelände. Start bereits im Stand.
 [Details und Einschraenkungen](PHYSICS.md).

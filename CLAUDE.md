@@ -792,17 +792,38 @@ versionsgepinntes Extra `spotlab[sim]`.
   täuscht nichts vor.** Regler, Fussplaner und Kontaktmodell liegen in matura-spot
   (`spotsim.sdk_sim`, `spotsim.terrain_sdk`); `backends/physics.py` adaptiert Sitzung, Uhr,
   Abtastung und GUI. Was er nicht kann, weist er mit `UnsupportedCapability` ab, statt Erfolg
-  zu melden: `sit()`, `move()`-Ziele, Körperpose, `stairs()`, WorldObjects, GraphNav und jede
-  Treppe ausser den zwei validierten Szenen `physik_einzelstufe` (ein Podest bis 6 cm) und
-  `physik_treppe_3stufen` (3 × 4 cm) — beide über ein Geometrie-Orakel der statischen Szene,
-  nicht aus Wahrnehmung. `power_on()` schaltet nur die Kommandofreigabe, kein vorgetäuschtes
+  zu melden: Körperpose, `stairs()`, GraphNav und jeden Raum, den `welt/physik.py::tauglich`
+  ablehnt — Rampen, Treppen, Gelände ausser den zwei validierten Szenen `physik_einzelstufe`
+  (ein Podest bis 6 cm) und `physik_treppe_3stufen` (3 × 4 cm), beide über ein
+  Geometrie-Orakel der statischen Szene, nicht aus Wahrnehmung. **Welche Räume gehen, sagt EINE
+  Regel** (`welt/physik.py`, Standardbibliothek): das Backend beim Verbinden, der Tab „Fahren“
+  und der Start aus „Code“ (`app._physik_grund`) VOR dem Start — sonst stürbe der Lauf erst
+  beim Verbinden. **Seit Stufe A (28.09.2026) ist er ein normaler Übungsort** (Entwurf
+  `docs/superpowers/specs/2026-09-28-physik-normal-design.md`): Tags über
+  `SpotPuppe.sichtbare_tags` auf Modell und Zustand DER PHYSIK (im Physik-Faden, keine zweite
+  Sichtprüfung); **Sperrzonen mit Bremsweg** (`welt.kollision.zone_im_weg`: ein Körper mit
+  Schwung kann nicht am letzten guten Punkt stehen bleiben wie der kinematische Sim — gezählt
+  wird der Punkt nach `ZONE_VORAUS_S`, und nur, wenn gemessene UND befohlene Richtung auf die
+  Zone zeigen; sonst hielt nah am Rand jeder Rückwärtsbefehl, weil der Körper beim Anlaufen
+  kurz nach vorn schwingt); **`move()` regelt der Physik-Takt selbst** (alle 0.1 s Sim-Zeit
+  ein Gehbefehl an den unveränderten Kraftregler, angekommen bei 5 cm und 3° — gezählt, wenn
+  er STEHT, denn das Absetzen verschiebt den Körper 2–7 cm; daneben setzt er bis zu zweimal
+  nach, Frist und Sperrzone beenden mit Grund und Reststrecke); **„steht“ heisst `RUHE_S`
+  (0.3 s) ohne Bewegung** — ein einzelner ruhiger Takt mitten im Absetzen galt vorher als
+  Stand; **`sit()` hält an und sagt einmal „Sitzen kann der Physikmodus noch nicht — Spot
+  bleibt stehen“** (`kann_sitzen = False`, gefragt in `api/posture.sit`, Rückmeldung
+  „steht“, nie „sitzt“; das Backend selbst weist ein Sitzkommando weiter ab). `power_on()`
+  schaltet nur die Kommandofreigabe, kein vorgetäuschtes
   Aufstehen; ein Sturz beendet den Lauf mit Fehler; die Modellmasse steht im Bericht, und
   der ADAPTER passt sie nie an — das Modell selbst kommt aus matura-spot und ist seit
   0.2.0b5 das gemessene (33.2 kg statt 50.34, offen entschieden dort, RESEARCH DECISION A
-  vom 23.09.2026, `docs/PHYSICS.md` „Gemessenes Modell“). 0.30 m/s und 0.50 rad/s sind Versuchsgrenzen dieses
-  Reglers, keine Eigenschaft des Spot. **Keine Realismusfreigabe** — im Editor heisst er
-  „Physik 3D (experimentell)", die Puppe „Übungsraum 3D (Wiedergabe)", damit niemand die
-  beiden verwechselt; er steht in `OHNE_ROBOTER` und in `config.BACKENDS`. Gemessen
+  vom 23.09.2026, `docs/PHYSICS.md` „Gemessenes Modell“). Die Tempogrenzen kommen aus
+  `spotsim.tempo_grenzen()` (Kraftregler 0.85 m/s und 1.0 rad/s, Trab 0.3 / 0.5) — Grenzen
+  dieses Reglers, keine Eigenschaft des Spot. **Keine Realismusfreigabe** — im Editor heisst er
+  „Physik 3D“ (Tooltip `welt/physik.ERKLAERUNG`: eigener Kraftregler, nicht der von Boston
+  Dynamics), im Tab „Fahren“ „⚙ 3D-Physik“, die Puppe „Übungsraum 3D (Wiedergabe)“ bzw.
+  „🧪 3D-Wiedergabe“, damit niemand die beiden verwechselt; er steht in `OHNE_ROBOTER` und in
+  `config.BACKENDS`. Gemessen
   (`docs/PHYSICS.md`): bis 17 mm Fusspenetration und rund 30 mm Stützfussversatz unter Last
   mit dem alten Modell, rund 12 mm Versatz mit dem gemessenen — offene Modellprobleme,
   keine Toleranzen.
@@ -1193,9 +1214,11 @@ versionsgepinntes Extra `spotlab[sim]`.
   `workshop/zentrale.py` (PAKETCODE mit `--runs`, wie der Akku-Knopf) hält die Verbindung; die
   Platte ist der Kanal in beide Richtungen (`record/zentrale.py`: `klickziel.json` mit
   Lebenszeichen, `aktion.json`, `lagebild.json` + `.png`; nur Standardbibliothek, atomar).
-  **Vorgabe ist der Übungsraum** (Wahl im Tab, `FahrenView.ort()`), der echte Spot nur
-  ausdrücklich; `--uebernehmen` nur dort; im Übungsraum öffnet sich KEIN Übungsfenster
-  (`_fahrt_erwartet == "zentrale"`). Die Skizze (`workshop/skizze.py`) sammelt jedes
+  **Vorgabe ist der Übungsraum** (Wahl im Tab, `FahrenView.ort()`: „🧪 3D-Wiedergabe“, seit
+  28.09.2026 „⚙ 3D-Physik“ mit Backend `physics` und der Raumregel vor dem Start, „🐕 Echter
+  Spot“ — kurze Namen, die langen machten das Fenster 69 px breiter als sein Mindestmass), der
+  echte Spot nur ausdrücklich; `--uebernehmen` nur dort; im Übungsraum öffnet sich KEIN
+  Übungsfenster (`_fahrt_erwartet == "zentrale"`). Die Skizze (`workshop/skizze.py`) sammelt jedes
   Hindernisgitter in 5-cm-Zellen im Rahmen „vision“ — die neueste Beobachtung gewinnt, das PNG
   trägt nur Farbnummern, die Farben legt `gui/lagebild.py` aus dem Thema darüber. Die
   Klickfahrt (`workshop/wegsuche.py` A* auf 10 cm mit 0.3 m Rand, Unbekanntes zu ausser im
@@ -1651,7 +1674,7 @@ In der Anbindung: MCP über Netz, Mehrbenutzer, Qt-Code aus fremden Projekten, e
 Diagrammbibliothek jenseits der fünf Panel-Arten. In der Kalibrierung: **ein eigener
 Physik-Simulator in spotlab** (die Physik bleibt in `matura-spot`, `backends/physics.py` ist
 nur der Adapter — Stufe 15), automatische Parameteranpassung, die Nutzung der
-lizenzpflichtigen 333-Hz-APIs. Im Physikmodus: Sitzen, `move()`-Ziele, Körperpose, normale
+lizenzpflichtigen 333-Hz-APIs. Im Physikmodus (Stufe B und C, je einzeln zu entscheiden): Sitzen und Aufstehen im Regler, Körperpose, Rampen und Gelände, normale
 Treppen, Fussplanung aus Wahrnehmung statt Geometrie-Orakel, jeder Sim-zu-Real-Nachweis.
 
 Specs unter `docs/superpowers/specs/`. Anleitungen: `docs/ANBINDUNG.md` (fremde Projekte
