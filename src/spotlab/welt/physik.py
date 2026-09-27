@@ -14,6 +14,13 @@ EBEN, EINZELSTUFE, TREPPE3 = "eben", "einzelstufe", "treppe3"
 NICHT_EBEN = ("Der Physikmodus kann noch keine Rampen, Treppen und kein Gelände — nur ebene "
               "Räume (Wände, Blöcke, Tags, Sperrzonen gehen). Einen ebenen Raum wählen oder den "
               "Übungsraum 3D (Wiedergabe) nehmen.")
+# Was der Physikmodus ist -- derselbe Text im Editor und im Tab „Fahren“.
+ERKLAERUNG = ("Physik: Kontaktkräfte tragen den Körper, und ein eigener Kraftregler aus "
+              "matura-spot setzt die Füsse — nicht der Regler von Boston Dynamics. An 60 echten "
+              "Fahrten nachgespielt, ohne Sturz. Zeigt, wie ein Laufroboter wirklich geht; "
+              "braucht mehr Rechenzeit und kann nur ebene Räume.")
+OHNE_SIMULATION = ("Der Physikmodus braucht die Simulation — einrichten.cmd erneut ausführen "
+                   "(Entwickler: matura-spot mit -MitSim einbinden).")
 _TREPPE3 = ((.65, .4, .04), (1.05, .4, .08), (1.85, 1.2, .12))    # x, breite, z je Stufe
 
 

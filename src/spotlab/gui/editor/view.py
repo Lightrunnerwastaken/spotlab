@@ -50,7 +50,7 @@ BACKENDS = (
     ("Übungsraum 3D (Wiedergabe)", "mujoco"),
     ("Übungsraum (virtuell)", "sim"),
     ("Trockenlauf (nur Text)", "dryrun"),
-    ("Physik 3D (experimentell)", "physics"),
+    ("Physik 3D", "physics"),
     ("Echter Spot", "real"),
 )
 
@@ -237,6 +237,11 @@ class EditorView(QWidget):
         self.backendwahl = QComboBox()
         for beschriftung, name in verfuegbare_backends():
             self.backendwahl.addItem(beschriftung, name)
+            if name == "physics":
+                from spotlab.welt import physik
+
+                self.backendwahl.setItemData(self.backendwahl.count() - 1, physik.ERKLAERUNG,
+                                             Qt.ToolTipRole)
         self.start_knopf = QPushButton("▶ Starten")
         self.start_knopf.setObjectName("Primaer")
         self.start_knopf.clicked.connect(self._starten_oder_stoppen)

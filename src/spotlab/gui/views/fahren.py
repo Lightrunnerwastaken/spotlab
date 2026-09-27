@@ -66,13 +66,17 @@ from spotlab.record import zentrale as protokoll
 VORGABE_STUFE = "langsam"             # am echten Roboter gemächlich anfangen
 HERZSCHLAG_MS = 200                   # Lebenszeichen der Klickfahrt
 LAGEBILD_MS = 100                     # so oft schaut der Tab nach einem neuen Lagebild
-ORTE = (("🧪 Übungsraum", "uebungsraum"), ("🐕 Echter Spot", "real"))
+ORTE = (("🧪 Übungsraum 3D (Wiedergabe)", "uebungsraum"), ("⚙ Übungsraum Physik", "physik"),
+        ("🐕 Echter Spot", "real"))
 LICHTER = (("💡 Licht aus", "aus"), ("blau", "blau"), ("grün", "gruen"), ("gelb", "gelb"),
            ("rot", "rot"))
 NUR_AM_ROBOTER = "Gibt es nur am echten Spot (Dienst audio-visual)."
 ORT_WERKZEUG = (
-    "Wo gefahren wird. Übungsraum: der Raum aus dem Raumeditor, nichts bewegt sich wirklich. "
-    "Echter Spot: mit Lease, Not-Aus-Endpunkt und den Tempogrenzen aus der Konfiguration."
+    "Wo gefahren wird. Übungsraum 3D (Wiedergabe): der Raum aus dem Raumeditor, Spot spielt "
+    "gemessene Gänge ab — schnell, jeder Raum. Übungsraum Physik: derselbe Raum, aber "
+    "Kontaktkräfte tragen den Körper und ein eigener Kraftregler setzt die Füsse (nicht der von "
+    "Boston Dynamics); nur ebene Räume. Echter Spot: mit Lease, Not-Aus-Endpunkt und den "
+    "Tempogrenzen aus der Konfiguration."
 )
 KLICK_HINWEIS = ("Klick in die Draufsicht: Spot geht dorthin (höchstens 5 m, nur auf gesehenen "
                  "Boden). Klick auf einen Menschen: Spot folgt ihm.")
@@ -522,7 +526,7 @@ class FahrenView(QWidget):
         return self._laeuft
 
     def ort(self):
-        """Wo die nächste Fahrt läuft: „uebungsraum“ (Vorgabe) oder „real“."""
+        """Wo die nächste Fahrt läuft: „uebungsraum“ (Vorgabe), „physik“ oder „real“."""
         return self.ort_wahl.currentData()
 
     def lauf_beginnt(self, lauf_dir, name="fahren.py"):

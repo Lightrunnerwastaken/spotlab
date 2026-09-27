@@ -238,3 +238,68 @@ def test_sit_haelt_an_bleibt_stehen_und_sagt_es_einmal(tmp_path):
     finally:
         b.close()
         rec.finish('ok')
+
+
+# ------------------------------------------------ die Zentrale als Prozess
+
+
+def test_die_zentrale_faehrt_im_physikraum_per_klick_und_endet_sauber(tmp_path):
+    """Das echte Programm des Tabs „Fahren“ mit Backend physics: Lagebilder kommen, ein
+    Klickziel einen Meter voraus wird angefahren (Klickfahrt mit Lebenszeichen, wie der Tab
+    es schreibt), und der freundliche Stopp beendet den Lauf ohne Absturz. Ein eigener
+    Prozess, weil ein Absturz hier sonst die ganze Suite mitnaehme."""
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    import spotlab
+    from spotlab.record import zentrale as protokoll
+    from tests_zeitgrenzen import TEST_TIMEOUT_S, warte_bis
+
+    quelle = str(Path(spotlab.__file__).resolve().parents[1])     # das gepruefte Paket
+    env = dict(os.environ, SPOTLAB_BACKEND='physics', SPOTLAB_RAUM='leer',
+               SPOTLAB_NUR_TROCKEN='1',
+               PYTHONPATH=os.pathsep.join([quelle] + [os.environ.get('PYTHONPATH', '')]))
+    prozess = subprocess.Popen(
+        [sys.executable, '-m', 'spotlab.workshop.zentrale', '--runs', str(tmp_path)], env=env,
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8',
+        errors='replace')
+    try:
+        lauf = warte_bis(lambda: next((p for p in tmp_path.iterdir() if p.is_dir()), None)
+                         if prozess.poll() is None else 'tot', 'das Lauf-Verzeichnis')
+        assert lauf != 'tot', prozess.communicate()[0][-3000:]
+        warte_bis(lambda: (protokoll.lies_lagebild(lauf) or {}).get('spot')
+                  or prozess.poll() is not None, 'ein Lagebild mit Spots Lage')
+        assert prozess.poll() is None, prozess.communicate()[0][-3000:]
+
+        start = protokoll.lies_lagebild(lauf)['spot']
+        ziel = (start['x'] + 1.0, start['y'])
+        stand = {}
+
+        def herzschlag():
+            protokoll.schreibe_klickziel(lauf, 1, ziel, 'normal')
+
+        def fertig():
+            bild = protokoll.lies_lagebild(lauf) or {}
+            stand.update(bild.get('klickfahrt') or {}, spot=bild.get('spot'))
+            return (stand.get('nummer') == 1 and stand.get('zustand') not in (None, 'unterwegs')
+                    or prozess.poll() is not None)
+
+        warte_bis(fertig, lambda: f'Ankunft der Klickfahrt (zuletzt {stand})',
+                  takt_s=0.1, zwischendurch=herzschlag)
+        assert prozess.poll() is None, prozess.communicate()[0][-3000:]
+        assert stand['zustand'] == 'angekommen', stand
+        assert stand['spot']['x'] == pytest.approx(ziel[0], abs=.35), stand
+        (lauf / 'stopp').write_text('', encoding='utf-8')
+        ausgabe, _ = prozess.communicate(timeout=TEST_TIMEOUT_S)
+    finally:
+        if prozess.poll() is None:
+            prozess.kill()
+            prozess.communicate()
+    import json
+
+    assert json.loads((lauf / 'lauf.json').read_text(encoding='utf-8'))['backend'] == 'physics'
+    # Der freundliche Stopp endet ueber KeyboardInterrupt: unter Windows 0xC000013A, sonst 1.
+    assert prozess.returncode in (0, 1, 0xC000013A), (hex(prozess.returncode), ausgabe[-3000:])
+    assert 'Sturz' not in ausgabe and 'access violation' not in ausgabe, ausgabe[-3000:]

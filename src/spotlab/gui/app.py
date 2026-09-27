@@ -461,10 +461,11 @@ class MainWindow(QWidget):
         if self._karte_fuer_lauf:
             # Die Karte aus dem Tab „Karten" -- als Name, das Skript laedt sie selbst.
             umgebung[ENV_KARTE] = str(self._karte_fuer_lauf)
-        if self.ansichten["code"].lauf_backend() not in ("sim", "mujoco", "physics"):
+        wo = self.ansichten["code"].lauf_backend()
+        if wo not in ("sim", "mujoco", "physics"):
             return umgebung
         ansicht = self.ansichten["raumeditor"]
-        grund = ansicht.bereit_fuer_lauf()
+        grund = ansicht.bereit_fuer_lauf() or (self._physik_grund() if wo == "physics" else None)
         if grund:
             raise SpotlabError(grund)
         umgebung[ENV_RAUM] = ansicht.raumname()
@@ -489,6 +490,21 @@ class MainWindow(QWidget):
         """3D, wenn es auf diesem Laptop laeuft, sonst die Zeichnung."""
         namen = [name for _, name in verfuegbare_backends()]
         return "mujoco" if "mujoco" in namen else "sim"
+
+    def _physik_grund(self):
+        """None, wenn der Physikmodus den offenen Raum fahren kann -- sonst der Grund.
+
+        Dieselbe Regel wie im Backend (`welt/physik.py::tauglich`), nur VOR dem
+        Start: sonst stuerbe der Lauf erst beim Verbinden, und im Tab stuende ein
+        Abbruch statt des Grundes. Ohne Simulation auf dem Laptop sagt er das.
+        """
+        from spotlab.welt import physik
+
+        if "physics" not in [name for _, name in verfuegbare_backends()]:
+            return physik.OHNE_SIMULATION
+        ansicht = self.ansichten["raumeditor"]
+        ok, _, grund = physik.tauglich(ansicht.raum(), ansicht.startpose())
+        return None if ok else grund
 
     def _starte_ueber_editor(self, pfad, backend, argumente=()):
         """Der eine Startweg fuer Knoepfe ausserhalb des Editors.
@@ -570,8 +586,19 @@ class MainWindow(QWidget):
         except OSError as fehler:
             self._melde(f"Beispiele konnten nicht angelegt werden: {fehler}")
             return
-        echt = self.ansichten["fahren"].ort() == "real"
-        backend = FAHREN_BACKEND if echt else self._virtuelles_backend()
+        ort = self.ansichten["fahren"].ort()
+        echt = ort == "real"
+        if echt:
+            backend = FAHREN_BACKEND
+        elif ort == "physik":
+            grund = self._physik_grund()
+            if grund:
+                self._melde(grund)
+                self.ansichten["fahren"].zeige_startfehler(grund)
+                return
+            backend = "physics"
+        else:
+            backend = self._virtuelles_backend()
         runs = Path(arbeitsordner) / BEISPIELORDNER / "runs"
         argumente = (["--runs", str(runs), "--arbeitsordner", str(arbeitsordner)]
                      + (["--uebernehmen"] if echt and uebernehmen else []))

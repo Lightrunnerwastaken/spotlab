@@ -1,3 +1,4 @@
+import importlib.util
 import json
 from pathlib import Path
 
@@ -1612,3 +1613,79 @@ def test_der_startknopf_im_raumeditor_nennt_die_offene_datei(qapp, tmp_path):
     fenster.ansichten["code"].setze_arbeitsordner(tmp_path)
     fenster.ansichten["code"].oeffne(projekt / "hallo_spot.py")
     assert "hallo_spot.py" in knopf.text() and knopf.isEnabled()
+
+
+# ------------------------------------------------- Physik im Tab „Fahren"
+
+
+def _zentrale_fenster(tmp_path, monkeypatch, raum):
+    from dataclasses import replace
+
+    from spotlab.config import Config, Limits
+
+    fenster = MainWindow()
+    fenster._config = replace(fenster._config or Config(ip="", username="", limits=Limits()),
+                              workspace=str(tmp_path))
+    fenster.ansichten["raumeditor"].setze_arbeitsordner(tmp_path)
+    fenster.ansichten["raumeditor"].waehle_raum(raum)
+    gestartet = []
+    code = fenster.ansichten["code"]
+    monkeypatch.setattr(code, "starte_skript",
+                        lambda pfad, argumente=(), backend=None: (
+                            gestartet.append((Path(pfad), list(argumente), backend)),
+                            code._setze_laeuft(True)))
+    _waehle_ort(fenster, "physik")
+    return fenster, gestartet
+
+
+def test_im_physikraum_startet_die_zentrale_mit_dem_physik_backend(qapp, tmp_path, monkeypatch):
+    """Der dritte Ort: derselbe Knopf, dieselbe Zentrale, nur das Backend „physics“ --
+    und `--uebernehmen` gibt es auch hier nicht: niemand hält ein Lease."""
+    from spotlab.workshop import zentrale
+
+    monkeypatch.setattr("spotlab.gui.app.verfuegbare_backends",
+                        lambda: (("Physik 3D", "physics"), ("Echter Spot", "real")))
+    fenster, gestartet = _zentrale_fenster(tmp_path, monkeypatch, "moebliert")
+    fenster.ansichten["fahren"].uebernehmen.setChecked(True)
+    fenster.ansichten["fahren"].fahrt_gewuenscht.emit(True)
+    runs = str(tmp_path / "Beispiele" / "runs")
+    assert gestartet == [(zentrale.SKRIPT, ["--runs", runs, "--arbeitsordner", str(tmp_path)],
+                          "physics")]
+    assert fenster._fahrt_erwartet == "zentrale"
+    fenster.ansichten["code"]._setze_laeuft(False)
+
+
+def test_ein_treppenraum_startet_die_physik_nicht_und_sagt_warum(qapp, tmp_path, monkeypatch):
+    """Dieselbe Regel wie im Backend (`welt/physik.py`) -- aber VOR dem Start, im Tab,
+    wo der Knopf gedrückt wurde, statt als Absturz eines Laufs."""
+    monkeypatch.setattr("spotlab.gui.app.verfuegbare_backends",
+                        lambda: (("Physik 3D", "physics"), ("Echter Spot", "real")))
+    fenster, gestartet = _zentrale_fenster(tmp_path, monkeypatch, "treppe")
+    fenster.ansichten["fahren"].fahrt_gewuenscht.emit(False)
+    assert gestartet == []
+    text = fenster.ansichten["fahren"].zustand.text()
+    assert "Übungsraum 3D" in text and "Rampen" in text
+    assert fenster.statuszeile.text() == text
+
+
+def test_ohne_simulation_sagt_der_physikort_was_zu_tun_ist(qapp, tmp_path, monkeypatch):
+    monkeypatch.setattr("spotlab.gui.app.verfuegbare_backends",
+                        lambda: (("Übungsraum (virtuell)", "sim"), ("Echter Spot", "real")))
+    fenster, gestartet = _zentrale_fenster(tmp_path, monkeypatch, "moebliert")
+    fenster.ansichten["fahren"].fahrt_gewuenscht.emit(False)
+    assert gestartet == []
+    assert "einrichten.cmd" in fenster.ansichten["fahren"].zustand.text()
+
+
+def test_der_editor_startet_die_physik_nicht_in_einem_treppenraum(qapp, tmp_path):
+    """Auch der Start aus „Code“ fragt die Regel -- ein Startweg, eine Regel."""
+    from spotlab.errors import SpotlabError
+
+    if importlib.util.find_spec("spotsim") is None:
+        pytest.skip("ohne spotsim bietet der Editor keinen Physikmodus an")
+    fenster = MainWindow()
+    fenster.ansichten["raumeditor"].setze_arbeitsordner(tmp_path)
+    fenster.ansichten["raumeditor"].waehle_raum("treppe")
+    fenster.ansichten["code"].setze_backend("physics")
+    with pytest.raises(SpotlabError, match="Rampen"):
+        fenster.ansichten["code"].zusatz_umgebung()

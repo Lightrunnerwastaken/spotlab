@@ -488,7 +488,7 @@ def test_die_vorgabe_ist_der_uebungsraum(qapp):
     ansicht = FahrenView()
     assert ansicht.ort() == "uebungsraum"
     assert [ansicht.ort_wahl.itemData(i) for i in range(ansicht.ort_wahl.count())] == \
-        ["uebungsraum", "real"]
+        ["uebungsraum", "physik", "real"]
 
 
 def test_ein_klick_in_die_draufsicht_schreibt_das_klickziel(qapp, tmp_path):
