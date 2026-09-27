@@ -20,9 +20,10 @@ from spotlab.backends.base import Capability, Feedback, SafetyStatus
 from spotlab.backends.dryrun import ZU_WEIT_S
 from spotlab.errors import CommandRejected, NotPowered, SpotlabError, UnsupportedCapability
 
-HINWEIS = ('Experimenteller Physikmodus: eigener Fussplaner, kein Boston-Dynamics-Regler. '
-           'Start im Stand; bisher ebener Boden. Sitzen, move-Zieltrajektorien, '
-           'Treppen und Koerperpose noch nicht unterstuetzt. Keine Realismusfreigabe.')
+HINWEIS = ('Physikmodus: eigener Kraftregler aus matura-spot, nicht der Regler von '
+           'Boston Dynamics. Ebene Raeume mit Waenden, Bloecken, Tags und Sperrzonen; '
+           'stand, walk, move und stop. Sitzen bleibt stehen; Rampen, Treppen, Gelaende '
+           'und Koerperpose noch nicht. Keine Realismusfreigabe.')
 
 # Nullpunkt der Sim-Uhr ohne Echtzeit (`uhr()`). Nicht 0: eine nackte Dauer
 # (`end_time_secs=1.0`) ist damit abgelaufen. Weit weg von der Wanduhr (1.7e9):
@@ -35,6 +36,26 @@ SIM_UHR_NULL = 1_000_000.0
 # seinem jetzigen Tempo erreicht: ein Koerper mit Schwung haelt nicht auf der
 # Stelle wie der kinematische Sim (`welt.kollision.zone_im_weg`).
 ZONE_VORAUS_S = 0.5
+
+# move(): der Physik-Takt regelt selbst zum Ziel -- der Kraftregler kennt nur
+# Geschwindigkeiten. Alle ZIEL_TAKT_S Sim-Zeit ein Gehbefehl, der nach
+# ZIEL_GUELTIG_S von selbst verfaellt (bleibt der Takt aus, steht Spot).
+# Angekommen heisst ZIEL_M und ZIEL_GRAD, wie im Entwurf festgelegt.
+ZIEL_TAKT_S = 0.1
+ZIEL_GUELTIG_S = 0.3
+ZIEL_M = 0.05
+ZIEL_GRAD = 3.0
+ZIEL_K_V = 1.0          # 1/s: 10 cm vor dem Ziel noch 0.1 m/s
+ZIEL_V_MIN = 0.08       # m/s: darunter kommt der Gang nicht voran
+ZIEL_K_W = 1.5          # 1/s
+ZIEL_W_MIN = 0.15       # rad/s: der echte Spot dreht unter 0.125 gar nicht
+# Beim Anhalten setzt der Regler noch Schritte ab und verschiebt den Koerper
+# (gemessen 2-7 cm). Gezaehlt wird deshalb die Lage, wenn er STEHT; liegt sie
+# daneben, setzt er hoechstens so oft nach.
+ZIEL_NACHSETZEN = 2
+# "Steht" heisst so lange ohne Bewegung. Ein einzelner ruhiger Takt mitten im
+# Absetzen der Schritte galt vorher schon als Stand (28.09.2026: danach noch 5 cm).
+RUHE_S = 0.3
 
 
 class _Shutdown(BaseException):
@@ -74,6 +95,11 @@ class PhysicsBackend:
         self._waiting_still = True
         self._command_time = 0.0
         self._soll = (0., 0.)
+        self._ziel = None
+        self._ziel_ruht = False
+        self._nachsetzen = 0
+        self._ziel_naechster = 0.0
+        self._ruhig_seit = None
         self._raum = raum
         self._powered = False
         self._error = None
@@ -147,7 +173,7 @@ class PhysicsBackend:
         # Nur die virtuelle Kommandofreigabe: kein vorgetaeuschtes Hinsetzen.
         with self._lock:
             if not self._closed:
-                self._pending = ('off', RobotCommandBuilder.stop_command(), None)
+                self._pending = ('off', RobotCommandBuilder.stop_command(), None, None)
             self._powered = False
 
     @property
@@ -177,9 +203,10 @@ class PhysicsBackend:
         stop = copy.full_body_command.HasField('stop_request')
         velocity = mob.HasField('se2_velocity_request')
         stand = mob.HasField('stand_request')
-        if not (stop or velocity or stand):
-            raise UnsupportedCapability('Physik v1 unterstuetzt stand(), walk() und stop(). '
-                                        'Sitzen und move() sind noch nicht implementiert.')
+        goal = mob.HasField('se2_trajectory_request')
+        if not (stop or velocity or stand or goal):
+            raise UnsupportedCapability('Der Physikmodus kann stand(), walk(), move() und stop(); '
+                                        'Sitzen und Koerperpose noch nicht.')
         params = sp.MobilityParams()
         mob.params.Unpack(params)
         if params.locomotion_hint not in (sp.HINT_UNKNOWN, sp.HINT_AUTO, sp.HINT_TROT):
@@ -196,13 +223,7 @@ class PhysicsBackend:
             values = (req.velocity.linear.x, req.velocity.linear.y, req.velocity.angular)
             if not all(math.isfinite(v) for v in values):
                 raise ValueError('Geschwindigkeiten muessen endlich sein.')
-            jetzt = self.uhr()
-            if end_time_secs is None or not math.isfinite(end_time_secs) or end_time_secs <= jetzt:
-                raise CommandRejected('Velocity braucht eine gueltige absolute Ablaufzeit.')
-            if not self._realtime and end_time_secs > jetzt + ZU_WEIT_S:
-                raise CommandRejected('Ohne Echtzeit laeuft die Ablaufzeit auf der Sim-Uhr: '
-                                      'end_time_secs=backend.uhr() + Dauer, nicht time.time() + Dauer '
-                                      '(motion.walk: wanduhr=backend.uhr).')
+            self._frist_pruefen(end_time_secs)
             # Grenzen des Gangreglers (spotsim.tempo_grenzen); Sättigung sichtbar melden.
             if self._terrain_steps and (abs(values[1]) > 1e-9 or abs(values[2]) > 1e-9):
                 raise UnsupportedCapability('Einzelstufenmodus bisher nur vorwaerts/rueckwaerts; kein Drehen/Seitwaerts.')
@@ -216,6 +237,7 @@ class PhysicsBackend:
                 if self._recorder is not None:
                     self._recorder.event('kommando', name='physik_grenze',
                                          max_speed=max_speed, max_turn_rate=self._max_drehrate)
+        ziel = self._ziel_aus(mob, params, end_time_secs) if goal else None
         with self._lock:
             self._check()
             if not self._powered and not stop:
@@ -224,8 +246,46 @@ class PhysicsBackend:
             if self._pending is not None:
                 self._feedback[self._pending[0]] = Feedback(False, 'durch neues Kommando ersetzt', True)
             self._feedback[key] = Feedback(False, 'wartet auf Physiktakt')
-            self._pending = (key, copy, end_time_secs)
+            self._pending = (key, copy, end_time_secs, ziel)
             return key
+
+    def _frist_pruefen(self, end_time_secs):
+        jetzt = self.uhr()
+        if end_time_secs is None or not math.isfinite(end_time_secs) or end_time_secs <= jetzt:
+            raise CommandRejected('Fahrbefehle brauchen eine gueltige absolute Ablaufzeit.')
+        if not self._realtime and end_time_secs > jetzt + ZU_WEIT_S:
+            raise CommandRejected('Ohne Echtzeit laeuft die Ablaufzeit auf der Sim-Uhr: '
+                                  'end_time_secs=backend.uhr() + Dauer, nicht time.time() + Dauer '
+                                  '(motion.walk: wanduhr=backend.uhr).')
+
+    def _ziel_aus(self, mob, params, end_time_secs):
+        """((x, y, gier) im odom-Rahmen, Tempodeckel m/s, Drehdeckel rad/s) aus move().
+
+        In der Physik ist odom der Weltrahmen (spotsim `frame_tree_snapshot`). Ein
+        anderer Rahmen wird nicht geraten, wie im kinematischen Sim. Der Deckel ist
+        der kleinere aus `vel_limit` (Konfiguration) und den Grenzen des Reglers.
+        """
+        from bosdyn.client.frame_helpers import ODOM_FRAME_NAME
+
+        if self._terrain_steps:
+            raise UnsupportedCapability('Im Stufenversuch geht nur walk() vorwaerts und rueckwaerts; '
+                                        'move() geht in ebenen Raeumen.')
+        req = mob.se2_trajectory_request
+        if req.se2_frame_name != ODOM_FRAME_NAME or not req.trajectory.points:
+            raise CommandRejected('move() braucht ein Ziel im odom-Rahmen mit mindestens einem Punkt.')
+        pose = req.trajectory.points[-1].pose
+        lage = (pose.position.x, pose.position.y, pose.angle)
+        if not all(math.isfinite(v) for v in lage):
+            raise ValueError('Das Ziel muss endlich sein.')
+        self._frist_pruefen(end_time_secs)
+        tempo, dreh = self._max_tempo, self._max_drehrate
+        if params.HasField('vel_limit'):
+            grenze = params.vel_limit.max_vel
+            if grenze.linear.x > 0:
+                tempo = min(tempo, grenze.linear.x)
+            if grenze.angular > 0:
+                dreh = min(dreh, grenze.angular)
+        return lage, tempo, dreh
 
     def command_feedback(self, key):
         with self._lock:
@@ -249,34 +309,53 @@ class PhysicsBackend:
         with self._lock:
             pending, self._pending = self._pending, None
         if pending is not None:
-            key, command, deadline = pending
+            key, command, deadline, ziel = pending
             if self._active is not None:
                 with self._lock:
                     if not self._feedback[self._active].done:
                         self._feedback[self._active] = Feedback(False, 'ersetzt', True)
-            expiry = self.sim.time + max(0., deadline - self.uhr()) if deadline else None
-            self.sim.send_command(command, end_time_secs=expiry)
+            self._ziel = ziel
+            self._ziel_ruht = False
+            self._nachsetzen = ZIEL_NACHSETZEN
+            if ziel is None:
+                expiry = self.sim.time + max(0., deadline - self.uhr()) if deadline else None
+                self.sim.send_command(command, end_time_secs=expiry)
+            else:
+                self._ziel_naechster = self.sim.time      # der erste Regelschritt sofort
             self._active = key if key != 'off' else None
             self._deadline = deadline
             self._command_time = self.sim.time
-            self._waiting_still = (command.full_body_command.HasField('stop_request')
-                                   or command.synchronized_command.mobility_command.HasField('stand_request'))
+            self._waiting_still = ziel is None and (
+                command.full_body_command.HasField('stop_request')
+                or command.synchronized_command.mobility_command.HasField('stand_request'))
             soll = command.synchronized_command.mobility_command.se2_velocity_request.velocity
             self._soll = (0., 0.) if self._waiting_still else (soll.linear.x, soll.linear.y)
         if self._deadline is not None and self.uhr() >= self._deadline:
-            self.sim.send_command(RobotCommandBuilder.stop_command())
+            self._halte()
             self._deadline = None
-            self._waiting_still = True
+            if self._ziel is not None:
+                self._ziel_beenden(f'Frist abgelaufen, Ziel nicht erreicht ({self._rest()})')
+        if self._ziel is not None and not self._ziel_ruht and self.sim.time >= self._ziel_naechster:
+            self._zum_ziel()
         if not self._waiting_still and self._raum is not None:
             self._zone_pruefen()
         if self.sim.metrics.fell:
             raise SpotlabError('Regler meldet einen Sturz; Versuch beendet. Lauf auswerten und neu starten.')
         if self._active is not None:
-            still = np.linalg.norm(self.sim.data.qvel[:2]) < .04 and np.linalg.norm(self.sim.data.qvel[3:6]) < .15
-            done = (self._waiting_still and still and not getattr(self.sim, "in_step", False)
+            ruhig = (np.linalg.norm(self.sim.data.qvel[:2]) < .04
+                     and np.linalg.norm(self.sim.data.qvel[3:6]) < .15
+                     and not getattr(self.sim, "in_step", False))
+            if not ruhig:
+                self._ruhig_seit = None
+            elif self._ruhig_seit is None:
+                self._ruhig_seit = self.sim.time
+            done = (self._waiting_still and ruhig and self.sim.time - self._ruhig_seit >= RUHE_S
                     and self.sim.time - self._command_time >= .2)
-            with self._lock:
-                self._feedback[self._active] = Feedback(bool(done), 'steht' if done else 'Physik laeuft')
+            if done and self._ziel is not None:
+                done = self._ankunft_pruefen()
+            if self._active is not None:
+                with self._lock:
+                    self._feedback[self._active] = Feedback(bool(done), 'steht' if done else 'Physik laeuft')
         self._publish()
         # Maximal eine Sensorarbeit je Takt; Last erzeugt keinen Nachhol-Burst.
         try:
@@ -309,9 +388,7 @@ class PhysicsBackend:
         """
         from spotlab.welt.kollision import zone_im_weg
 
-        q = self.sim.data.qpos
-        x, y = float(q[0]), float(q[1])
-        gier = math.atan2(2 * (q[3] * q[6] + q[4] * q[5]), 1 - 2 * (q[5] ** 2 + q[6] ** 2))
+        x, y, gier = self._lage()
         vx, vy = (float(v) for v in self.sim.data.qvel[:2])
         sx, sy = self._soll
         wx = math.cos(gier) * sx - math.sin(gier) * sy
@@ -320,13 +397,88 @@ class PhysicsBackend:
         zone = zone_im_weg(self._raum, (x, y), (x + vx * t, y + vy * t))
         if zone is None or zone_im_weg(self._raum, (x, y), (x + wx * t, y + wy * t)) != zone:
             return
-        self.sim.send_command(RobotCommandBuilder.stop_command())
+        self._halte()
         self._deadline = None
-        self._waiting_still = True
-        self._command_time = self.sim.time
         if self._recorder is not None:
             self._recorder.event('angestossen', x=round(x, 3), y=round(y, 3),
                                  hindernis=f'Sperrzone {zone}')
+        if self._ziel is not None:
+            self._ziel_beenden(f'vor Sperrzone {zone} angehalten, Ziel nicht erreicht ({self._rest()})')
+
+    def _lage(self):
+        """(x, y, gier) des Koerpers im Weltrahmen -- in der Physik ist das odom."""
+        q = self.sim.data.qpos
+        gier = math.atan2(2 * (q[3] * q[6] + q[4] * q[5]), 1 - 2 * (q[5] ** 2 + q[6] ** 2))
+        return float(q[0]), float(q[1]), gier
+
+    def _halte(self):
+        self.sim.send_command(RobotCommandBuilder.stop_command())
+        self._waiting_still = True
+        self._command_time = self.sim.time
+        self._soll = (0., 0.)
+
+    def _ziel_abstand(self):
+        """(Strecke m, Winkelfehler rad) von der jetzigen Lage zum Ziel."""
+        (zx, zy, zgier), _, _ = self._ziel
+        x, y, gier = self._lage()
+        return math.hypot(zx - x, zy - y), (zgier - gier + math.pi) % (2 * math.pi) - math.pi
+
+    def _rest(self):
+        strecke, winkel = self._ziel_abstand()
+        return f'noch {strecke:.2f} m und {abs(math.degrees(winkel)):.0f} Grad'
+
+    def _ziel_beenden(self, grund):
+        """Ein move() endet ohne Ankunft: die Rueckmeldung sagt warum, und bleibt so."""
+        with self._lock:
+            if self._active is not None:
+                self._feedback[self._active] = Feedback(False, grund, True)
+        self._active = None
+        self._ziel = None
+        self._ziel_ruht = False
+
+    def _ankunft_pruefen(self):
+        """Spot steht nach einem move(): angekommen, nachsetzen oder ehrlich daneben."""
+        strecke, winkel = self._ziel_abstand()
+        if strecke <= ZIEL_M and abs(winkel) <= math.radians(ZIEL_GRAD):
+            self._ziel = None
+            return True
+        if self._nachsetzen > 0:
+            self._nachsetzen -= 1
+            self._ziel_ruht = False
+            self._waiting_still = False
+            self._ziel_naechster = self.sim.time
+            return False
+        self._ziel_beenden(f'Ziel nach {ZIEL_NACHSETZEN + 1} Anlaeufen nicht erreicht ({self._rest()})')
+        return False
+
+    def _zum_ziel(self):
+        """Ein Regelschritt: Gehbefehl im Koerperrahmen zum Ziel, oder Halt bei Ankunft.
+
+        Proportional mit Mindesttempo (darunter kommt der Gang nicht voran) und
+        den Deckeln aus `_ziel_aus`; nah am Ziel wird er von selbst langsam. Der
+        Kraftregler bleibt unveraendert -- er bekommt nur Geschwindigkeiten.
+        """
+        (zx, zy, _), tempo_max, dreh_max = self._ziel
+        self._ziel_naechster = self.sim.time + ZIEL_TAKT_S
+        strecke, winkel = self._ziel_abstand()
+        genug_nah = strecke <= ZIEL_M
+        genug_gedreht = abs(winkel) <= math.radians(ZIEL_GRAD)
+        if genug_nah and genug_gedreht:
+            self._halte()
+            self._ziel_ruht = True            # gezaehlt wird, wenn er steht: _ankunft_pruefen
+            return
+        x, y, gier = self._lage()
+        vx = vy = wz = 0.
+        if not genug_nah:
+            tempo = min(tempo_max, max(ZIEL_V_MIN, ZIEL_K_V * strecke))
+            dx, dy = zx - x, zy - y
+            vx = (math.cos(gier) * dx + math.sin(gier) * dy) / strecke * tempo
+            vy = (-math.sin(gier) * dx + math.cos(gier) * dy) / strecke * tempo
+        if not genug_gedreht:
+            wz = math.copysign(min(dreh_max, max(ZIEL_W_MIN, ZIEL_K_W * abs(winkel))), winkel)
+        self.sim.send_command(RobotCommandBuilder.synchro_velocity_command(vx, vy, wz),
+                              end_time_secs=self.sim.time + ZIEL_GUELTIG_S)
+        self._soll = (vx, vy)
 
     def advance(self, seconds):
         """Deterministische Offline-Pruefung ohne Worker; Sekunden auf der Sim-Uhr."""

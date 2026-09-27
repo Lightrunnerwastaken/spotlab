@@ -121,3 +121,90 @@ def test_die_sperrzone_haelt_auch_gedreht():
         assert 1.0 < y < 2.0 - ROBOTER_RADIUS_M, f'Koerper bei y = {y:.2f}'
     finally:
         b.close()
+
+
+# ------------------------------------------------------------------- move()
+
+
+def _ziel(b, vor=0.0, links=0.0, grad=0.0):
+    import math
+
+    from bosdyn.client.robot_command import RobotCommandBuilder as B
+
+    from spotlab.config import Limits
+
+    return B.synchro_trajectory_command_in_body_frame(
+        goal_x_rt_body=vor, goal_y_rt_body=links, goal_heading_rt_body=math.radians(grad),
+        frame_tree_snapshot=b.frame_tree_snapshot(), params=b.mobility_params(Limits()))
+
+
+def _bis_fertig(b, key, sim_s):
+    """Auf der Sim-Uhr vorrechnen, bis die Rueckmeldung fertig oder abgewiesen ist."""
+    ende = b.sim.time + sim_s
+    while b.sim.time < ende:
+        b.advance(.25)
+        rueck = b.command_feedback(key)
+        if rueck.done or rueck.rejected:
+            return rueck
+    return b.command_feedback(key)
+
+
+def _gier_grad(b):
+    import math
+
+    q = b.qpos()
+    return math.degrees(math.atan2(2 * (q[3] * q[6] + q[4] * q[5]), 1 - 2 * (q[5] ** 2 + q[6] ** 2)))
+
+
+def test_move_einen_meter_vor():
+    b = PhysicsBackend(autostart=False, realtime=False)
+    try:
+        b.power_on()
+        key = b.send_command(_ziel(b, vor=1.0), end_time_secs=b.uhr() + 30)
+        rueck = _bis_fertig(b, key, 30)
+        assert rueck.done and not rueck.rejected, rueck.status
+        x, y = b.qpos()[:2]
+        assert x == pytest.approx(1.0, abs=.05) and y == pytest.approx(0.0, abs=.05)
+        assert _gier_grad(b) == pytest.approx(0.0, abs=3.0)
+        assert not b.sim.metrics.fell
+    finally:
+        b.close()
+
+
+def test_move_eine_vierteldrehung():
+    b = PhysicsBackend(autostart=False, realtime=False)
+    try:
+        b.power_on()
+        key = b.send_command(_ziel(b, grad=90), end_time_secs=b.uhr() + 30)
+        rueck = _bis_fertig(b, key, 30)
+        assert rueck.done and not rueck.rejected, rueck.status
+        assert _gier_grad(b) == pytest.approx(90.0, abs=3.0)
+        assert abs(b.qpos()[0]) < .05 and abs(b.qpos()[1]) < .05
+        assert not b.sim.metrics.fell
+    finally:
+        b.close()
+
+
+def test_move_endet_an_der_frist_mit_grund():
+    b = PhysicsBackend(autostart=False, realtime=False)
+    try:
+        b.power_on()
+        key = b.send_command(_ziel(b, vor=3.0), end_time_secs=b.uhr() + 2)
+        rueck = _bis_fertig(b, key, 6)
+        assert rueck.rejected and 'Frist' in rueck.status and 'nicht erreicht' in rueck.status
+        assert b.qpos()[0] < 2.0
+    finally:
+        b.close()
+
+
+def test_move_haelt_vor_einer_sperrzone_und_sagt_es():
+    raum = _raum(sperrzonen=(Sperrzone('glas', 2.5, 0.0, 1.0, 2.0),))
+    b = PhysicsBackend(raum=raum, autostart=False, realtime=False)
+    try:
+        b.power_on()
+        key = b.send_command(_ziel(b, vor=4.0), end_time_secs=b.uhr() + 30)
+        rueck = _bis_fertig(b, key, 20)
+        assert rueck.rejected and 'Sperrzone glas' in rueck.status
+        assert b.qpos()[0] < 1.8
+    finally:
+        b.close()
