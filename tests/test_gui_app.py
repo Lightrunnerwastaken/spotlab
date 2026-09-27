@@ -761,23 +761,115 @@ def test_fahren_startet_das_programm_aus_beispiele_und_das_fenster_kennt_es(qapp
     fenster.uebungsfenster.close()
 
 
-def test_der_tab_fahren_startet_dasselbe_programm_am_echten_spot(qapp, tmp_path, monkeypatch):
-    """Derselbe Startweg wie der Fahrmodus im Raumeditor, nur mit dem Backend „real":
-    das Programm aus Beispiele, der Editor als der eine Startweg, die App merkt sich,
-    dass der Lauf in den Tab gehoert."""
+def test_der_tab_fahren_startet_die_zentrale_am_echten_spot(qapp, tmp_path, monkeypatch):
+    """Seit dem 27.09.2026 die Steuerzentrale: PAKETCODE wie der Akku-Knopf, Backend „real“,
+    wenn „Echter Spot“ gewählt ist, und die App merkt sich, dass der Lauf in den Tab gehört."""
     from dataclasses import replace
 
     from spotlab.config import Config, Limits
+    from spotlab.workshop import zentrale
 
     fenster = MainWindow()
     fenster._config = replace(fenster._config or Config(ip="", username="", limits=Limits()),
                               workspace=str(tmp_path))
     gestartet = []
     monkeypatch.setattr(fenster.ansichten["code"], "starte_skript", _starte_wie_editor(fenster, gestartet))
+    _waehle_ort(fenster, "real")
     fenster.ansichten["fahren"].fahrt_gewuenscht.emit(False)
-    assert gestartet == [(tmp_path / "Beispiele" / "fahren.py", "real")]
-    assert fenster._fahrt_erwartet == "real"
+    assert gestartet == [(zentrale.SKRIPT, "real")]
+    assert fenster._fahrt_erwartet == "zentrale"
     fenster.ansichten["code"]._setze_laeuft(False)
+
+
+def _waehle_ort(fenster, ort):
+    wahl = fenster.ansichten["fahren"].ort_wahl
+    wahl.setCurrentIndex(wahl.findData(ort))
+
+
+def test_im_uebungsraum_startet_die_zentrale_virtuell_ohne_uebernahme(qapp, tmp_path, monkeypatch):
+    """Die Vorgabe ist der Übungsraum -- wer nichts einstellt, fährt nicht den Roboter. Und
+    `--uebernehmen` gibt es dort nicht: im Übungsraum hält niemand ein Lease."""
+    from dataclasses import replace
+
+    from spotlab.config import Config, Limits
+    from spotlab.workshop import zentrale
+
+    fenster = MainWindow()
+    fenster._config = replace(fenster._config or Config(ip="", username="", limits=Limits()),
+                              workspace=str(tmp_path))
+    gestartet = []
+    code = fenster.ansichten["code"]
+    monkeypatch.setattr(code, "starte_skript",
+                        lambda pfad, argumente=(), backend=None: (
+                            gestartet.append((Path(pfad), list(argumente), backend)),
+                            code._setze_laeuft(True)))
+    fenster.ansichten["fahren"].uebernehmen.setChecked(True)
+    fenster.ansichten["fahren"].fahrt_gewuenscht.emit(True)
+    runs = str(tmp_path / "Beispiele" / "runs")
+    assert gestartet == [(zentrale.SKRIPT, ["--runs", runs], fenster._virtuelles_backend())]
+    assert fenster._fahrt_erwartet == "zentrale"
+    code._setze_laeuft(False)
+
+
+def test_die_zentrale_im_uebungsraum_oeffnet_kein_uebungsfenster(qapp, monkeypatch):
+    """Die Zentrale IST die Ansicht -- ein zweites Fenster darüber stähle die Tasten."""
+    fenster = MainWindow()
+    monkeypatch.setattr(fenster, "_starte_leser", lambda prozess: None)
+    monkeypatch.setattr(fenster.ansichten["code"], "lauf_backend", lambda: "sim")
+    fenster._fahrt_erwartet = "zentrale"
+    fenster._lauf_aus_code(object(), "zentrale.py")
+    assert fenster.uebungsfenster is None
+
+
+def test_die_zentrale_faehrt_im_2d_uebungsraum_per_klick(qapp, tmp_path, monkeypatch):
+    """Die ganze Kette im Übungsraum: Knopf, echter Prozess, der Watcher meldet den Lauf, der
+    Tab zeigt das Lagebild, ein Klick in die Draufsicht -- und Spot kommt an."""
+    from dataclasses import replace
+
+    from spotlab.config import Config, Limits
+    from spotlab.gui import app as app_modul
+    from spotlab.record import zentrale as protokoll
+    from spotlab.workshop.control import stoppe_freundlich
+    from tests_zeitgrenzen import TEST_TIMEOUT_S
+
+    monkeypatch.setattr(app_modul, "verfuegbare_backends", lambda: [("2D", "sim")])
+    fenster = MainWindow()
+    fenster._config = replace(fenster._config or Config(ip="", username="", limits=Limits()),
+                              workspace=str(tmp_path))
+    fenster._setze_arbeitsordner(str(tmp_path))
+    fenster.ansichten["raumeditor"].waehle_raum("durchgang")
+    fenster._wechsle("fahren")
+    # Sichtbar wie in echt: ein unsichtbarer Tab schickt KEIN Lebenszeichen, und die
+    # Klickfahrt hielte nach einer halben Sekunde an (genau so soll es sein).
+    fenster.show()
+    tab = fenster.ansichten["fahren"]
+    tab.fahrt_gewuenscht.emit(False)
+    assert fenster.ansichten["code"].laeuft(), fenster.statuszeile.text()
+    assert fenster.uebungsfenster is None
+    prozess = fenster.ansichten["code"]._prozess
+    lauf = None
+    try:
+        lauf = warte_bis(lambda: tab.tastenfahrt.lauf_dir if tab.laeuft() else None,
+                         "der Watcher meldet dem Tab das Lauf-Verzeichnis",
+                         zwischendurch=qapp.processEvents, takt_s=0.05)
+        warte_bis(lambda: tab.lagebild.hat_bild(), "das erste Lagebild im Tab",
+                  zwischendurch=qapp.processEvents)
+        tab.lagebild.klick.emit(2.3, 2.0)
+        warte_bis(lambda: ((protokoll.lies_lagebild(lauf) or {}).get("klickfahrt") or {})
+                  .get("zustand") == "angekommen",
+                  lambda: f"angekommen (bisher: {(protokoll.lies_lagebild(lauf) or {}).get('klickfahrt')})",
+                  zwischendurch=qapp.processEvents)
+        warte_bis(lambda: "angekommen" in tab.klick_zeile.text(), "die Zeile im Tab sagt es",
+                  zwischendurch=qapp.processEvents)
+        stoppe_freundlich(lauf)
+        prozess.wait(timeout=TEST_TIMEOUT_S)
+    finally:
+        if prozess.poll() is None:
+            prozess.kill()
+        fenster.hide()
+    meta = json.loads((Path(lauf) / "lauf.json").read_text(encoding="utf-8"))
+    assert meta["backend"] == "sim"
+    assert Path(lauf).parent == tmp_path / "Beispiele" / "runs"
 
 
 def _saetze_aus(lauf, datei):
@@ -830,6 +922,7 @@ def test_der_tab_fahren_faehrt_wirklich_ueber_knopf_watcher_und_tasten(qapp, tmp
     fenster._setze_arbeitsordner(str(tmp_path))
     fenster._wechsle("fahren")
     tab = fenster.ansichten["fahren"]
+    _waehle_ort(fenster, "real")
     tab.fahrt_gewuenscht.emit(False)
     assert fenster.ansichten["code"].laeuft(), fenster.statuszeile.text()
     prozess = fenster.ansichten["code"]._prozess
@@ -1156,9 +1249,13 @@ def test_die_fahrt_kann_das_lease_uebernehmen(qapp, tmp_path, monkeypatch):
     monkeypatch.setattr(code, "starte_skript",
                         lambda pfad, argumente=(), backend=None: (
                             gestartet.append((Path(pfad), list(argumente))), code._setze_laeuft(True)))
+    from spotlab.workshop import zentrale
+
+    _waehle_ort(fenster, "real")
     fenster.ansichten["fahren"].fahrt_gewuenscht.emit(True)
-    assert gestartet == [(tmp_path / "Beispiele" / "fahren.py", ["--uebernehmen"])]
-    assert fenster._fahrt_erwartet == "real"
+    runs = str(tmp_path / "Beispiele" / "runs")
+    assert gestartet == [(zentrale.SKRIPT, ["--runs", runs, "--uebernehmen"])]
+    assert fenster._fahrt_erwartet == "zentrale"
     code._setze_laeuft(False)
 
 
@@ -1167,8 +1264,11 @@ def test_ohne_haekchen_faehrt_die_fahrt_ohne_uebernahme(qapp, tmp_path, monkeypa
     gestartet = []
     monkeypatch.setattr(fenster.ansichten["code"], "starte_skript",
                         lambda pfad, argumente=(), backend=None: gestartet.append((Path(pfad), list(argumente))))
+    from spotlab.workshop import zentrale
+
+    _waehle_ort(fenster, "real")
     fenster.ansichten["fahren"].fahrt_gewuenscht.emit(False)
-    assert gestartet == [(tmp_path / "Beispiele" / "fahren.py", [])]
+    assert gestartet == [(zentrale.SKRIPT, ["--runs", str(tmp_path / "Beispiele" / "runs")])]
 
 
 def test_der_notaus_zeigt_dem_fahren_reiter_den_weg_zurueck(qapp, tmp_path, monkeypatch):
@@ -1316,8 +1416,11 @@ def test_nach_der_fahrt_am_echten_spot_bleibt_der_code_reiter_virtuell(qapp, tmp
     fenster.ansichten["code"].setze_backend("sim")
     gestartet = []
     monkeypatch.setattr(fenster.ansichten["code"], "starte_skript", _starte_wie_editor(fenster, gestartet))
+    from spotlab.workshop import zentrale
+
+    _waehle_ort(fenster, "real")
     fenster.ansichten["fahren"].fahrt_gewuenscht.emit(False)
-    assert gestartet == [(tmp_path / "Beispiele" / "fahren.py", "real")]
+    assert gestartet == [(zentrale.SKRIPT, "real")]
     assert fenster.ansichten["code"].gewaehltes_backend() == "sim"
     fenster.ansichten["code"]._setze_laeuft(False)
 
@@ -1426,7 +1529,7 @@ def test_scheitert_der_start_der_fahrt_steht_es_im_tab_fahren(qapp, tmp_path, mo
     (Roboter nicht erreichbar), und der Tab zeigte nichts -- der Text stand im
     versteckten Feld der Live-Ansicht."""
     fenster = MainWindow()
-    fenster._fahrt_erwartet = "real"
+    fenster._fahrt_erwartet = "zentrale"
     fenster._prozess_ende(1, ["spotlab.errors.NotReachable: Ich erreiche 192.168.80.3 nicht."])
     assert "Ich erreiche 192.168.80.3 nicht" in fenster.ansichten["fahren"].zustand.text()
 

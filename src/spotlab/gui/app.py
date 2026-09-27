@@ -125,7 +125,7 @@ class MainWindow(QWidget):
             "karten": MapsView(self._palette),
             "umwelt": UmweltView(),
             "experimente": ExperimenteView(),
-            "fahren": FahrenView(),
+            "fahren": FahrenView(self._palette),
             "raumeditor": RaumeditorView(self._palette),
             "anbindungen": AnbindungenView(self._palette),
             "spot": CheckupView(),
@@ -182,10 +182,9 @@ class MainWindow(QWidget):
         # solange dort nichts ausgewaehlt war.
         self.ansichten["raumeditor"].start_gewuenscht.connect(self._starte_virtuell)
         self.ansichten["raumeditor"].fahrt_gewuenscht.connect(self._starte_fahrt)
-        # Der Tab „Fahren": dasselbe Programm, derselbe Startweg, Backend „real".
-        self.ansichten["fahren"].fahrt_gewuenscht.connect(
-            lambda uebernehmen: self._starte_fahrt(FAHREN_BACKEND, uebernehmen=uebernehmen)
-        )
+        # Der Tab „Fahren" ist die Steuerzentrale: Paketcode, derselbe Startweg, im
+        # Übungsraum (Vorgabe) oder mit dem Backend `FAHREN_BACKEND` am echten Spot.
+        self.ansichten["fahren"].fahrt_gewuenscht.connect(self._starte_zentrale)
         self.ansichten["fahren"].lage_gewuenscht.connect(self._starte_lage)
         self.ansichten["fahren"].stopp_gewuenscht.connect(
             lambda: self.ansichten["live"].stoppe()
@@ -413,7 +412,7 @@ class MainWindow(QWidget):
         grund = _letzte_fehlerzeile(zeilen)
         text = f"Das Programm ist abgebrochen (Code {code})" + (f": {grund}" if grund else ".")
         self._melde(text)
-        if self._fahrt_erwartet == "real" or self.ansichten["fahren"].laeuft():
+        if self._fahrt_erwartet == "zentrale" or self.ansichten["fahren"].laeuft():
             self.ansichten["fahren"].zeige_startfehler(text)
 
     def _lauf_in_ansicht(self, prozess, ansicht):
@@ -431,7 +430,10 @@ class MainWindow(QWidget):
     def _lauf_aus_code(self, prozess, skript):
         # Kein Ansichtswechsel: wer aus „Code" startet, will dort bleiben.
         self._start_aus = "code"
-        if self.ansichten["code"].lauf_backend() in ("sim", "mujoco", "physics"):
+        # Die Zentrale im Übungsraum IST die Ansicht: kein zweites Fenster darüber, das die
+        # Tasten an sich zöge (`_fahrt_erwartet == "zentrale"`, 27.09.2026).
+        if (self.ansichten["code"].lauf_backend() in ("sim", "mujoco", "physics")
+                and self._fahrt_erwartet != "zentrale"):
             self._oeffne_uebungsfenster(Path(skript).name)
         self._starte_leser(prozess)
 
@@ -514,14 +516,11 @@ class MainWindow(QWidget):
             self.ansichten["fahren"].lauf_beendet()
             self.ansichten["karten"].lauf_beendet()
 
-    def _starte_fahrt(self, backend=None, uebernehmen=False):
-        """Der Fahrmodus: das mitgelieferte `fahren.py`, W A S D Q E. Ohne `backend`
-        virtuell (Uebungsfenster, Raumeditor), mit `FAHREN_BACKEND` am echten Spot
-        (Tab „Fahren"). Derselbe Startweg und dieselben Regeln wie „Starten".
-
-        `uebernehmen` reicht `--uebernehmen` an das Programm durch: der Weg zurueck,
-        wenn ein vom NOT-AUS getoeteter Lauf oder das Tablet das Lease noch haelt.
-        """
+    def _starte_fahrt(self):
+        """Der Fahrmodus des Raumeditors: das mitgelieferte `fahren.py`, W A S D Q E im
+        Übungsfenster, immer virtuell. Derselbe Startweg und dieselben Regeln wie
+        „Starten". Der Tab „Fahren" startet seit dem 27.09.2026 die Zentrale
+        (`_starte_zentrale`)."""
         from spotlab.workshop import fahren
         from spotlab.workshop.beispiele import bereitstellen
 
@@ -540,15 +539,42 @@ class MainWindow(QWidget):
         except OSError as fehler:
             self._melde(f"Beispiele konnten nicht angelegt werden: {fehler}")
             return
-        if backend:
-            self._fahrt_erwartet = "real"           # der Lauf gehoert in den Tab „Fahren"
-        else:
-            backend = self._virtuelles_backend()
-            self._fahrt_erwartet = True
-        self._starte_ueber_editor(
-            fahren.skript_in(arbeitsordner), backend,
-            argumente=["--uebernehmen"] if uebernehmen else [],
-        )
+        self._fahrt_erwartet = True
+        self._starte_ueber_editor(fahren.skript_in(arbeitsordner), self._virtuelles_backend())
+
+    def _starte_zentrale(self, uebernehmen=False):
+        """Der Tab „Fahren": die Steuerzentrale (`workshop/zentrale.py`) als PAKETCODE über den
+        einen Startweg, der Lauf unter Beispiele/runs, wo der Watcher sucht.
+
+        WO, sagt der Tab (`FahrenView.ort()`): der Übungsraum ist die Vorgabe (virtuelles
+        Backend, Raum aus dem Raumeditor), der echte Spot nur ausdrücklich
+        (`FAHREN_BACKEND`). `--uebernehmen` gibt es nur am echten Spot: im Übungsraum
+        hält niemand ein Lease. Paketcode wie beim Akku-Knopf -- der Knopf verspricht ein
+        bestimmtes Verhalten, und eine Kopie im Arbeitsordner kann veraltet sein.
+        """
+        from spotlab.workshop import zentrale
+        from spotlab.workshop.beispiele import ORDNER as BEISPIELORDNER
+        from spotlab.workshop.beispiele import bereitstellen
+
+        if self.ansichten["code"].laeuft():
+            self.ansichten["code"].starte_aktuelles()        # heisst dann Stopp
+            return
+        arbeitsordner = self._config.workspace if self._config else None
+        if not arbeitsordner:
+            self._melde("Für die Steuerzentrale zuerst einen Arbeitsordner wählen — dort "
+                        "landet der Lauf.")
+            return
+        try:
+            bereitstellen(arbeitsordner)
+        except OSError as fehler:
+            self._melde(f"Beispiele konnten nicht angelegt werden: {fehler}")
+            return
+        echt = self.ansichten["fahren"].ort() == "real"
+        backend = FAHREN_BACKEND if echt else self._virtuelles_backend()
+        runs = Path(arbeitsordner) / BEISPIELORDNER / "runs"
+        argumente = ["--runs", str(runs)] + (["--uebernehmen"] if echt and uebernehmen else [])
+        self._fahrt_erwartet = "zentrale"            # der Lauf gehört in den Tab „Fahren"
+        self._starte_ueber_editor(zentrale.SKRIPT, backend, argumente=argumente)
 
     def _starte_lage(self, aktion, seite, uebernehmen):
         """Akku wechseln und Aufrichten aus dem Tab „Fahren": PAKETCODE (`workshop/lage.py`)
@@ -788,7 +814,7 @@ class MainWindow(QWidget):
         skript = read_run(verzeichnis, zaehlen=False).skript
         name = Path(skript).name if skript else Path(verzeichnis).name
         self.ansichten["live"].setze_lauf(verzeichnis, name)
-        if self._fahrt_erwartet == "real":
+        if self._fahrt_erwartet == "zentrale":
             # Der Tab „Fahren" bekommt das Verzeichnis und die Tastatur -- und bleibt
             # vorne: dort kommen die Tasten an. Der NOT-AUS steht im Kopf, in jedem Reiter.
             self._fahrt_erwartet = False
