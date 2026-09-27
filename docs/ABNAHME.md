@@ -1308,6 +1308,41 @@ Gerät offen sind Gitter, Lage im Rahmen „vision“, Licht und Ton am echten D
 
 **Ergebnis** _(offen)_
 
+## A39 — Steuerzentrale: Menschen sehen und ihnen per Klick folgen
+
+**Voraussetzung** A38, A34 Teil 5 (Merkpunkt). Seit dem 27.09.2026 sucht die Zentrale Menschen
+(`workshop/menschensuche.py`, Regler „Menschen“ im Tab) und folgt einem angeklickten
+(`workshop/klickfolgen.py` um `folgen.folge`; Entwurf
+`docs/superpowers/specs/2026-09-27-steuerzentrale-menschen-design.md`). Mit Attrappen geprüft
+(`tests/test_workshop_menschensuche.py`, `test_workshop_klickfolgen.py`, `test_workshop_zentrale.py`);
+im Übungsraum gibt es keine Menschen und keine Kameras. Am Gerät offen: die Einzelsicht der
+Seiten- und Rückkamera (Peilung im Körperrahmen), die Rechenzeit je Stufe, die Wahl des
+Angeklickten unter zweien.
+
+1. **Stufen.** „🐕 Echter Spot“, Fahrt beginnen, eine Person 2–3 m vor Spot. Regler auf
+   „Sparsam“: ein Kreis erscheint etwa dort, wo sie steht, alle 2 s neu; die Zeile nennt die
+   Rundenzeit. „Normal“: der Kreis folgt ihr flüssig. Rundenzeit je Stufe notieren, dazu die
+   Auslastung des Laptops (Task-Manager). „Aus“: die Kreise verschwinden sofort.
+2. **Rundum.** Regler auf „Rundum“, die Person geht einmal langsam um Spot herum (2 m).
+   Erwartung: der Kreis läuft mit, auch links, rechts und hinten, ohne Sprung an den
+   Kameragrenzen; hinten liegt er HINTER dem Pfeil, nicht davor (Vorzeichen der Einzelsicht).
+   Zeigt die Zeile einen Grund (z. B. „hinten: …“), notieren.
+3. **Lage stimmt.** Eine Person stellt sich auf ein Tag der Draufsicht. Erwartung: der Kreis
+   liegt auf ±0.5 m beim Kästchen.
+4. **Klick zum Folgen.** Zwei Personen 2 m und 3 m vor Spot, etwa 1.5 m auseinander. Die
+   WEITERE anklicken. Erwartung: Zeile „Spot sucht den angeklickten Menschen“, dann „folgt“,
+   Spot geht zu der angeklickten (nicht zur näheren), der Kreis trägt einen grünen Ring,
+   LEDs blau. Die nähere Person tritt danach kurz zwischen beide: Spot bleibt bei der ersten.
+5. **Beenden.** Je einmal: W drücken (Spot fährt mit der Taste weiter), in freien Boden
+   klicken (Klickfahrt), Reiter wechseln (Spot steht innerhalb einer Sekunde, Zeile „kein
+   Lebenszeichen“), „■ Stopp“. Jedes Mal steht der Grund als „Folgen beendet: …“ in der Zeile.
+6. **Niemand da.** Auf einen Menschen klicken, der dann weggeht. Erwartung: nach 5 s „Folgen
+   beendet: der angeklickte Mensch war 5 s lang nicht zu finden“.
+7. **Licht.** Vorher Farbe grün wählen, dann folgen: während des Folgens gelb/blau (Folgemodus),
+   danach wieder grün.
+
+**Ergebnis** _(offen)_
+
 ## Nach der Abnahme
 
 Ergebnisse hier eintragen, Abweichungen als Befund in die Spec zurückspielen, und erst

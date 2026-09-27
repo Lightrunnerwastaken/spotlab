@@ -1204,9 +1204,31 @@ versionsgepinntes Extra `spotlab[sim]`.
   **hält eine Schranke, dreht Spot trotzdem weiter zum Weg** (schräg vor einer Tür lief der
   Strahl sonst auf die Kante), und **ein Lesekonflikt beim Ersetzen von `klickziel.json` bricht
   nichts ab** (das zuletzt lesbare gilt, sein Lebenszeichen altert weiter) — beides gefunden
-  an der Kette im 2D-Übungsraum. Jede Taste übernimmt und bricht die Klickfahrt ab. Plätze für
-  Menschen (Teil 2) und Karte (Teil 3) stehen leer im Lagebild. `fahren.py` bleibt für den
-  Raumeditor. Am Gerät: A38.
+  an der Kette im 2D-Übungsraum. Jede Taste übernimmt und bricht die Klickfahrt ab. Der Platz
+  für die Karte (Teil 3) steht leer im Lagebild. `fahren.py` bleibt für den Raumeditor. Am
+  Gerät: A38.
+  **Teil 2 (27.09.2026): Menschen sehen und ihnen per Klick folgen** (Entwurf
+  `docs/superpowers/specs/2026-09-27-steuerzentrale-menschen-design.md`). Die Suche ist ein
+  dritter Faden IM Programm (`workshop/menschensuche.py`), dieselbe Kette wie beim Folgen
+  (YOLOX, Skelett, `koerper.beurteile` mit Tiefe), je Quelle ein eigener Erkenner (die Spur
+  gehört zu EINER Bildfolge), YOLOX geteilt. Der Regler im Tab (aus, sparsam = vorne alle 2 s,
+  normal, rundum = dazu Seiten und Heck) geht als Aktion `suche` hinaus und wird nachgeschickt,
+  wenn das Lagebild etwas anderes meldet — eine Aktion kann überschrieben werden, bevor das
+  Programm sie liest. **Seiten und Heck über `panorama.Einzelsicht`**: dieselbe
+  Zylinderprojektion wie das Frontpanorama, EINE Kamera, `winkel()` gibt die Peilung im
+  KÖRPERrahmen; das Frontpanorama ist unberührt. **Die Tiefenprobe wickelt die Peilung**
+  (`gesicht.abstand_in_richtung`): hinten liegen +178° und −179° 3° auseinander, nicht 357° —
+  ohne das hätte die Rückkamera nie einen Abstand gehabt. Ohne Bild- UND Tiefenkameras
+  (Übungsraum) ist der Regler grau und sagt warum. Ein Mensch steht bis 3 s im Lagebild und
+  wird blasser, ein neuer Fund in 1 m ersetzt ihn. **Folgen per Klick übergibt an
+  `folgen.folge`, kein zweites Folgen** (`workshop/klickfolgen.py`): der Körperfinder wird
+  eingewickelt und schiebt sich über dieselbe ContextVar `_WAHL` vor die Wahl des Merkpunkts —
+  in den ersten zwei Treffern nur der Kandidat an der angeklickten Stelle (≤ 1 m, im
+  Körperrahmen, die Stelle wandert mit), danach hält ihn der Merkpunkt; ohne lesbare Lage
+  nimmt er am Anfang KEINEN (geraten wäre der nächste). Das Folgen endet bei Stopp, Taste,
+  neuem Klick, fehlendem Lebenszeichen (wie die Klickfahrt) oder 5 s ohne den Angeklickten;
+  der Grund steht im Lagebild. Die LEDs gehören dann dem Folgemodus, danach kommt die im Tab
+  gewählte Farbe zurück. Am Gerät: A39.
 - **Das Fenstersymbol ist FREIGESTELLT und liegt im Paket** (`gui/spotlab.png`, runde
   Ecken mit Transparenz aussen, dazu `package-data`). Ein Symbol mit eigenem
   Hintergrund sitzt in der Taskleiste in einem grauen Kasten, und ohne den
