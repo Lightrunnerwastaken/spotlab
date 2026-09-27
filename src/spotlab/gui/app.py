@@ -572,7 +572,8 @@ class MainWindow(QWidget):
         echt = self.ansichten["fahren"].ort() == "real"
         backend = FAHREN_BACKEND if echt else self._virtuelles_backend()
         runs = Path(arbeitsordner) / BEISPIELORDNER / "runs"
-        argumente = ["--runs", str(runs)] + (["--uebernehmen"] if echt and uebernehmen else [])
+        argumente = (["--runs", str(runs), "--arbeitsordner", str(arbeitsordner)]
+                     + (["--uebernehmen"] if echt and uebernehmen else []))
         self._fahrt_erwartet = "zentrale"            # der Lauf gehört in den Tab „Fahren"
         self._starte_ueber_editor(zentrale.SKRIPT, backend, argumente=argumente)
 

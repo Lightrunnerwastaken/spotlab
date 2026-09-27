@@ -568,12 +568,102 @@ def test_ohne_kameras_wird_ein_menschenklick_abgelehnt(tmp_path):
     assert "kamera" in z.klick.stand.grund.lower()
 
 
+# ------------------------------------------------------------ Karten (Teil 3)
+
+
+class _Karten:
+    """Eine Kartenarbeit-Attrappe: merkt sich Aufträge, Beobachtungen und das Ende."""
+
+    def __init__(self, kommandos=None, abgleich=None):
+        self.auftraege = []
+        self.beobachtet = []
+        self.kommandos = kommandos if kommandos is not None else []
+        self._abgleich = abgleich
+
+    def auftrag(self, nummer, was, name=None):
+        self.auftraege.append((nummer, was, name))
+
+    def beobachte(self, t):
+        self.beobachtet.append(t)
+
+    def abgleiche(self, skizze, spot_xy, t):
+        return self._abgleich
+
+    def daten(self, t, abgleich):
+        return {"name": "flur2", "zustand": "verortet",
+                "raster": None if abgleich is None else {"breite": abgleich.breite}}
+
+    def beenden(self):
+        self.kommandos.append("karte beenden")
+
+
+def test_ein_kartenauftrag_kommt_bei_der_kartenarbeit_an(tmp_path):
+    karten = _Karten()
+    z = _zentrale(_Spot(), tmp_path, kartenarbeit=karten)
+    protokoll.schreibe_kartenauftrag(tmp_path, 1, "laden", name="flur2")
+    z.takt()
+    assert karten.auftraege[0] == (1, "laden", "flur2")
+
+
+def test_das_lagebild_traegt_die_karte_und_ihr_bild(tmp_path):
+    import numpy as np
+
+    from spotlab.workshop import kartenabgleich, skizze
+
+    s = skizze.Skizze()
+    abgleich = kartenabgleich.abgleich(s, np.array([[1.0, 1.0], [1.5, 1.0]]), (1.0, 1.0), T0)
+    karten = _Karten(abgleich=abgleich)
+    z = _zentrale(_Spot(), tmp_path, kartenarbeit=karten)
+    z.wahrnehmen(T0)
+    bild = protokoll.lies_lagebild(tmp_path)
+    assert karten.beobachtet == [T0]
+    assert bild["karte"] == {"name": "flur2", "zustand": "verortet",
+                             "raster": {"breite": abgleich.breite}}
+    assert (tmp_path / protokoll.LAGEBILD_KARTE).is_file()
+
+
+def test_ohne_abgleich_gibt_es_kein_kartenbild(tmp_path):
+    z = _zentrale(_Spot(), tmp_path, kartenarbeit=_Karten())
+    z.wahrnehmen(T0)
+    assert protokoll.lies_lagebild(tmp_path)["karte"]["raster"] is None
+    assert not (tmp_path / protokoll.LAGEBILD_KARTE).exists()
+
+
+def test_am_ende_wird_die_karte_erst_nach_dem_anhalten_gespeichert(tmp_path):
+    spot = _Spot()
+    z = _zentrale(spot, tmp_path, kartenarbeit=_Karten(kommandos=spot.kommandos))
+    runden = {"n": 0}
+
+    def laeuft():
+        runden["n"] += 1
+        return runden["n"] <= 2
+
+    z.lauf(laeuft, schlaf=lambda _s: None, mit_blick=False)
+    assert spot.kommandos.index("stop") < spot.kommandos.index("karte beenden")
+
+
+def test_ein_kartenauftrag_kommt_auch_waehrend_des_folgens_an(tmp_path):
+    karten = _Karten()
+
+    def je_takt(n, kw):
+        if n == 1:
+            protokoll.schreibe_kartenauftrag(tmp_path, 7, "wegpunkt", name="Tür")
+
+    z, _ = _folgende(tmp_path, _Folge(je_takt, takte=3), kartenarbeit=karten)
+    _menschklick(tmp_path)
+    z.takt()
+    assert (7, "wegpunkt", "Tür") in karten.auftraege
+
+
 # ------------------------------------------------------------ Hauptprogramm
 
 
 def test_die_argumente():
-    assert zentrale.argumente(["--runs", "X", "--uebernehmen"]) == ("X", True)
-    assert zentrale.argumente([]) == (None, False)
+    assert zentrale.argumente(["--runs", "X", "--uebernehmen"]) == ("X", True, None)
+    assert zentrale.argumente([]) == (None, False, None)
+    assert zentrale.argumente(["--arbeitsordner", "W", "--runs", "X"]) == ("X", False, "W")
+    with pytest.raises(SpotlabError):
+        zentrale.argumente(["--arbeitsordner"])
     with pytest.raises(SpotlabError):
         zentrale.argumente(["--los"])
     with pytest.raises(SpotlabError):

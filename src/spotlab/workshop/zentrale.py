@@ -10,8 +10,10 @@ Die Platte ist der einzige Kanal zum Tab, in beide Richtungen (`record/zentrale.
     fahrt.json       Tab → hier  Tasten W A S D Q E, 20-mal je Sekunde gelesen
     klickziel.json   Tab → hier  Klick in die Draufsicht, mit Lebenszeichen
     aktion.json      Tab → hier  Licht, Ton und die Suchstufe, jede Nummer einmal
+    kartenauftrag.json  Tab → hier  Karte laden, Aufnahme starten/beenden, Wegpunkt (Teil 3)
     lagebild.json    hier → Tab  Skizze, Spot, Tags, Menschen, Klickfahrt, Fähigkeiten (2-mal je s)
     lagebild.png     hier → Tab  die Skizze (`workshop/skizze.py`)
+    lagebild_karte.png  hier → Tab  die geladene Karte, gefärbt nach dem Abgleich (Teil 3)
 
 **Folgen per Klick** (Teil 2): ein Klick auf einen Menschen (`klickziel.json` mit
 `art = "mensch"`) übergibt an den Folgemodus (`folgen.folge` mit dem Körperfinder,
@@ -21,6 +23,11 @@ der Klickfahrt — oder bis der Angeklickte `START_FRIST_S` lang nicht zu finden
 Grund steht im Lagebild. Die Suche pausiert so lange; was der Folgemodus sieht, steht im
 Lagebild, der Gefolgte hervorgehoben. Die LEDs gehören dann dem Folgemodus, danach kommt
 die im Tab gewählte Farbe zurück.
+
+**Karten** (Teil 3, `workshop/kartenarbeit.py`): laden, verorten, aufnehmen, speichern —
+das Langsame in einem eigenen Faden der Kartenarbeit; die Wahrnehmung fragt je Takt die
+Verortung ab und gleicht die Kartenwände mit der Skizze ab (`workshop/kartenabgleich.py`).
+Am Ende wird eine laufende Aufnahme gespeichert, NACHDEM Spot angehalten hat.
 
 **Vorrang:** eine Taste vor der Klickfahrt vor dem Stillstand. Eine Taste bricht die
 Klickfahrt ab. Die Klickfahrt fährt nur, solange das Lebenszeichen des Tabs frisch ist
@@ -47,7 +54,7 @@ from spotlab.errors import SpotlabError
 from spotlab.record import fahrt
 from spotlab.record import zentrale as protokoll
 from spotlab.record.run import STOPP_DATEI
-from spotlab.workshop import blick, folgen, klickfahrt, klickfolgen, menschensuche
+from spotlab.workshop import blick, folgen, kartenabgleich, klickfahrt, klickfolgen, menschensuche
 from spotlab.workshop import skizze as skizzenmodul
 
 SKRIPT = Path(__file__)
@@ -73,7 +80,7 @@ def _im_hintergrund(arbeit):
 class Zentrale:
     def __init__(self, spot, lauf_dir, jetzt=time.time, melde=print, licht=None,
                  hintergrund=_im_hintergrund, suche=None, folgen_mit=None,
-                 koerper_finder=None):
+                 koerper_finder=None, kartenarbeit=None):
         self.spot = spot
         self.lauf_dir = Path(lauf_dir)
         self.jetzt = jetzt
@@ -103,6 +110,7 @@ class Zentrale:
         self._laeuft = lambda: True
         self._folgen_mit = folgen_mit or folgen.folge
         self._koerper_finder = koerper_finder or folgen.koerper_finder
+        self._karten = kartenarbeit          # None: kein Platz für Karten (Lagebild `karte` leer)
         self.faehigkeiten = self._faehigkeiten()
         self._suche_kann = self._kann_suchen()
         if suche is None and self._suche_kann:
@@ -177,7 +185,24 @@ class Zentrale:
             if kopf is not None:
                 self._kopf, self._kopf_t = kopf, t
             daten, bild = self._lagebild(t)
-        protokoll.schreibe_lagebild(self.lauf_dir, daten, bild)
+        kartenbild = None
+        if self._karten is not None:
+            # Die Skizze ändert nur dieser Faden: der Abgleich liest sie ohne Sperre.
+            daten["karte"], kartenbild = self._karte(t, lage)
+        protokoll.schreibe_lagebild(self.lauf_dir, daten, bild, kartenbild)
+
+    def _karte(self, t, lage):
+        """(Platz `karte`, PNG oder None) — eine Kartenarbeit, die stolpert, hält nichts an."""
+        try:
+            self._karten.beobachte(t)
+            spot_xy = (lage[0], lage[1]) if lage is not None else None
+            abgleich = (self._karten.abgleiche(self.skizze, spot_xy, t) if spot_xy is not None
+                        else None)
+            return (self._karten.daten(t, abgleich),
+                    None if abgleich is None else kartenabgleich.png(abgleich))
+        except Exception as fehler:
+            self._einmal("karte", f"Die Kartenanzeige stolpert ({fehler}) — Spot fährt weiter.")
+            return None, None
 
     def _lagebild(self, t):
         """(Beschreibung, PNG-Bytes oder None) — unter der Sperre gerufen."""
@@ -257,6 +282,7 @@ class Zentrale:
         """Ein Fahrtakt: Aktionen, Klickziel, dann Taste > Klickfahrt > Stillstand."""
         t = self.jetzt() if t is None else t
         self._aktionen()
+        self._kartenauftraege()
         befehl = fahrt.lies(self.lauf_dir, jetzt=self.jetzt)
         # Unter Windows liest der Takt die Datei manchmal genau beim Ersetzen (20-mal je
         # Sekunde gelesen, 5-mal geschrieben): dann gilt das zuletzt gelesene weiter. Sein
@@ -368,6 +394,7 @@ class Zentrale:
                 ende["grund"] = "Stopp"
                 return False
             self._aktionen()
+            self._kartenauftraege()
             if fahrt.lies(self.lauf_dir, jetzt=self.jetzt) != fahrt.STILL:
                 ende["grund"] = "eine Taste hat übernommen"
                 return False
@@ -419,6 +446,16 @@ class Zentrale:
             self._licht.setze(LICHTFARBEN.get(self._lichtwunsch, "blue"))
         except Exception as fehler:
             self._einmal("licht_fehler", f"Das Licht geht nicht ({fehler}) — Spot fährt weiter.")
+
+    # ------------------------------------------------------------ Karten
+
+    def _kartenauftraege(self):
+        """Einen Kartenauftrag an die Kartenarbeit — sie nimmt jede Nummer nur einmal."""
+        if self._karten is None:
+            return
+        auftrag = protokoll.lies_kartenauftrag(self.lauf_dir)
+        if auftrag is not None:
+            self._karten.auftrag(auftrag["nummer"], auftrag["was"], auftrag["name"])
 
     # ------------------------------------------------------------ Licht und Ton
 
@@ -501,25 +538,37 @@ class Zentrale:
                 sucher.join(timeout=2.0)
                 if seher is not None:
                     seher.beenden()
+                if self._karten is not None:
+                    # NACH dem Anhalten: das Speichern einer Aufnahme dauert, und Spot
+                    # soll dabei stehen, nicht mit dem letzten Befehl weiterlaufen.
+                    try:
+                        self._karten.beenden()
+                    except Exception as fehler:
+                        self.melde(f"Die Kartenaufnahme liess sich nicht speichern ({fehler}) — "
+                                   f"sie liegt noch auf dem Roboter.")
 
 
 # ------------------------------------------------------------ Hauptprogramm
 
 
 def argumente(argv):
-    """(runs, uebernehmen) aus der Kommandozeile: `zentrale.py [--runs ORDNER] [--uebernehmen]`."""
-    rest, runs, uebernehmen = list(argv), None, False
+    """(runs, uebernehmen, arbeitsordner) aus der Kommandozeile:
+    `zentrale.py [--runs ORDNER] [--arbeitsordner ORDNER] [--uebernehmen]`."""
+    rest, runs, uebernehmen, arbeitsordner = list(argv), None, False, None
     while rest:
         wort = rest.pop(0)
-        if wort == "--runs":
+        if wort in ("--runs", "--arbeitsordner"):
             if not rest:
-                raise SpotlabError("Nach --runs fehlt der Ordner.")
-            runs = rest.pop(0)
+                raise SpotlabError(f"Nach {wort} fehlt der Ordner.")
+            if wort == "--runs":
+                runs = rest.pop(0)
+            else:
+                arbeitsordner = rest.pop(0)
         elif wort == "--uebernehmen":
             uebernehmen = True
         else:
             raise SpotlabError(f"Unbekannte Option {wort}.")
-    return runs, uebernehmen
+    return runs, uebernehmen, arbeitsordner
 
 
 def _hauptprogramm(argv=None):
@@ -528,8 +577,9 @@ def _hauptprogramm(argv=None):
     import sys
 
     import spotlab
+    from spotlab.workshop.kartenarbeit import Kartenarbeit
 
-    runs, uebernehmen = argumente(sys.argv[1:] if argv is None else argv)
+    runs, uebernehmen, arbeitsordner = argumente(sys.argv[1:] if argv is None else argv)
     runs = runs or os.environ.get("SPOTLAB_RUNS_DIR") or str(Path.cwd() / "runs")
     with spotlab.connect(runs_dir=runs, script=__file__, take=uebernehmen) as spot:
         spot.power_on()
@@ -538,7 +588,8 @@ def _hauptprogramm(argv=None):
               "Klick in die Draufsicht: dorthin gehen · Leertaste hält")
         lauf_dir = spot.recorder.dir
         stopp = lauf_dir / STOPP_DATEI
-        Zentrale(spot, lauf_dir).lauf(laeuft=lambda: not stopp.exists())
+        karten = Kartenarbeit(spot, arbeitsordner)
+        Zentrale(spot, lauf_dir, kartenarbeit=karten).lauf(laeuft=lambda: not stopp.exists())
         spot.sit()
 
 

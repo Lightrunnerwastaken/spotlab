@@ -806,7 +806,8 @@ def test_im_uebungsraum_startet_die_zentrale_virtuell_ohne_uebernahme(qapp, tmp_
     fenster.ansichten["fahren"].uebernehmen.setChecked(True)
     fenster.ansichten["fahren"].fahrt_gewuenscht.emit(True)
     runs = str(tmp_path / "Beispiele" / "runs")
-    assert gestartet == [(zentrale.SKRIPT, ["--runs", runs], fenster._virtuelles_backend())]
+    assert gestartet == [(zentrale.SKRIPT, ["--runs", runs, "--arbeitsordner", str(tmp_path)],
+                          fenster._virtuelles_backend())]
     assert fenster._fahrt_erwartet == "zentrale"
     code._setze_laeuft(False)
 
@@ -1254,7 +1255,8 @@ def test_die_fahrt_kann_das_lease_uebernehmen(qapp, tmp_path, monkeypatch):
     _waehle_ort(fenster, "real")
     fenster.ansichten["fahren"].fahrt_gewuenscht.emit(True)
     runs = str(tmp_path / "Beispiele" / "runs")
-    assert gestartet == [(zentrale.SKRIPT, ["--runs", runs, "--uebernehmen"])]
+    assert gestartet == [(zentrale.SKRIPT, ["--runs", runs, "--arbeitsordner", str(tmp_path),
+                                            "--uebernehmen"])]
     assert fenster._fahrt_erwartet == "zentrale"
     code._setze_laeuft(False)
 
@@ -1268,7 +1270,8 @@ def test_ohne_haekchen_faehrt_die_fahrt_ohne_uebernahme(qapp, tmp_path, monkeypa
 
     _waehle_ort(fenster, "real")
     fenster.ansichten["fahren"].fahrt_gewuenscht.emit(False)
-    assert gestartet == [(zentrale.SKRIPT, ["--runs", str(tmp_path / "Beispiele" / "runs")])]
+    assert gestartet == [(zentrale.SKRIPT, ["--runs", str(tmp_path / "Beispiele" / "runs"),
+                                            "--arbeitsordner", str(tmp_path)])]
 
 
 def test_der_notaus_zeigt_dem_fahren_reiter_den_weg_zurueck(qapp, tmp_path, monkeypatch):
