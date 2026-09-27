@@ -1204,9 +1204,8 @@ versionsgepinntes Extra `spotlab[sim]`.
   **hält eine Schranke, dreht Spot trotzdem weiter zum Weg** (schräg vor einer Tür lief der
   Strahl sonst auf die Kante), und **ein Lesekonflikt beim Ersetzen von `klickziel.json` bricht
   nichts ab** (das zuletzt lesbare gilt, sein Lebenszeichen altert weiter) — beides gefunden
-  an der Kette im 2D-Übungsraum. Jede Taste übernimmt und bricht die Klickfahrt ab. Der Platz
-  für die Karte (Teil 3) steht leer im Lagebild. `fahren.py` bleibt für den Raumeditor. Am
-  Gerät: A38.
+  an der Kette im 2D-Übungsraum. Jede Taste übernimmt und bricht die Klickfahrt ab.
+  `fahren.py` bleibt für den Raumeditor. Am Gerät: A38.
   **Teil 2 (27.09.2026): Menschen sehen und ihnen per Klick folgen** (Entwurf
   `docs/superpowers/specs/2026-09-27-steuerzentrale-menschen-design.md`). Die Suche ist ein
   dritter Faden IM Programm (`workshop/menschensuche.py`), dieselbe Kette wie beim Folgen
@@ -1229,6 +1228,29 @@ versionsgepinntes Extra `spotlab[sim]`.
   neuem Klick, fehlendem Lebenszeichen (wie die Klickfahrt) oder 5 s ohne den Angeklickten;
   der Grund steht im Lagebild. Die LEDs gehören dann dem Folgemodus, danach kommt die im Tab
   gewählte Farbe zurück. Am Gerät: A39.
+  **Teil 3 (27.09.2026): Karten aufnehmen, einblenden, wiedererkennen** (Entwurf
+  `docs/superpowers/specs/2026-09-27-steuerzentrale-karten-design.md`). Alles im Programm der
+  Zentrale — nur dort gibt es das Lease, das das HOCHLADEN braucht. `workshop/kartenarbeit.py`
+  kennt den Kartenzustand und macht das Langsame (hochladen, verorten, beenden + nachbearbeiten
+  + herunterladen) in EINEM eigenen Faden, eine Arbeit zugleich; der Fahrtakt wartet nie darauf.
+  **Aufträge haben eine EIGENE Datei** (`kartenauftrag.json`), nicht `aktion.json` — ein
+  Licht-Klick überschriebe sonst ein „Aufnahme beenden“; das Lagebild bestätigt die Nummer, der
+  Tab schickt nach 1.5 s nach. **Aufnahme:** verortet in einer geladenen Karte → weiterführen,
+  sonst neu (Karte auf dem Roboter geleert); gespeichert unter einem FREIEN Namen
+  (`freier_name`, nie überschreiben), ein gescheitertes Herunterladen versucht es unter
+  demselben Namen nochmal, und am Programmende wird eine laufende Aufnahme NACH dem Anhalten
+  gespeichert. Die Aufnahme läuft über dieselbe Verbindung (`RealSpot.aufnahme_sitzung`,
+  `RecordingSession.aus_robot`). **Deckungsgleich aus EINER Antwort:** `graphnav.verortung`
+  liest die Lage im Seed-Rahmen UND im Rahmen „vision“ (`robot_kinematics` derselben
+  `GetLocalizationStateResponse`) samt `lost_detector_state`; zwei Abfragen gehörten zu zwei
+  Augenblicken. **Die Kartenwände rechnet dieselbe Funktion wie die Rekonstruktion**
+  (`rekonstruktion.wandzellen`, am 27.09.2026 aus `rekonstruiere` herausgezogen) — Zentrale und
+  Raumeditor sehen dieselben Wände. `workshop/kartenabgleich.py` vergleicht im Blickfeld (≤ 5 s,
+  ≤ 4 m, 0.15 m Toleranz): erkannt grün, neu rot, fehlt gestrichelt, sonst blass; die Zahl ist
+  erkannt ÷ (erkannt + neu) ab 20 Wandzellen; verloren heisst: nichts verglichen, die Karte
+  bleibt grau an der letzten Stelle. Das Kartenbild ist ein zweites Indexbild im Zellgitter der
+  Skizze; „fehlt“ strichelt Qt selbst (Maske + Musterpinsel), die GUI bleibt ohne numpy.
+  Gemessen an den Katakomben: Laden 4 s, Abgleich 5 ms, Bild 3 ms. Am Gerät: A40.
 - **Das Fenstersymbol ist FREIGESTELLT und liegt im Paket** (`gui/spotlab.png`, runde
   Ecken mit Transparenz aussen, dazu `package-data`). Ein Symbol mit eigenem
   Hintergrund sitzt in der Taskleiste in einem grauen Kasten, und ohne den

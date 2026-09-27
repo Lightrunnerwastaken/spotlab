@@ -1343,6 +1343,41 @@ Angeklickten unter zweien.
 
 **Ergebnis** _(offen)_
 
+## A40 — Steuerzentrale: Karten aufnehmen, einblenden, wiedererkennen
+
+**Voraussetzung** A38, A13 (Karten). Seit dem 27.09.2026 nimmt die Zentrale Karten auf und blendet
+eine geladene Karte deckungsgleich über die Skizze (`workshop/kartenarbeit.py`,
+`workshop/kartenabgleich.py`, `graphnav.verortung`; Entwurf
+`docs/superpowers/specs/2026-09-27-steuerzentrale-karten-design.md`). Mit Attrappen und an der
+Katakomben-Karte geprüft; im Übungsraum gibt es kein GraphNav. Am Gerät offen: ob die Karte
+wirklich deckungsgleich fällt (Lage aus `robot_kinematics` derselben Antwort), das Urteil des
+Roboters (`lost_detector_state`), Aufnahme über die Verbindung der Zentrale.
+
+1. **Neue Karte.** „🐕 Echter Spot“, Fahrt beginnen, keine Karte laden, „● Aufnahme“ (Name
+   „karte-…“). Mit W A S D Q E und Klicks einen Rundgang mit einem Tag am Anfang fahren, unterwegs
+   „📍 Wegpunkt“ mit einem Namen. Erwartung: „Aufnahme läuft (neu): N Wegpunkte“ zählt hoch.
+   „■ Aufnahme beenden“ → „Speichern: Schleifen schliessen …“ → „gespeichert als ‹…›“; die Karte
+   erscheint in der Auswahl UND im Tab „Karten“ (mit Schleifen, wenn der Rundgang geschlossen war).
+2. **Deckungsgleich.** Direkt danach liegen die Kartenwände grün auf den Wänden der Skizze.
+   Notieren, wie weit sie daneben liegen (Soll: unter 15 cm). Die Zeile nennt „Roboter: x von y
+   angenommen“ und „… % der Wände erkannt“.
+3. **Laden und verorten.** Fahrt beenden, neu beginnen, die Karte wählen, „Laden“. Erwartung: ohne
+   Tag im Bild „Stell Spot so hin, dass ein AprilTag … im Bild ist“, mit Tag „verortet“ und die
+   Karte über der Skizze; auch Teile, die Spot in dieser Fahrt noch nicht sah (blass).
+4. **Veränderung.** Eine Kiste in den Weg stellen → rot; eine Tür öffnen, die bei der Aufnahme
+   zu war → gestrichelt. Die Prozentzahl sinkt entsprechend.
+5. **Weiterführen.** Verortet in der geladenen Karte „● Aufnahme“ (Vorschlag „‹alt›-2“), in einen
+   neuen Bereich fahren, beenden. Erwartung: „Aufnahme läuft (weitergeführt)“, gespeichert als
+   „‹alt›-2“ mit alter UND neuer Strecke; die alte Karte ist unverändert (Datum im Tab „Karten“).
+6. **Stopp mitten in der Aufnahme.** Aufnahme starten, ein Stück fahren, „■ Stopp“. Erwartung: Spot
+   hält, die Aufnahme wird noch gespeichert (Ausgabe „Die Kartenaufnahme wird noch gespeichert …“),
+   erst dann setzt er sich.
+7. **Verloren.** Spot mit geladener Karte an einen Ort tragen/fahren, der nicht in der Karte ist.
+   Erwartung: irgendwann „verloren — Spot findet sich in der Karte nicht mehr“, die Karte bleibt
+   grau an der letzten Stelle, keine Prozentzahl.
+
+**Ergebnis** _(offen)_
+
 ## Nach der Abnahme
 
 Ergebnisse hier eintragen, Abweichungen als Befund in die Spec zurückspielen, und erst
