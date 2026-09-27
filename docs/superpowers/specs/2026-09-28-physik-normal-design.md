@@ -13,8 +13,9 @@ validierten Mini-Szenen), GraphNav.
 
 ## Entscheidungen
 
-- Tab „Fahren“: drei Orte — „🧪 Übungsraum 3D (Wiedergabe)“ (Vorgabe), „⚙ Übungsraum Physik“,
-  „🐕 Echter Spot“. Editor: „Physik 3D“ ohne „(experimentell)“; der Tooltip sagt: eigener Regler
+- Tab „Fahren“: drei Orte — „🧪 3D-Wiedergabe“ (Vorgabe), „⚙ 3D-Physik“, „🐕 Echter Spot“
+  (beim Bau gekürzt: „Übungsraum 3D (Wiedergabe)“ und „Übungsraum Physik“ machten das Fenster
+  69 px breiter als sein Mindestmass; der Tooltip erklärt beide Orte). Editor: „Physik 3D“ ohne „(experimentell)“; der Tooltip sagt: eigener Regler
   aus matura-spot, auf 60 echte Fahrten abgestimmt, nicht der Regler von Boston Dynamics.
 - `spot.sit()` im Physikmodus: anhalten, einmal „Sitzen kann der Physikmodus noch nicht — Spot
   bleibt stehen“, normal zurückkehren; der Zustand bleibt „steht“ (Merkmal `kann_sitzen = False`

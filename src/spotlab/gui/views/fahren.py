@@ -66,14 +66,16 @@ from spotlab.record import zentrale as protokoll
 VORGABE_STUFE = "langsam"             # am echten Roboter gemächlich anfangen
 HERZSCHLAG_MS = 200                   # Lebenszeichen der Klickfahrt
 LAGEBILD_MS = 100                     # so oft schaut der Tab nach einem neuen Lagebild
-ORTE = (("🧪 Übungsraum 3D (Wiedergabe)", "uebungsraum"), ("⚙ Übungsraum Physik", "physik"),
-        ("🐕 Echter Spot", "real"))
+# Kurz, weil das Feld in der Knopfzeile steht: die Namen aus dem Entwurf („Übungsraum 3D
+# (Wiedergabe)“, „Übungsraum Physik“) machten das Fenster 69 px breiter als sein Mindestmass.
+# Was die Orte sind, sagt ORT_WERKZEUG.
+ORTE = (("🧪 3D-Wiedergabe", "uebungsraum"), ("⚙ 3D-Physik", "physik"), ("🐕 Echter Spot", "real"))
 LICHTER = (("💡 Licht aus", "aus"), ("blau", "blau"), ("grün", "gruen"), ("gelb", "gelb"),
            ("rot", "rot"))
 NUR_AM_ROBOTER = "Gibt es nur am echten Spot (Dienst audio-visual)."
 ORT_WERKZEUG = (
-    "Wo gefahren wird. Übungsraum 3D (Wiedergabe): der Raum aus dem Raumeditor, Spot spielt "
-    "gemessene Gänge ab — schnell, jeder Raum. Übungsraum Physik: derselbe Raum, aber "
+    "Wo gefahren wird. 3D-Wiedergabe: der Übungsraum aus dem Raumeditor, Spot spielt "
+    "gemessene Gänge ab — schnell, jeder Raum. 3D-Physik: derselbe Raum, aber "
     "Kontaktkräfte tragen den Körper und ein eigener Kraftregler setzt die Füsse (nicht der von "
     "Boston Dynamics); nur ebene Räume. Echter Spot: mit Lease, Not-Aus-Endpunkt und den "
     "Tempogrenzen aus der Konfiguration."
