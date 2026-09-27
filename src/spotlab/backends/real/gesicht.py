@@ -231,7 +231,10 @@ def abstand_in_richtung(punkte, peilung, hoehenwinkel, fenster=FENSTER_GRAD,
     punkte, eben = punkte[gueltig], eben[gueltig]
     peilungen = np.degrees(np.arctan2(punkte[:, 1], punkte[:, 0]))
     winkel = np.degrees(np.arctan2(punkte[:, 2], eben))
-    nah = (np.abs(peilungen - peilung) <= fenster) & (np.abs(winkel - hoehenwinkel) <= fenster)
+    # Gewickelt: hinten liegen +178 und -179 Grad 3 Grad auseinander, nicht 357 (die
+    # Rückkamera der Menschensuche, 27.09.2026). Vorn ändert das nichts.
+    daneben = np.abs((peilungen - peilung + 180.0) % 360.0 - 180.0)
+    nah = (daneben <= fenster) & (np.abs(winkel - hoehenwinkel) <= fenster)
     if int(nah.sum()) < min_punkte:
         return None
     return float(np.median(eben[nah]))
