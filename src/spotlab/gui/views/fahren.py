@@ -1,13 +1,20 @@
-"""Die Ansicht „Fahren“: den echten Spot live ueber W A S D Q E fahren.
+"""Die Ansicht „Fahren“ — die STEUERZENTRALE: sehen, wo Spot ist, und ihn fahren.
 
-Kein eigener Weg zum Roboter: der Knopf startet `Beispiele/fahren.py` ueber die
-App -- derselbe eine Startweg wie „Starten“ im Editor, mit dem Backend „real“
-(`app.py::_starte_fahrt`), also Lease, Not-Aus-Endpunkt, Geschwindigkeits-
-deckel aus `config.toml` und die Aufzeichnung wie bei jedem Programm. Die
-Tasten gehen als `fahrt.json` ins Lauf-Verzeichnis (`gui/tastenfahrt.py`,
-`record/fahrt.py`); `fahren.py` liest sie mit 20 Hz. **Ein Befehl aelter als
-eine halbe Sekunde heisst Stopp** -- und jedes Kommando traegt eine Endzeit
-von rund einer Sekunde: stirbt die GUI oder der Lauf, steht der Roboter.
+Seit dem 27.09.2026 (Entwurf `docs/superpowers/specs/2026-09-27-steuerzentrale-design.md`)
+links die Draufsicht (`gui/lagebild.py`: wachsende Skizze mit Boden, Wänden, Tags und
+Spot), rechts Kamerabild, Tasten, Licht und Ton. Oben die Wahl, WO gefahren wird:
+Übungsraum (Vorgabe — wer nichts einstellt, fährt nicht den Roboter) oder echter Spot.
+
+Kein eigener Weg zum Roboter: der Knopf startet `workshop/zentrale.py` als Paketcode
+über die App -- derselbe eine Startweg wie „Starten“ im Editor (`app.py::_starte_zentrale`),
+also Lease, Not-Aus-Endpunkt, Geschwindigkeitsdeckel aus `config.toml` und die
+Aufzeichnung wie bei jedem Programm. Die Tasten gehen als `fahrt.json` ins
+Lauf-Verzeichnis (`gui/tastenfahrt.py`, `record/fahrt.py`), ein Klick in die
+Draufsicht als `klickziel.json`, Licht und Ton als `aktion.json` (`record/zentrale.py`);
+zurück kommt `lagebild.json` + `.png`. **Ein Befehl aelter als eine halbe Sekunde heisst
+Stopp** -- für die Klickfahrt frischt der Tab alle 200 ms ein Lebenszeichen auf, aber nur,
+solange er sichtbar ist und das Fenster aktiv. Jedes Kommando traegt eine Endzeit von
+rund einer Sekunde: stirbt die GUI oder der Lauf, steht der Roboter.
 
 Die Tastatur gehoert dem Tab nur, solange er sichtbar ist und der Lauf lebt.
 Reiterwechsel oder ein Fenster, das den Fokus verliert (Alt-Tab mit gehaltenem
@@ -23,7 +30,7 @@ import math
 import time
 from pathlib import Path
 
-from PySide6.QtCore import QRect, Qt, Signal
+from PySide6.QtCore import QRect, Qt, QTimer, Signal
 from PySide6.QtGui import QPainter, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -38,18 +45,32 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from spotlab.gui.lagebild import Lagebild
 from spotlab.gui.tastenfahrt import Tastenfahrt
 from spotlab.gui.tastenfeld import Tastenfeld
 from spotlab.record import ansicht as ansichtsschalter
 from spotlab.record import fahrt
+from spotlab.record import zentrale as protokoll
 
 VORGABE_STUFE = "langsam"             # am echten Roboter gemächlich anfangen
+HERZSCHLAG_MS = 200                   # Lebenszeichen der Klickfahrt und Blick ins Lagebild
+ORTE = (("🧪 Übungsraum", "uebungsraum"), ("🐕 Echter Spot", "real"))
+LICHTER = (("💡 Licht aus", "aus"), ("blau", "blau"), ("grün", "gruen"), ("gelb", "gelb"),
+           ("rot", "rot"))
+NUR_AM_ROBOTER = "Gibt es nur am echten Spot (Dienst audio-visual)."
+ORT_WERKZEUG = (
+    "Wo gefahren wird. Übungsraum: der Raum aus dem Raumeditor, nichts bewegt sich wirklich. "
+    "Echter Spot: mit Lease, Not-Aus-Endpunkt und den Tempogrenzen aus der Konfiguration."
+)
+KLICK_HINWEIS = "Klick in die Draufsicht: Spot geht dorthin (höchstens 5 m, nur auf gesehenen Boden)."
 
 HINWEIS = (
-    'Startet das Programm „fahren.py“ aus dem Projekt Beispiele am ECHTEN Spot — mit Lease, '
-    "Not-Aus-Endpunkt und den Tempogrenzen aus der Konfiguration, aufgezeichnet wie jeder Lauf. "
+    "Startet die Steuerzentrale (Programm „zentrale.py“) im Übungsraum oder am ECHTEN Spot — "
+    "am Roboter mit Lease, Not-Aus-Endpunkt und den Tempogrenzen aus der Konfiguration, "
+    "aufgezeichnet wie jeder Lauf. Links die Draufsicht: hell ist gesehener Boden, dunkel eine "
+    "Wand, grau unbekannt; ein Klick schickt Spot dorthin, er geht um Hindernisse herum. "
     "Tasten: W/S vor und zurück · A/D seitwärts · Q/E drehen · 1/2/3 Tempo · "
-    "Leertaste oder Esc hält. "
+    "Leertaste oder Esc hält, jede Taste beendet eine Klickfahrt. "
     "Losgelassen heisst Stopp (Totmannschalter, ½ s); stirbt die GUI, steht Spot nach einer "
     "Sekunde. Freifläche, Aufsicht, Tablet mit Not-Aus in Reichweite — "
     "vor dem ersten Mal Abnahmepunkt A1 (docs/ABNAHME.md)."
@@ -122,7 +143,7 @@ class Bildfeld(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._pixmap = None
-        self.setMinimumHeight(240)
+        self.setMinimumHeight(160)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
     def setze(self, pixmap):
@@ -156,14 +177,19 @@ class FahrenView(QWidget):
     lage_gewuenscht = Signal(str, str, bool)   # Aktion (akku|aufrichten), Seite, Lease uebernehmen
     meldung = Signal(str)
 
-    def __init__(self, parent=None):
+    def __init__(self, palette=None, parent=None):
         super().__init__(parent)
         self.setFocusPolicy(Qt.StrongFocus)
         self._laeuft = False
         self._lauf_dir = None
         self._lage_laeuft = False
+        self._klick_nummer = 0
+        self._klick_ziel = None
+        self._aktion_nummer = 0
+        self._lagebild_stempel = None
+        self._app_aktiv = True
 
-        titel = QLabel("Den echten Spot über die Tastatur fahren")
+        titel = QLabel("Steuerzentrale — sehen, wo Spot ist, und ihn fahren")
         titel.setObjectName("Titel")
         # Die Sicherheitszeile steht immer; der lange Text klappt auf. Nichts davon
         # ist weg -- die UX-Pruefung vom 23.09.2026 fand eine Textwand ueber einem
@@ -180,6 +206,10 @@ class FahrenView(QWidget):
         self.hinweis.hide()
         self.mehr.toggled.connect(self.hinweis.setVisible)
 
+        self.ort_wahl = QComboBox()
+        for name, wert in ORTE:
+            self.ort_wahl.addItem(name, wert)
+        self.ort_wahl.setToolTip(ORT_WERKZEUG)
         self.start = QPushButton("🎮 Fahrt beginnen")
         self.start.setObjectName("Primaer")
         self.start.clicked.connect(self._start_geklickt)
@@ -215,6 +245,7 @@ class FahrenView(QWidget):
 
         fahrt_gruppe = QGroupBox("Fahrt")
         knoepfe = QHBoxLayout()
+        knoepfe.addWidget(self.ort_wahl)
         knoepfe.addWidget(self.start)
         knoepfe.addWidget(self.stopp)
         knoepfe.addSpacing(12)
@@ -299,6 +330,31 @@ class FahrenView(QWidget):
         self.notaus_hinweis.setWordWrap(True)
         self.notaus_hinweis.hide()
 
+        # Die Draufsicht der Zentrale: gezeichnet wird, was der Lauf als `lagebild.*`
+        # schreibt; ein Klick wird zum Klickziel.
+        self.lagebild = Lagebild(palette)
+        self.lagebild.klick.connect(self._klick)
+        self.mitte_knopf = QPushButton("⌖ Mitte")
+        self.mitte_knopf.setToolTip("Die Draufsicht folgt wieder Spot (Ziehen verschiebt, "
+                                    "Mausrad zoomt)")
+        self.mitte_knopf.clicked.connect(self.lagebild.mitte)
+        self.klick_zeile = QLabel(KLICK_HINWEIS)
+        self.klick_zeile.setObjectName("Gedaempft")
+        self.klick_zeile.setWordWrap(True)
+        self.licht = QComboBox()
+        for name, wert in LICHTER:
+            self.licht.addItem(name, wert)
+        self.licht.setEnabled(False)
+        self.licht.setToolTip(NUR_AM_ROBOTER)
+        self.licht.currentIndexChanged.connect(self._licht_gewaehlt)
+        self.ton = QPushButton("🔔 Piep")
+        self.ton.setEnabled(False)
+        self.ton.setToolTip(NUR_AM_ROBOTER)
+        self.ton.clicked.connect(self._ton_geklickt)
+        self.herzschlag_takt = QTimer(self)
+        self.herzschlag_takt.setInterval(HERZSCHLAG_MS)
+        self.herzschlag_takt.timeout.connect(self._takt)
+
         # Rechts neben dem Bild: welche Tasten gedrueckt sind, die Stufe, ob die
         # Tastatur faehrt -- und was Spot daraus macht.
         self.tastenfeld = Tastenfeld()
@@ -312,19 +368,28 @@ class FahrenView(QWidget):
         kopf.addWidget(titel, 1)
         kopf.addWidget(self.mehr)
 
-        bildspalte = QVBoxLayout()
-        bildspalte.addWidget(self.hinweis_bild, 1)
-        bildspalte.addWidget(self.bild, 1)
-        bildspalte.addWidget(self.bildrate)
-        bildspalte.addWidget(self.gesicht_hinweis)
-        bildspalte.addWidget(self.hand_hinweis)
+        lagespalte = QVBoxLayout()
+        lagespalte.addWidget(self.lagebild, 1)
+        unter_lage = QHBoxLayout()
+        unter_lage.addWidget(self.klick_zeile, 1)
+        unter_lage.addWidget(self.mitte_knopf)
+        lagespalte.addLayout(unter_lage)
+        licht_ton = QHBoxLayout()
+        licht_ton.addWidget(self.licht)
+        licht_ton.addWidget(self.ton)
+        licht_ton.addStretch(1)
         seite = QVBoxLayout()
+        seite.addWidget(self.hinweis_bild, 1)
+        seite.addWidget(self.bild, 1)
+        seite.addWidget(self.bildrate)
+        seite.addWidget(self.gesicht_hinweis)
+        seite.addWidget(self.hand_hinweis)
         seite.addWidget(self.tastenfeld)
         seite.addWidget(self.befehl_zeile)
-        seite.addStretch(1)
+        seite.addLayout(licht_ton)
         mitte = QHBoxLayout()
-        mitte.addLayout(bildspalte, 1)
-        mitte.addLayout(seite)
+        mitte.addLayout(lagespalte, 3)
+        mitte.addLayout(seite, 2)
 
         anordnung = QVBoxLayout(self)
         anordnung.addLayout(kopf)
@@ -349,6 +414,10 @@ class FahrenView(QWidget):
     def laeuft(self):
         return self._laeuft
 
+    def ort(self):
+        """Wo die nächste Fahrt läuft: „uebungsraum“ (Vorgabe) oder „real“."""
+        return self.ort_wahl.currentData()
+
     def lauf_beginnt(self, lauf_dir, name="fahren.py"):
         """Der Watcher hat den Lauf gemeldet: ab jetzt fahren die Tasten."""
         self._laeuft = True
@@ -367,6 +436,12 @@ class FahrenView(QWidget):
         # gehört dem Lauf. Ohne diese Zeile stünde das Häkchen und der neue Lauf
         # erkennte nichts -- ein Schalter, der lügt.
         self._schreibe_schalter()
+        self._klick_nummer, self._klick_ziel, self._aktion_nummer = 0, None, 0
+        self._lagebild_stempel = None
+        self.lagebild.leeren()
+        self.klick_zeile.setText(KLICK_HINWEIS)
+        self.ort_wahl.setEnabled(False)
+        self.herzschlag_takt.start()
         self._zustand_normal()
         self.zustand.setText(f"{name} läuft — Tasten sind scharf.")
         self.tastenfeld.zeige_aktiv(True)
@@ -382,6 +457,15 @@ class FahrenView(QWidget):
         self.tastenfahrt.beende()
         self._laeuft = False
         self._lauf_dir = None
+        self.herzschlag_takt.stop()
+        self._klick_nummer, self._klick_ziel = 0, None
+        self.lagebild.leeren()
+        self.klick_zeile.setText(KLICK_HINWEIS)
+        self.ort_wahl.setEnabled(True)
+        self._faehigkeiten({})
+        self.licht.blockSignals(True)
+        self.licht.setCurrentIndex(0)
+        self.licht.blockSignals(False)
         self._tastatur_loslassen()
         self.start.setText("🎮 Fahrt beginnen")
         self.stopp.setEnabled(False)
@@ -549,6 +633,8 @@ class FahrenView(QWidget):
 
     def keyPressEvent(self, ereignis):
         if self.tastenfahrt.tastenereignis(ereignis, gedrueckt=True):
+            # Jede Taste übernimmt: eine laufende Klickfahrt endet hier UND im Programm.
+            self._klick_abbrechen()
             ereignis.accept()
             return
         super().keyPressEvent(ereignis)
@@ -571,8 +657,10 @@ class FahrenView(QWidget):
         self.befehl_zeile.setText(" · ".join(teile) if teile else "Spot steht.")
 
     def _app_zustand(self, zustand):
-        # Alt-Tab mit gehaltener Taste: kein KeyRelease mehr -- also alle los.
-        if zustand != Qt.ApplicationActive and self._laeuft:
+        # Alt-Tab mit gehaltener Taste: kein KeyRelease mehr -- also alle los. Und kein
+        # Lebenszeichen mehr für die Klickfahrt: ohne Blick aufs Fenster fährt Spot nicht.
+        self._app_aktiv = zustand == Qt.ApplicationActive
+        if not self._app_aktiv and self._laeuft:
             self.tastenfahrt.alle_los()
 
     # ------------------------------------------------------------ Tastatur
@@ -598,3 +686,94 @@ class FahrenView(QWidget):
         if self._laeuft:
             self.tastenfahrt.alle_los()
         super().hideEvent(ereignis)
+
+    # --------------------------------------------------- Steuerzentrale
+
+    def _klick(self, x, y):
+        """Ein Klick in die Draufsicht: ein neues Klickziel -- nur, solange ein Lauf lebt."""
+        if not self._laeuft or self._lauf_dir is None:
+            return
+        self._klick_nummer += 1
+        self._klick_ziel = (float(x), float(y))
+        self._schreibe_klickziel()
+        self.klick_zeile.setText(f"Klick nach ({x:.1f}, {y:.1f}) m — wird geprüft …")
+
+    def _klick_abbrechen(self):
+        if self._klick_ziel is None or self._lauf_dir is None:
+            return
+        self._klick_nummer += 1
+        self._klick_ziel = None
+        self._schreibe_klickziel()
+
+    def _schreibe_klickziel(self, jetzt=time.time):
+        protokoll.schreibe_klickziel(self._lauf_dir, self._klick_nummer, self._klick_ziel,
+                                     self.tastenfahrt.stufe, jetzt=jetzt)
+
+    def _herzschlag(self, jetzt=time.time):
+        """Das Lebenszeichen der Klickfahrt -- nur bei sichtbarem Tab und aktivem Fenster."""
+        if (self._laeuft and self._lauf_dir is not None and self._klick_nummer
+                and self.isVisible() and self._app_aktiv):
+            self._schreibe_klickziel(jetzt=jetzt)
+
+    def _takt(self):
+        self._herzschlag()
+        self._lade_lagebild()
+
+    def _lade_lagebild(self):
+        """`lagebild.json` + `.png` zeigen, wenn es ein neues gibt -- sonst nichts tun."""
+        if self._lauf_dir is None:
+            return
+        pfad = self._lauf_dir / protokoll.LAGEBILD
+        try:
+            stempel = pfad.stat().st_mtime_ns
+        except OSError:
+            return
+        if stempel == self._lagebild_stempel:
+            return
+        daten = protokoll.lies_lagebild(self._lauf_dir)
+        if daten is None:
+            return                              # halb geschrieben: der nächste Takt
+        self._lagebild_stempel = stempel
+        try:
+            bild = (self._lauf_dir / protokoll.LAGEBILD_BILD).read_bytes()
+        except OSError:
+            bild = None
+        self.lagebild.zeige(daten, bild)
+        self._faehigkeiten(daten.get("faehigkeiten") or {})
+        self.klick_zeile.setText(_klick_text(daten.get("klickfahrt") or {}))
+
+    def _faehigkeiten(self, faehig):
+        for knopf, schluessel in ((self.licht, "licht"), (self.ton, "ton")):
+            kann = bool(faehig.get(schluessel)) and self._laeuft
+            knopf.setEnabled(kann)
+            knopf.setToolTip("" if kann else NUR_AM_ROBOTER)
+
+    def _licht_gewaehlt(self, _index):
+        if self._lauf_dir is None or not self.licht.isEnabled():
+            return
+        self._aktion_nummer += 1
+        protokoll.schreibe_aktion(self._lauf_dir, self._aktion_nummer, "licht",
+                                  self.licht.currentData())
+
+    def _ton_geklickt(self):
+        if self._lauf_dir is None:
+            return
+        self._aktion_nummer += 1
+        protokoll.schreibe_aktion(self._lauf_dir, self._aktion_nummer, "ton")
+
+
+def _klick_text(klickfahrt):
+    """Der Stand der Klickfahrt in einem Satz -- unter der Draufsicht."""
+    zustand = klickfahrt.get("zustand") or "keine"
+    grund = klickfahrt.get("grund") or ""
+    if zustand == "unterwegs":
+        return "Klickfahrt: unterwegs — eine Taste oder „■ Stopp“ hält an."
+    if zustand == "angekommen":
+        return "Klickfahrt: angekommen."
+    if zustand == "abgelehnt":
+        return f"Klick abgelehnt: {grund}."
+    if zustand == "versperrt":
+        return f"Klickfahrt: {grund}."
+    if zustand == "abgebrochen":
+        return f"Klickfahrt abgebrochen: {grund}."
+    return KLICK_HINWEIS

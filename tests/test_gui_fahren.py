@@ -459,3 +459,124 @@ def test_der_lange_hinweis_ist_einklappbar_die_sicherheitszeile_nicht(qapp):
     assert ansicht.hinweis.isHidden()
     ansicht.mehr.click()
     assert not ansicht.hinweis.isHidden()
+
+
+# ------------------------------------------------ Steuerzentrale (27.09.2026)
+
+
+def _lagebild_schreiben(lauf_dir, **mehr):
+    import numpy as np
+
+    from spotlab.backends.base import ObstacleGrid
+    from spotlab.record import zentrale as protokoll
+    from spotlab.workshop import skizze as sk
+
+    s = sk.Skizze()
+    s.aufnehmen(ObstacleGrid(np.full((40, 40), 1.0), 0.03, (0.0, 0.0), 0.0,
+                             known=np.ones((40, 40), bool)), t=1.0)
+    daten = {"t": 1.0, "rahmen": "vision", "zelle_m": s.zelle_m, "ursprung": list(s.ursprung),
+             "breite": s.zustand.shape[1], "hoehe": s.zustand.shape[0],
+             "spot": {"x": 0.5, "y": 0.5, "gier_grad": 0.0}, "tags": [],
+             "klickfahrt": {"nummer": 0, "zustand": "keine", "grund": "", "ziel": None, "weg": []},
+             "faehigkeiten": {"licht": False, "ton": False, "kamera": False},
+             "menschen": [], "karte": None}
+    daten.update(mehr)
+    protokoll.schreibe_lagebild(lauf_dir, daten, s.png(t=1.0))
+
+
+def test_die_vorgabe_ist_der_uebungsraum(qapp):
+    ansicht = FahrenView()
+    assert ansicht.ort() == "uebungsraum"
+    assert [ansicht.ort_wahl.itemData(i) for i in range(ansicht.ort_wahl.count())] == \
+        ["uebungsraum", "real"]
+
+
+def test_ein_klick_in_die_draufsicht_schreibt_das_klickziel(qapp, tmp_path):
+    from spotlab.record import zentrale as protokoll
+
+    ansicht = FahrenView()
+    ansicht.lauf_beginnt(tmp_path)
+    ansicht.lagebild.klick.emit(2.5, 1.0)
+    kz = protokoll.lies_klickziel(tmp_path)
+    assert (kz.nummer, kz.ziel, kz.stufe) == (1, (2.5, 1.0), "langsam")
+    ansicht.lagebild.klick.emit(3.0, 1.0)
+    assert protokoll.lies_klickziel(tmp_path).nummer == 2, "jeder Klick ein neues Ziel"
+
+
+def test_ohne_lauf_schreibt_ein_klick_nichts(qapp, tmp_path):
+    ansicht = FahrenView()
+    ansicht.lagebild.klick.emit(2.5, 1.0)
+    assert not list(tmp_path.iterdir())
+
+
+def test_der_herzschlag_lebt_nur_bei_sichtbarem_tab(qapp, tmp_path):
+    from spotlab.record import zentrale as protokoll
+
+    ansicht = FahrenView()
+    ansicht.show()
+    ansicht.lauf_beginnt(tmp_path)
+    ansicht.lagebild.klick.emit(2.5, 1.0)
+    ansicht._herzschlag(jetzt=lambda: 123.0)
+    assert protokoll.lies_klickziel(tmp_path).lebt == 123.0
+    ansicht.hide()
+    ansicht._herzschlag(jetzt=lambda: 999.0)
+    assert protokoll.lies_klickziel(tmp_path).lebt == 123.0, "Reiter weg: kein Lebenszeichen"
+    assert ansicht.herzschlag_takt.interval() == 200
+
+
+def test_eine_taste_bricht_die_klickfahrt_ab(qapp, tmp_path):
+    from spotlab.record import zentrale as protokoll
+
+    ansicht = FahrenView()
+    ansicht.show()
+    ansicht.lauf_beginnt(tmp_path)
+    ansicht.lagebild.klick.emit(2.5, 1.0)
+    QTest.keyPress(ansicht, Qt.Key_W)
+    kz = protokoll.lies_klickziel(tmp_path)
+    assert kz.nummer == 2 and kz.ziel is None
+    ansicht.hide()
+
+
+def test_licht_und_ton_erst_wenn_der_lauf_sie_kann(qapp, tmp_path):
+    from spotlab.record import zentrale as protokoll
+
+    ansicht = FahrenView()
+    ansicht.lauf_beginnt(tmp_path)
+    assert not ansicht.licht.isEnabled() and not ansicht.ton.isEnabled()
+    _lagebild_schreiben(tmp_path, faehigkeiten={"licht": True, "ton": True, "kamera": True})
+    ansicht._lade_lagebild()
+    assert ansicht.licht.isEnabled() and ansicht.ton.isEnabled()
+    ansicht.licht.setCurrentIndex(ansicht.licht.findData("gruen"))
+    assert protokoll.lies_aktion(tmp_path) == {"nummer": 1, "art": "licht", "farbe": "gruen"}
+    ansicht.ton.click()
+    assert protokoll.lies_aktion(tmp_path) == {"nummer": 2, "art": "ton", "farbe": None}
+
+
+def test_im_uebungsraum_sagen_licht_und_ton_warum_sie_grau_sind(qapp, tmp_path):
+    ansicht = FahrenView()
+    ansicht.lauf_beginnt(tmp_path)
+    _lagebild_schreiben(tmp_path)
+    ansicht._lade_lagebild()
+    assert not ansicht.ton.isEnabled() and "echten Spot" in ansicht.ton.toolTip()
+
+
+def test_das_lagebild_kommt_an_und_die_zeile_sagt_den_stand(qapp, tmp_path):
+    ansicht = FahrenView()
+    ansicht.lauf_beginnt(tmp_path)
+    _lagebild_schreiben(tmp_path, klickfahrt={"nummer": 1, "zustand": "abgelehnt",
+                                              "grund": "unbekannt — dort hat Spot noch keinen "
+                                                       "Boden gesehen", "ziel": [9.0, 9.0], "weg": []})
+    ansicht._lade_lagebild()
+    assert ansicht.lagebild.hat_bild()
+    assert "abgelehnt" in ansicht.klick_zeile.text() and "unbekannt" in ansicht.klick_zeile.text()
+
+
+def test_nach_dem_lauf_ist_die_zentrale_leer(qapp, tmp_path):
+    ansicht = FahrenView()
+    ansicht.lauf_beginnt(tmp_path)
+    assert ansicht.herzschlag_takt.isActive() and not ansicht.ort_wahl.isEnabled()
+    _lagebild_schreiben(tmp_path, faehigkeiten={"licht": True, "ton": True, "kamera": False})
+    ansicht._lade_lagebild()
+    ansicht.lauf_beendet()
+    assert not ansicht.lagebild.hat_bild() and not ansicht.herzschlag_takt.isActive()
+    assert not ansicht.licht.isEnabled() and ansicht.ort_wahl.isEnabled()
