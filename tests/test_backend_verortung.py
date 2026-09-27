@@ -75,3 +75,21 @@ def test_realspot_reicht_die_verortung_durch():
     spot = RealSpot.__new__(RealSpot)
     spot._robot = _Robot(_antwort())
     assert spot.verortung().wegpunkt == "wp-3"
+
+
+def test_die_aufnahme_nimmt_die_clients_derselben_verbindung():
+    from spotlab.backends.real.session import RealSpot
+    from spotlab.maps.session import RecordingSession
+
+    gefragt = []
+
+    class _Verbindung:
+        def ensure_client(self, name):
+            gefragt.append(name)
+            return f"client:{name}"
+
+    spot = RealSpot.__new__(RealSpot)
+    spot._robot = _Verbindung()
+    sitzung = spot.aufnahme_sitzung()
+    assert isinstance(sitzung, RecordingSession) and sitzung._robot is spot._robot
+    assert len(gefragt) == 3, "Aufnahme, GraphNav, Nachbearbeitung"

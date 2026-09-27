@@ -59,7 +59,11 @@ class RecordingSession:
     def connect(cls, cfg, verbinder=None):
         from spotlab.backends.real.verbindung import verbinde
 
-        robot = (verbinder or verbinde)(cfg)
+        return cls.aus_robot((verbinder or verbinde)(cfg))
+
+    @classmethod
+    def aus_robot(cls, robot):
+        """Eine Aufnahme über eine SCHON bestehende Verbindung (die Steuerzentrale, Teil 3)."""
         return cls(
             robot=robot,
             recording_client=robot.ensure_client(

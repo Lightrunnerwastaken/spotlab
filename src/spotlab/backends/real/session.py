@@ -414,6 +414,12 @@ class RealSpot:
 
         return graphnav.verortung(self._robot)
 
+    def aufnahme_sitzung(self):
+        """Eine Kartenaufnahme über DIESE Verbindung (`maps/session.RecordingSession`)."""
+        from spotlab.maps.session import RecordingSession
+
+        return RecordingSession.aus_robot(self._robot)
+
     def process_map(self, melde=None, fiducial=True, odometrie=True):
         from spotlab.backends.real import graphnav
 
