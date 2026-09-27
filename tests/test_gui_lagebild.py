@@ -226,3 +226,71 @@ def test_der_gefolgte_hat_einen_ring(qapp):
     w.zeige(_daten(menschen=[_mensch(3.0, 3.0, gefolgt=True)]), None)
     ring = w.mensch_radius_px() + lb.RING_ABSTAND_PX
     assert _nah(_pixel(w, 3.0 + ring / w.px_je_m, 3.0), QColor(palette.ok))
+
+
+# ------------------------------------------------------------ Karte (Teil 3)
+
+
+def _karte_zeigen(qapp, codes, wegpunkte=()):
+    """Eine Zeile Kartenzellen ab (2.0, 3.0), gross gezoomt: eine Zelle = 20 px. Spot steht
+    0.375 m darüber -- sein Pfeil ist bei 400 px/m über 200 px lang und darf die Zellen nicht
+    zudecken."""
+    from spotlab.workshop import kartenabgleich as ka
+
+    raster = np.array([codes], np.uint8)
+    a = ka.Abgleich(raster, (2.0, 3.0), len(codes), 1, 0, 0, 0, None)
+    w = _widget(qapp)
+    w.px_je_m = 400.0
+    karte = {"kann": True, "zustand": "verortet", "raster": {"ursprung": [2.0, 3.0],
+             "breite": len(codes), "hoehe": 1}, "wegpunkte": list(wegpunkte), "kanten": []}
+    w.zeige(_daten(spot=(2.1, 3.4, 0.0), karte=karte), None, ka.png(a))
+    return w
+
+
+def _zelle(w, i):
+    return _pixel(w, 2.0 + (i + 0.5) * 0.05, 3.025)
+
+
+def test_die_karte_ist_nach_dem_abgleich_gefaerbt(qapp):
+    from PySide6.QtGui import QColor
+
+    from spotlab.record import zentrale as protokoll
+
+    p = palette_fuer(False)
+    w = _karte_zeigen(qapp, [protokoll.KARTE_UNGEPRUEFT, protokoll.KARTE_ERKANNT, 0,
+                             protokoll.KARTE_NEU])
+    assert _nah(_zelle(w, 1), QColor(p.ok)) and _nah(_zelle(w, 3), QColor(p.gefahr))
+    assert _zelle(w, 0) != QColor(p.flaeche), "nicht geprüft: blass, aber sichtbar"
+    assert _zelle(w, 2) == QColor(p.flaeche), "0 ist keine Kartenwand"
+
+
+def test_eine_fehlende_wand_ist_gestrichelt(qapp):
+    from PySide6.QtGui import QColor
+
+    from spotlab.record import zentrale as protokoll
+
+    p = palette_fuer(False)
+    w = _karte_zeigen(qapp, [protokoll.KARTE_FEHLT] * 4)
+    gefaerbt = [_nah(_zelle(w, i), QColor(p.warnung)) for i in range(4)]
+    assert gefaerbt in ([True, False, True, False], [False, True, False, True]), gefaerbt
+
+
+def test_ohne_raster_wird_kein_kartenbild_gezeichnet(qapp):
+    from PySide6.QtGui import QColor
+
+    from spotlab.record import zentrale as protokoll
+    from spotlab.workshop import kartenabgleich as ka
+
+    a = ka.Abgleich(np.array([[protokoll.KARTE_NEU] * 4], np.uint8), (2.0, 3.0), 4, 1, 0, 0, 0,
+                    None)
+    w = _widget(qapp)
+    w.px_je_m = 400.0
+    w.zeige(_daten(spot=(2.1, 3.4, 0.0), karte={"kann": True, "raster": None}), None, ka.png(a))
+    assert _zelle(w, 3) == QColor(palette_fuer(False).flaeche)
+
+
+def test_die_wegpunkte_der_karte_stehen_in_der_draufsicht(qapp):
+    from PySide6.QtGui import QColor
+
+    w = _karte_zeigen(qapp, [0, 0, 0, 0], wegpunkte=[{"x": 2.5, "y": 3.1, "name": "Tür"}])
+    assert _nah(_pixel(w, 2.5, 3.1), QColor(palette_fuer(False).akzent_flaeche))

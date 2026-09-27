@@ -266,6 +266,7 @@ class MainWindow(QWidget):
         self.ansichten["umwelt"].setze_arbeitsordner(pfad or None)
         self.ansichten["experimente"].setze_arbeitsordner(pfad or None)
         self.ansichten["raumeditor"].setze_arbeitsordner(pfad or None)
+        self.ansichten["fahren"].setze_arbeitsordner(pfad or None)
         if self.uebungsfenster is not None:
             self.uebungsfenster.setze_arbeitsordner(pfad or None)
         if self._watcher is not None:

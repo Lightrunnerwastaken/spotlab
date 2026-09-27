@@ -694,3 +694,151 @@ def test_die_zeile_sagt_wem_spot_folgt_und_warum_er_aufhoerte(qapp, tmp_path):
     ansicht._lagebild_stempel = None
     ansicht._lade_lagebild()
     assert ansicht.klick_zeile.text() == "Folgen beendet: Stopp."
+
+
+# ------------------------------------------------ Karten (Teil 3)
+
+
+def _karte(**felder):
+    karte = {"kann": True, "name": None, "zustand": "keine", "grund": "", "auftrag": None,
+             "quelle": None, "aufnahme": None, "wegpunkte": [], "kanten": [], "raster": None,
+             "wiedererkennung": None}
+    karte.update(felder)
+    return karte
+
+
+def _mit_karten(tmp_path):
+    (tmp_path / "karten" / "flur2").mkdir(parents=True)
+    (tmp_path / "karten" / "flur2" / "graph").write_bytes(b"")
+    lauf = tmp_path / "lauf"
+    lauf.mkdir()
+    ansicht = FahrenView()
+    ansicht.setze_arbeitsordner(tmp_path)
+    ansicht.lauf_beginnt(lauf)
+    return ansicht, lauf
+
+
+def test_ohne_graphnav_ist_die_kartenzeile_grau_und_sagt_warum(qapp, tmp_path):
+    ansicht, lauf = _mit_karten(tmp_path)
+    ansicht._zeige_karte(_karte(kann=False, grund="Karten gibt es nur am echten Spot (GraphNav)."))
+    assert not ansicht.laden.isEnabled() and not ansicht.aufnahme.isEnabled()
+    assert not ansicht.wegpunkt.isEnabled() and "GraphNav" in ansicht.karten_zeile.text()
+    ansicht._zeige_karte(None)
+    assert not ansicht.aufnahme.isEnabled()
+
+
+def test_laden_schickt_die_gewaehlte_karte(qapp, tmp_path):
+    from spotlab.record import zentrale as protokoll
+
+    ansicht, lauf = _mit_karten(tmp_path)
+    ansicht._zeige_karte(_karte())
+    assert ansicht.karten_wahl.findText("flur2") >= 0
+    ansicht.karten_wahl.setCurrentIndex(ansicht.karten_wahl.findText("flur2"))
+    ansicht.laden.click()
+    assert protokoll.lies_kartenauftrag(lauf) == {"nummer": 1, "was": "laden", "name": "flur2"}
+
+
+def test_verortet_schlaegt_die_aufnahme_das_weiterfuehren_vor(qapp, tmp_path):
+    from spotlab.record import zentrale as protokoll
+
+    ansicht, lauf = _mit_karten(tmp_path)
+    ansicht._zeige_karte(_karte(name="flur2", zustand="verortet"))
+    assert ansicht.karten_name.text() == "flur2-2"
+    ansicht.aufnahme.click()
+    assert protokoll.lies_kartenauftrag(lauf) == {"nummer": 1, "was": "aufnahme_start",
+                                                  "name": "flur2-2"}
+    ansicht._zeige_karte(_karte(zustand="nimmt_auf", auftrag=1,
+                                aufnahme={"wegpunkte": 3, "kanten": 2, "name": "flur2-2",
+                                          "weiter": True}))
+    assert "beenden" in ansicht.aufnahme.text() and not ansicht.laden.isEnabled()
+    assert ansicht.wegpunkt.isEnabled() and "3 Wegpunkte" in ansicht.karten_zeile.text()
+    ansicht.aufnahme.click()
+    assert protokoll.lies_kartenauftrag(lauf)["was"] == "aufnahme_stopp"
+
+
+def test_ohne_karte_heisst_der_vorschlag_nach_datum(qapp, tmp_path):
+    ansicht, _ = _mit_karten(tmp_path)
+    ansicht._zeige_karte(_karte())
+    assert ansicht.karten_name.text().startswith("karte-")
+
+
+def test_ein_eigener_name_bleibt_stehen(qapp, tmp_path):
+    from PySide6.QtTest import QTest
+
+    ansicht, _ = _mit_karten(tmp_path)
+    ansicht._zeige_karte(_karte())
+    ansicht.karten_name.clear()
+    QTest.keyClicks(ansicht.karten_name, "gang")
+    ansicht._zeige_karte(_karte(name="flur2", zustand="verortet"))
+    assert ansicht.karten_name.text() == "gang"
+
+
+def test_ein_verlorener_kartenauftrag_wird_nachgeschickt(qapp, tmp_path):
+    from spotlab.record import zentrale as protokoll
+
+    ansicht, lauf = _mit_karten(tmp_path)
+    ansicht._zeige_karte(_karte(), jetzt=lambda: 100.0)
+    ansicht._karten_auftrag("laden", "flur2", jetzt=lambda: 100.0)
+    (lauf / protokoll.KARTENAUFTRAG).unlink()
+    ansicht._zeige_karte(_karte(), jetzt=lambda: 100.5)
+    assert not (lauf / protokoll.KARTENAUFTRAG).exists(), "noch keine 1.5 s"
+    ansicht._zeige_karte(_karte(), jetzt=lambda: 102.0)
+    assert protokoll.lies_kartenauftrag(lauf)["nummer"] == 1
+    ansicht._zeige_karte(_karte(auftrag=1), jetzt=lambda: 104.0)
+    (lauf / protokoll.KARTENAUFTRAG).unlink()
+    ansicht._zeige_karte(_karte(auftrag=1), jetzt=lambda: 106.0)
+    assert not (lauf / protokoll.KARTENAUFTRAG).exists(), "bestätigt: nichts mehr nachschicken"
+
+
+def test_ein_wegpunkt_fragt_nach_dem_namen_und_wartet_auf_bestaetigung(qapp, tmp_path):
+    from spotlab.record import zentrale as protokoll
+
+    ansicht, lauf = _mit_karten(tmp_path)
+    aufnahme = {"wegpunkte": 0, "kanten": 0, "name": "gang", "weiter": False}
+    ansicht._zeige_karte(_karte(zustand="nimmt_auf", aufnahme=aufnahme))
+    ansicht._frage_name = lambda vorschlag: ("Tür", True)
+    ansicht.wegpunkt.click()
+    assert protokoll.lies_kartenauftrag(lauf) == {"nummer": 1, "was": "wegpunkt", "name": "Tür"}
+    ansicht._zeige_karte(_karte(zustand="nimmt_auf", aufnahme=aufnahme))
+    assert not ansicht.wegpunkt.isEnabled(), "der vorige ist noch nicht bestätigt"
+    ansicht._zeige_karte(_karte(zustand="nimmt_auf", aufnahme=aufnahme, auftrag=1))
+    assert ansicht.wegpunkt.isEnabled()
+
+
+def test_die_zeile_sagt_urteil_und_anteil(qapp, tmp_path):
+    ansicht, _ = _mit_karten(tmp_path)
+    wieder = {"verloren": False, "angenommen": 18, "abgelehnt": 2, "anteil": 0.82,
+              "wandzellen": 120, "erkannt": 98, "neu": 22, "fehlt": 5}
+    ansicht._zeige_karte(_karte(name="flur2", zustand="verortet", wiedererkennung=wieder))
+    text = ansicht.karten_zeile.text()
+    assert "flur2" in text and "18 von 20" in text and "82 %" in text
+
+
+def test_verloren_steht_in_der_zeile(qapp, tmp_path):
+    ansicht, _ = _mit_karten(tmp_path)
+    ansicht._zeige_karte(_karte(name="flur2", zustand="verloren"))
+    assert "verloren" in ansicht.karten_zeile.text()
+
+
+def test_das_kartenbild_kommt_mit_dem_lagebild(qapp, tmp_path):
+    import numpy as np
+
+    from spotlab.record import zentrale as protokoll
+    from spotlab.workshop import kartenabgleich as ka
+
+    ansicht, lauf = _mit_karten(tmp_path)
+    a = ka.Abgleich(np.array([[protokoll.KARTE_ERKANNT]], np.uint8), (0.5, 0.5), 1, 1, 0, 0, 0,
+                    None)
+    (lauf / protokoll.LAGEBILD_KARTE).write_bytes(ka.png(a))
+    _lagebild_schreiben(lauf, karte=_karte(name="flur2", zustand="verortet",
+                                           raster={"ursprung": [0.5, 0.5], "breite": 1,
+                                                   "hoehe": 1}))
+    ansicht._lade_lagebild()
+    assert ansicht.lagebild.hat_kartenbild() and "flur2" in ansicht.karten_zeile.text()
+
+
+def test_nach_dem_lauf_ist_die_kartenzeile_grau(qapp, tmp_path):
+    ansicht, _ = _mit_karten(tmp_path)
+    ansicht._zeige_karte(_karte(zustand="verortet", name="flur2"))
+    ansicht.lauf_beendet()
+    assert not ansicht.laden.isEnabled() and not ansicht.aufnahme.isEnabled()

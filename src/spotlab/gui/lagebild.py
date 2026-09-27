@@ -15,17 +15,28 @@ werden mit dem Alter blasser (das Programm schickt sie höchstens 3 s alt), der 
 Ring in Spots Farbe. `mensch_bei` sagt, ob ein Klick einen trifft — getroffen wird, was
 man SIEHT: klein gezoomt ist der Kreis grösser als ein halber Meter.
 
+Eine geladene Karte (Teil 3) kommt als zweites Indexbild (`lagebild_karte.png`) mit eigener
+Ausdehnung im selben Zellgitter: nicht geprüft blass, erkannt in Spots Farbe, neu in der
+Gefahrfarbe, fehlt GESTRICHELT — eine Maske nur der Fehlt-Zellen, darüber ein Musterpinsel,
+so bleibt es reines Qt (kein numpy im Fenster). Dazu Wegpunkte und Kanten der Karte.
+
 Kein `bosdyn`, kein `spotlab.backends`: die GUI liest nur Dateien.
 """
 
 import math
 
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QImage, QPainter, QPen, QPolygonF
+from PySide6.QtGui import QBrush, QColor, QImage, QPainter, QPen, QPolygonF
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
 from spotlab.gui.theme import mische, palette_fuer
-from spotlab.record.zentrale import ALTERSSTUFEN
+from spotlab.record.zentrale import (
+    ALTERSSTUFEN,
+    KARTE_ERKANNT,
+    KARTE_FEHLT,
+    KARTE_NEU,
+    KARTE_UNGEPRUEFT,
+)
 
 ZIEHEN_AB_PX = 4
 MASSSTAB_VORGABE = 60.0          # Pixel je Meter
@@ -37,6 +48,8 @@ MENSCH_MIN_PX = 6.0
 MENSCH_ALTER_S = 3.0             # so alt wird ein Mensch im Lagebild höchstens
 MENSCH_BLASS_ALPHA = 70
 RING_ABSTAND_PX = 5.0
+KARTE_BLASS_ALPHA = 120          # Kartenwand ausserhalb des Blickfelds
+WEGPUNKT_PX = 4.0
 
 
 class Lagebild(QWidget):
@@ -48,6 +61,8 @@ class Lagebild(QWidget):
         self._daten = None
         self._roh = None                  # das geladene Indexbild (Farbnummern)
         self._bild = None                 # dasselbe mit den Themenfarben
+        self._karte_roh = None            # das Kartenbild (Farbnummern des Abgleichs)
+        self._karte_bild = None           # dasselbe mit den Themenfarben
         self._mitte = (0.0, 0.0)
         self.px_je_m = MASSSTAB_VORGABE
         self.folgt = True
@@ -63,18 +78,22 @@ class Lagebild(QWidget):
     def setze_palette(self, palette):
         self._palette = palette
         self._faerbe()
+        self._faerbe_karte()
         self.update()
 
-    def zeige(self, daten, bilddaten):
+    def zeige(self, daten, bilddaten, kartenbild=None):
         """Ein neues Lagebild. Ein unlesbares Bild lässt das letzte stehen (halb geschrieben)."""
         self._daten = daten
         if bilddaten:
-            bild = QImage()
-            if bild.loadFromData(bytes(bilddaten)):
-                if bild.format() != QImage.Format_Indexed8:
-                    bild = bild.convertToFormat(QImage.Format_Indexed8)
+            bild = _indexbild(bilddaten)
+            if bild is not None:
                 self._roh = bild
                 self._faerbe()
+        if kartenbild:
+            bild = _indexbild(kartenbild)
+            if bild is not None:
+                self._karte_roh = bild
+                self._faerbe_karte()
         spot = (daten or {}).get("spot")
         if self.folgt and spot:
             self._mitte = (float(spot["x"]), float(spot["y"]))
@@ -83,11 +102,19 @@ class Lagebild(QWidget):
     def leeren(self):
         self._daten = None
         self._roh = self._bild = None
+        self._karte_roh = self._karte_bild = None
         self.folgt = True
         self.update()
 
     def hat_bild(self):
         return self._bild is not None
+
+    def hat_kartenbild(self):
+        return self._karte_bild is not None and bool(self._karten_raster())
+
+    def _karten_raster(self):
+        karte = (self._daten or {}).get("karte") or {}
+        return karte.get("raster")
 
     def mensch_radius_px(self):
         return max(MENSCH_MIN_PX, MENSCH_M * self.px_je_m)
@@ -130,6 +157,34 @@ class Lagebild(QWidget):
         bild.setColorTable(tabelle)
         self._bild = bild.convertToFormat(QImage.Format_ARGB32_Premultiplied)
 
+    def _faerbe_karte(self):
+        if self._karte_roh is None:
+            return
+        p = self._palette
+        blass = QColor(p.gedaempft)
+        blass.setAlpha(KARTE_BLASS_ALPHA)
+        tabelle = [0] * 256
+        tabelle[KARTE_UNGEPRUEFT] = blass.rgba()
+        tabelle[KARTE_ERKANNT] = QColor(p.ok).rgba()
+        tabelle[KARTE_NEU] = QColor(p.gefahr).rgba()
+        bild = self._karte_roh.copy()
+        bild.setColorTable(tabelle)
+        farbig = bild.convertToFormat(QImage.Format_ARGB32_Premultiplied)
+        # Fehlt: die Maske der Fehlt-Zellen, darin nur jede zweite Zelle (Schachbrett).
+        maske = self._karte_roh.copy()
+        nur_fehlt = [0] * 256
+        nur_fehlt[KARTE_FEHLT] = QColor(p.text).rgba()
+        maske.setColorTable(nur_fehlt)
+        maske = maske.convertToFormat(QImage.Format_ARGB32_Premultiplied)
+        maler = QPainter(maske)
+        maler.setCompositionMode(QPainter.CompositionMode_SourceIn)
+        maler.fillRect(maske.rect(), QBrush(QColor(p.warnung), Qt.Dense4Pattern))
+        maler.end()
+        maler = QPainter(farbig)
+        maler.drawImage(0, 0, maske)
+        maler.end()
+        self._karte_bild = farbig
+
     # ------------------------------------------------------------ Umrechnen
 
     def welt_zu_schirm(self, x, y):
@@ -161,6 +216,7 @@ class Lagebild(QWidget):
         elif not daten:
             maler.setPen(QColor(p.gedaempft))
             maler.drawText(self.rect(), Qt.AlignCenter, "Noch kein Lagebild — Fahrt beginnen.")
+        self._zeichne_karte(maler, daten)
         self._zeichne_klickfahrt(maler, daten.get("klickfahrt") or {})
         self._zeichne_tags(maler, daten.get("tags") or [])
         self._zeichne_menschen(maler, daten.get("menschen") or [])
@@ -169,6 +225,35 @@ class Lagebild(QWidget):
         maler.setBrush(Qt.NoBrush)
         maler.drawRect(self.rect().adjusted(0, 0, -1, -1))
         maler.end()
+
+    def _zeichne_karte(self, maler, daten):
+        karte = daten.get("karte") or {}
+        raster = karte.get("raster")
+        if raster and self._karte_bild is not None:
+            zelle = float(daten.get("zelle_m") or 0.05)
+            ux, uy = raster["ursprung"]
+            links_oben = self.welt_zu_schirm(ux, uy + raster["hoehe"] * zelle)
+            groesse = zelle * self.px_je_m
+            maler.drawImage(QRectF(links_oben.x(), links_oben.y(), raster["breite"] * groesse,
+                                   raster["hoehe"] * groesse), self._karte_bild)
+        p = self._palette
+        wegpunkte = karte.get("wegpunkte") or []
+        maler.setPen(QPen(QColor(p.gedaempft), 1))
+        for i, j in karte.get("kanten") or []:
+            if 0 <= i < len(wegpunkte) and 0 <= j < len(wegpunkte):
+                a, b = wegpunkte[i], wegpunkte[j]
+                maler.drawLine(self.welt_zu_schirm(a["x"], a["y"]),
+                               self.welt_zu_schirm(b["x"], b["y"]))
+        for w in wegpunkte:
+            q = self.welt_zu_schirm(w["x"], w["y"])
+            maler.setPen(QPen(QColor(p.akzent), 1))
+            maler.setBrush(QColor(p.akzent_flaeche))
+            maler.drawEllipse(q, WEGPUNKT_PX, WEGPUNKT_PX)
+            if w.get("name"):
+                maler.setPen(QColor(p.text))
+                maler.drawText(QRectF(q.x() + 6, q.y() - 9, 120, 18),
+                               Qt.AlignLeft | Qt.AlignVCenter, str(w["name"]))
+        maler.setBrush(Qt.NoBrush)
 
     def _zeichne_klickfahrt(self, maler, k):
         p = self._palette
@@ -281,3 +366,13 @@ class Lagebild(QWidget):
                        self._mitte[1] + vorher[1] - nachher[1])
         self.update()
         ereignis.accept()
+
+
+def _indexbild(daten):
+    """Ein PNG mit Palette als Indexbild — oder None, wenn es (noch) nicht lesbar ist."""
+    bild = QImage()
+    if not bild.loadFromData(bytes(daten)):
+        return None
+    if bild.format() != QImage.Format_Indexed8:
+        bild = bild.convertToFormat(QImage.Format_Indexed8)
+    return bild

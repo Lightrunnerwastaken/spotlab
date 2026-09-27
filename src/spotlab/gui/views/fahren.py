@@ -15,7 +15,10 @@ zurück kommt `lagebild.json` + `.png`. Der Regler „Menschen“ (Teil 2) geht 
 `suche` hinaus; weicht die Stufe im Lagebild ab (eine Aktion kann überschrieben werden, bevor
 das Programm sie liest), schickt der Tab sie nach, höchstens alle `SUCHE_NACHSENDEN_S`. Ein
 Klick auf einen Menschen wird ein Klickziel der Art `mensch`, an dessen Ort, nicht am
-Klickpunkt: dann folgt Spot ihm. **Ein Befehl aelter als eine halbe Sekunde heisst
+Klickpunkt: dann folgt Spot ihm. Die Zeile „🗺 Karte“ (Teil 3) schickt Kartenaufträge
+(`kartenauftrag.json`: laden, Aufnahme starten/beenden, Wegpunkt) und schickt einen nach, den
+das Lagebild nach `KARTEN_NACHSENDEN_S` noch nicht bestätigt hat; das Kartenbild kommt als
+`lagebild_karte.png`. **Ein Befehl aelter als eine halbe Sekunde heisst
 Stopp** -- für die Klickfahrt frischt der Tab alle 200 ms ein Lebenszeichen auf, aber nur,
 solange er sichtbar ist und das Fenster aktiv. Jedes Kommando traegt eine Endzeit von
 rund einer Sekunde: stirbt die GUI oder der Lauf, steht der Roboter.
@@ -42,7 +45,9 @@ from PySide6.QtWidgets import (
     QComboBox,
     QGroupBox,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
+    QLineEdit,
     QPushButton,
     QSizePolicy,
     QSlider,
@@ -84,6 +89,16 @@ SUCHE_WERKZEUG = (
     "Menschen in der Draufsicht: Spot folgt ihm."
 )
 SUCHE_NACHSENDEN_S = 1.5
+KARTEN_NACHSENDEN_S = 1.5
+KEIN_GRAPHNAV = "Karten gibt es nur am echten Spot (GraphNav)."
+AUFNAHME_ZUSTAENDE = ("nimmt_auf", "speichert", "nicht_gespeichert")
+KARTEN_WERKZEUG = (
+    "Karten wie im Tab „Karten“, aber aus der Zentrale: „Laden“ legt eine gespeicherte Karte auf "
+    "den Roboter und verortet Spot an einem AprilTag. „● Aufnahme“ nimmt auf, während du fährst "
+    "(Tasten, Klick, Folgen) — verortet in einer geladenen Karte wird sie WEITERGEFÜHRT, sonst "
+    "beginnt eine neue. Gespeichert wird unter dem Namen im Feld, nie über eine vorhandene Karte. "
+    "In der Draufsicht: grün erkannt, rot neu, gestrichelt fehlt, blass nicht geprüft."
+)
 MENSCH_KLICK_M = 0.5                  # so weit neben einem Menschen gilt ein Klick als seiner
 
 HINWEIS = (
@@ -215,6 +230,12 @@ class FahrenView(QWidget):
         self._klick_art = "ort"
         self._aktion_nummer = 0
         self._suche_gesendet = None      # (Stufe, Uhr) der zuletzt geschickten Suchstufe
+        self._arbeitsordner = None
+        self._karten_nummer = 0
+        self._karten_gesendet = None     # [Nummer, was, Name, Uhr] des zuletzt geschickten Auftrags
+        self._karte = None               # der Platz `karte` aus dem letzten Lagebild
+        self._name_beruehrt = False      # hat jemand den Namen selbst getippt?
+        self._frage_name = self._frage_wegpunkt_name
         self._lagebild_stempel = None
         self._app_aktiv = True
 
@@ -384,6 +405,25 @@ class FahrenView(QWidget):
         self.suche_regler.valueChanged.connect(self._suche_gewaehlt)
         self.suche_text = Kurztext(SUCHSTUFEN_TEXT[VORGABE_SUCHE])
         self.suche_text.setObjectName("Gedaempft")
+        # Die Kartenzeile (Teil 3): alles grau, bis das Lagebild sagt, dass der Lauf GraphNav hat.
+        self.karten_wahl = QComboBox()
+        self.karten_wahl.setToolTip(KARTEN_WERKZEUG)
+        self.laden = QPushButton("Laden")
+        self.laden.setToolTip("Die gewählte Karte auf den Roboter laden und am AprilTag verorten")
+        self.laden.clicked.connect(self._laden_geklickt)
+        self.karten_name = QLineEdit()
+        self.karten_name.setPlaceholderText("Name der Aufnahme")
+        self.karten_name.setMaximumWidth(170)
+        self.karten_name.textEdited.connect(self._name_getippt)
+        self.aufnahme = QPushButton("● Aufnahme")
+        self.aufnahme.setToolTip(KARTEN_WERKZEUG)
+        self.aufnahme.clicked.connect(self._aufnahme_geklickt)
+        self.wegpunkt = QPushButton("📍 Wegpunkt")
+        self.wegpunkt.setToolTip("Eine benannte Marke an Spots Ort setzen (nur während der Aufnahme)")
+        self.wegpunkt.clicked.connect(self._wegpunkt_geklickt)
+        self.karten_zeile = Kurztext("")
+        self.karten_zeile.setObjectName("Gedaempft")
+        self._karten_knoepfe(False, False, False)
         self.licht = QComboBox()
         for name, wert in LICHTER:
             self.licht.addItem(name, wert)
@@ -420,6 +460,18 @@ class FahrenView(QWidget):
         menschen_zeile.addWidget(self.suche_regler)
         menschen_zeile.addWidget(self.suche_text, 1)
         lagespalte.addLayout(menschen_zeile)
+        karten_knoepfe = QHBoxLayout()
+        karten_beschriftung = QLabel("🗺 Karte")
+        karten_beschriftung.setToolTip(KARTEN_WERKZEUG)
+        karten_knoepfe.addWidget(karten_beschriftung)
+        karten_knoepfe.addWidget(self.karten_wahl, 1)
+        karten_knoepfe.addWidget(self.laden)
+        karten_knoepfe.addSpacing(8)
+        karten_knoepfe.addWidget(self.karten_name)
+        karten_knoepfe.addWidget(self.aufnahme)
+        karten_knoepfe.addWidget(self.wegpunkt)
+        lagespalte.addLayout(karten_knoepfe)
+        lagespalte.addWidget(self.karten_zeile)
         unter_lage = QHBoxLayout()
         unter_lage.addWidget(self.klick_zeile, 1)
         unter_lage.addWidget(self.mitte_knopf)
@@ -489,6 +541,9 @@ class FahrenView(QWidget):
         self._klick_nummer, self._klick_ziel, self._aktion_nummer = 0, None, 0
         self._klick_art = "ort"
         self._suche_gesendet = None
+        self._karten_nummer, self._karten_gesendet, self._karte = 0, None, None
+        self._name_beruehrt = False
+        self._fuelle_karten()
         self._lagebild_stempel = None
         self.lagebild.leeren()
         self.klick_zeile.setText(KLICK_HINWEIS)
@@ -516,6 +571,9 @@ class FahrenView(QWidget):
         self.klick_zeile.setText(KLICK_HINWEIS)
         self.suche_regler.setEnabled(False)
         self.suche_text.setText(SUCHSTUFEN_TEXT[self.suchstufe()])
+        self._karte, self._karten_gesendet = None, None
+        self._karten_knoepfe(False, False, False)
+        self.karten_zeile.setText("")
         self.hinweis_bild.setText(KEIN_BILD)
         self.ort_wahl.setEnabled(True)
         self._faehigkeiten({})
@@ -804,13 +862,126 @@ class FahrenView(QWidget):
             bild = (self._lauf_dir / protokoll.LAGEBILD_BILD).read_bytes()
         except OSError:
             bild = None
-        self.lagebild.zeige(daten, bild)
+        kartenbild = None
+        if (daten.get("karte") or {}).get("raster"):
+            try:
+                kartenbild = (self._lauf_dir / protokoll.LAGEBILD_KARTE).read_bytes()
+            except OSError:
+                kartenbild = None
+        self.lagebild.zeige(daten, bild, kartenbild)
         faehig = daten.get("faehigkeiten") or {}
         self._faehigkeiten(faehig)
         if not self.bild.hat_bild():
             self.hinweis_bild.setText(KEIN_BILD if faehig.get("kamera") else KEINE_KAMERA)
         self.klick_zeile.setText(_klick_text(daten.get("klickfahrt") or {}))
         self._zeige_suche(daten.get("suche"))
+        self._zeige_karte(daten.get("karte"))
+
+    # --------------------------------------------------- Karten (Teil 3)
+
+    def setze_arbeitsordner(self, pfad):
+        self._arbeitsordner = Path(pfad) if pfad else None
+        self._fuelle_karten()
+
+    def _fuelle_karten(self, waehle=None):
+        """Die gespeicherten Karten des Arbeitsordners — die Auswahl bleibt, wenn es sie noch gibt."""
+        vorher = waehle or self.karten_wahl.currentText()
+        namen = []
+        if self._arbeitsordner is not None:
+            try:
+                from spotlab.maps.store import karten
+
+                namen = [k.name for k in karten(self._arbeitsordner)]
+            except Exception:
+                namen = []
+        self.karten_wahl.blockSignals(True)
+        self.karten_wahl.clear()
+        self.karten_wahl.addItems(namen)
+        if vorher in namen:
+            self.karten_wahl.setCurrentIndex(namen.index(vorher))
+        self.karten_wahl.blockSignals(False)
+
+    def _karten_knoepfe(self, laden, aufnahme, wegpunkt):
+        self.laden.setEnabled(laden)
+        self.aufnahme.setEnabled(aufnahme)
+        self.wegpunkt.setEnabled(wegpunkt)
+        self.karten_wahl.setEnabled(laden)
+        self.karten_name.setEnabled(aufnahme)
+
+    def _karten_auftrag(self, was, name=None, jetzt=time.monotonic):
+        if self._lauf_dir is None:
+            return
+        self._karten_nummer += 1
+        protokoll.schreibe_kartenauftrag(self._lauf_dir, self._karten_nummer, was, name=name)
+        self._karten_gesendet = [self._karten_nummer, was, name, jetzt()]
+
+    def _offen(self, karte):
+        """Der zuletzt geschickte Auftrag, solange das Lagebild ihn nicht bestätigt hat."""
+        g = self._karten_gesendet
+        if g is None or karte is None:
+            return None
+        return g if (karte.get("auftrag") or 0) < g[0] else None
+
+    def _laden_geklickt(self):
+        name = self.karten_wahl.currentText()
+        if name:
+            self._karten_auftrag("laden", name)
+
+    def _aufnahme_geklickt(self):
+        zustand = (self._karte or {}).get("zustand")
+        name = self.karten_name.text().strip() or None
+        if zustand in ("nimmt_auf", "nicht_gespeichert"):
+            self._karten_auftrag("aufnahme_stopp", name)
+        else:
+            self._karten_auftrag("aufnahme_start", name)
+        self._name_beruehrt = False
+
+    def _wegpunkt_geklickt(self):
+        vorschlag = f"Punkt {((self._karte or {}).get('aufnahme') or {}).get('wegpunkte', 0) + 1}"
+        name, ok = self._frage_name(vorschlag)
+        if ok:
+            self._karten_auftrag("wegpunkt", name.strip() or vorschlag)
+            self.wegpunkt.setEnabled(False)          # bis der Auftrag bestätigt ist
+
+    def _frage_wegpunkt_name(self, vorschlag):
+        return QInputDialog.getText(self, "Wegpunkt", "Name des Wegpunkts:", text=vorschlag)
+
+    def _name_getippt(self, _text):
+        self._name_beruehrt = True
+
+    def _namensvorschlag(self, karte):
+        from spotlab.workshop.kartenarbeit import namensvorschlag
+
+        if karte.get("zustand") == "verortet" and karte.get("name"):
+            return f"{karte['name']}-2"
+        return namensvorschlag()
+
+    def _zeige_karte(self, karte, jetzt=time.monotonic):
+        """Knöpfe, Name, Statuszeile und Nachschicken nach dem Platz `karte` im Lagebild."""
+        alter_name = (self._karte or {}).get("name")
+        self._karte = karte
+        if not karte or not karte.get("kann") or not self._laeuft:
+            self._karten_knoepfe(False, False, False)
+            self.karten_zeile.setText((karte or {}).get("grund") or KEIN_GRAPHNAV)
+            return
+        zustand = karte.get("zustand") or "keine"
+        offen = self._offen(karte)
+        if offen is not None and jetzt() - offen[3] > KARTEN_NACHSENDEN_S:
+            protokoll.schreibe_kartenauftrag(self._lauf_dir, offen[0], offen[1], name=offen[2])
+            offen[3] = jetzt()
+        nimmt_auf = zustand in ("nimmt_auf", "nicht_gespeichert")
+        beschaeftigt = zustand in ("laedt", "speichert")
+        self.aufnahme.setText("■ Aufnahme beenden" if nimmt_auf else "● Aufnahme")
+        wegpunkt_offen = offen is not None and offen[1] == "wegpunkt"
+        self._karten_knoepfe(
+            laden=not nimmt_auf and not beschaeftigt and self.karten_wahl.count() > 0,
+            aufnahme=not beschaeftigt,
+            wegpunkt=zustand == "nimmt_auf" and not wegpunkt_offen)
+        if not nimmt_auf and zustand != "speichert" and not self._name_beruehrt:
+            self.karten_name.setText(self._namensvorschlag(karte))
+        if karte.get("name") and karte.get("name") != alter_name:
+            self._fuelle_karten(waehle=karte["name"])     # eine neu gespeicherte Karte zeigen
+        self.karten_zeile.setText(_karten_text(karte))
 
     # --------------------------------------------------- Menschensuche
 
@@ -870,6 +1041,35 @@ class FahrenView(QWidget):
             return
         self._aktion_nummer += 1
         protokoll.schreibe_aktion(self._lauf_dir, self._aktion_nummer, "ton")
+
+
+def _karten_text(karte):
+    """Der Stand der Karte in einem Satz -- unter der Kartenzeile."""
+    zustand = karte.get("zustand") or "keine"
+    name, grund = karte.get("name"), karte.get("grund") or ""
+    if zustand in ("nimmt_auf", "nicht_gespeichert"):
+        auf = karte.get("aufnahme") or {}
+        text = (f"Aufnahme läuft ({'weitergeführt' if auf.get('weiter') else 'neu'}): "
+                f"{auf.get('wegpunkte', 0)} Wegpunkte, {auf.get('kanten', 0)} Kanten")
+        return f"{text} — {grund}" if grund else text
+    if zustand in ("laedt", "speichert"):
+        return grund
+    if zustand == "verloren":
+        return f"Karte ‹{name}›: verloren — Spot findet sich in der Karte nicht mehr."
+    if zustand == "sucht_tag":
+        return f"Karte ‹{name}›: {grund}"
+    if zustand == "verortet":
+        text = f"Karte ‹{name}›: verortet"
+        wieder = karte.get("wiedererkennung") or {}
+        abgleiche = (wieder.get("angenommen") or 0) + (wieder.get("abgelehnt") or 0)
+        if abgleiche:
+            text += f" · Roboter: {wieder['angenommen']} von {abgleiche} angenommen"
+        if wieder:
+            anteil = wieder.get("anteil")
+            text += (f" · {round(anteil * 100)} % der Wände erkannt"
+                     if anteil is not None else " · zu wenig Wand im Blick")
+        return text
+    return grund or "Keine Karte geladen — eine wählen und „Laden“, oder „● Aufnahme“ für eine neue."
 
 
 def _klick_text(klickfahrt):
