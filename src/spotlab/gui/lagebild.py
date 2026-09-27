@@ -1,0 +1,229 @@
+"""Die Draufsicht der Steuerzentrale: die Skizze aus `lagebild.png`, darüber Spot, Tags, Weg und Ziel.
+
+Das Widget rechnet nichts ausser Umrechnen und Zeichnen — die Skizze baut das Programm
+(`workshop/zentrale.py`), hier kommt sie als Datei an. Das PNG trägt Farbnummern
+(`record/zentrale.ALTERSSTUFEN`), die Farben legt dieses Widget aus dem Thema darüber:
+so stimmt die Skizze in hell und dunkel, und im Code steht kein Farbwert.
+
+Oben ist +y, rechts +x (Rahmen „vision“ wie die Skizze). Die Ansicht folgt Spot, bis
+man sie verschiebt; „Mitte“ (`mitte()`) holt sie zurück. Mausrad zoomt um den Zeiger.
+Ein Klick ohne Ziehen meldet die Weltkoordinate über `klick`.
+
+Kein `bosdyn`, kein `spotlab.backends`: die GUI liest nur Dateien.
+"""
+
+import math
+
+from PySide6.QtCore import QPointF, QRectF, Qt, Signal
+from PySide6.QtGui import QColor, QImage, QPainter, QPen, QPolygonF
+from PySide6.QtWidgets import QSizePolicy, QWidget
+
+from spotlab.gui.theme import mische, palette_fuer
+from spotlab.record.zentrale import ALTERSSTUFEN
+
+ZIEHEN_AB_PX = 4
+MASSSTAB_VORGABE = 60.0          # Pixel je Meter
+MASSSTAB_GRENZEN = (8.0, 400.0)
+ZOOM_JE_RAST = 1.15
+BLASS_ALPHA = 110                # die älteste Altersstufe
+
+
+class Lagebild(QWidget):
+    klick = Signal(float, float)
+
+    def __init__(self, palette=None, parent=None):
+        super().__init__(parent)
+        self._palette = palette or palette_fuer(False)
+        self._daten = None
+        self._roh = None                  # das geladene Indexbild (Farbnummern)
+        self._bild = None                 # dasselbe mit den Themenfarben
+        self._mitte = (0.0, 0.0)
+        self.px_je_m = MASSSTAB_VORGABE
+        self.folgt = True
+        self._druck = None
+        self._gezogen = False
+        self._mitte_beim_druck = None
+        self.setMinimumSize(280, 220)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.setCursor(Qt.CrossCursor)
+
+    # ------------------------------------------------------------ Daten
+
+    def setze_palette(self, palette):
+        self._palette = palette
+        self._faerbe()
+        self.update()
+
+    def zeige(self, daten, bilddaten):
+        """Ein neues Lagebild. Ein unlesbares Bild lässt das letzte stehen (halb geschrieben)."""
+        self._daten = daten
+        if bilddaten:
+            bild = QImage()
+            if bild.loadFromData(bytes(bilddaten)):
+                if bild.format() != QImage.Format_Indexed8:
+                    bild = bild.convertToFormat(QImage.Format_Indexed8)
+                self._roh = bild
+                self._faerbe()
+        spot = (daten or {}).get("spot")
+        if self.folgt and spot:
+            self._mitte = (float(spot["x"]), float(spot["y"]))
+        self.update()
+
+    def leeren(self):
+        self._daten = None
+        self._roh = self._bild = None
+        self.folgt = True
+        self.update()
+
+    def hat_bild(self):
+        return self._bild is not None
+
+    def mitte(self):
+        """Die Ansicht folgt wieder Spot."""
+        self.folgt = True
+        spot = (self._daten or {}).get("spot")
+        if spot:
+            self._mitte = (float(spot["x"]), float(spot["y"]))
+        self.update()
+
+    def _faerbe(self):
+        if self._roh is None:
+            return
+        p = self._palette
+        frei = QColor(mische(p.hintergrund, p.text, 0.16))
+        wand = QColor(p.text)
+        tabelle = [0] * 256                  # 0 und alles ohne Bedeutung: durchsichtig
+        for stufe in range(ALTERSSTUFEN):
+            alpha = round(255 - (255 - BLASS_ALPHA) * stufe / max(1, ALTERSSTUFEN - 1))
+            for code, farbe in ((1 + stufe, frei), (1 + ALTERSSTUFEN + stufe, wand)):
+                tabelle[code] = QColor(farbe.red(), farbe.green(), farbe.blue(), alpha).rgba()
+        bild = self._roh.copy()
+        bild.setColorTable(tabelle)
+        self._bild = bild.convertToFormat(QImage.Format_ARGB32_Premultiplied)
+
+    # ------------------------------------------------------------ Umrechnen
+
+    def welt_zu_schirm(self, x, y):
+        return QPointF(self.width() / 2.0 + (x - self._mitte[0]) * self.px_je_m,
+                       self.height() / 2.0 - (y - self._mitte[1]) * self.px_je_m)
+
+    def schirm_zu_welt(self, px, py):
+        return (self._mitte[0] + (px - self.width() / 2.0) / self.px_je_m,
+                self._mitte[1] - (py - self.height() / 2.0) / self.px_je_m)
+
+    # ------------------------------------------------------------ Zeichnen
+
+    def paintEvent(self, _ereignis):
+        p = self._palette
+        maler = QPainter(self)
+        maler.setRenderHint(QPainter.Antialiasing)
+        maler.fillRect(self.rect(), QColor(p.hintergrund))
+        daten = self._daten or {}
+        if self._bild is not None and daten.get("ursprung") and daten.get("breite"):
+            zelle = float(daten["zelle_m"])
+            ux, uy = daten["ursprung"]
+            links_oben = self.welt_zu_schirm(ux, uy + daten["hoehe"] * zelle)
+            groesse = zelle * self.px_je_m
+            ziel = QRectF(links_oben.x(), links_oben.y(), daten["breite"] * groesse,
+                          daten["hoehe"] * groesse)
+            maler.drawImage(ziel, self._bild)
+        elif not daten:
+            maler.setPen(QColor(p.gedaempft))
+            maler.drawText(self.rect(), Qt.AlignCenter, "Noch kein Lagebild — Fahrt beginnen.")
+        self._zeichne_klickfahrt(maler, daten.get("klickfahrt") or {})
+        self._zeichne_tags(maler, daten.get("tags") or [])
+        self._zeichne_spot(maler, daten.get("spot"))
+        maler.end()
+
+    def _zeichne_klickfahrt(self, maler, k):
+        p = self._palette
+        weg = k.get("weg") or []
+        spot = (self._daten or {}).get("spot")
+        if weg and k.get("zustand") == "unterwegs":
+            punkte = ([self.welt_zu_schirm(spot["x"], spot["y"])] if spot else []) + [
+                self.welt_zu_schirm(x, y) for x, y in weg]
+            maler.setPen(QPen(QColor(p.warnung), 2, Qt.DashLine))
+            maler.drawPolyline(QPolygonF(punkte))
+        ziel = k.get("ziel")
+        if ziel:
+            farbe = QColor(p.gefahr if k.get("zustand") in ("abgelehnt", "versperrt") else p.akzent)
+            q = self.welt_zu_schirm(*ziel)
+            maler.setPen(QPen(farbe, 2))
+            r = 7
+            maler.drawLine(QPointF(q.x() - r, q.y() - r), QPointF(q.x() + r, q.y() + r))
+            maler.drawLine(QPointF(q.x() - r, q.y() + r), QPointF(q.x() + r, q.y() - r))
+
+    def _zeichne_tags(self, maler, tags):
+        p = self._palette
+        for tag in tags:
+            q = self.welt_zu_schirm(tag["x"], tag["y"])
+            maler.setPen(QPen(QColor(p.akzent), 2))
+            maler.setBrush(QColor(p.akzent_flaeche))
+            maler.drawRect(QRectF(q.x() - 7, q.y() - 7, 14, 14))
+            maler.setPen(QColor(p.text))
+            maler.drawText(QRectF(q.x() + 9, q.y() - 9, 40, 18), Qt.AlignLeft | Qt.AlignVCenter,
+                           str(tag["id"]))
+        maler.setBrush(Qt.NoBrush)
+
+    def _zeichne_spot(self, maler, spot):
+        if not spot:
+            return
+        p = self._palette
+        q = self.welt_zu_schirm(spot["x"], spot["y"])
+        w = math.radians(float(spot.get("gier_grad") or 0.0))
+        # Ein Pfeil in Blickrichtung, gut 1 m lang wie Spot, aber nie kleiner als lesbar.
+        laenge = max(14.0, 0.55 * self.px_je_m)
+        breite = laenge * 0.5
+
+        def punkt(vor, links):
+            return QPointF(q.x() + math.cos(w) * vor - math.sin(w) * links,
+                           q.y() - (math.sin(w) * vor + math.cos(w) * links))
+
+        maler.setPen(QPen(QColor(p.text), 1))
+        maler.setBrush(QColor(p.ok))
+        maler.drawPolygon(QPolygonF([punkt(laenge, 0), punkt(-laenge * 0.6, breite),
+                                     punkt(-laenge * 0.3, 0), punkt(-laenge * 0.6, -breite)]))
+        maler.setBrush(Qt.NoBrush)
+
+    # ------------------------------------------------------------ Maus
+
+    def mousePressEvent(self, ereignis):
+        if ereignis.button() == Qt.LeftButton:
+            self._druck = ereignis.position()
+            self._gezogen = False
+            self._mitte_beim_druck = self._mitte
+        super().mousePressEvent(ereignis)
+
+    def mouseMoveEvent(self, ereignis):
+        if self._druck is not None:
+            d = ereignis.position() - self._druck
+            if not self._gezogen and abs(d.x()) + abs(d.y()) > ZIEHEN_AB_PX:
+                self._gezogen = True
+                self.folgt = False
+            if self._gezogen:
+                mx, my = self._mitte_beim_druck
+                self._mitte = (mx - d.x() / self.px_je_m, my + d.y() / self.px_je_m)
+                self.update()
+        super().mouseMoveEvent(ereignis)
+
+    def mouseReleaseEvent(self, ereignis):
+        if ereignis.button() == Qt.LeftButton and self._druck is not None:
+            if not self._gezogen:
+                x, y = self.schirm_zu_welt(ereignis.position().x(), ereignis.position().y())
+                self.klick.emit(x, y)
+            self._druck = None
+        super().mouseReleaseEvent(ereignis)
+
+    def wheelEvent(self, ereignis):
+        rasten = ereignis.angleDelta().y() / 120.0
+        if not rasten:
+            return
+        zeiger = ereignis.position()
+        vorher = self.schirm_zu_welt(zeiger.x(), zeiger.y())
+        self.px_je_m = min(MASSSTAB_GRENZEN[1],
+                           max(MASSSTAB_GRENZEN[0], self.px_je_m * ZOOM_JE_RAST ** rasten))
+        nachher = self.schirm_zu_welt(zeiger.x(), zeiger.y())
+        self._mitte = (self._mitte[0] + vorher[0] - nachher[0],
+                       self._mitte[1] + vorher[1] - nachher[1])
+        self.update()
+        ereignis.accept()
