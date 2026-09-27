@@ -716,3 +716,39 @@ def test_im_2d_uebungsraum_geht_spot_per_klick_durch_die_tuer(tmp_path):
             faden.join(timeout=10)
     ereignisse = (lauf_dir / "ereignisse.jsonl").read_text(encoding="utf-8")
     assert '"angestossen"' not in ereignisse
+
+
+# ------------------------------------------------------------ Flüssiger (27.09.2026)
+
+
+def test_das_lagebild_traegt_den_versatz_von_odom_nach_vision(tmp_path):
+    """Der Tab zeichnet Spot 10-mal je Sekunde aus `zustand.jsonl` (odom). Mit dem Versatz aus
+    DEMSELBEN Rahmenbaum wie die Lage in „vision“ landet er in der Skizze am richtigen Ort."""
+    import math
+
+    from bosdyn.client.frame_helpers import BODY_FRAME_NAME, ODOM_FRAME_NAME, get_a_tform_b
+    from test_workshop_folgen import _auseinander
+
+    spot = _auseinander(0.6)
+    z = _zentrale(spot, tmp_path)
+    z.wahrnehmen()
+    bild = protokoll.lies_lagebild(tmp_path)
+    tx, ty, dg = bild["vision_von_odom"]
+    odom = get_a_tform_b(spot.backend.frame_tree_snapshot(), ODOM_FRAME_NAME, BODY_FRAME_NAME)
+    x = tx + math.cos(dg) * odom.x - math.sin(dg) * odom.y
+    y = ty + math.sin(dg) * odom.x + math.cos(dg) * odom.y
+    assert (x, y) == pytest.approx((bild["spot"]["x"], bild["spot"]["y"]), abs=1e-3)
+    assert abs(ty) == pytest.approx(0.6, abs=1e-6), "die Rahmen liegen 0.6 m quer auseinander"
+
+
+def test_ohne_odom_im_rahmenbaum_gibt_es_keinen_versatz(tmp_path):
+    z = _zentrale(_Spot(), tmp_path)
+    z.wahrnehmen()
+    assert protokoll.lies_lagebild(tmp_path)["vision_von_odom"] is None
+
+
+def test_die_wahrnehmung_wartet_nur_den_rest_ihres_takts():
+    assert zentrale.wahrnehmungs_pause(0.03) == pytest.approx(zentrale.WAHRNEHMUNG_S - 0.03)
+    assert zentrale.wahrnehmungs_pause(0.4) == zentrale.WAHRNEHMUNG_MIN_S, \
+        "ein langsames Gitter (3D-Übungsraum) bekommt nur die Mindestpause"
+    assert zentrale.WAHRNEHMUNG_S <= 0.25

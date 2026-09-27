@@ -11,7 +11,7 @@ Die Platte ist der einzige Kanal zum Tab, in beide Richtungen (`record/zentrale.
     klickziel.json   Tab → hier  Klick in die Draufsicht, mit Lebenszeichen
     aktion.json      Tab → hier  Licht, Ton und die Suchstufe, jede Nummer einmal
     kartenauftrag.json  Tab → hier  Karte laden, Aufnahme starten/beenden, Wegpunkt (Teil 3)
-    lagebild.json    hier → Tab  Skizze, Spot, Tags, Menschen, Klickfahrt, Fähigkeiten (2-mal je s)
+    lagebild.json    hier → Tab  Skizze, Spot, Tags, Menschen, Klickfahrt, Fähigkeiten (bis 4-mal je s)
     lagebild.png     hier → Tab  die Skizze (`workshop/skizze.py`)
     lagebild_karte.png  hier → Tab  die geladene Karte, gefärbt nach dem Abgleich (Teil 3)
 
@@ -36,7 +36,12 @@ dem letzten Hindernisgitter, Kopfraum) — unlesbar heisst stehen. Die Tasten fa
 in `fahren.py` ohne diese Schranken: dort steuert der Mensch.
 
 Die Wahrnehmung läuft in einem eigenen Faden (Gitter, Lage, Tags, Kopfraum dauern am
-Roboter je 30–100 ms), der Fahrtakt hier. Die MENSCHENSUCHE (Teil 2,
+Roboter je 30–100 ms), der Fahrtakt hier. Sie wartet nur den REST von `WAHRNEHMUNG_S`
+(`wahrnehmungs_pause`), mindestens `WAHRNEHMUNG_MIN_S`: bis zum 27.09.2026 wartete sie nach
+der Arbeit immer volle 0.5 s — im 3D-Übungsraum (Gitterbau ~390 ms) kam so knapp ein Bild je
+Sekunde, und die Draufsicht ruckelte. SPOTS PFEIL hängt nicht an diesem Takt: das Lagebild
+trägt `vision_von_odom` (aus DEMSELBEN Rahmenbaum wie die Lage), und der Tab setzt damit die
+Lage aus `zustand.jsonl` (odom, 10-mal je Sekunde) in die Skizze. Die MENSCHENSUCHE (Teil 2,
 `workshop/menschensuche.py`) hat einen dritten Faden: eine Runde kostet vorne rund 0.3 s,
 rundum über eine Sekunde, und sie darf weder den Fahrtakt noch das Lagebild aufhalten.
 Wie viel sie rechnet, sagt die Stufe aus dem Tab (Vorgabe hier: aus). Ein Mensch steht
@@ -59,7 +64,8 @@ from spotlab.workshop import skizze as skizzenmodul
 
 SKRIPT = Path(__file__)
 TAKT_S = 0.05
-WAHRNEHMUNG_S = 0.5
+WAHRNEHMUNG_S = 0.25        # der Takt der Wahrnehmung: so oft kommt ein Lagebild, wenn es geht
+WAHRNEHMUNG_MIN_S = 0.05    # auch ein langsames Gitter lässt Fahrtakt und Simulation Luft
 KOPFRAUM_S = 1.0
 KOPFRAUM_GILT_S = 3.0      # älter oder nie gemessen: die Klickfahrt steht (fail-closed)
 GITTER_GILT_S = 1.5        # ebenso für das Hindernisgitter
@@ -71,6 +77,40 @@ GLEICH_M = 1.0             # ein neuer Fund so nah an einem alten ist derselbe M
 START_FRIST_S = 5.0        # so lange sucht der Folgemodus den Angeklickten, dann gibt er auf
 KEINE_KAMERAS = ("Keine Bild- und Tiefenkameras (Übungsraum) — Menschen sucht nur der "
                  "echte Spot.")
+
+
+def wahrnehmungs_pause(dauer_s):
+    """Wie lange der Wahrnehmungsfaden nach einem Takt wartet: der Rest, nie weniger als das Minimum."""
+    return max(WAHRNEHMUNG_MIN_S, WAHRNEHMUNG_S - dauer_s)
+
+
+def lage_und_versatz(spot):
+    """((x, y, gier) in „vision“, (tx, ty, dgier) von odom nach vision) aus EINEM Rahmenbaum.
+
+    Der Versatz bildet einen odom-Punkt p auf R(dgier)·p + t in „vision“ ab. Zwei Abfragen
+    gehörten zu zwei Augenblicken; aus einem Baum passen Lage und Versatz zusammen. Ohne
+    „vision“ im Baum beides None, ohne „odom“ nur der Versatz.
+    """
+    from bosdyn.client.frame_helpers import (
+        BODY_FRAME_NAME,
+        ODOM_FRAME_NAME,
+        VISION_FRAME_NAME,
+        get_a_tform_b,
+    )
+
+    baum = spot.backend.frame_tree_snapshot()
+    vision = get_a_tform_b(baum, VISION_FRAME_NAME, BODY_FRAME_NAME)
+    if vision is None:
+        return None, None
+    lage = (float(vision.x), float(vision.y), float(vision.rot.to_yaw()))
+    try:
+        odom = get_a_tform_b(baum, ODOM_FRAME_NAME, BODY_FRAME_NAME)
+    except Exception:
+        odom = None
+    if odom is None:
+        return lage, None
+    versatz = vision * odom.inverse()
+    return lage, (float(versatz.x), float(versatz.y), float(versatz.rot.to_yaw()))
 
 
 def _im_hintergrund(arbeit):
@@ -92,6 +132,7 @@ class Zentrale:
         self._gitter = None
         self._gitter_t = None
         self._lage = None
+        self._versatz = None       # vision_von_odom aus dem letzten Rahmenbaum
         self._tags = {}
         self._kopf = (False, "Kopfraum noch nicht geprüft")
         self._kopf_t = None
@@ -162,7 +203,10 @@ class Zentrale:
             gitter = None
             self._einmal("gitter", f"Kein Hindernisgitter ({fehler}) — die Skizze bleibt leer; "
                                    f"die Tasten fahren, die Klickfahrt lehnt ab.")
-        lage = self._lage_jetzt()
+        try:
+            lage, versatz = lage_und_versatz(self.spot)
+        except Exception:
+            lage, versatz = None, None
         try:
             tags = self.spot.tags()
         except Exception:
@@ -179,6 +223,7 @@ class Zentrale:
                 self._gitter, self._gitter_t = gitter, t
             if lage is not None:
                 self._lage = lage
+                self._versatz = versatz
             for tag in tags:
                 if getattr(tag, "world_xy", None):
                     self._tags[int(tag.id)] = (float(tag.world_xy[0]), float(tag.world_xy[1]))
@@ -222,6 +267,8 @@ class Zentrale:
             "hoehe": hoehe,
             "spot": spot,
             "tags": [{"id": i, "x": xy[0], "y": xy[1]} for i, xy in sorted(self._tags.items())],
+            "vision_von_odom": (None if self._versatz is None
+                                else [round(v, 5) for v in self._versatz]),
             "klickfahrt": self.klick.stand.als_daten(),
             "faehigkeiten": dict(self.faehigkeiten),
             "menschen": [{"x": round(m.x, 3), "y": round(m.y, 3),
@@ -503,11 +550,12 @@ class Zentrale:
 
     def _wahrnehmung_schleife(self, halt):
         while not halt.is_set():
+            beginn = time.monotonic()
             try:
                 self.wahrnehmen()
             except Exception as fehler:
                 self._einmal("wahrnehmung", f"Die Wahrnehmung stolpert ({fehler}).")
-            halt.wait(WAHRNEHMUNG_S)
+            halt.wait(wahrnehmungs_pause(time.monotonic() - beginn))
 
     def lauf(self, laeuft, schlaf=time.sleep, takt_s=TAKT_S, mit_blick=True):
         """Fahrtakt hier, Wahrnehmung im Faden, bis `laeuft()` falsch ist. Am Ende hält Spot."""

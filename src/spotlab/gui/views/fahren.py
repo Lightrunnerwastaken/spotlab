@@ -64,7 +64,8 @@ from spotlab.record import fahrt
 from spotlab.record import zentrale as protokoll
 
 VORGABE_STUFE = "langsam"             # am echten Roboter gemächlich anfangen
-HERZSCHLAG_MS = 200                   # Lebenszeichen der Klickfahrt und Blick ins Lagebild
+HERZSCHLAG_MS = 200                   # Lebenszeichen der Klickfahrt
+LAGEBILD_MS = 100                     # so oft schaut der Tab nach einem neuen Lagebild
 ORTE = (("🧪 Übungsraum", "uebungsraum"), ("🐕 Echter Spot", "real"))
 LICHTER = (("💡 Licht aus", "aus"), ("blau", "blau"), ("grün", "gruen"), ("gelb", "gelb"),
            ("rot", "rot"))
@@ -436,7 +437,11 @@ class FahrenView(QWidget):
         self.ton.clicked.connect(self._ton_geklickt)
         self.herzschlag_takt = QTimer(self)
         self.herzschlag_takt.setInterval(HERZSCHLAG_MS)
-        self.herzschlag_takt.timeout.connect(self._takt)
+        self.herzschlag_takt.timeout.connect(self._herzschlag)
+        # Ein eigener, schnellerer Takt fürs Lagebild: nachsehen kostet nur ein stat().
+        self.lagebild_takt = QTimer(self)
+        self.lagebild_takt.setInterval(LAGEBILD_MS)
+        self.lagebild_takt.timeout.connect(self._lade_lagebild)
 
         # Rechts neben dem Bild: welche Tasten gedrueckt sind, die Stufe, ob die
         # Tastatur faehrt -- und was Spot daraus macht.
@@ -549,6 +554,7 @@ class FahrenView(QWidget):
         self.klick_zeile.setText(KLICK_HINWEIS)
         self.ort_wahl.setEnabled(False)
         self.herzschlag_takt.start()
+        self.lagebild_takt.start()
         self._zustand_normal()
         self.zustand.setText(f"{name} läuft — Tasten sind scharf.")
         self.tastenfeld.zeige_aktiv(True)
@@ -565,6 +571,7 @@ class FahrenView(QWidget):
         self._laeuft = False
         self._lauf_dir = None
         self.herzschlag_takt.stop()
+        self.lagebild_takt.stop()
         self._klick_nummer, self._klick_ziel = 0, None
         self._klick_art = "ort"
         self.lagebild.leeren()
@@ -627,6 +634,8 @@ class FahrenView(QWidget):
 
     def zeige_zustand(self, satz):
         daten = satz.get("daten") or {}
+        if self._laeuft and len(daten.get("pose") or ()) == 3:
+            self.lagebild.setze_odom_lage(daten["pose"])     # der Pfeil 10-mal je Sekunde
         pose = daten.get("pose") or [0.0, 0.0, 0.0]
         tempo = daten.get("velocity") or [0.0, 0.0, 0.0]
         akku = daten.get("battery")
@@ -838,10 +847,6 @@ class FahrenView(QWidget):
         if (self._laeuft and self._lauf_dir is not None and self._klick_nummer
                 and self.isVisible() and self._app_aktiv):
             self._schreibe_klickziel(jetzt=jetzt)
-
-    def _takt(self):
-        self._herzschlag()
-        self._lade_lagebild()
 
     def _lade_lagebild(self):
         """`lagebild.json` + `.png` zeigen, wenn es ein neues gibt -- sonst nichts tun."""

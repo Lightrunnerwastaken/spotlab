@@ -294,3 +294,87 @@ def test_die_wegpunkte_der_karte_stehen_in_der_draufsicht(qapp):
 
     w = _karte_zeigen(qapp, [0, 0, 0, 0], wegpunkte=[{"x": 2.5, "y": 3.1, "name": "Tür"}])
     assert _nah(_pixel(w, 2.5, 3.1), QColor(palette_fuer(False).akzent_flaeche))
+
+
+# ------------------------------------------------------------ Flüssiger Pfeil (27.09.2026)
+
+
+def _mit_uhr(qapp, **daten):
+    import math  # noqa: F401 -- für die Aufrufer
+
+    uhr = {"t": 0.0}
+    w = lb.Lagebild(palette_fuer(False), jetzt=lambda: uhr["t"])
+    w.resize(400, 400)
+    w.zeige(_daten(**daten), None)
+    return w, uhr
+
+
+def test_der_pfeil_kommt_aus_dem_zustand_umgerechnet_in_die_skizze(qapp):
+    import math
+
+    w, uhr = _mit_uhr(qapp, spot=(1.0, 2.0, 90.0), vision_von_odom=[1.0, 2.0, math.pi / 2])
+    w.setze_odom_lage((1.0, 0.0, 0.0))
+    uhr["t"] = 1.0
+    w._tick()
+    x, y, gier = w.spot_lage()
+    assert (x, y, gier) == pytest.approx((1.0, 3.0, math.pi / 2)), "R(90°)·(1, 0) + (1, 2)"
+
+
+def test_zwischen_zwei_zustaenden_gleitet_der_pfeil(qapp):
+    w, uhr = _mit_uhr(qapp, spot=(1.0, 2.0, 0.0), vision_von_odom=[1.0, 2.0, 0.0])
+    w.setze_odom_lage((0.0, 0.0, 0.0))
+    uhr["t"] = 1.0
+    w._tick()
+    w.setze_odom_lage((1.0, 0.0, 0.0))
+    uhr["t"] = 1.0 + lb.GLEIT_S / 2
+    w._tick()
+    assert w.spot_lage()[0] == pytest.approx(1.5, abs=1e-6), "halb geglitten"
+    uhr["t"] = 1.0 + lb.GLEIT_S
+    w._tick()
+    assert w.spot_lage()[:2] == pytest.approx((2.0, 2.0))
+    assert not w._gleit_takt.isActive(), "angekommen: kein Neuzeichnen mehr"
+
+
+def test_der_winkel_gleitet_den_kurzen_weg(qapp):
+    import math
+
+    w, uhr = _mit_uhr(qapp, spot=(0.0, 0.0, 179.0), vision_von_odom=[0.0, 0.0, 0.0])
+    w.setze_odom_lage((0.0, 0.0, math.radians(179.0)))
+    uhr["t"] = 1.0
+    w._tick()
+    w.setze_odom_lage((0.0, 0.0, math.radians(-179.0)))
+    uhr["t"] = 1.0 + lb.GLEIT_S / 2
+    w._tick()
+    assert abs(math.degrees(w.spot_lage()[2])) == pytest.approx(180.0, abs=1e-6)
+
+
+def test_ohne_versatz_bleibt_der_pfeil_beim_lagebild(qapp):
+    import math
+
+    w, uhr = _mit_uhr(qapp, spot=(2.0, 3.0, 0.0))
+    w.setze_odom_lage((9.0, 9.0, 0.0))
+    uhr["t"] = 1.0
+    w._tick()
+    assert w.spot_lage() == pytest.approx((2.0, 3.0, math.radians(0.0)))
+
+
+def test_die_ansicht_folgt_dem_gleitenden_pfeil(qapp):
+    w, uhr = _mit_uhr(qapp, spot=(2.0, 3.0, 0.0), vision_von_odom=[0.0, 0.0, 0.0])
+    w.setze_odom_lage((2.5, 3.0, 0.0))
+    uhr["t"] = 1.0
+    w._tick()
+    p = w.welt_zu_schirm(2.5, 3.0)
+    assert (p.x(), p.y()) == pytest.approx((200.0, 200.0), abs=1)
+
+
+def test_ein_neues_lagebild_haelt_den_pfeil_beim_zustand(qapp):
+    """Das Lagebild kommt seltener und ist älter als der letzte Zustand -- es setzt den Pfeil
+    nicht zurück, es liefert nur den (neuen) Versatz."""
+    w, uhr = _mit_uhr(qapp, spot=(2.0, 3.0, 0.0), vision_von_odom=[0.0, 0.0, 0.0])
+    w.setze_odom_lage((2.5, 3.0, 0.0))
+    uhr["t"] = 1.0
+    w._tick()
+    w.zeige(_daten(spot=(2.0, 3.0, 0.0), vision_von_odom=[0.1, 0.0, 0.0]), None)
+    uhr["t"] = 2.0
+    w._tick()
+    assert w.spot_lage()[:2] == pytest.approx((2.6, 3.0))

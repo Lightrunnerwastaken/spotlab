@@ -842,3 +842,24 @@ def test_nach_dem_lauf_ist_die_kartenzeile_grau(qapp, tmp_path):
     ansicht._zeige_karte(_karte(zustand="verortet", name="flur2"))
     ansicht.lauf_beendet()
     assert not ansicht.laden.isEnabled() and not ansicht.aufnahme.isEnabled()
+
+
+# ------------------------------------------------ Flüssiger (27.09.2026)
+
+
+def test_der_zustand_fuehrt_den_pfeil_in_der_draufsicht(qapp, tmp_path):
+    ansicht = FahrenView()
+    ansicht.lauf_beginnt(tmp_path)
+    _lagebild_schreiben(tmp_path, vision_von_odom=[0.0, 0.0, 0.0])
+    ansicht._lade_lagebild()
+    ansicht.zeige_zustand({"daten": {"pose": [0.7, 0.5, 0.0]}})
+    assert ansicht.lagebild.ziel_lage()[:2] == pytest.approx((0.7, 0.5))
+
+
+def test_das_lagebild_wird_alle_100_ms_nachgesehen(qapp, tmp_path):
+    ansicht = FahrenView()
+    ansicht.lauf_beginnt(tmp_path)
+    assert ansicht.lagebild_takt.interval() == 100 and ansicht.lagebild_takt.isActive()
+    assert ansicht.herzschlag_takt.interval() == 200, "das Lebenszeichen bleibt bei 200 ms"
+    ansicht.lauf_beendet()
+    assert not ansicht.lagebild_takt.isActive()

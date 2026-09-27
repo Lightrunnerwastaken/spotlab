@@ -15,6 +15,12 @@ werden mit dem Alter blasser (das Programm schickt sie höchstens 3 s alt), der 
 Ring in Spots Farbe. `mensch_bei` sagt, ob ein Klick einen trifft — getroffen wird, was
 man SIEHT: klein gezoomt ist der Kreis grösser als ein halber Meter.
 
+**Spots Pfeil gleitet** (27.09.2026): das Lagebild kommt höchstens 4-mal je Sekunde, im
+3D-Übungsraum seltener — und der Pfeil samt Ansicht sprang damit. Jetzt setzt der Tab die Lage
+aus `zustand.jsonl` (odom, 10-mal je Sekunde, `setze_odom_lage`) mit dem Versatz
+`vision_von_odom` aus dem Lagebild in die Skizze, und der Pfeil gleitet in `GLEIT_S` dorthin.
+Ohne Versatz (ältere Läufe) bleibt er beim Lagebild.
+
 Eine geladene Karte (Teil 3) kommt als zweites Indexbild (`lagebild_karte.png`) mit eigener
 Ausdehnung im selben Zellgitter: nicht geprüft blass, erkannt in Spots Farbe, neu in der
 Gefahrfarbe, fehlt GESTRICHELT — eine Maske nur der Fehlt-Zellen, darüber ein Musterpinsel,
@@ -24,8 +30,9 @@ Kein `bosdyn`, kein `spotlab.backends`: die GUI liest nur Dateien.
 """
 
 import math
+import time
 
-from PySide6.QtCore import QPointF, QRectF, Qt, Signal
+from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QBrush, QColor, QImage, QPainter, QPen, QPolygonF
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
@@ -50,15 +57,26 @@ MENSCH_BLASS_ALPHA = 70
 RING_ABSTAND_PX = 5.0
 KARTE_BLASS_ALPHA = 120          # Kartenwand ausserhalb des Blickfelds
 WEGPUNKT_PX = 4.0
+GLEIT_S = 0.1                    # so lange gleitet der Pfeil zur neuen Lage (ein Zustandstakt)
+GLEIT_TAKT_MS = 16
 
 
 class Lagebild(QWidget):
     klick = Signal(float, float)
 
-    def __init__(self, palette=None, parent=None):
+    def __init__(self, palette=None, parent=None, jetzt=time.monotonic):
         super().__init__(parent)
         self._palette = palette or palette_fuer(False)
+        self._jetzt = jetzt
         self._daten = None
+        self._versatz = None              # vision_von_odom aus dem Lagebild
+        self._odom = None                 # die letzte Lage aus dem Zustand (odom)
+        self._von = self._ziel = None     # das Gleiten: von wo, wohin, seit wann
+        self._gleit_start = 0.0
+        self._gezeigt = None              # die gezeichnete Lage (x, y, Gier in RAD)
+        self._gleit_takt = QTimer(self)
+        self._gleit_takt.setInterval(GLEIT_TAKT_MS)
+        self._gleit_takt.timeout.connect(self._tick)
         self._roh = None                  # das geladene Indexbild (Farbnummern)
         self._bild = None                 # dasselbe mit den Themenfarben
         self._karte_roh = None            # das Kartenbild (Farbnummern des Abgleichs)
@@ -94,13 +112,72 @@ class Lagebild(QWidget):
             if bild is not None:
                 self._karte_roh = bild
                 self._faerbe_karte()
-        spot = (daten or {}).get("spot")
+        versatz = (daten or {}).get("vision_von_odom")
+        self._versatz = tuple(float(v) for v in versatz) if versatz else None
+        if self._versatz is None:
+            self._gezeigt = self._ziel = None
+            self._gleit_takt.stop()
+        elif self._odom is not None:
+            self._setze_ziel(self._in_vision(self._odom))     # der Versatz kann sich ändern
+        spot = self.spot_lage()
         if self.folgt and spot:
-            self._mitte = (float(spot["x"]), float(spot["y"]))
+            self._mitte = (spot[0], spot[1])
+        self.update()
+
+    # ------------------------------------------------------------ Spots Lage
+
+    def setze_odom_lage(self, pose):
+        """Eine Lage aus dem Zustand (odom, x, y, Gier in RAD) — ohne Versatz ohne Wirkung."""
+        self._odom = (float(pose[0]), float(pose[1]), float(pose[2]))
+        if self._versatz is not None:
+            self._setze_ziel(self._in_vision(self._odom))
+
+    def spot_lage(self):
+        """(x, y, Gier in RAD) des gezeichneten Pfeils im Rahmen „vision“ — oder None."""
+        if self._versatz is not None and self._gezeigt is not None:
+            return self._gezeigt
+        spot = (self._daten or {}).get("spot")
+        if not spot:
+            return None
+        return (float(spot["x"]), float(spot["y"]), math.radians(float(spot.get("gier_grad") or 0.0)))
+
+    def ziel_lage(self):
+        """Wohin der Pfeil gerade gleitet (oder wo er steht)."""
+        return self._ziel if self._ziel is not None else self.spot_lage()
+
+    def _in_vision(self, odom):
+        tx, ty, dg = self._versatz
+        c, s = math.cos(dg), math.sin(dg)
+        return (tx + c * odom[0] - s * odom[1], ty + s * odom[0] + c * odom[1],
+                _gewickelt(odom[2] + dg))
+
+    def _setze_ziel(self, ziel):
+        von = self.spot_lage()
+        self._von = von if von is not None else ziel
+        self._ziel = ziel
+        self._gleit_start = self._jetzt()
+        if self._gezeigt is None:
+            self._gezeigt = self._von
+        self._gleit_takt.start()
+
+    def _tick(self):
+        if self._ziel is None or self._von is None:
+            self._gleit_takt.stop()
+            return
+        anteil = min(1.0, max(0.0, (self._jetzt() - self._gleit_start) / GLEIT_S))
+        (x0, y0, g0), (x1, y1, g1) = self._von, self._ziel
+        self._gezeigt = (x0 + (x1 - x0) * anteil, y0 + (y1 - y0) * anteil,
+                         _gewickelt(g0 + _gewickelt(g1 - g0) * anteil))
+        if self.folgt:
+            self._mitte = (self._gezeigt[0], self._gezeigt[1])
+        if anteil >= 1.0:
+            self._gleit_takt.stop()
         self.update()
 
     def leeren(self):
         self._daten = None
+        self._versatz = self._odom = self._von = self._ziel = self._gezeigt = None
+        self._gleit_takt.stop()
         self._roh = self._bild = None
         self._karte_roh = self._karte_bild = None
         self.folgt = True
@@ -137,9 +214,9 @@ class Lagebild(QWidget):
     def mitte(self):
         """Die Ansicht folgt wieder Spot."""
         self.folgt = True
-        spot = (self._daten or {}).get("spot")
+        spot = self.spot_lage()
         if spot:
-            self._mitte = (float(spot["x"]), float(spot["y"]))
+            self._mitte = (spot[0], spot[1])
         self.update()
 
     def _faerbe(self):
@@ -220,7 +297,7 @@ class Lagebild(QWidget):
         self._zeichne_klickfahrt(maler, daten.get("klickfahrt") or {})
         self._zeichne_tags(maler, daten.get("tags") or [])
         self._zeichne_menschen(maler, daten.get("menschen") or [])
-        self._zeichne_spot(maler, daten.get("spot"))
+        self._zeichne_spot(maler, self.spot_lage())
         maler.setPen(QPen(QColor(p.rand), 1))
         maler.setBrush(Qt.NoBrush)
         maler.drawRect(self.rect().adjusted(0, 0, -1, -1))
@@ -258,9 +335,9 @@ class Lagebild(QWidget):
     def _zeichne_klickfahrt(self, maler, k):
         p = self._palette
         weg = k.get("weg") or []
-        spot = (self._daten or {}).get("spot")
+        spot = self.spot_lage()
         if weg and k.get("zustand") == "unterwegs":
-            punkte = ([self.welt_zu_schirm(spot["x"], spot["y"])] if spot else []) + [
+            punkte = ([self.welt_zu_schirm(spot[0], spot[1])] if spot else []) + [
                 self.welt_zu_schirm(x, y) for x, y in weg]
             maler.setPen(QPen(QColor(p.warnung), 2, Qt.DashLine))
             maler.drawPolyline(QPolygonF(punkte))
@@ -308,8 +385,8 @@ class Lagebild(QWidget):
         if not spot:
             return
         p = self._palette
-        q = self.welt_zu_schirm(spot["x"], spot["y"])
-        w = math.radians(float(spot.get("gier_grad") or 0.0))
+        q = self.welt_zu_schirm(spot[0], spot[1])
+        w = spot[2]
         # Ein Pfeil in Blickrichtung, gut 1 m lang wie Spot, aber nie kleiner als lesbar.
         laenge = max(14.0, 0.55 * self.px_je_m)
         breite = laenge * 0.5
@@ -376,3 +453,7 @@ def _indexbild(daten):
     if bild.format() != QImage.Format_Indexed8:
         bild = bild.convertToFormat(QImage.Format_Indexed8)
     return bild
+
+
+def _gewickelt(rad):
+    return (rad + math.pi) % (2.0 * math.pi) - math.pi
