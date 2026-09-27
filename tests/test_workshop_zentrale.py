@@ -405,6 +405,169 @@ def test_im_lauf_sucht_ein_eigener_faden(tmp_path):
     assert suche.gefragt, "der Suchfaden hat gesucht, während der Fahrtakt lief"
 
 
+# ------------------------------------------------------------ Folgen per Klick (Teil 2)
+
+
+class _Folge:
+    """Ersatz für `folgen.folge`: ruft `laeuft()` wie der echte Takt; `je_takt(n)` darf
+    zwischendurch Dateien schreiben oder die Uhr stellen."""
+
+    def __init__(self, je_takt=None, takte=50):
+        self.je_takt = je_takt or (lambda n, kw: None)
+        self.takte = takte
+        self.kw = None
+        self.n = 0
+
+    def __call__(self, spot, **kw):
+        self.kw = kw
+        while self.n < self.takte and kw["laeuft"]():
+            self.n += 1
+            self.je_takt(self.n, kw)
+        spot.stop()
+
+
+def _menschklick(tmp_path, nummer=1, ziel=(3.0, 1.0), uhr=None):
+    protokoll.schreibe_klickziel(tmp_path, nummer, ziel, "normal", art="mensch",
+                                 jetzt=(lambda: uhr["t"]) if uhr else (lambda: T0))
+
+
+def _folgende(tmp_path, folge, uhr=None, **kw):
+    uhr = uhr if uhr is not None else {"t": T0}
+    kw.setdefault("koerper_finder", lambda: (lambda spot: None))
+    z = _zentrale(_KameraSpot(), tmp_path, suche=_Suche(), folgen_mit=folge,
+                  jetzt=lambda: uhr["t"], **kw)
+    return z, uhr
+
+
+def test_ein_klick_auf_einen_menschen_uebergibt_an_den_folgemodus(tmp_path):
+    gesehen = {}
+
+    def je_takt(n, kw):
+        z.wahrnehmen()
+        gesehen["stand"] = protokoll.lies_lagebild(tmp_path)["klickfahrt"]
+        gesehen["suche"] = z.suchen()
+
+    folge = _Folge(je_takt, takte=1)
+    z, _ = _folgende(tmp_path, folge)
+    _stufe(z, tmp_path, "normal")
+    _menschklick(tmp_path)
+    z.takt()
+    assert folge.kw is not None, "der Folgemodus hat übernommen"
+    assert gesehen["stand"]["zustand"] == "folgt" and gesehen["stand"]["nummer"] == 1
+    assert gesehen["suche"] == zentrale.SUCHE_LEERLAUF_S, "die Suche pausiert beim Folgen"
+    assert z.klick.stand.zustand == "abgebrochen" and not z._folgt
+
+
+def test_eine_taste_beendet_das_folgen_und_faehrt_danach(tmp_path):
+    def je_takt(n, kw):
+        if n == 2:
+            fahrt.schreibe(tmp_path, 0.4, 0.0, 0.0, jetzt=lambda: T0)
+
+    z, _ = _folgende(tmp_path, _Folge(je_takt))
+    spot = z.spot
+    _menschklick(tmp_path)
+    z.takt()
+    assert "Taste" in z.klick.stand.grund
+    z.takt()
+    assert _fahrten(spot)[-1]["vx"] == pytest.approx(0.4)
+
+
+def test_ein_neuer_klick_beendet_das_folgen(tmp_path):
+    def je_takt(n, kw):
+        if n == 2:
+            protokoll.schreibe_klickziel(tmp_path, 2, (2.0, 1.0), "normal", jetzt=lambda: T0)
+
+    folge = _Folge(je_takt)
+    z, _ = _folgende(tmp_path, folge)
+    z.wahrnehmen()
+    _menschklick(tmp_path)
+    z.takt()
+    assert folge.n == 2 and "Klick" in z.klick.stand.grund
+    z.takt()
+    assert z.klick.stand.nummer == 2 and z.klick.unterwegs, "der neue Klick fährt"
+
+
+def test_ohne_lebenszeichen_endet_das_folgen(tmp_path):
+    def je_takt(n, kw):
+        if n == 2:
+            uhr["t"] = T0 + protokoll.TOTMANN_S + 0.1
+
+    uhr = {"t": T0}
+    folge = _Folge(je_takt)
+    z, _ = _folgende(tmp_path, folge, uhr=uhr)
+    _menschklick(tmp_path, uhr=uhr)
+    z.takt()
+    assert folge.n == 2 and "Lebenszeichen" in z.klick.stand.grund
+
+
+def test_stopp_beendet_das_folgen(tmp_path):
+    halt = {"an": False}
+
+    def je_takt(n, kw):
+        halt["an"] = n >= 3
+
+    folge = _Folge(je_takt)
+    z, _ = _folgende(tmp_path, folge)
+    z._laeuft = lambda: not halt["an"]
+    _menschklick(tmp_path)
+    z.takt()
+    assert folge.n == 3 and "Stopp" in z.klick.stand.grund
+
+
+def test_wer_nicht_zu_finden_ist_wird_nicht_ewig_gesucht(tmp_path):
+    def je_takt(n, kw):
+        uhr["t"] += 1.0
+        _menschklick(tmp_path, uhr=uhr)         # der Tab lebt
+
+    uhr = {"t": T0}
+    folge = _Folge(je_takt)
+    z, _ = _folgende(tmp_path, folge, uhr=uhr)
+    _menschklick(tmp_path, uhr=uhr)
+    z.takt()
+    assert folge.n < 50 and "nicht zu finden" in z.klick.stand.grund
+
+
+def test_der_gefolgte_steht_hervorgehoben_im_lagebild(tmp_path):
+    from spotlab.workshop.folgen import Ziel, waehle_ziel
+
+    def innen(spot):
+        return waehle_ziel([Ziel(0.0, 2.0), Ziel(90.0, 2.0)])
+
+    def je_takt(n, kw):
+        kw["finder"](z.spot)
+        z.wahrnehmen()
+
+    z, _ = _folgende(tmp_path, _Folge(je_takt, takte=1), koerper_finder=lambda: innen)
+    _menschklick(tmp_path, ziel=(3.0, 1.0))      # Spot bei (1, 1): 2 m voraus
+    z.takt()
+    menschen = protokoll.lies_lagebild(tmp_path)["menschen"]
+    gefolgt = [(m["x"], m["y"]) for m in menschen if m["gefolgt"]]
+    andere = [(m["x"], m["y"]) for m in menschen if not m["gefolgt"]]
+    assert gefolgt == [(3.0, 1.0)] and andere == [(1.0, 3.0)]
+
+
+def test_nach_dem_folgen_kommt_die_gewaehlte_lichtfarbe_zurueck(tmp_path):
+    spot = _KameraSpot(licht=True)
+    folge = _Folge(lambda n, kw: kw["licht"].aus(), takte=1)
+    z = _zentrale(spot, tmp_path, suche=_Suche(), folgen_mit=folge, licht=_Licht(spot.kommandos),
+                  koerper_finder=lambda: (lambda s: None))
+    protokoll.schreibe_aktion(tmp_path, 1, "licht", "gruen")
+    z.takt()
+    _menschklick(tmp_path)
+    z.takt()
+    licht = [k for k in spot.kommandos if k != "stop"]
+    assert licht == [("licht", "green"), "licht aus", ("licht", "green")]
+
+
+def test_ohne_kameras_wird_ein_menschenklick_abgelehnt(tmp_path):
+    folge = _Folge()
+    z = _zentrale(_Spot(), tmp_path, folgen_mit=folge)
+    _menschklick(tmp_path)
+    z.takt()
+    assert folge.kw is None and z.klick.stand.zustand == "abgelehnt"
+    assert "kamera" in z.klick.stand.grund.lower()
+
+
 # ------------------------------------------------------------ Hauptprogramm
 
 

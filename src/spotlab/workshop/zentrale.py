@@ -13,6 +13,15 @@ Die Platte ist der einzige Kanal zum Tab, in beide Richtungen (`record/zentrale.
     lagebild.json    hier → Tab  Skizze, Spot, Tags, Menschen, Klickfahrt, Fähigkeiten (2-mal je s)
     lagebild.png     hier → Tab  die Skizze (`workshop/skizze.py`)
 
+**Folgen per Klick** (Teil 2): ein Klick auf einen Menschen (`klickziel.json` mit
+`art = "mensch"`) übergibt an den Folgemodus (`folgen.folge` mit dem Körperfinder,
+eingewickelt in `workshop/klickfolgen.py`, damit es DER Angeklickte ist). Er folgt, bis
+Stopp, eine Taste, ein neuer Klick, ein fehlendes Lebenszeichen des Tabs — dasselbe wie bei
+der Klickfahrt — oder bis der Angeklickte `START_FRIST_S` lang nicht zu finden war. Der
+Grund steht im Lagebild. Die Suche pausiert so lange; was der Folgemodus sieht, steht im
+Lagebild, der Gefolgte hervorgehoben. Die LEDs gehören dann dem Folgemodus, danach kommt
+die im Tab gewählte Farbe zurück.
+
 **Vorrang:** eine Taste vor der Klickfahrt vor dem Stillstand. Eine Taste bricht die
 Klickfahrt ab. Die Klickfahrt fährt nur, solange das Lebenszeichen des Tabs frisch ist
 (`record/zentrale.TOTMANN_S`), und nur mit den Schranken des Folgens (Gitter voraus aus
@@ -38,7 +47,7 @@ from spotlab.errors import SpotlabError
 from spotlab.record import fahrt
 from spotlab.record import zentrale as protokoll
 from spotlab.record.run import STOPP_DATEI
-from spotlab.workshop import blick, folgen, klickfahrt, menschensuche
+from spotlab.workshop import blick, folgen, klickfahrt, klickfolgen, menschensuche
 from spotlab.workshop import skizze as skizzenmodul
 
 SKRIPT = Path(__file__)
@@ -52,6 +61,7 @@ SUCHE_LEERLAUF_S = 0.2     # aus, ohne Kameras oder beim Folgen: so oft schaut d
 SUCHE_MIN_S = 0.02         # auch „so oft es geht“ lässt den anderen Fäden Luft
 MENSCH_ALTER_S = 3.0       # so lange steht ein Mensch ohne neuen Fund im Lagebild
 GLEICH_M = 1.0             # ein neuer Fund so nah an einem alten ist derselbe Mensch
+START_FRIST_S = 5.0        # so lange sucht der Folgemodus den Angeklickten, dann gibt er auf
 KEINE_KAMERAS = ("Keine Bild- und Tiefenkameras (Übungsraum) — Menschen sucht nur der "
                  "echte Spot.")
 
@@ -62,7 +72,8 @@ def _im_hintergrund(arbeit):
 
 class Zentrale:
     def __init__(self, spot, lauf_dir, jetzt=time.time, melde=print, licht=None,
-                 hintergrund=_im_hintergrund, suche=None):
+                 hintergrund=_im_hintergrund, suche=None, folgen_mit=None,
+                 koerper_finder=None):
         self.spot = spot
         self.lauf_dir = Path(lauf_dir)
         self.jetzt = jetzt
@@ -87,6 +98,11 @@ class Zentrale:
         self._runde_s = None
         self._suche_grund = None
         self._folgt = False
+        self._gefolgt = None       # der Mensch, dem Spot gerade folgt (für das Lagebild)
+        self._lichtwunsch = None   # die zuletzt im Tab gewählte Farbe
+        self._laeuft = lambda: True
+        self._folgen_mit = folgen_mit or folgen.folge
+        self._koerper_finder = koerper_finder or folgen.koerper_finder
         self.faehigkeiten = self._faehigkeiten()
         self._suche_kann = self._kann_suchen()
         if suche is None and self._suche_kann:
@@ -185,7 +201,7 @@ class Zentrale:
             "faehigkeiten": dict(self.faehigkeiten),
             "menschen": [{"x": round(m.x, 3), "y": round(m.y, 3),
                           "alter_s": round(max(0.0, t - m.t), 2), "quelle": m.quelle,
-                          "gefolgt": False}
+                          "gefolgt": m is self._gefolgt}
                          for m in self._menschen if t - m.t <= MENSCH_ALTER_S],
             "suche": {"stufe": self._suchstufe, "runde_s": self._runde_s,
                       "kann": self._suche_kann,
@@ -250,6 +266,10 @@ class Zentrale:
         self._klickziel = kz
         if kz is not None and kz.nummer != self._klick_nummer:
             self._neues_klickziel(kz, t)
+            if kz.art == "mensch" and kz.ziel is not None and befehl == fahrt.STILL \
+                    and self._suche_kann:
+                self._folge_mensch(kz)
+                return
         if befehl != fahrt.STILL:
             with self._sperre:
                 self.klick.abbrechen("eine Taste hat übernommen")
@@ -278,6 +298,13 @@ class Zentrale:
             with self._sperre:
                 self.klick.abbrechen("im Tab abgebrochen")
             return
+        if kz.art == "mensch":
+            with self._sperre:
+                self.klick.abbrechen("jetzt folgt Spot einem Menschen")
+                if not self._suche_kann:
+                    self.klick.stand = klickfahrt.Stand(nummer=kz.nummer, zustand="abgelehnt",
+                                                        grund=KEINE_KAMERAS, ziel=kz.ziel)
+            return                       # `takt` übergibt an den Folgemodus
         lage = self._lage_jetzt()
         with self._sperre:
             if lage is None:
@@ -309,6 +336,90 @@ class Zentrale:
             return self.klick.schritt(lage, self.skizze, t, frei, faktor,
                                       kopf_frei=kopf_frei, kopf_grund=kopf_grund)
 
+    # ------------------------------------------------------------ Folgen per Klick
+
+    def _folge_mensch(self, kz):
+        """Der Folgemodus übernimmt, bis `laeuft` einen Grund hat aufzuhören. Blockiert."""
+        anfang = self.jetzt()
+        ende = {"grund": ""}
+        zuletzt = {"kz": kz}
+
+        def gesehen(punkte, gewaehlt):
+            t = self.jetzt()
+            menschen = [menschensuche.Mensch(x, y, d, b, "vorne", t) for x, y, d, b in punkte]
+            gefolgt = None
+            if gewaehlt is not None:
+                gefolgt = min(menschen, key=lambda m: math.hypot(m.x - gewaehlt[0],
+                                                                 m.y - gewaehlt[1]))
+            with self._sperre:
+                self._merke_menschen(menschen, t)
+                if gefolgt is not None:
+                    self._gefolgt = gefolgt
+
+        finder = klickfolgen.KlickFinder(self._koerper_finder(), kz.ziel, gesehen=gesehen)
+
+        def stand(grund):
+            with self._sperre:
+                self.klick.stand = klickfahrt.Stand(nummer=kz.nummer, zustand="folgt",
+                                                    grund=grund, ziel=kz.ziel)
+
+        def laeuft():
+            if not self._laeuft():
+                ende["grund"] = "Stopp"
+                return False
+            self._aktionen()
+            if fahrt.lies(self.lauf_dir, jetzt=self.jetzt) != fahrt.STILL:
+                ende["grund"] = "eine Taste hat übernommen"
+                return False
+            neu = protokoll.lies_klickziel(self.lauf_dir) or zuletzt["kz"]
+            zuletzt["kz"] = neu
+            if neu.nummer != kz.nummer:
+                ende["grund"] = "ein neuer Klick"
+                return False
+            if not protokoll.lebt(neu, jetzt=self.jetzt):
+                ende["grund"] = ("kein Lebenszeichen vom Tab (Reiter gewechselt oder Fenster "
+                                 "nicht aktiv) — Spot steht")
+                return False
+            if finder.treffer == 0 and self.jetzt() - anfang > START_FRIST_S:
+                ende["grund"] = (f"der angeklickte Mensch war {START_FRIST_S:.0f} s lang nicht "
+                                 f"zu finden")
+                return False
+            stand("folgt dem angeklickten Menschen" if finder.treffer
+                  else "sucht den angeklickten Menschen")
+            return True
+
+        stand("sucht den angeklickten Menschen")
+        with self._sperre:
+            self._folgt = True
+            self._menschen = []
+        try:
+            gesten = folgen.gesten_leser(finder)
+        except Exception:
+            gesten = None
+        try:
+            self._folgen_mit(self.spot, finder=finder, melde=self.melde, laeuft=laeuft,
+                             gesten=gesten, licht=self._licht if self._licht is not None else False)
+        except Exception as fehler:
+            ende["grund"] = f"der Folgemodus ist gescheitert ({fehler})"
+        finally:
+            self._faehrt = False             # `folge()` hält am Ende immer an
+            with self._sperre:
+                self._folgt = False
+                self._gefolgt = None
+                self.klick.stand = klickfahrt.Stand(
+                    nummer=kz.nummer, zustand="abgebrochen",
+                    grund=f"Folgen beendet: {ende['grund'] or 'der Folgemodus hat aufgehört'}")
+            self._licht_zurueck()
+
+    def _licht_zurueck(self):
+        """Nach dem Folgen die im Tab gewählte Farbe wieder setzen (`folge()` löscht die LEDs)."""
+        if self._licht is None or self._lichtwunsch in (None, "aus"):
+            return
+        try:
+            self._licht.setze(LICHTFARBEN.get(self._lichtwunsch, "blue"))
+        except Exception as fehler:
+            self._einmal("licht_fehler", f"Das Licht geht nicht ({fehler}) — Spot fährt weiter.")
+
     # ------------------------------------------------------------ Licht und Ton
 
     def _aktionen(self):
@@ -317,6 +428,9 @@ class Zentrale:
             return
         self._aktion_nummer = aktion["nummer"]
         if aktion["art"] == "licht":
+            self._lichtwunsch = aktion["farbe"]
+            if self._folgt:
+                return                       # die LEDs gehören gerade dem Folgemodus
             if self._licht is None:
                 self._einmal("licht", "Licht gibt es nur am echten Spot (Dienst audio-visual).")
                 return
@@ -360,6 +474,7 @@ class Zentrale:
 
     def lauf(self, laeuft, schlaf=time.sleep, takt_s=TAKT_S, mit_blick=True):
         """Fahrtakt hier, Wahrnehmung im Faden, bis `laeuft()` falsch ist. Am Ende hält Spot."""
+        self._laeuft = laeuft
         seher = blick.starte(self.spot, self.lauf_dir) if mit_blick else None
         halt = threading.Event()
         faden = threading.Thread(target=self._wahrnehmung_schleife, args=(halt,), daemon=True,
