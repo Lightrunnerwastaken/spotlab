@@ -353,3 +353,71 @@ class Panorama:
         aus[zielb] = (misch + 0.5).astype(np.uint8)
         aus = aus.reshape(self.hoehe, self.breite, kanaele)
         return aus[..., 0] if kanaele == 1 else aus
+
+
+class Einzelsicht:
+    """EINE Kamera als Zylinderbild — für die Seiten- und Rückkamera (Stufe „Rundum“).
+
+    Dieselbe Projektion wie `Panorama` (virtuelle Kamera waagerecht in Blickrichtung,
+    Zylinder, Zuschnitt „alles Gesehene“), aber ohne Überlappung und Abgleich — es gibt nur
+    ein Bild. Der Unterschied, auf den es ankommt: `winkel()` gibt die Peilung im KÖRPER-
+    rahmen, nicht relativ zur Kamera. Die linke Kamera schaut nach +90°, die hintere nach
+    ±180°; die Körperprobe (`koerper.beurteile`) sucht ihre Tiefenpunkte im Körperrahmen und
+    braucht genau diese Peilung. Das Frontpanorama bleibt unverändert (Steuerzentrale
+    Teil 2, 27.09.2026).
+    """
+
+    def __init__(self, kamera, ebene_m=EBENE_M, brennweite_px=BRENNWEITE_PX):
+        self.kameras = [kamera]
+        self.brennweite = float(brennweite_px)
+        position, drehung = Panorama._virtuelle_kamera(self.kameras)
+        vorn = drehung[:, 2]
+        self.gier_grad = math.degrees(math.atan2(vorn[1], vorn[0]))
+        karten = Panorama._karten(self.kameras, position, drehung, brennweite_px, ebene_m)
+        self._voll_hoehe, self._voll_breite = karten[0][2].shape
+        oben, unten, links, rechts = Panorama._alles_gesehene(karten)
+        self._oben, self._links = oben, links
+        self.breite, self.hoehe = rechts - links, unten - oben
+        u, v, gewicht = (a[oben:unten, links:rechts] for a in karten[0])
+        spalte = np.clip(np.rint(u).astype(np.int64), 0, kamera.breite - 1)
+        zeile = np.clip(np.rint(v).astype(np.int64), 0, kamera.hoehe - 1)
+        self._drin = np.flatnonzero(gewicht.ravel() > 0)
+        self._quelle = (zeile * kamera.breite + spalte).ravel()[self._drin]
+
+    def winkel(self, spalte, zeile):
+        """(Peilung im Körperrahmen, Höhenwinkel) in Grad; Peilung in (-180, 180]."""
+        azimut = (self._links + spalte - self._voll_breite / 2.0) / self.brennweite
+        tangens = (self._oben + zeile - HORIZONT * self._voll_hoehe) / self.brennweite
+        return _gewickelt(self.gier_grad - math.degrees(azimut)), -math.degrees(math.atan(tangens))
+
+    def spalte(self, peilung):
+        """Die Bildspalte zu einer Peilung im Körperrahmen — die Umkehrung von `winkel`."""
+        relativ = _gewickelt(float(peilung) - self.gier_grad)
+        return -math.radians(relativ) * self.brennweite - self._links + self._voll_breite / 2.0
+
+    def kamerahoehe(self, blick_grad=0.0, standhoehe_m=STANDHOEHE_M):
+        """Wie `Panorama.kamerahoehe`, für die eine Kamera."""
+        lage = self.kameras[0].lage
+        bogen = math.radians(float(blick_grad))
+        return standhoehe_m + float(lage[0, 3]) * math.sin(bogen) + float(lage[2, 3]) * math.cos(bogen)
+
+    def zusammensetzen(self, bilder):
+        """Das Zylinderbild aus dem EINEN Kamerabild; Grau bleibt Grau, Farbe Farbe."""
+        kamera = self.kameras[0]
+        bild = np.asarray(bilder[0])
+        if bild.shape[0] != kamera.hoehe or bild.shape[1] != kamera.breite:
+            raise SpotlabError(
+                f"'{kamera.name}' kommt als {bild.shape[1]}×{bild.shape[0]}, die Karte gilt "
+                f"für {kamera.breite}×{kamera.hoehe}.")
+        flach = bild.reshape(kamera.hoehe * kamera.breite, -1)
+        aus = np.zeros((self.hoehe * self.breite, flach.shape[1]), dtype=bild.dtype)
+        aus[self._drin] = flach[self._quelle]
+        if bild.ndim == 2:
+            return aus.reshape(self.hoehe, self.breite)
+        return aus.reshape(self.hoehe, self.breite, flach.shape[1])
+
+
+def _gewickelt(grad):
+    """Einen Winkel auf (-180, 180] bringen."""
+    grad = (float(grad) + 180.0) % 360.0 - 180.0
+    return 180.0 if grad == -180.0 else grad
