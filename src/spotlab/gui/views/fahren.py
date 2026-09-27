@@ -81,6 +81,8 @@ SICHERHEIT = (
     "Losgelassen heisst Stopp."
 )
 KEIN_BILD = "Kein Bild — der Blick kommt, sobald der Lauf steht."
+KEINE_KAMERA = ("Hier gibt es keine Kamera (2D-Übungsraum) — was Spot „sieht“, zeigt "
+                "die Draufsicht links.")
 
 GESICHT_HINWEIS = (
     "Die Kästen sind das, was der Erkenner setzt — OHNE die Tiefen-Gegenprobe des "
@@ -461,6 +463,7 @@ class FahrenView(QWidget):
         self._klick_nummer, self._klick_ziel = 0, None
         self.lagebild.leeren()
         self.klick_zeile.setText(KLICK_HINWEIS)
+        self.hinweis_bild.setText(KEIN_BILD)
         self.ort_wahl.setEnabled(True)
         self._faehigkeiten({})
         self.licht.blockSignals(True)
@@ -739,7 +742,10 @@ class FahrenView(QWidget):
         except OSError:
             bild = None
         self.lagebild.zeige(daten, bild)
-        self._faehigkeiten(daten.get("faehigkeiten") or {})
+        faehig = daten.get("faehigkeiten") or {}
+        self._faehigkeiten(faehig)
+        if not self.bild.hat_bild():
+            self.hinweis_bild.setText(KEIN_BILD if faehig.get("kamera") else KEINE_KAMERA)
         self.klick_zeile.setText(_klick_text(daten.get("klickfahrt") or {}))
 
     def _faehigkeiten(self, faehig):

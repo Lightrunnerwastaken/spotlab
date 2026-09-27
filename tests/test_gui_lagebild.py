@@ -154,3 +154,18 @@ def test_keine_farbliterale_im_widget():
     quelle = Path(lb.__file__).read_text(encoding="utf-8")
     assert not re.search(r"#[0-9a-fA-F]{6}\b", quelle)
     assert not re.search(r"QColor\(\s*\d", quelle)
+
+
+def test_unbekanntes_hebt_sich_von_der_seite_ab(qapp):
+    """Ein Bild vom 27.09.2026: Unbekanntes hatte die Farbe des Seitenhintergrunds, man sah
+    nicht, wo die Draufsicht aufhört. Das Feld ist die Fläche, nicht der Hintergrund."""
+    from PySide6.QtGui import QColor
+
+    for dunkel in (False, True):
+        palette = palette_fuer(dunkel)
+        w = lb.Lagebild(palette)
+        w.resize(400, 400)
+        w.zeige(_daten(), None)
+        ecke = QColor(w.grab().toImage().pixel(20, 20))
+        assert ecke == QColor(palette.flaeche)
+        assert ecke != QColor(palette.hintergrund)

@@ -580,3 +580,21 @@ def test_nach_dem_lauf_ist_die_zentrale_leer(qapp, tmp_path):
     ansicht.lauf_beendet()
     assert not ansicht.lagebild.hat_bild() and not ansicht.herzschlag_takt.isActive()
     assert not ansicht.licht.isEnabled() and ansicht.ort_wahl.isEnabled()
+
+
+def test_ohne_kamera_verspricht_der_tab_kein_bild(qapp, tmp_path):
+    """Im 2D-Übungsraum gibt es keine Kamera -- „der Blick kommt, sobald der Lauf steht“
+    wäre ein Versprechen, das nie eingelöst wird."""
+    from spotlab.gui.views.fahren import KEIN_BILD
+
+    ansicht = FahrenView()
+    ansicht.lauf_beginnt(tmp_path)
+    _lagebild_schreiben(tmp_path)
+    ansicht._lade_lagebild()
+    assert "keine Kamera" in ansicht.hinweis_bild.text()
+    _lagebild_schreiben(tmp_path, t=2.0, faehigkeiten={"licht": False, "ton": False, "kamera": True})
+    ansicht._lagebild_stempel = None
+    ansicht._lade_lagebild()
+    assert ansicht.hinweis_bild.text() == KEIN_BILD
+    ansicht.lauf_beendet()
+    assert ansicht.hinweis_bild.text() == KEIN_BILD

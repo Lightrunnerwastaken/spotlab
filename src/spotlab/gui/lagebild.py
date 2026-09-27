@@ -90,7 +90,7 @@ class Lagebild(QWidget):
         if self._roh is None:
             return
         p = self._palette
-        frei = QColor(mische(p.hintergrund, p.text, 0.16))
+        frei = QColor(mische(p.flaeche, p.text, 0.16))
         wand = QColor(p.text)
         tabelle = [0] * 256                  # 0 und alles ohne Bedeutung: durchsichtig
         for stufe in range(ALTERSSTUFEN):
@@ -117,7 +117,9 @@ class Lagebild(QWidget):
         p = self._palette
         maler = QPainter(self)
         maler.setRenderHint(QPainter.Antialiasing)
-        maler.fillRect(self.rect(), QColor(p.hintergrund))
+        # Die FLÄCHE, nicht der Seitenhintergrund: sonst sieht man nicht, wo das Feld
+        # aufhört -- Unbekanntes hatte die Farbe der Seite (Bild vom 27.09.2026).
+        maler.fillRect(self.rect(), QColor(p.flaeche))
         daten = self._daten or {}
         if self._bild is not None and daten.get("ursprung") and daten.get("breite"):
             zelle = float(daten["zelle_m"])
@@ -133,6 +135,9 @@ class Lagebild(QWidget):
         self._zeichne_klickfahrt(maler, daten.get("klickfahrt") or {})
         self._zeichne_tags(maler, daten.get("tags") or [])
         self._zeichne_spot(maler, daten.get("spot"))
+        maler.setPen(QPen(QColor(p.rand), 1))
+        maler.setBrush(Qt.NoBrush)
+        maler.drawRect(self.rect().adjusted(0, 0, -1, -1))
         maler.end()
 
     def _zeichne_klickfahrt(self, maler, k):
