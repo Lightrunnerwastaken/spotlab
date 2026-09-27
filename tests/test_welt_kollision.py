@@ -248,3 +248,30 @@ def test_klippen_von_merkt_sich_das_ergebnis_je_boeden_und_gelaende():
     assert klippen_von(raum) is erstes
     assert klippen_von(replace(raum, boeden=())) is not erstes
     assert klippen_von(raum, alles=True) is not erstes
+
+
+def _zonenraum():
+    from spotlab.welt.raum import Sperrzone
+
+    # Die Zone reicht von x = 2.0 bis 3.0; ihr Rand beginnt 0.42 m davor.
+    return Raum(name="z", beschreibung="", start=(0.0, 0.0, 0.0),
+                sperrzonen=(Sperrzone("glas", 2.5, 0.0, 1.0, 1.0),))
+
+
+def test_zone_im_weg_haelt_wer_auf_den_rand_zufaehrt():
+    from spotlab.welt.kollision import zone_im_weg
+
+    raum = _zonenraum()
+    assert zone_im_weg(raum, (0.0, 0.0), (1.8, 0.0)) == "glas"
+    assert zone_im_weg(raum, (0.0, 0.0), (1.0, 0.0)) is None, "noch weit vom Rand"
+
+
+def test_zone_im_weg_laesst_heraus_und_entlang():
+    """Wer im Rand steht (Bremsweg der Physik, Drift), muss heraus- und
+    entlangfahren koennen -- nur TIEFER hinein nicht."""
+    from spotlab.welt.kollision import zone_im_weg
+
+    raum = _zonenraum()
+    assert zone_im_weg(raum, (1.8, 0.0), (1.5, 0.0)) is None, "heraus"
+    assert zone_im_weg(raum, (1.8, -0.3), (1.8, 0.3)) is None, "entlang"
+    assert zone_im_weg(raum, (1.8, 0.0), (1.9, 0.0)) == "glas", "tiefer hinein"

@@ -31,6 +31,11 @@ HINWEIS = ('Experimenteller Physikmodus: eigener Fussplaner, kein Boston-Dynamic
 # `kalibrierung.nachspiel.START` fuer den kinematischen Sim.
 SIM_UHR_NULL = 1_000_000.0
 
+# Vor einer Sperrzone prueft der Takt den Punkt, den Spot in dieser Zeit mit
+# seinem jetzigen Tempo erreicht: ein Koerper mit Schwung haelt nicht auf der
+# Stelle wie der kinematische Sim (`welt.kollision.zone_im_weg`).
+ZONE_VORAUS_S = 0.5
+
 
 class _Shutdown(BaseException):
     pass
@@ -50,31 +55,13 @@ class PhysicsBackend:
         # Grenzen des Gangreglers aus spotsim (trab 0.3/0.5, kraft 0.85/1.0)
         self._max_tempo, self._max_drehrate = _physik_grenzen()
 
-        # Begrenzter Versuch: genau ein horizontales Podest bis 6 cm.
-        # Der ebene Trab bleibt unveraendert; normale Treppen bleiben gesperrt.
-        self._terrain_steps = bool(raum is not None and raum.boeden)
-        if raum is not None and (raum.gelaende is not None or raum.sperrzonen):
-            raise UnsupportedCapability('Physik braucht einen ebenen Raum oder ein einzelnes '
-                                        'Podest bis 6 cm, ohne Hoehenraster/Sperrzonen.')
-        if self._terrain_steps:
-            valid = (len(raum.boeden) == 1 and raum.boeden[0].anstieg == 0
-                     and 0 < raum.boeden[0].z <= .060001 and raum.boeden[0].drehung == 0
-                     and raum.boeden[0].breite >= .8 and raum.boeden[0].tiefe >= 1)
-            # Separat validierte Versuchstreppe: 3 x 4 cm, Auftritte 40 cm,
-            # anschliessend 1.2 m Podest. Keine allgemeine Treppenfreigabe.
-            b = sorted(raum.boeden, key=lambda floor: floor.x)
-            stair_valid = len(b) == 3 and all(
-                abs(floor.x-x) < 1e-6 and abs(floor.y) < 1e-6
-                and abs(floor.breite-width) < 1e-6 and abs(floor.tiefe-2) < 1e-6
-                and abs(floor.z-z) < 1e-6 and floor.anstieg == 0 and floor.drehung == 0
-                for floor, x, width, z in zip(b, (.65, 1.05, 1.85), (.4, .4, 1.2), (.04, .08, .12)))
-            if stair_valid and start is not None and (abs(start[0]) > 1e-6 or abs(start[1]) > 1e-6):
-                raise UnsupportedCapability("Versuchstreppe bisher nur mit Start (0,0,0) validiert.")
-            valid = valid or stair_valid
-            if not valid or (start is not None and abs(start[2]) > .01):
-                raise UnsupportedCapability('Physik-Einzelstufe: ein waagerechtes Podest bis 6 cm, '
-                                            'mindestens 0.8 x 1 m und Startwinkel 0. '
-                                            'Einen ebenen Raum oder die Vorlage physik_treppe_3stufen verwenden; normale Treppen sind gesperrt.')
+        # Welche Raeume gehen, sagt EINE Regel (welt/physik.py) -- der Tab fragt dieselbe.
+        from spotlab.welt import physik
+
+        ok, art, grund = physik.tauglich(raum, start)
+        if not ok:
+            raise UnsupportedCapability(grund)
+        self._terrain_steps = art != physik.EBEN
         self._recorder = recorder
         self._lock = threading.RLock()
         self._halt = threading.Event()
@@ -84,6 +71,10 @@ class PhysicsBackend:
         self._pending = None
         self._active = None
         self._deadline = None
+        self._waiting_still = True
+        self._command_time = 0.0
+        self._soll = (0., 0.)
+        self._raum = raum
         self._powered = False
         self._error = None
         self._closed = False
@@ -106,6 +97,11 @@ class PhysicsBackend:
             simulator = TerrainSdkSim
         self.sim = simulator(szene=(model, data, data.ctrl.copy()))
         self.model = model
+        # Was `SpotPuppe.sichtbare_tags` von einer Puppe braucht, hier aus der Physik.
+        self._puppe = puppe
+        self._tagsicht = SimpleNamespace(
+            lock=threading.RLock(), model=model, data=self.sim.data, welt=self.welt,
+            sensors=self.sim.sensors, _torso=model.body(puppe.TORSO).id)
         self._qpos = data.qpos.copy()
         self._sim_start = self.sim.time
         self._wall_start = time.monotonic()
@@ -122,7 +118,8 @@ class PhysicsBackend:
 
     def capabilities(self):
         return (Capability.LOCOMOTION | Capability.POSTURE | Capability.POWER
-                | Capability.DEPTH_CAMERAS | Capability.GRAY_CAMERAS | Capability.LOCAL_GRID)
+                | Capability.DEPTH_CAMERAS | Capability.GRAY_CAMERAS | Capability.LOCAL_GRID
+                | Capability.WORLD_OBJECTS)
 
     def hinweis_zur_gueltigkeit(self):
         if self._terrain_steps:
@@ -264,10 +261,14 @@ class PhysicsBackend:
             self._command_time = self.sim.time
             self._waiting_still = (command.full_body_command.HasField('stop_request')
                                    or command.synchronized_command.mobility_command.HasField('stand_request'))
+            soll = command.synchronized_command.mobility_command.se2_velocity_request.velocity
+            self._soll = (0., 0.) if self._waiting_still else (soll.linear.x, soll.linear.y)
         if self._deadline is not None and self.uhr() >= self._deadline:
             self.sim.send_command(RobotCommandBuilder.stop_command())
             self._deadline = None
             self._waiting_still = True
+        if not self._waiting_still and self._raum is not None:
+            self._zone_pruefen()
         if self.sim.metrics.fell:
             raise SpotlabError('Regler meldet einen Sturz; Versuch beendet. Lauf auswerten und neu starten.')
         if self._active is not None:
@@ -296,6 +297,36 @@ class PhysicsBackend:
                 target = now
             while not self._halt.is_set() and time.monotonic() < target:
                 time.sleep(min(.005, max(0., target - time.monotonic())))
+
+    def _zone_pruefen(self):
+        """Eine Sperrzone haelt wie eine Wand -- nur mit dem Bremsweg gerechnet.
+
+        Faehrt Spot auf eine Zone zu und laege er nach `ZONE_VORAUS_S` in ihrem
+        Rand, geht ein Stopp an den Regler, und `angestossen` nennt die Zone wie in
+        den anderen Uebungsraeumen. Heraus und entlang bleibt frei. Zaehlen muessen
+        BEIDE Richtungen, die gemessene und die befohlene: beim Anlaufen schwingt der
+        Koerper kurz nach vorn, und nah am Rand hielt sonst jeder Rueckwaertsbefehl.
+        """
+        from spotlab.welt.kollision import zone_im_weg
+
+        q = self.sim.data.qpos
+        x, y = float(q[0]), float(q[1])
+        gier = math.atan2(2 * (q[3] * q[6] + q[4] * q[5]), 1 - 2 * (q[5] ** 2 + q[6] ** 2))
+        vx, vy = (float(v) for v in self.sim.data.qvel[:2])
+        sx, sy = self._soll
+        wx = math.cos(gier) * sx - math.sin(gier) * sy
+        wy = math.sin(gier) * sx + math.cos(gier) * sy
+        t = ZONE_VORAUS_S
+        zone = zone_im_weg(self._raum, (x, y), (x + vx * t, y + vy * t))
+        if zone is None or zone_im_weg(self._raum, (x, y), (x + wx * t, y + wy * t)) != zone:
+            return
+        self.sim.send_command(RobotCommandBuilder.stop_command())
+        self._deadline = None
+        self._waiting_still = True
+        self._command_time = self.sim.time
+        if self._recorder is not None:
+            self._recorder.event('angestossen', x=round(x, 3), y=round(y, 3),
+                                 hindernis=f'Sperrzone {zone}')
 
     def advance(self, seconds):
         """Deterministische Offline-Pruefung ohne Worker; Sekunden auf der Sim-Uhr."""
@@ -367,6 +398,31 @@ class PhysicsBackend:
         from spotlab.backends.real.wahrnehmung import gitter_aus
 
         return self._call(lambda: gitter_aus(self.sim.local_grid()))
+
+    def world_objects(self, kinds=None):
+        """AprilTags mit derselben Sichtpruefung wie im Uebungsraum 3D.
+
+        `SpotPuppe.sichtbare_tags` (Reichweite, Bild einer Graukamera, zugewandt,
+        freier Strahl) rechnet hier auf dem Modell und Zustand der PHYSIK — im
+        Physik-Faden, der allein `MjData` anfasst. Keine zweite Formulierung.
+        """
+        from spotlab.backends.base import Tag, richtung
+        from spotlab.welt.wahrnehmung import TAG_REICHWEITE_M
+
+        if kinds is not None and 'apriltag' not in kinds:
+            return []
+
+        def sehen():
+            gefunden = []
+            for marke, (dx, dy) in self._puppe.SpotPuppe.sichtbare_tags(
+                    self._tagsicht, TAG_REICHWEITE_M):
+                peilung, distanz = richtung(dx, dy)
+                gefunden.append(Tag(
+                    name=f'world_obj_apriltag_{marke.id:03d}', kind='apriltag',
+                    bearing=peilung, distance=distanz, world_xy=(marke.x, marke.y),
+                    time=self.uhr(), id=marke.id, filtered=False))
+            return gefunden
+        return self._call(sehen)
 
     def mobility_params(self, limits, nick_grad=0.0):
         return mobility.mit_grenze(limits)

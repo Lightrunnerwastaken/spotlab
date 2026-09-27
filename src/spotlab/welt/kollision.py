@@ -99,8 +99,37 @@ def zone_bei(raum, x, y, radius=None):
     if radius is None:
         radius = ROBOTER_RADIUS_M + ZONE_RAND_M
     for zone in raum.sperrzonen:
-        lx, ly = zone.lokal(x, y)
-        if abs(lx) <= zone.breite / 2 + radius and abs(ly) <= zone.tiefe / 2 + radius:
+        if _vor_zone(zone, x, y) <= radius:
+            return zone.name
+    return None
+
+
+def _vor_zone(zone, x, y):
+    """Wie weit der Punkt vor dem Rechteck der Zone liegt (innen negativ).
+
+    Die EINE Formulierung des Zonenrands: `zone_bei` fragt `<= radius`,
+    `zone_im_weg` vergleicht zwei Punkte damit.
+    """
+    lx, ly = zone.lokal(x, y)
+    return max(abs(lx) - zone.breite / 2, abs(ly) - zone.tiefe / 2)
+
+
+def zone_im_weg(raum, von, nach, radius=None):
+    """Name der Zone, deren Rand `nach` erreicht, waehrend es naeher kommt -- oder None.
+
+    Fuer die Physik: ein Koerper mit Schwung kann nicht am letzten guten Punkt
+    stehen bleiben wie der kinematische Sim. Sie prueft deshalb den Punkt, den
+    Spot in seinem Bremsweg erreicht (`nach`), und haelt, wenn er damit auf eine
+    Zone ZU faehrt. Heraus und entlang bleibt frei -- wer im Rand steht (Bremsweg,
+    Drift), muss herauskommen, nur tiefer hinein nicht.
+    """
+    if not raum.sperrzonen:
+        return None
+    if radius is None:
+        radius = ROBOTER_RADIUS_M + ZONE_RAND_M
+    for zone in raum.sperrzonen:
+        spaeter = _vor_zone(zone, *nach)
+        if spaeter <= radius and spaeter < _vor_zone(zone, *von) - 1e-3:
             return zone.name
     return None
 
