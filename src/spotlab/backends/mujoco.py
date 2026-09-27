@@ -22,10 +22,18 @@ der Beine: nichts fällt um, nichts rutscht. `lauf.json` sagt `backend: "mujoco"
 der Hinweis steht im `verbunden`-Ereignis.
 
 THREADS. Der Abtaster ruft `robot_state()` aus seinem Thread; das Schülerskript
-ruft `local_grid()`, `images()`, `world_objects()` aus dem Hauptthread. Die
-Puppe führt ein Lock um ihren Zustand. Jeder GL-Kontext gehört genau EINEM
-Thread: Tiefe und Graubilder dem Hauptthread, die Zimmeransicht einem eigenen
-Thread mit eigenem Renderer und privatem MjData (`_LiveAnsicht`).
+ruft `local_grid()`, `images()`, `world_objects()` — aus welchem Faden auch immer.
+Die Puppe führt ein Lock um ihren Zustand. Jeder GL-Kontext gehört genau EINEM
+Thread, der ihn ERZEUGT, BENUTZT UND SCHLIESST: Tiefe und Graubilder dem
+Sensorfaden (`_Sensorfaden`), die Zimmeransicht einem eigenen Thread mit eigenem
+Renderer und privatem MjData (`_LiveAnsicht`). Wer rendern will, gibt dem
+Sensorfaden einen Auftrag und wartet. Bis zum 27.09.2026 renderte, wer gerade
+fragte: die Steuerzentrale fragt aus ihrem Wahrnehmungsfaden, der Renderer entstand
+dort und wurde am Ende im Hauptfaden geschlossen — Zugriffsverletzung in
+`glfwDestroyWindow`, jeder 3D-Lauf der Zentrale endete mit einem Absturz, und
+starteten zwei Fäden zugleich ihren Renderer, oft schon nach dem ersten Lagebild.
+Das Anlegen eines Renderers geht zusätzlich durch `_GL_ANLAGE` (GLFW legt Fenster
+nicht gleichzeitig aus zwei Fäden an).
 Bis zum 06.09.2026 rendertete der Hauptthread die Ansicht nebenbei — und
 `spot.state` kostete 160 ms für ein Bild, das es nicht brauchte. Ein
 GL-Kontext, den zwei Threads benutzen, ist ein Absturz ohne Traceback.
@@ -34,6 +42,7 @@ GL-Kontext, den zwei Threads benutzen, ist ein Absturz ohne Traceback.
 import io
 import math
 import os
+import queue
 import threading
 import time
 from pathlib import Path
@@ -47,6 +56,8 @@ from spotlab.welt.kollision import MAX_SCHRITT_M, zone_bei
 from spotlab.welt.raum import BLOCK_HOEHE_M, MAX_STUFE_M, TAG_HOEHE_M
 from spotlab.welt.wahrnehmung import TAG_REICHWEITE_M
 
+# GLFW legt Fenster (und damit GL-Kontexte) nicht gleichzeitig aus zwei Fäden an.
+_GL_ANLAGE = threading.Lock()
 PUPPE_FASSUNG = 5      # 5: Gelaende als hfield; 4: Nick, Bodenhoehe, Sprungregel; 3: Quader mit yaw
 
 # Die Höhen und Dicken stehen im Raum (`welt/raum.py`: `wand_dicke`,
@@ -192,7 +203,8 @@ class _LiveAnsicht:
         self._kamera = modul.zimmerkamera
         self.model, self.welt = puppe.model, puppe.welt
         self.data = mujoco.MjData(self.model)
-        self._renderer = mujoco.Renderer(self.model, ANSICHT_HOEHE, ANSICHT_BREITE)
+        with _GL_ANLAGE:
+            self._renderer = mujoco.Renderer(self.model, ANSICHT_HOEHE, ANSICHT_BREITE)
 
     def bild(self, qpos, modus="raum", zoom=1.0):
         mj = self._mj
@@ -207,6 +219,64 @@ class _LiveAnsicht:
 
     def close(self):
         self._renderer.close()
+
+
+class _Sensorfaden(threading.Thread):
+    """Der EINE Faden, der Tiefe, Graubilder und das Gitter der Puppe rendert.
+
+    Er erzeugt die Renderer (beim ersten Auftrag, unter `_GL_ANLAGE`), benutzt sie und
+    schliesst sie auch (`beenden`) — der GL-Kontext verlässt diesen Faden nie. Andere
+    Fäden geben Aufträge (`ausfuehren`) und warten; ein Fehler kommt beim Aufrufer an,
+    der Faden läuft weiter. Aufträge nehmen sich die Sperre der Puppe selbst: wer einen
+    Auftrag gibt, darf sie dabei nicht halten, sonst warten beide aufeinander.
+    """
+
+    def __init__(self):
+        super().__init__(daemon=True, name="spotlab-sensoren")
+        self._auftraege = queue.Queue()
+        self._erster = True
+
+    def run(self):
+        while True:
+            auftrag = self._auftraege.get()
+            if auftrag is None:
+                return
+            arbeit, fertig, ergebnis = auftrag
+            try:
+                if self._erster:              # hier entstehen die Renderer
+                    self._erster = False
+                    with _GL_ANLAGE:
+                        ergebnis["wert"] = arbeit()
+                else:
+                    ergebnis["wert"] = arbeit()
+            except BaseException as fehler:
+                ergebnis["fehler"] = fehler
+            finally:
+                fertig.set()
+
+    def ausfuehren(self, arbeit):
+        if threading.current_thread() is self:
+            return arbeit()
+        if not self.is_alive():
+            raise SpotlabError("Die Kameras der Puppe sind schon geschlossen.")
+        fertig, ergebnis = threading.Event(), {}
+        self._auftraege.put((arbeit, fertig, ergebnis))
+        while not fertig.wait(1.0):
+            if not self.is_alive():
+                raise SpotlabError("Der Sensorfaden der Puppe ist nicht mehr da.")
+        if "fehler" in ergebnis:
+            raise ergebnis["fehler"]
+        return ergebnis["wert"]
+
+    def beenden(self, schliessen, frist_s=10.0):
+        """`schliessen` (die Renderer freigeben) läuft HIER, dann endet der Faden."""
+        if not self.is_alive():
+            return
+        try:
+            self.ausfuehren(schliessen)
+        finally:
+            self._auftraege.put(None)
+            self.join(timeout=frist_s)
 
 
 class _Ansichtsschreiber(threading.Thread):
@@ -298,6 +368,8 @@ class MujocoBackend(SimBackend):
         self._fassung = puppe.FASSUNG
         self._hocke = None                 # (Versatz und Winkel, gebeugte Winkel)
         self._synchronisiere()
+        self._sensoren = _Sensorfaden()
+        self._sensoren.start()
         self._ansicht = None
         if ansicht_ziel:
             self._ansicht = _Ansichtsschreiber(puppe, self.puppe, Path(ansicht_ziel))
@@ -320,8 +392,9 @@ class MujocoBackend(SimBackend):
         super().close()
         if self._ansicht is not None:
             self._ansicht.beenden()
-        # Renderer freigeben: ein GL-Kontext ueberlebt den Garbage-Collector.
-        self.puppe.close()
+        # Renderer freigeben: ein GL-Kontext ueberlebt den Garbage-Collector -- und im
+        # Sensorfaden, der sie erzeugt hat (sonst Zugriffsverletzung in glfwDestroyWindow).
+        self._sensoren.beenden(self.puppe.close)
 
     def bericht(self):
         bericht = super().bericht()
@@ -492,38 +565,48 @@ class MujocoBackend(SimBackend):
         return gefunden
 
     @synchronisiert
+    def _fortgeschrieben(self):
+        """Den Zustand bis jetzt fortschreiben (unter beiden Sperren) — gibt die Bodenhöhe."""
+        self._fortschreiben()
+        return self._z
+
     def local_grid(self):
         """Aus den fünf Tiefenbildern — durch denselben Entpacker wie am Roboter.
 
         Das Gitter kommt weltfest (spotsim ab Puppe-Fassung 2, RESEARCH DECISION
         06.09.2026 in matura-spot), so wie der echte Dienst es liefert und wie
-        `ObstacleGrid` rechnet. Nichts wird umgetastet.
+        `ObstacleGrid` rechnet. Nichts wird umgetastet. Gerendert wird im Sensorfaden.
         """
         from spotlab.backends.real.wahrnehmung import gitter_aus
 
-        self._fortschreiben()
-        return gitter_aus(self.puppe.local_grid("obstacle_distance", boden_z=self._z))
+        boden_z = self._fortgeschrieben()
+        return gitter_aus(self._sensoren.ausfuehren(
+            lambda: self.puppe.local_grid("obstacle_distance", boden_z=boden_z)))
 
     def image_sources(self):
         from spotsim.sensors import CAMERAS
 
         return [f"{n}_depth" for n in CAMERAS] + [f"{n}_fisheye_image" for n in CAMERAS]
 
-    @synchronisiert
     def images(self, sources):
-        self._fortschreiben()
-        antworten = []
         for quelle in sources:
-            if quelle.endswith("_depth"):
-                antworten.append(self.puppe.depth_image(quelle[: -len("_depth")]))
-            elif quelle.endswith("_fisheye_image"):
-                antworten.append(self.puppe.gray_image(quelle[: -len("_fisheye_image")]))
-            else:
+            if not quelle.endswith(("_depth", "_fisheye_image")):
                 raise SpotlabError(
                     f"Unbekannte Bildquelle '{quelle}'. Vorhanden: "
                     + ", ".join(self.image_sources())
                 )
-        return antworten
+        self._fortgeschrieben()
+
+        def rendern():
+            antworten = []
+            for quelle in sources:
+                if quelle.endswith("_depth"):
+                    antworten.append(self.puppe.depth_image(quelle[: -len("_depth")]))
+                else:
+                    antworten.append(self.puppe.gray_image(quelle[: -len("_fisheye_image")]))
+            return antworten
+
+        return self._sensoren.ausfuehren(rendern)
 
     @synchronisiert
     def robot_state(self):

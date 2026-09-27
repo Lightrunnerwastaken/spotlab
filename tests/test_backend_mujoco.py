@@ -520,3 +520,118 @@ def test_eine_sperrzone_haelt_auch_in_3d(uhr):
     assert backend.puppe.pose()[0] < raum.start[0] + 1.5, "in die Zone gefahren"
     stoesse = [d for art, d in schreiber.ereignisse if art == "angestossen"]
     assert stoesse and stoesse[0]["hindernis"] == "Sperrzone Glasfront"
+
+
+# ------------------------------------------------------------ Ein Faden rendert (27.09.2026)
+
+
+def _faden_der(backend, methode):
+    """Merkt sich, in welchem Faden die Puppe `methode` ausführt."""
+    import threading
+
+    gesehen = []
+    alt = getattr(backend.puppe, methode)
+
+    def merken(*a, **k):
+        gesehen.append(threading.current_thread().name)
+        return alt(*a, **k)
+
+    setattr(backend.puppe, methode, merken)
+    return gesehen
+
+
+def test_gitter_und_bilder_rendert_immer_derselbe_faden():
+    """Ein GL-Kontext gehört EINEM Faden. Die Steuerzentrale fragt aus drei Fäden
+    (Wahrnehmung, Menschensuche, Hauptfaden) -- gerendert wird trotzdem nur im Sensorfaden."""
+    import threading
+
+    uhr = Uhr()
+    b = _backend(uhr, start=(1.0, 2.0, 0.0))
+    try:
+        gitter = _faden_der(b, "local_grid")
+        tiefe = _faden_der(b, "depth_image")
+        grau = _faden_der(b, "gray_image")
+        b.local_grid()
+        faden = threading.Thread(target=lambda: (b.local_grid(), b.images(
+            ["frontleft_depth", "frontleft_fisheye_image"])), name="zentrale-wahrnehmung")
+        faden.start()
+        faden.join(timeout=60)
+        assert set(gitter + tiefe + grau) == {"spotlab-sensoren"}
+        assert len(gitter) == 2 and len(tiefe) == 1 and len(grau) == 1
+    finally:
+        b.close()
+
+
+def test_die_renderer_schliesst_der_faden_der_sie_erzeugt_hat():
+    import threading
+
+    uhr = Uhr()
+    b = _backend(uhr, start=(1.0, 2.0, 0.0))
+    b.local_grid()
+    geschlossen = _faden_der(b, "close")
+    b.close()
+    assert geschlossen == ["spotlab-sensoren"], threading.current_thread().name
+
+
+def test_ein_fehler_im_sensorfaden_kommt_beim_aufrufer_an():
+    uhr = Uhr()
+    b = _backend(uhr, start=(1.0, 2.0, 0.0))
+    try:
+        def kaputt(*a, **k):
+            raise RuntimeError("Kamera kaputt")
+
+        b.puppe.local_grid = kaputt
+        with pytest.raises(RuntimeError, match="Kamera kaputt"):
+            b.local_grid()
+        assert b.images(["frontleft_depth"]), "der Faden läuft nach dem Fehler weiter"
+    finally:
+        b.close()
+
+
+def test_die_zentrale_laeuft_im_3d_uebungsraum_und_endet_sauber(tmp_path):
+    """Das echte Programm als eigener Prozess: bis zum 27.09.2026 starb es im 3D-Übungsraum mit
+    einer Zugriffsverletzung (Renderer im Wahrnehmungsfaden erzeugt, im Hauptfaden
+    geschlossen). Ein Absturz hier nähme als Test die ganze Suite mit -- daher ein Prozess."""
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    import spotlab
+    from tests_zeitgrenzen import TEST_TIMEOUT_S
+
+    # Das Paket, das hier geprüft wird -- nicht ein anders installiertes spotlab.
+    quelle = str(Path(spotlab.__file__).resolve().parents[1])
+    env = dict(os.environ, SPOTLAB_BACKEND="mujoco", SPOTLAB_RAUM="durchgang",
+               SPOTLAB_NUR_TROCKEN="1",
+               PYTHONPATH=os.pathsep.join([quelle] + [os.environ.get("PYTHONPATH", "")]))
+    prozess = subprocess.Popen(
+        [sys.executable, "-m", "spotlab.workshop.zentrale", "--runs", str(tmp_path)], env=env,
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8",
+        errors="replace")
+    try:
+        lauf = warte_bis(lambda: next((p for p in tmp_path.iterdir() if p.is_dir()), None)
+                         if prozess.poll() is None else "tot", "das Lauf-Verzeichnis")
+        assert lauf != "tot", prozess.communicate()[0][-3000:]
+        stempel = set()
+
+        def fuenf_lagebilder():
+            try:
+                stempel.add((lauf / "lagebild.json").stat().st_mtime_ns)
+            except OSError:
+                pass
+            return len(stempel) >= 5 or prozess.poll() is not None
+
+        warte_bis(fuenf_lagebilder, "fünf Lagebilder")
+        assert prozess.poll() is None, prozess.communicate()[0][-3000:]
+        (lauf / "stopp").write_text("", encoding="utf-8")
+        ausgabe, _ = prozess.communicate(timeout=TEST_TIMEOUT_S)
+    finally:
+        if prozess.poll() is None:
+            prozess.kill()
+            prozess.communicate()
+    # Der freundliche Stopp endet über KeyboardInterrupt (`record/sampler.py`): unter Windows
+    # 0xC000013A, sonst 1. Ein Absturz hat einen anderen Code -- Zugriffsverletzung 0xC0000005,
+    # zerstörter Heap 0xC0000374 (so endete es bis zum 27.09.2026).
+    assert prozess.returncode in (0, 1, 0xC000013A), (hex(prozess.returncode), ausgabe[-3000:])
+    assert "access violation" not in ausgabe, ausgabe[-3000:]
