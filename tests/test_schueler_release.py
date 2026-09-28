@@ -69,3 +69,49 @@ def test_die_modellvariante_reist_mit_der_simulation():
     Masse als Variante). Fehlt es in der Erlaubnisliste, bricht der naechste ZIP-Bau ab."""
     assert "modell" in release.MODULES
     release.validate_imports("def f():\n    from spotsim import modell as modellvariante")
+
+
+def test_der_kraftregler_und_die_haltung_reisen_mit():
+    """Seit dem 24.09.2026 geht der Physikkörper mit dem Kraftregler. Ohne seine Module brach
+    der Bau ab (`spotsim.aktuator` ausserhalb der Liste) -- gefunden am 28.09.2026."""
+    assert {'aktuator', 'gangplan', 'mpc', 'schwung', 'kraftregler', 'haltung'} <= release.MODULES
+
+
+def test_jedes_runtime_modul_besteht_die_importpruefung():
+    """Die Liste gegen das ECHTE spotsim geprüft, nicht gegen eine Attrappe: ein fehlender
+    Nachbar fällt hier auf, nicht erst beim Bau des Release."""
+    spotsim = pytest.importorskip('spotsim')
+    quelle = Path(spotsim.__file__).parent
+    if not (quelle / 'haltung.py').is_file():
+        pytest.skip('spotsim ohne Haltung (ältere Fassung)')
+    for name in sorted(release.MODULES):
+        release.validate_imports((quelle / f'{name}.py').read_text(encoding='utf-8'))
+    release.validate_imports((quelle / '__init__.py').read_text(encoding='utf-8'))
+
+
+def test_die_runtime_bringt_daten_und_das_echte_init(tmp_path, monkeypatch):
+    """Das Paket-`__init__` von spotsim trägt `tempo_grenzen` und `HALTUNG_FASSUNG` -- ein
+    eigenes, handgeschriebenes kannte beides nicht, und der Physikmodus fiel im Schüler-
+    Release still auf Trab-Grenzen und Stufe A zurück."""
+    spotsim = pytest.importorskip('spotsim')
+    quelle = Path(spotsim.__file__).parent
+    if not (quelle / 'haltung.py').is_file():
+        pytest.skip('spotsim ohne Haltung (ältere Fassung)')
+    research = tmp_path / 'research'
+    shutil.copytree(quelle, research / 'src' / 'spotsim', ignore=shutil.ignore_patterns('__pycache__'))
+    (research / 'assets' / 'mujoco_menagerie' / 'boston_dynamics_spot').mkdir(parents=True)
+    monkeypatch.setattr(release, 'model_files', lambda model: [])
+    release.runtime(research, tmp_path / 'rt', '0.0.0')
+    paket = tmp_path / 'rt' / 'src' / 'spotsim'
+    assert (paket / 'haltung.py').is_file() and (paket / 'kraftregler.py').is_file()
+    assert (paket / 'daten' / 'gang.json').is_file() and (paket / 'daten' / 'haltung.json').is_file()
+    init = (paket / '__init__.py').read_text(encoding='utf-8')
+    assert 'HALTUNG_FASSUNG' in init and 'def tempo_grenzen' in init
+    projekt = (tmp_path / 'rt' / 'pyproject.toml').read_text(encoding='utf-8')
+    assert '"osqp' in projekt and 'daten/*.json' in projekt
+
+
+def test_eine_paketkonstante_ist_kein_modul():
+    release.validate_imports('from spotsim import HALTUNG_FASSUNG')
+    with pytest.raises(ValueError):
+        release.validate_imports('from spotsim import explorer')

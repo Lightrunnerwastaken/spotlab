@@ -146,3 +146,4 @@ def test_mit_alter_spotsim_fassung_gilt_stufe_a(monkeypatch):
             b.send_command(B.synchro_sit_command())
     finally:
         b.close()
+

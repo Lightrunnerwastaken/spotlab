@@ -17,7 +17,12 @@ from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
 MODULES = frozenset('puppe sensors local_grid kinematics sim interpreter posture stability '
-                    'sdk_sim trot terrain_sdk terrain_step contact_metrics detect modell'.split())
+                    'sdk_sim trot terrain_sdk terrain_step contact_metrics detect modell '
+                    # Kraftregler (Vorgabe seit 24.09.2026) und Haltung (28.09.2026): ohne sie
+                    # brach der Bau an `spotsim.aktuator` ab.
+                    'aktuator gangplan mpc schwung kraftregler haltung'.split())
+# Messdaten, die die Runtime liest (Gangplan, Aufstehbahn) -- Kopien der spotlab-Kalibrierung.
+DATEN = ('gang.json', 'haltung.json')
 # Erkennermodelle aus dem OpenCV-Zoo (Lizenzen: tools/modelle_lizenzen.txt), mit
 # Pruefsumme: der Zoo fuehrt sie ueber git-lfs, ein 132-Byte-Zeiger sieht aus wie eine Datei.
 MODELLE = {
@@ -39,12 +44,6 @@ def spot_xml_path():
 def spot_asset_available():
     return Path(spot_scene_path()).is_file()
 '''
-INIT_PY = '''"""Spotlab simulation runtime, distributed separately from research tools."""
-from spotsim.assets import spot_asset_available, spot_scene_path, spot_xml_path
-__all__ = ["spot_asset_available", "spot_scene_path", "spot_xml_path"]
-'''
-
-
 def version(repo):
     tree = ast.parse((repo/'src/spotlab/__init__.py').read_text(encoding='utf-8'))
     for node in tree.body:
@@ -60,7 +59,10 @@ def validate_imports(source):
         if isinstance(node, ast.Import):
             names = [a.name for a in node.names]
         elif isinstance(node, ast.ImportFrom) and node.module:
-            names = ([f'spotsim.{a.name}' for a in node.names] if node.module == 'spotsim' else [node.module])
+            # `from spotsim import X`: ein Modul, ausser X ist eine Paketkonstante (GROSS
+            # geschrieben, z. B. HALTUNG_FASSUNG) -- Module heissen hier klein.
+            names = ([f'spotsim.{a.name}' for a in node.names if not a.name.isupper()]
+                     if node.module == 'spotsim' else [node.module])
         for name in names:
             if name.startswith('spotsim.') and name.split('.')[1] not in allowed:
                 raise ValueError(f'Runtime dependency outside allowlist: {name}')
@@ -124,8 +126,18 @@ def runtime(research, target, release_version):
         validate_imports(data.decode('utf-8'))
         (package/path.name).write_bytes(data)
         hashes[path.name] = hashlib.sha256(data).hexdigest()
-    (package/'__init__.py').write_text(INIT_PY, encoding='utf-8')
+    # Das ECHTE Paket-__init__ (tempo_grenzen, HALTUNG_FASSUNG), durch dieselbe Importprüfung;
+    # ein eigenes kannte beides nicht, und der Physikmodus fiel still zurück (28.09.2026).
+    init = (research/'src/spotsim/__init__.py').read_bytes()
+    validate_imports(init.decode('utf-8'))
+    (package/'__init__.py').write_bytes(init)
+    hashes['__init__.py'] = hashlib.sha256(init).hexdigest()
     (package/'assets.py').write_text(ASSETS_PY, encoding='utf-8')
+    (package/'daten').mkdir()
+    for name in DATEN:
+        data = (research/'src/spotsim/daten'/name).read_bytes()
+        (package/'daten'/name).write_bytes(data)
+        hashes[f'daten/{name}'] = hashlib.sha256(data).hexdigest()
     model = research/'assets/mujoco_menagerie/boston_dynamics_spot'
     for name in model_files(model):
         destination = package/'model'/name
@@ -141,11 +153,11 @@ name = "spotlab-sim-runtime"
 version = "{release_version}"
 description = "Simulation runtime and robot model for Spotlab"
 requires-python = ">=3.11,<3.15"
-dependencies = ["mujoco>=3.9,<4", "numpy>=2,<3", "scipy>=1.12,<2", "bosdyn-client==5.0.1.2", "bosdyn-api==5.0.1.2"]
+dependencies = ["mujoco>=3.9,<4", "numpy>=2,<3", "scipy>=1.12,<2", "osqp>=1.0,<2", "bosdyn-client==5.0.1.2", "bosdyn-api==5.0.1.2"]
 [tool.setuptools.packages.find]
 where = ["src"]
 [tool.setuptools.package-data]
-spotsim = ["provenance.json", "model/*", "model/assets/*"]
+spotsim = ["provenance.json", "daten/*.json", "model/*", "model/assets/*"]
 ''', encoding='utf-8')
 
 
