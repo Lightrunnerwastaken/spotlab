@@ -15,7 +15,7 @@ pytestmark = pytest.mark.skipif(not spotsim.spot_asset_available(), reason='Mena
 
 @pytest.fixture
 def backend():
-    b = PhysicsBackend(autostart=False, realtime=False)
+    b = PhysicsBackend(haltung='stehend', autostart=False, realtime=False)
     try:
         yield b
     finally:
@@ -58,9 +58,15 @@ def test_walk_and_stop_use_physics_and_measured_feedback(backend):
 def test_unsupported_commands_do_not_fake_success(backend):
     b = backend
     b.power_on()
-    for cmd in (B.synchro_sit_command(), B.synchro_stand_command(body_height=.1)):
+    # Sitzen und die Haltung im Stand gibt es seit Stufe B (tests/test_physics_haltung.py);
+    # eine Haltung beim GEHEN und andere Gangarten nicht.
+    from bosdyn.api.spot import robot_command_pb2 as sp
+
+    for cmd in (B.synchro_velocity_command(.1, 0, 0, body_height=.1),
+                B.synchro_velocity_command(.1, 0, 0, params=B.mobility_params(
+                    locomotion_hint=sp.HINT_CRAWL))):
         with pytest.raises(UnsupportedCapability):
-            b.send_command(cmd)
+            b.send_command(cmd, end_time_secs=b.uhr() + 1)
     with pytest.raises(CommandRejected):
         b.send_command(B.synchro_velocity_command(.1, 0, 0), end_time_secs=b.uhr()-1)
 
@@ -73,7 +79,7 @@ def _faehrt(b):
 def test_velocity_expiry_uses_wall_clock_in_realtime_even_when_sim_is_slow(monkeypatch):
     # Echtzeit (GUI, connect): reisst die Verbindung ab, steht Spot nach der
     # Gueltigkeit in WANDUHR still, auch wenn die Physik hinterherhinkt.
-    b = PhysicsBackend(autostart=False, realtime=True)
+    b = PhysicsBackend(haltung='stehend', autostart=False, realtime=True)
     try:
         b.power_on()
         wall = time.time()
@@ -123,7 +129,7 @@ def test_terrain_is_explicitly_not_validated():
 
 
 def test_start_yaw_is_degrees():
-    b = PhysicsBackend(start=(1, 2, 90), autostart=False, realtime=False)
+    b = PhysicsBackend(haltung='stehend', start=(1, 2, 90), autostart=False, realtime=False)
     try:
         q = b.qpos()[3:7]
         yaw = np.arctan2(2*(q[0]*q[3]+q[1]*q[2]), 1-2*(q[2]**2+q[3]**2))
@@ -133,7 +139,7 @@ def test_start_yaw_is_degrees():
 
 
 def test_worker_advances_without_sensor_polling_and_closes():
-    b = PhysicsBackend()
+    b = PhysicsBackend(haltung='stehend', )
     try:
         first = b.robot_state().kinematic_state.acquisition_timestamp
         deadline = time.monotonic() + 3
@@ -210,7 +216,7 @@ def test_die_grenzen_kommen_aus_spotsim(monkeypatch):
     import spotlab.backends.mujoco as naht
 
     monkeypatch.setattr(naht, '_physik_grenzen', lambda: (0.85, 1.0))
-    b = PhysicsBackend(autostart=False, realtime=False)
+    b = PhysicsBackend(haltung='stehend', autostart=False, realtime=False)
     try:
         b.power_on()
         b.send_command(B.synchro_velocity_command(.8, 0, .9), end_time_secs=b.uhr()+1)
@@ -224,7 +230,7 @@ def test_die_grenzen_kommen_aus_spotsim(monkeypatch):
 def test_der_trab_behaelt_seine_grenzen(monkeypatch):
     # Seit dem 24.09.2026 ist in spotsim der Kraftregler die Vorgabe; der Trab bleibt wählbar.
     monkeypatch.setenv('SPOTSIM_REGLER', 'trab')
-    b = PhysicsBackend(autostart=False, realtime=False)
+    b = PhysicsBackend(haltung='stehend', autostart=False, realtime=False)
     try:
         b.power_on()
         b.send_command(B.synchro_velocity_command(.8, 0, .9), end_time_secs=b.uhr()+1)

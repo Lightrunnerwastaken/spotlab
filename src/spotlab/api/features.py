@@ -13,7 +13,8 @@ def supports(spot, feature):
             return False
         return any(d.name == 'audio-visual' for d in spot.robot.list_services())
     if feature == 'pose':
-        return spot.robot is not None or isinstance(spot.backend, DryRunBackend)
+        return (spot.robot is not None or isinstance(spot.backend, DryRunBackend)
+                or bool(getattr(spot.backend, 'kann_pose', False)))
     gruppen = {'depth': Capability.DEPTH_CAMERAS, 'point_cloud': Capability.DEPTH_CAMERAS,
                'local_grid': Capability.LOCAL_GRID, 'grid_types': Capability.LOCAL_GRID,
                'look': Capability.LOCAL_GRID, 'camera': Capability.CAMERAS,

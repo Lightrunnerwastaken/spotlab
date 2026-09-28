@@ -18,7 +18,8 @@ def pose(spot, roll=0.0, pitch=0.0, yaw=0.0, height=0.0, timeout=10.0):
     height = zahl(height, 'height', -.15, .15)
     timeout = zahl(timeout, 'timeout', .1, 60)
     if not supports(spot, 'pose'):
-        raise UnsupportedCapability('pose() ist am Roboter und im Trockenlauf verfuegbar; Sim/MuJoCo bilden es noch nicht ab.')
+        raise UnsupportedCapability('pose() gibt es am Roboter, im Trockenlauf und im Physikmodus; '
+                                    'der Uebungsraum (2D und 3D-Wiedergabe) bildet es nicht ab.')
     command = RobotCommandBuilder.synchro_stand_command(
         body_height=height,
         footprint_R_body=EulerZXY(roll=math.radians(roll), pitch=math.radians(pitch), yaw=math.radians(yaw)),

@@ -19,7 +19,7 @@ def _raum(**felder):
 
 def test_ein_raum_mit_sperrzone_laeuft_jetzt_in_der_physik():
     raum = _raum(sperrzonen=(Sperrzone('glas', 3.0, 0.0, 1.0, 1.0),))
-    b = PhysicsBackend(raum=raum, autostart=False, realtime=False)
+    b = PhysicsBackend(haltung='stehend', raum=raum, autostart=False, realtime=False)
     b.close()
 
 
@@ -41,7 +41,7 @@ def _tagraum(*waende):
 def test_ein_tag_vor_spot_wird_gesehen():
     from spotlab.backends.base import Capability
 
-    b = PhysicsBackend(raum=_tagraum(), autostart=False, realtime=False)
+    b = PhysicsBackend(haltung='stehend', raum=_tagraum(), autostart=False, realtime=False)
     try:
         assert b.capabilities() & Capability.WORLD_OBJECTS
         gefunden = b.world_objects()
@@ -55,7 +55,7 @@ def test_ein_tag_vor_spot_wird_gesehen():
 
 
 def test_ein_tag_hinter_einer_wand_bleibt_unsichtbar():
-    b = PhysicsBackend(raum=_tagraum((1.0, -1.0, 1.0, 1.0)), autostart=False, realtime=False)
+    b = PhysicsBackend(haltung='stehend', raum=_tagraum((1.0, -1.0, 1.0, 1.0)), autostart=False, realtime=False)
     try:
         assert b.world_objects() == []
     finally:
@@ -80,7 +80,7 @@ def test_spot_haelt_vor_einer_sperrzone_und_kommt_wieder_heraus(tmp_path):
 
     rec = RunRecorder(tmp_path, None, backend='physics')
     raum = _raum(sperrzonen=(Sperrzone('glas', 2.5, 0.0, 1.0, 2.0),))
-    b = PhysicsBackend(recorder=rec, raum=raum, autostart=False, realtime=False)
+    b = PhysicsBackend(haltung='stehend', recorder=rec, raum=raum, autostart=False, realtime=False)
     try:
         b.power_on()
         b.send_command(B.synchro_velocity_command(.85, 0, 0), end_time_secs=b.uhr() + 12)
@@ -112,7 +112,7 @@ def test_die_sperrzone_haelt_auch_gedreht():
     from spotlab.welt.kollision import ROBOTER_RADIUS_M
 
     raum = _raum(sperrzonen=(Sperrzone('glas', 0.0, 2.5, 2.0, 1.0),))
-    b = PhysicsBackend(raum=raum, start=(0, 0, 90), autostart=False, realtime=False)
+    b = PhysicsBackend(haltung='stehend', raum=raum, start=(0, 0, 90), autostart=False, realtime=False)
     try:
         b.power_on()
         b.send_command(B.synchro_velocity_command(.6, 0, 0), end_time_secs=b.uhr() + 10)
@@ -157,7 +157,7 @@ def _gier_grad(b):
 
 
 def test_move_einen_meter_vor():
-    b = PhysicsBackend(autostart=False, realtime=False)
+    b = PhysicsBackend(haltung='stehend', autostart=False, realtime=False)
     try:
         b.power_on()
         key = b.send_command(_ziel(b, vor=1.0), end_time_secs=b.uhr() + 30)
@@ -172,7 +172,7 @@ def test_move_einen_meter_vor():
 
 
 def test_move_eine_vierteldrehung():
-    b = PhysicsBackend(autostart=False, realtime=False)
+    b = PhysicsBackend(haltung='stehend', autostart=False, realtime=False)
     try:
         b.power_on()
         key = b.send_command(_ziel(b, grad=90), end_time_secs=b.uhr() + 30)
@@ -186,7 +186,7 @@ def test_move_eine_vierteldrehung():
 
 
 def test_move_endet_an_der_frist_mit_grund():
-    b = PhysicsBackend(autostart=False, realtime=False)
+    b = PhysicsBackend(haltung='stehend', autostart=False, realtime=False)
     try:
         b.power_on()
         key = b.send_command(_ziel(b, vor=3.0), end_time_secs=b.uhr() + 2)
@@ -199,7 +199,7 @@ def test_move_endet_an_der_frist_mit_grund():
 
 def test_move_haelt_vor_einer_sperrzone_und_sagt_es():
     raum = _raum(sperrzonen=(Sperrzone('glas', 2.5, 0.0, 1.0, 2.0),))
-    b = PhysicsBackend(raum=raum, autostart=False, realtime=False)
+    b = PhysicsBackend(haltung='stehend', raum=raum, autostart=False, realtime=False)
     try:
         b.power_on()
         key = b.send_command(_ziel(b, vor=4.0), end_time_secs=b.uhr() + 30)
@@ -213,12 +213,16 @@ def test_move_haelt_vor_einer_sperrzone_und_sagt_es():
 # -------------------------------------------------------------------- sit()
 
 
-def test_sit_haelt_an_bleibt_stehen_und_sagt_es_einmal(tmp_path):
+def test_sit_haelt_an_bleibt_stehen_und_sagt_es_einmal(tmp_path, monkeypatch):
     from bosdyn.client.robot_command import RobotCommandBuilder as B
 
+    import spotlab.backends.mujoco as mj
     from spotlab.api import posture
     from spotlab.record.run import RunRecorder
 
+    # Seit Stufe B sitzt der Physikmodus echt; dieser Rückfall gilt für eine spotsim-Fassung
+    # ohne Haltung (tests/test_physics_haltung.py prüft das echte Sitzen).
+    monkeypatch.setattr(mj, '_haltung_fassung', lambda: 0)
     rec = RunRecorder(tmp_path, None, backend='physics')
     b = PhysicsBackend(recorder=rec, autostart=False, realtime=False)
     try:

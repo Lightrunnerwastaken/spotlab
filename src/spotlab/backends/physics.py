@@ -22,8 +22,15 @@ from spotlab.errors import CommandRejected, NotPowered, SpotlabError, Unsupporte
 
 HINWEIS = ('Physikmodus: eigener Kraftregler aus matura-spot, nicht der Regler von '
            'Boston Dynamics. Ebene Raeume mit Waenden, Bloecken, Tags und Sperrzonen; '
-           'stand, walk, move und stop. Sitzen bleibt stehen; Rampen, Treppen, Gelaende '
-           'und Koerperpose noch nicht. Keine Realismusfreigabe.')
+           'Spot sitzt am Anfang, steht ueber die gemessene Bahn auf (142 echte Faelle), '
+           'setzt sich hin und haelt im Stand eine Haltung (pose). Annahmen: Hinsetzen = '
+           'Aufstehen rueckwaerts, 1 s je Haltungsaenderung (Messung A41). Rampen, Treppen '
+           'und Gelaende noch nicht. Keine Realismusfreigabe.')
+HINWEIS_OHNE_HALTUNG = ('Physikmodus: eigener Kraftregler aus matura-spot, nicht der Regler von '
+                        'Boston Dynamics. Ebene Raeume mit Waenden, Bloecken, Tags und Sperrzonen; '
+                        'stand, walk, move und stop. Sitzen bleibt stehen (diese spotsim-Fassung '
+                        'kann es nicht); Rampen, Treppen, Gelaende und Koerperpose noch nicht. '
+                        'Keine Realismusfreigabe.')
 
 # Nullpunkt der Sim-Uhr ohne Echtzeit (`uhr()`). Nicht 0: eine nackte Dauer
 # (`end_time_secs=1.0`) ist damit abgelaufen. Weit weg von der Wanduhr (1.7e9):
@@ -63,12 +70,14 @@ class _Shutdown(BaseException):
 
 
 class PhysicsBackend:
-    # Der Kraftregler kann (noch) nicht sitzen -- `api/posture.sit` haelt dann an
-    # und sagt es, statt abzubrechen (Stufe A, 28.09.2026; Sitzen ist Stufe B).
+    # Ohne spotsim-Haltung (Fassung 0) kann der Regler nicht sitzen -- `api/posture.sit`
+    # haelt dann an und sagt es (Stufe A). Mit Fassung >= 1 setzt `__init__` beides wahr.
     kann_sitzen = False
+    kann_pose = False
 
     def __init__(self, recorder=None, raum=None, start=None, ansicht_ziel=None,
-                 realtime=True, autostart=True):
+                 realtime=True, autostart=True, haltung=None):
+        from spotlab.backends import mujoco as _mj
         from spotlab.backends.mujoco import (
             _Ansichtsschreiber,
             _physik_grenzen,
@@ -87,6 +96,19 @@ class PhysicsBackend:
         if not ok:
             raise UnsupportedCapability(grund)
         self._terrain_steps = art != physik.EBEN
+        # Stufe B: wie der echte Spot sitzend beginnen, aufstehen, hinsetzen, Haltung halten --
+        # wenn spotsim es kann. Die zwei Stufenszenen sind stehend validiert und bleiben es.
+        fassung = _mj._haltung_fassung()
+        self.kann_sitzen = self.kann_pose = fassung >= 1
+        if haltung is None:
+            haltung = 'sitzend' if self.kann_sitzen and not self._terrain_steps else 'stehend'
+        if haltung == 'sitzend' and (not self.kann_sitzen or self._terrain_steps):
+            raise UnsupportedCapability('Sitzend beginnt der Physikmodus nur in ebenen Raeumen und mit '
+                                        'einer spotsim-Fassung, die sitzen kann.')
+        self._hoehe_grenzen, self._lage_grenzen, self._haltung_rampe_s = (
+            _mj._haltung_grenzen() if self.kann_pose else ((0.0, 0.0), (0.0, 0.0, 0.0), 0.0))
+        self._erwartet = None              # 'sitzt' | 'steht' | 'pose' fuer die Rueckmeldung
+        self._aus_nach_sitzen = False
         self._recorder = recorder
         self._lock = threading.RLock()
         self._halt = threading.Event()
@@ -125,7 +147,10 @@ class PhysicsBackend:
         simulator = SpotSdkSim
         if self._terrain_steps:
             simulator = TerrainSdkSim
-        self.sim = simulator(szene=(model, data, data.ctrl.copy()))
+        extra = {'haltung': haltung} if fassung >= 1 else {}
+        self.sim = simulator(szene=(model, data, data.ctrl.copy()), **extra)
+        if haltung == 'sitzend':
+            self.sim.motoren(False)        # wie am echten Spot: bis power_on() liegt er schlaff
         self.model = model
         # Was `SpotPuppe.sichtbare_tags` von einer Puppe braucht, hier aus der Physik.
         self._puppe = puppe
@@ -157,7 +182,7 @@ class PhysicsBackend:
                     'rueckwaerts ab, nur Welt-x. Hoehen aus bekannter Szenengeometrie, '
                     'keine Tiefenwahrnehmung. Schritt wird vor Stopp fertig abgesetzt. '
                     'Keine Freigabe fuer normale Treppen oder Sim-zu-Real.')
-        return HINWEIS
+        return HINWEIS if self.kann_sitzen else HINWEIS_OHNE_HALTUNG
 
     def treppengang(self):
         return None
@@ -169,15 +194,25 @@ class PhysicsBackend:
             raise SpotlabError('Physik-Sitzung ist beendet. Neu verbinden.')
 
     def power_on(self):
+        """Kommandofreigabe -- und mit spotsim-Haltung die Motoren: Spot sitzt dann, bis stand()."""
         with self._lock:
             self._check()
+        if self.kann_sitzen and self.sim.haltung == 'aus':
+            self._call(lambda: self.sim.motoren(True))
+        with self._lock:
             self._powered = True
 
     def power_off(self, safe=True):
-        # Nur die virtuelle Kommandofreigabe: kein vorgetaeuschtes Hinsetzen.
+        """Wie `power_off(safe=True)` am echten Spot: erst hinsetzen, dann Motoren aus.
+
+        Ohne spotsim-Haltung nur die Kommandofreigabe (Stufe A)."""
         with self._lock:
             if not self._closed:
-                self._pending = ('off', RobotCommandBuilder.stop_command(), None, None)
+                if self.kann_sitzen:
+                    self._pending = ('off', RobotCommandBuilder.synchro_sit_command(), None, None)
+                    self._aus_nach_sitzen = True
+                else:
+                    self._pending = ('off', RobotCommandBuilder.stop_command(), None, None)
             self._powered = False
 
     @property
@@ -208,18 +243,24 @@ class PhysicsBackend:
         velocity = mob.HasField('se2_velocity_request')
         stand = mob.HasField('stand_request')
         goal = mob.HasField('se2_trajectory_request')
-        if not (stop or velocity or stand or goal):
+        sit = mob.HasField('sit_request') and self.kann_sitzen
+        if not (stop or velocity or stand or goal or sit):
             raise UnsupportedCapability('Der Physikmodus kann stand(), walk(), move() und stop(); '
-                                        'Sitzen und Koerperpose noch nicht.')
+                                        'Sitzen und Koerperpose kann diese spotsim-Fassung noch nicht.')
         params = sp.MobilityParams()
         mob.params.Unpack(params)
         if params.locomotion_hint not in (sp.HINT_UNKNOWN, sp.HINT_AUTO, sp.HINT_TROT):
             raise UnsupportedCapability('Physik v1 verwendet den kontinuierlichen Trab-Regler; HINT_AUTO waehlen.')
+        pose_befohlen = False
         if params.body_control.base_offset_rt_footprint.points:
             pose = params.body_control.base_offset_rt_footprint.points[-1].pose
-            if abs(pose.position.z) > 1e-9 or any(abs(v) > 1e-9 for v in
-                                                (pose.rotation.x, pose.rotation.y, pose.rotation.z)):
-                raise UnsupportedCapability('Physik v1 unterstuetzt nur die neutrale Standhoehe und Orientierung.')
+            pose_befohlen = abs(pose.position.z) > 1e-9 or any(
+                abs(v) > 1e-9 for v in (pose.rotation.x, pose.rotation.y, pose.rotation.z))
+            if pose_befohlen and not (stand and self.kann_pose):
+                raise UnsupportedCapability('Eine Koerperhaltung gibt es im Physikmodus nur im Stand '
+                                            '(pose()); beim Gehen bleibt sie neutral.')
+            if pose_befohlen:
+                copy = self._gekappte_pose(pose)
         if velocity:
             req = mob.se2_velocity_request
             if req.se2_frame_name != 'body':
@@ -246,12 +287,33 @@ class PhysicsBackend:
             self._check()
             if not self._powered and not stop:
                 raise NotPowered('Kommandofreigabe aus: zuerst power_on() aufrufen.')
+            if (velocity or goal) and self.kann_sitzen and self.sim.haltung in ('sitzt', 'setzt_sich', 'aus'):
+                raise CommandRejected('Spot sitzt -- zuerst stand() aufrufen, wie am echten Spot.')
             key = str(next(self._ids))
             if self._pending is not None:
                 self._feedback[self._pending[0]] = Feedback(False, 'durch neues Kommando ersetzt', True)
             self._feedback[key] = Feedback(False, 'wartet auf Physiktakt')
             self._pending = (key, copy, end_time_secs, ziel)
             return key
+
+    def _gekappte_pose(self, pose):
+        """Das Stehkommando mit der Haltung in den Grenzen des Reglers; Kappung wird gemeldet."""
+        from bosdyn.geometry import EulerZXY, to_euler_zxy
+
+        e = to_euler_zxy(pose.rotation)
+        roh = (pose.position.z, e.roll, e.pitch, e.yaw)
+        if not all(math.isfinite(v) for v in roh):
+            raise ValueError('Die Haltung muss endlich sein.')
+        (h_min, h_max), grenzen = self._hoehe_grenzen, self._lage_grenzen
+        hoehe = min(h_max, max(h_min, roh[0]))
+        winkel = [min(g, max(-g, v)) for v, g in zip(roh[1:], grenzen)]
+        if self._recorder is not None and (hoehe != roh[0] or winkel != list(roh[1:])):
+            self._recorder.event('kommando', name='physik_grenze',
+                                 hoehe_m=round(hoehe, 4), roll_grad=round(math.degrees(winkel[0]), 2),
+                                 pitch_grad=round(math.degrees(winkel[1]), 2),
+                                 yaw_grad=round(math.degrees(winkel[2]), 2))
+        return RobotCommandBuilder.synchro_stand_command(
+            body_height=hoehe, footprint_R_body=EulerZXY(roll=winkel[0], pitch=winkel[1], yaw=winkel[2]))
 
     def _frist_pruefen(self, end_time_secs):
         jetzt = self.uhr()
@@ -329,9 +391,15 @@ class PhysicsBackend:
             self._active = key if key != 'off' else None
             self._deadline = deadline
             self._command_time = self.sim.time
+            mob = command.synchronized_command.mobility_command
             self._waiting_still = ziel is None and (
                 command.full_body_command.HasField('stop_request')
-                or command.synchronized_command.mobility_command.HasField('stand_request'))
+                or mob.HasField('stand_request') or mob.HasField('sit_request'))
+            self._erwartet = None
+            if self.kann_sitzen and mob.HasField('sit_request'):
+                self._erwartet = 'sitzt'
+            elif self.kann_sitzen and mob.HasField('stand_request'):
+                self._erwartet = 'pose' if self._hat_pose(mob) else 'steht'
             soll = command.synchronized_command.mobility_command.se2_velocity_request.velocity
             self._soll = (0., 0.) if self._waiting_still else (soll.linear.x, soll.linear.y)
         if self._deadline is not None and self.uhr() >= self._deadline:
@@ -343,6 +411,9 @@ class PhysicsBackend:
             self._zum_ziel()
         if not self._waiting_still and self._raum is not None:
             self._zone_pruefen()
+        if self._aus_nach_sitzen and self.sim.haltung == 'sitzt':
+            self.sim.motoren(False)         # power_off: erst sitzen, dann aus
+            self._aus_nach_sitzen = False
         if self.sim.metrics.fell:
             raise SpotlabError('Regler meldet einen Sturz; Versuch beendet. Lauf auswerten und neu starten.')
         if self._active is not None:
@@ -357,9 +428,15 @@ class PhysicsBackend:
                     and self.sim.time - self._command_time >= .2)
             if done and self._ziel is not None:
                 done = self._ankunft_pruefen()
+            if done and self._erwartet == 'sitzt':
+                done = self.sim.haltung == 'sitzt'
+            elif done and self._erwartet in ('steht', 'pose'):
+                done = self.sim.haltung == 'steht' and (
+                    self._erwartet == 'steht' or self.sim.time - self._command_time >= self._haltung_rampe_s)
             if self._active is not None:
+                status = ('sitzt' if self._erwartet == 'sitzt' else 'steht') if done else 'Physik laeuft'
                 with self._lock:
-                    self._feedback[self._active] = Feedback(bool(done), 'steht' if done else 'Physik laeuft')
+                    self._feedback[self._active] = Feedback(bool(done), status)
         self._publish()
         # Maximal eine Sensorarbeit je Takt; Last erzeugt keinen Nachhol-Burst.
         try:
@@ -408,6 +485,18 @@ class PhysicsBackend:
                                  hindernis=f'Sperrzone {zone}')
         if self._ziel is not None:
             self._ziel_beenden(f'vor Sperrzone {zone} angehalten, Ziel nicht erreicht ({self._rest()})')
+
+    @staticmethod
+    def _hat_pose(mob):
+        from bosdyn.api.spot import robot_command_pb2 as sp
+
+        params = sp.MobilityParams()
+        mob.params.Unpack(params)
+        punkte = params.body_control.base_offset_rt_footprint.points
+        if not punkte:
+            return False
+        p = punkte[-1].pose
+        return abs(p.position.z) > 1e-9 or any(abs(v) > 1e-9 for v in (p.rotation.x, p.rotation.y, p.rotation.z))
 
     def _lage(self):
         """(x, y, gier) des Koerpers im Weltrahmen -- in der Physik ist das odom."""

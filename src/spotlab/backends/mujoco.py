@@ -108,6 +108,24 @@ def _physik_laden():
     return puppe, sensors, SpotSdkSim, TerrainSdkSim
 
 
+def _haltung_fassung():
+    """Kann das installierte spotsim sitzen, aufstehen und eine Haltung halten? (0 = nein)
+
+    Ältere, gepinnte Fassungen kennen `HALTUNG_FASSUNG` nicht -- für sie gilt Stufe A.
+    """
+    import spotsim
+
+    return int(getattr(spotsim, "HALTUNG_FASSUNG", 0))
+
+
+def _haltung_grenzen():
+    """(Höhe min/max m, (Roll, Nick, Gier) ± rad, Rampe s) -- was der Kraftregler hält."""
+    from spotsim import haltung
+
+    return (tuple(haltung.HOEHE_GRENZEN_M), tuple(haltung.LAGE_GRENZEN_RAD),
+            float(haltung.HALTUNG_RAMPE_S))
+
+
 def _physik_grenzen():
     """(Tempo m/s, Drehrate rad/s), die der Gangregler der Physik traegt.
 
