@@ -810,11 +810,19 @@ versionsgepinntes Extra `spotlab[sim]`.
   er STEHT, denn das Absetzen verschiebt den Körper 2–7 cm; daneben setzt er bis zu zweimal
   nach, Frist und Sperrzone beenden mit Grund und Reststrecke); **„steht“ heisst `RUHE_S`
   (0.3 s) ohne Bewegung** — ein einzelner ruhiger Takt mitten im Absetzen galt vorher als
-  Stand; **`sit()` hält an und sagt einmal „Sitzen kann der Physikmodus noch nicht — Spot
-  bleibt stehen“** (`kann_sitzen = False`, gefragt in `api/posture.sit`, Rückmeldung
-  „steht“, nie „sitzt“; das Backend selbst weist ein Sitzkommando weiter ab). `power_on()`
-  schaltet nur die Kommandofreigabe, kein vorgetäuschtes
-  Aufstehen; ein Sturz beendet den Lauf mit Fehler; die Modellmasse steht im Bericht, und
+  Stand. **Seit Stufe B (28.09.2026, `docs/superpowers/specs/2026-09-28-physik-haltung-design.md`)
+  sitzt, steht und posiert er echt — wenn spotsim `HALTUNG_FASSUNG ≥ 1` hat** (gefragt in
+  `backends/mujoco._haltung_fassung`, der einen Naht): ebene Räume beginnen SITZEND mit Motoren
+  aus, `power_on()` schaltet sie ein, `stand()` fährt die in 142 echten Läufen gemessene
+  Gelenkbahn hoch (Rückmeldung „steht“), `sit()` meldet „sitzt“, `power_off()` setzt erst hin
+  und schaltet dann ab wie `power_off(safe=True)`; `pose()` nur im Stand, gekappt auf die
+  Grenzen des Reglers (`physik_grenze`, Gier nur 20°), fertig nach der Rampe; Gehen im Sitzen
+  heisst „zuerst stand()“. Hinsetzen = Aufstehen rückwärts und 1 s je Haltungsänderung sind
+  ANNAHMEN bis A41. Tests ohne Haltungsbezug starten mit `haltung='stehend'`, die zwei
+  Stufenszenen immer. **Ohne Fassung gilt Stufe A:** `sit()` hält an und sagt einmal „Sitzen
+  kann der Physikmodus noch nicht — Spot bleibt stehen“ (`kann_sitzen = False`, gefragt in
+  `api/posture.sit`, Rückmeldung „steht“, nie „sitzt“). Ein Sturz beendet den Lauf mit
+  Fehler; die Modellmasse steht im Bericht, und
   der ADAPTER passt sie nie an — das Modell selbst kommt aus matura-spot und ist seit
   0.2.0b5 das gemessene (33.2 kg statt 50.34, offen entschieden dort, RESEARCH DECISION A
   vom 23.09.2026, `docs/PHYSICS.md` „Gemessenes Modell“). Die Tempogrenzen kommen aus
@@ -863,7 +871,8 @@ versionsgepinntes Extra `spotlab[sim]`.
   Schleife ruft, füllt die Platte und bremst den Lauf.
 - **`supports()` fragt nach, es rät nicht.** `lights` und `beep` prüfen am Roboter den Dienst
   `audio-visual`; ein Netzfehler bleibt ein Fehler, und im Sim wird kein Erfolg vorgetäuscht.
-  `pose()` gibt es am Roboter und im Trockenlauf; Sim und MuJoCo lehnen ab.
+  `pose()` gibt es am Roboter, im Trockenlauf und im Physikmodus (`kann_pose`); der 2D-Sim und
+  die 3D-Wiedergabe lehnen ab.
 - **`docs/API.md` ist die Referenz der Fassade, und ein Test hält sie vollständig.**
   `test_reference_covers_public_facade` verlangt jede öffentliche Methode von `Spot` mit
   Backtick-Namen in der Datei — wer eine Methode hinzufügt, schreibt die Zeile dazu, sonst
@@ -886,7 +895,12 @@ versionsgepinntes Extra `spotlab[sim]`.
   und Aufzeichnungen sind ausgeschlossen (`test_research_modules_are_excluded`). Der Build
   kopiert die Quellen zuerst in einen temporären Ordner und verändert das Arbeitsrepo nicht;
   ein gleichnamiges Release wird nicht überschrieben. Lizenz des Modells und SHA-256 der
-  Sim-Quellen liegen im Wheel. **Runtime-Wheel und editierbare Forschungsinstallation nie in
+  Sim-Quellen liegen im Wheel. **Das Paket-`__init__` ist das ECHTE aus matura-spot** (durch
+  dieselbe Importprüfung) und die Messdaten reisen als `daten/*.json` mit: bis zum 28.09.2026
+  kannte ein handgeschriebenes weder `tempo_grenzen` noch `HALTUNG_FASSUNG`, die
+  Kraftregler-Module fehlten in `MODULES`, und der Bau brach seit dem 24.09. an
+  `spotsim.aktuator` ab (`test_jedes_runtime_modul_besteht_die_importpruefung` prüft die Liste
+  gegen das echte spotsim). **Runtime-Wheel und editierbare Forschungsinstallation nie in
   derselben Umgebung** — beide heissen `spotsim`.
 - **Die sechs Erkennermodelle (seit 25.09.2026 mit YOLOX) reisen im ZIP mit (seit 0.2.0b2; Lizenz MIT als `LICENSE.txt` seit 0.2.0b3), neben den Wheels, nicht darin.**
   `schueler_release.py --modelle` (Vorgabe `~/.spotlab/modelle`) nimmt nur Dateien mit der
@@ -1674,7 +1688,7 @@ In der Anbindung: MCP über Netz, Mehrbenutzer, Qt-Code aus fremden Projekten, e
 Diagrammbibliothek jenseits der fünf Panel-Arten. In der Kalibrierung: **ein eigener
 Physik-Simulator in spotlab** (die Physik bleibt in `matura-spot`, `backends/physics.py` ist
 nur der Adapter — Stufe 15), automatische Parameteranpassung, die Nutzung der
-lizenzpflichtigen 333-Hz-APIs. Im Physikmodus (Stufe B und C, je einzeln zu entscheiden): Sitzen und Aufstehen im Regler, Körperpose, Rampen und Gelände, normale
+lizenzpflichtigen 333-Hz-APIs. Im Physikmodus (Stufe C, einzeln zu entscheiden): Rampen und Gelände, normale
 Treppen, Fussplanung aus Wahrnehmung statt Geometrie-Orakel, jeder Sim-zu-Real-Nachweis.
 
 Specs unter `docs/superpowers/specs/`. Anleitungen: `docs/ANBINDUNG.md` (fremde Projekte

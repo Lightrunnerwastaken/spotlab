@@ -70,3 +70,13 @@ Zentrale als echter Prozess, Echtzeitfaktor ≥ 1 beim Aufstehen; beide Suiten g
 
 Ablauf: spotlab-Messung → matura-spot (eigene Arbeitskopie; fremde, nicht committete Dateien
 dort bleiben unberührt) → spotlab-Adapter; zuerst matura-spot mergen, dann spotlab.
+
+## Stand nach dem Bau (28.09.2026)
+
+Gebaut wie oben. Abweichungen und Befunde: die Aufstehbahn zählt von der letzten ruhigen Probe
+(Dauer 1.00 s, Verzug 0.18 s statt der Schnellmessung 0.9 / 0.28); das Gate prüft die Posen
+2.5 s nach dem Befehl (die Gier läuft langsamer ein); die Gier hält nur 20° (API 30°); die
+SDK-Höhe meint den Rumpf (Umrechnung gegen den Schwerpunkt, vorher 10 % zu weit); sitzend und
+nach dem Abschalten gilt der Sollwert SIT (sonst stand Spot von selbst auf); das Gate heisst
+G12. Nebenbefund: das Schüler-Release konnte seit dem Kraftregler nicht gebaut werden — mit
+behoben.

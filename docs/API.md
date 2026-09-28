@@ -250,7 +250,9 @@ oder None zurück, solange keine Lokalisierung vorliegt.
 
 `connect(backend="physics")` verwendet echte MuJoCo-Dynamik mit einem eigenen Kraftregler
 (nicht dem von Boston Dynamics), in ebenen Räumen mit Wänden, Blöcken, Tags und Sperrzonen.
-Unterstützt stand in Neutralhöhe, walk, move, stop, State, Kameras, LocalGrid und Tags;
-`sit()` hält an und bleibt stehen (einmal ein Hinweis, kein Fehler). Noch keine pose,
-Rampen, Treppen oder Gelände. Start bereits im Stand.
+Spot beginnt wie am echten Gerät sitzend; `power_on()` und `stand()` lassen ihn aufstehen,
+`sit()` setzt ihn hin, `power_off()` setzt hin und schaltet ab. Unterstützt walk, move, stop,
+`pose()` im Stand (gekappt auf die Grenzen des Reglers), State, Kameras, LocalGrid und Tags.
+Noch keine Rampen, Treppen oder Gelände. Mit einer älteren spotsim-Fassung ohne Haltung
+startet er stehend, und `sit()` hält nur an (einmal ein Hinweis, kein Fehler).
 [Details und Einschraenkungen](PHYSICS.md).

@@ -1378,6 +1378,25 @@ Roboters (`lost_detector_state`), Aufnahme über die Verbindung der Zentrale.
 
 **Ergebnis** _(offen)_
 
+## A41 — Haltung messen: Hinsetzen und Posen am echten Spot
+
+**Voraussetzung** A1. Seit dem 28.09.2026 sitzt, steht und posiert der Physikmodus über
+matura-spot (`spotsim/haltung.py`, Entwurf `docs/superpowers/specs/2026-09-28-physik-haltung-design.md`).
+Das Aufstehen ist gemessen (142 echte Vorgänge), zwei Dinge sind ANNAHMEN: Hinsetzen = Aufstehen
+rückwärts (H2) und 1 s je Haltungsänderung (H3). Nach `sit()` endete bisher jeder Lauf nach
+höchstens 0.4 s, und `pose()` wurde nie befohlen.
+
+1. Freifläche mit 1 m Platz um Spot, Aufsicht, Tablet mit Not-Aus in Reichweite.
+2. Im Reiter „Code“ `Beispiele/haltung_messen.py` mit „Echter Spot“ starten. Spot steht auf,
+   hält acht Haltungen je 3 s (Roll ±15°, Nick ±15°, Gier ±20°, Höhe ±0.1 m), setzt sich hin und
+   schreibt danach noch 5 s mit.
+3. Erwartung: jede Haltung sichtbar erreicht, kein Wanken; der Lauf endet sauber.
+4. Auswertung: aus `zustand.jsonl` die Hinsetz-Bahn (Gelenke, Höhe, Dauer) und je Pose den
+   zeitlichen Verlauf; damit H2 und H3 in matura-spot ersetzen (`notes/ENTWURF_haltung.md`) und
+   Gate G12 gegen die Aufnahme stellen.
+
+**Ergebnis** _(offen)_
+
 ## Nach der Abnahme
 
 Ergebnisse hier eintragen, Abweichungen als Befund in die Spec zurückspielen, und erst
@@ -1401,6 +1420,11 @@ Noch am echten Spot zu prüfen, ohne Bewegungsbefehle:
 ## Physikmodus
 
 Stand, Gehen, Drehen und Stopp in der GUI mit Livebild pruefen.
+
+Stufe B (28.09.2026), ohne Roboter: ein Physik-Lauf beginnt sitzend; `power_on` +
+`stand()` → Spot steht auf (rund 1 s); `spot.pose(roll=15)` neigt ihn sichtbar; `sit()` legt ihn
+ab; das Programmende (`power_off`) lässt ihn liegen, die Beine werden schlaff. Im Tab „Fahren“
+(„⚙ 3D-Physik“) steht er zu Beginn der Fahrt auf.
 
 Stufe A (28.09.2026), im Tab „Fahren“ mit dem Ort „⚙ 3D-Physik“ (ohne Roboter):
 

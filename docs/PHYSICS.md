@@ -55,12 +55,12 @@ Aufstehvorgang vom Boden. Der Körper bleibt physikalisch von den Beinen getrage
 Schwungziele auf einer festen Fußbodenhöhe. Ein separater TerrainStepper ergänzt
 jetzt kleine Podeste. Andere Höhenflächen und Treppen werden weiterhin abgelehnt.
 
-Unterstützt: stand() in Neutralhöhe, walk() mit HINT_AUTO/HINT_TROT, move() (seit
-28.09.2026, siehe unten), stop(), State, Tiefen-/Graukameras, LocalGrid obstacle_distance,
-AprilTags über world_objects()/tags(), Sperrzonen und GUI-Livebild. sit() hält an und
-bleibt stehen (mit Hinweis).
-Noch nicht unterstützt: Sitzen und Aufstehen im Regler, Körperpose, frei konfigurierbarer
-Kriechgang, GraphNav, Rampen, Gelände und Treppen. UnsupportedCapability benennt die Grenze.
+Unterstützt: Sitzen und Aufstehen, stand() mit Körperhaltung (pose), walk() mit
+HINT_AUTO/HINT_TROT, move(), stop(), State, Tiefen-/Graukameras, LocalGrid
+obstacle_distance, AprilTags über world_objects()/tags(), Sperrzonen und GUI-Livebild
+(Stufen A und B, 28.09.2026, siehe unten; ohne spotsim-Haltung hält sit() nur an).
+Noch nicht unterstützt: frei konfigurierbarer Kriechgang, GraphNav, Rampen, Gelände und
+Treppen. UnsupportedCapability benennt die Grenze.
 Die grobe Capability POSTURE/LOCOMOTION garantiert nicht sämtliche Einzelbefehle.
 
 Die Tempogrenzen kommen aus `spotsim.tempo_grenzen()` (Kraftregler 0.85 m/s und
@@ -286,3 +286,21 @@ Beim Anhalten setzt der Regler noch Schritte ab und verschiebt den Körper um 2�
 zählt bei move() die Lage im Stand, und Drehen auf der Stelle braucht oft alle drei Anläufe.
 Das ist eine Eigenschaft dieses Reglers, nicht gemessen am echten Spot. Offen (Stufe B, C):
 Sitzen und Aufstehen im Regler, Körperpose, Rampen, Gelände, Treppen.
+
+## Sitzen, Aufstehen, Körperhaltung — Stufe B (28.09.2026)
+
+Entwurf `docs/superpowers/specs/2026-09-28-physik-haltung-design.md`, in matura-spot
+`notes/ENTWURF_haltung.md` (H1–H4) und Gate G12. Braucht spotsim mit `HALTUNG_FASSUNG ≥ 1`.
+
+| Was | Wie | Gemessen / Sim |
+|---|---|---|
+| Start | ebene Räume sitzend, Motoren aus bis `power_on()`; die Stufenszenen stehend | sitzt bei z 0.10 m, Rumpf liegt auf |
+| Aufstehen | mittlere Gelenkbahn aus 142 echten `stand()` (spotlab `kalibrierung/haltung.py`), Positions-Sollwert mit Motorgrenzen R1, danach Kraftregler | echt: Hub 0.410 m in 1.00 s; Sim (G12): 0.409 m in 1.12 s; Knie ≤ 47 von 104 Nm |
+| Hinsetzen | dieselbe Bahn rückwärts — **Annahme H2** | nicht aufgezeichnet (A41) |
+| `power_off()` | erst hinsetzen, dann Motoren aus | wie `power_off(safe=True)` |
+| `pose()` | Roll/Nick/Gier und Höhe im Stand als MPC-Ziel, Rampe 1 s — **Annahme H3**; gekappt auf Höhe ±0.15 m, Winkel ±20° (`physik_grenze`) | acht Messposen ≤ 0.7° / 0.25 cm, Rutschen 1 cm; Gier läuft langsamer ein (19.4° nach 2.5 s) |
+| Gehen im Sitzen | abgewiesen: „zuerst stand()“ | — |
+| Echtzeit | Worker in Echtzeit | Aufstehen 1.37 s Sim in 1.36 s Wanduhr |
+
+Das Schüler-Release trägt seit diesem Tag den Kraftregler, die Haltung und die Messdaten im
+Sim-Wheel (`tools/schueler_release.py`); vorher brach sein Bau seit dem 24.09.2026 ab.
