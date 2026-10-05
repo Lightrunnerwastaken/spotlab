@@ -83,6 +83,32 @@ def test_nach_dem_ende_stoppt_der_knopf_nichts_mehr(qapp):
     assert "fertig" in fenster.zeile.text()
 
 
+@pytest.mark.parametrize("ergebnis, titel", [
+    ("ok", "Fertig."),
+    ("abgebrochen", "Gestoppt."),
+    ("fehler", "Mit Fehler beendet."),
+    ("lease_verloren", "Mit Fehler beendet."),
+])
+def test_der_titel_sagt_wie_der_lauf_endete(qapp, tmp_path, ergebnis, titel):
+    # Playtest 04.10.2026: nach dem Stopp-Knopf stand oben „Fertig.".
+    import json
+
+    lauf = tmp_path / "20261004T215432Z_3977daed"
+    lauf.mkdir()
+    (lauf / "lauf.json").write_text(json.dumps({"ergebnis": ergebnis}), encoding="utf-8")
+    fenster = Uebungsfenster(DUNKEL)
+    fenster.beginne(raum_laden("leer"), (1.0, 1.0, 0.0))
+    fenster.beendet(lauf=lauf)
+    assert fenster.kopf.text() == titel
+
+
+def test_ohne_lesbares_ergebnis_heisst_es_nur_beendet(qapp, tmp_path):
+    fenster = Uebungsfenster(DUNKEL)
+    fenster.beginne(raum_laden("leer"), (1.0, 1.0, 0.0))
+    fenster.beendet(lauf=tmp_path / "gibt_es_nicht")
+    assert fenster.kopf.text() == "Beendet."
+
+
 def test_ein_anstoss_wird_vermerkt(qapp):
     fenster = Uebungsfenster(DUNKEL)
     fenster.beginne(raum_laden("moebliert"), (1.0, 1.0, 0.0))

@@ -6,6 +6,7 @@ Beobachter, echter Stopp.
 """
 
 import json
+import sys
 import time
 from pathlib import Path
 
@@ -65,6 +66,19 @@ def test_starten_beobachten_stoppen(tmp_path):
         assert _warte_bis(lambda: not ist_aktiv(lauf)), "der Lauf gilt nach dem Ende noch als aktiv"
         daten = json.loads((lauf / "lauf.json").read_text(encoding="utf-8"))
         assert daten["ergebnis"] == "abgebrochen"
+
+        # Playtest 04.10.2026: der Stopp-Knopf hinterliess einen langen
+        # Traceback bis KeyboardInterrupt. Gewollt ist eine Zeile, die sagt, wo
+        # das Programm stand.
+        ausgabe = prozess.stdout.read()
+        if isinstance(ausgabe, bytes):
+            ausgabe = ausgabe.decode("utf-8", errors="replace")
+        assert "Traceback" not in ausgabe, ausgabe
+        assert "Vom Benutzer gestoppt" in ausgabe, ausgabe
+        assert "lang.py" in ausgabe, ausgabe
+        if sys.platform == "win32":
+            # Weiter ein Strg-C-Ende: daran erkennt die GUI „kein Fehler".
+            assert prozess.returncode == 0xC000013A
     finally:
         if prozess.poll() is None:
             prozess.kill()

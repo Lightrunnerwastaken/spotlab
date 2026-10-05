@@ -67,6 +67,11 @@ class StateSampler:
             self._thread.join(timeout=timeout)
             self._thread = None
 
+    @property
+    def stopp_ausgeloest(self):
+        """Kam der Abbruch vom Stopp-Knopf (und nicht von Strg-C im Terminal)?"""
+        return self._abbruch_gemeldet
+
     def _pruefe_stopp(self):
         """Genau einmal auslösen — sonst regnet es KeyboardInterrupts in den Abbau."""
         if self._abbruch_gemeldet:

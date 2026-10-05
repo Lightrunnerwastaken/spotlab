@@ -32,6 +32,7 @@ from spotlab.gui.symbol import symbol
 from spotlab.gui.tastenfahrt import Tastenfahrt
 from spotlab.gui.tastenfeld import Tastenfeld
 from spotlab.record import kamera
+from spotlab.record.read import read_run
 from spotlab.welt.raum import raum_laden
 
 ZOOM_STUFE = 1.25            # je Rad-Raste
@@ -51,6 +52,21 @@ class _Ansichtsbild(QLabel):
         ereignis.accept()
 
 TITEL = "Übungsraum — spotlab"
+
+# Ergebnis aus lauf.json -> Kopfzeile nach dem Ende. Alles andere Bekannte ist ein Fehler.
+ENDE_TITEL = {"ok": "Fertig.", "abgebrochen": "Gestoppt."}
+
+
+def _titel_nach(lauf):
+    try:
+        ergebnis = read_run(lauf, zaehlen=False).ergebnis
+    except Exception:
+        ergebnis = "unbekannt"
+    if ergebnis in ENDE_TITEL:
+        return ENDE_TITEL[ergebnis]
+    if ergebnis in ("unbekannt", "läuft"):
+        return "Beendet."
+    return "Mit Fehler beendet."
 
 
 class Uebungsfenster(QWidget):
@@ -338,7 +354,9 @@ class Uebungsfenster(QWidget):
         self.tastenfeld.zeige_aktiv(False)
         self.tastenfeld.hide()
         self.stopp.setEnabled(False)
-        self.kopf.setText("Fertig.")
+        # Playtest 04.10.2026: oben stand nach JEDEM Ende „Fertig.", auch nach
+        # dem Stopp-Knopf. Ohne Lauf (alte Aufrufer) bleibt es bei „Fertig.".
+        self.kopf.setText(_titel_nach(lauf) if lauf is not None else "Fertig.")
         if text:
             self.zeile.setText(text)
         if lauf is not None:

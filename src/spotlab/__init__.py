@@ -134,7 +134,11 @@ def connect(
     try:
         yield spot
     except KeyboardInterrupt:
-        ergebnis, fehlertext = "abgebrochen", "Vom Benutzer abgebrochen (Ctrl-C)"
+        if abtaster.stopp_ausgeloest:
+            ergebnis, fehlertext = "abgebrochen", "Vom Benutzer gestoppt (Stopp-Knopf)"
+            _stopp_ohne_traceback(skript)
+        else:
+            ergebnis, fehlertext = "abgebrochen", "Vom Benutzer abgebrochen (Ctrl-C)"
         raise
     except LeaseLost as fehler:
         ergebnis, fehlertext = "lease_verloren", str(fehler)
@@ -307,6 +311,43 @@ def _pruefe_backend(art, argument):
         f"{quelle}: ein Backend {art!r} gibt es nicht. Gültig sind „dryrun“, „sim“, "
         "„mujoco“, „physics“ und „real“ -- genau so, kleingeschrieben."
     )
+
+
+def _stopp_ohne_traceback(skript):
+    """Der Stopp-Knopf ist kein Fehler: eine Zeile statt eines Tracebacks.
+
+    Playtest 04.10.2026: nach „Stopp" stand im Editor ein langer Traceback bis
+    `KeyboardInterrupt`, im Übungsfenster unten nur „KeyboardInterrupt" -- beides
+    sieht aus wie ein Absturz. Die Zeile nennt dafür, wo das Programm stand.
+
+    Der Abbruch selbst bleibt unverändert: Python merkt sich den unbehandelten
+    KeyboardInterrupt VOR dem Hook und endet weiter als Strg-C (0xC000013A),
+    woran die GUI erkennt, dass kein Fehler zu melden ist.
+    """
+    import traceback
+
+    vorher = sys.excepthook
+    eigene = os.path.normcase(str(skript)) if skript else None
+
+    def haken(art, wert, spur):
+        if not issubclass(art, KeyboardInterrupt):
+            return vorher(art, wert, spur)
+        zeile = None
+        for rahmen, nummer in traceback.walk_tb(spur):
+            if eigene and os.path.normcase(rahmen.f_code.co_filename) == eigene:
+                zeile = nummer
+        if zeile is not None:
+            text = f"■ Vom Benutzer gestoppt (in {skript.name}, Zeile {zeile})."
+        else:
+            text = "■ Vom Benutzer gestoppt."
+        try:
+            print(text, file=sys.stderr, flush=True)
+        except Exception:
+            # Ein Terminal ohne UTF-8 (Start aus VS Code, Stopp aus der GUI):
+            # dann lieber der alte Traceback als gar nichts.
+            vorher(art, wert, spur)
+
+    sys.excepthook = haken
 
 
 def _skript_pfad():
