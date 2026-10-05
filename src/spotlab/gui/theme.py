@@ -14,6 +14,18 @@ from pathlib import Path
 HAKEN = (Path(__file__).resolve().parent / "bilder" / "haken.svg").as_posix()
 
 
+def pfeil(p):
+    """Der Pfeil der Auswahllisten, in `gedaempft` des Themas.
+
+    Ein Bild aus demselben Grund wie der Haken; je Farbe eine Datei
+    (`bilder/pfeil_<farbe>.svg`), damit die Farbe aus der Palette kommt.
+    Playtest 04.10.2026: ohne Pfeil sahen die Listen im dunklen Thema wie
+    Textfelder aus.
+    """
+    return (Path(__file__).resolve().parent / "bilder"
+            / f"pfeil_{p.gedaempft.lstrip('#').lower()}.svg").as_posix()
+
+
 @dataclass(frozen=True)
 class Palette:
     hintergrund: str
@@ -246,6 +258,7 @@ QComboBox {{
     padding: 5px 8px;
 }}
 QComboBox::drop-down {{ border: none; width: 22px; }}
+QComboBox::down-arrow {{ image: url({pfeil(p)}); width: 10px; height: 6px; }}
 QComboBox QAbstractItemView {{
     background: {p.flaeche};
     border: 1px solid {p.rand};

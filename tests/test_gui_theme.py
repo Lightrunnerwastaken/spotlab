@@ -83,6 +83,21 @@ def test_das_haekchen_der_kaestchen_liegt_im_paket():
     assert HAKEN in stylesheet(DUNKEL)
 
 
+def test_auswahllisten_haben_einen_pfeil_in_der_farbe_des_themas():
+    """Playtest 04.10.2026: Projekt-, Backend- und Raumwahl sahen im dunklen Thema wie
+    Textfelder aus -- kein sichtbarer Pfeil."""
+    import pathlib
+
+    from spotlab.gui.theme import pfeil
+
+    for palette in (DUNKEL, HELL):
+        datei = pathlib.Path(pfeil(palette))
+        assert datei.is_file(), f"{datei.name} fehlt -- je Farbe von `gedaempft` eine Datei"
+        assert palette.gedaempft.lower() in datei.read_text(encoding="utf-8").lower()
+        assert "QComboBox::down-arrow" in stylesheet(palette)
+        assert pfeil(palette) in stylesheet(palette)
+
+
 def test_zustaende_der_knoepfe_sind_sichtbar():
     """Ein aktives Werkzeug muss anders aussehen als ein inaktives (UX-Pruefung 23.09.2026)."""
     text = stylesheet(DUNKEL)
