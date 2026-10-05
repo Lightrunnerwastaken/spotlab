@@ -111,9 +111,9 @@ preview = true
 explicit-preview-rules = true
 
 [tool.ruff.lint.isort]
-# tests_zeitgrenzen liegt in tests/, nicht unter src/ — ohne diese Zeile
+# tests_zeitgrenzen und tests_fenster liegen in tests/, nicht unter src/ — ohne diese Zeile
 # sortiert ruff es zu den Fremdbibliotheken und streitet mit sich selbst.
-known-first-party = ["spotlab", "tests_zeitgrenzen"]
+known-first-party = ["spotlab", "tests_fenster", "tests_zeitgrenzen"]
 
 # KEIN per-file-ignore fuer E402 in tests/. Die GUI-Tests muessen
 # importorskip("PySide6") vor ihren Importen ausfuehren und tragen dafuer

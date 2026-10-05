@@ -1377,6 +1377,22 @@ versionsgepinntes Extra `spotlab[sim]`.
   fremde Datei, die nichts damit zu tun hat. Genau so ist ein `Fatal Python error:
   Aborted` in `test_gui_tree.py` entstanden, ausgelöst von einem Reiter-Schliessen in
   `test_gui_editorview.py`.
+- **Kein Test sieht die echte Konfiguration, den echten Arbeitsordner oder den
+  Passwort-Tresor.** `conftest.py::_leeres_zuhause` gibt jedem Test einen leeren
+  Benutzerordner: `spotlab.config.CONFIG_PATH` für den Testprozess, `USERPROFILE`/`HOME`
+  für jeden Kindprozess, `PYTHON_KEYRING_BACKEND` auf den leeren Tresor. Bis zum 05.10.2026
+  las jedes `MainWindow()` die `~/.spotlab/config.toml` des Entwicklers und startete einen
+  `RunWatcher` auf dessen Arbeitsordner. Lief daneben die Steuerzentrale am echten Spot,
+  übernahm ein altes Testfenster diesen Lauf (23 000 Ereignisse, einzeln in die Live-Liste)
+  und ein fremder Test hing bis zur 300-s-Grenze — über den Tab „Fahren“ hätte es auch
+  `fahrt.json` oder `stopp` in das Lauf-Verzeichnis des Roboters schreiben können. In der
+  echten Datei steht `backend = "real"`. Wer eine Konfiguration braucht, schreibt sie in
+  seinen `tmp_path`. Einzige Ausnahme mit Absicht: die Erkennermodelle (`MODELL_ORDNER`,
+  nur gelesen) bleiben die echten, sonst würden die Modelltests still übersprungen.
+  Fenster aus früheren Tests leben weiter; ihr `RunWatcher` wird nach jedem Test
+  angehalten (`tests_fenster.py`), nicht per `close()` — `closeEvent` fragt mit einem
+  modalen Dialog, und der hängt im Offscreen-Modus. Festgehalten in
+  `test_testumgebung.py`.
 - **`QObject.disconnect()` ohne Argument ist verboten.** Es kappt ALLE Signale des
   Objekts, auch `finished` und `destroyed`, an denen Qt seine eigene Aufräumarbeit hängt.
   Immer die eine Verbindung nennen: `arbeiter.fertig.disconnect(self._jedi_fertig)`.
