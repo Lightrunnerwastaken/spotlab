@@ -93,6 +93,19 @@ def test_speichern_unter_schreibt_die_datei_und_die_konfiguration(qapp, tmp_path
     assert gespeichert[-1].raum == "mein zimmer"
 
 
+def test_speichern_unter_setzt_auch_den_namen_des_raums(qapp, tmp_path, monkeypatch):
+    # Playtest 04.10.2026: „Durchgang" unter „Playtest_Raum" gespeichert -- Datei
+    # und Titel hiessen neu, Eigenschaften und [raum].name weiter „Durchgang".
+    ansicht = RaumeditorView(DUNKEL)
+    ansicht.setze_arbeitsordner(tmp_path)
+    ansicht.waehle_raum("durchgang")
+    monkeypatch.setattr(QInputDialog, "getText", lambda *a, **k: ("Playtest_Raum", True))
+    assert ansicht.speichern_unter()
+    assert ansicht.raum().name == "Playtest_Raum"
+    assert raum_laden("Playtest_Raum", workspace=tmp_path).name == "Playtest_Raum"
+    assert not ansicht.steuerung.geaendert
+
+
 def test_ein_start_im_hindernis_wird_nicht_gestartet(qapp):
     ansicht = RaumeditorView(DUNKEL)
     ansicht.waehle_raum("moebliert")

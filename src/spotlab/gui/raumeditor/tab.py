@@ -724,6 +724,10 @@ class RaumeditorView(QWidget):
                 QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
             if wahl != QMessageBox.Yes:
                 return False
+        # Der Dialog fragt nach dem NAMEN des Raums: er gilt für Datei und [raum].name.
+        # Bis zum 04.10.2026 hiess nur die Datei neu, Eigenschaften zeigten den alten.
+        if self.steuerung.raum is not None:
+            self.steuerung.setze_feld(("raum",), "name", name)
         return self._schreibe(name)
 
     def _schreibe(self, name):
