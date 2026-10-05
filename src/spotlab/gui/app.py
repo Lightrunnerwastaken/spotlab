@@ -840,8 +840,11 @@ class MainWindow(QWidget):
             self.uebungsfenster.setze_lauf_dir(verzeichnis)
         # Skriptnamen aus lauf.json holen: „hallo_spot.py" sagt mehr als eine
         # Zeitstempel-Kennung.
-        skript = read_run(verzeichnis, zaehlen=False).skript
+        lauf = read_run(verzeichnis, zaehlen=False)
+        skript = lauf.skript
         name = Path(skript).name if skript else Path(verzeichnis).name
+        # Das Backend aus lauf.json, nicht aus der Wahl im Editor: auch F5 aus VS Code.
+        self.kopf.zeige_simulation(lauf.backend)
         self.ansichten["live"].setze_lauf(verzeichnis, name)
         if self._fahrt_erwartet == "zentrale":
             # Der Tab „Fahren" bekommt das Verzeichnis und die Tastatur -- und bleibt

@@ -43,6 +43,31 @@ def test_konfiguration_wird_angezeigt(qapp):
     assert "192.168.80.3" in kopf.status.text()
 
 
+@pytest.mark.parametrize("backend, name", [
+    ("physics", "Physik 3D"), ("mujoco", "3D-Wiedergabe"), ("sim", "2D"), ("dryrun", "Trockenlauf"),
+])
+def test_simulation_ersetzt_ip_lease_und_roboterhinweis(qapp, backend, name):
+    kopf = Header()
+    kopf.zeige_config(Config(ip="192.168.80.3", username="u", nickname="Kanti", limits=Limits()))
+    kopf.zeige_simulation(backend)
+    assert kopf.status.text() == f"Übungsraum · {name} · kein Roboter"
+    assert kopf.lease.isHidden()
+    assert "simulation" in kopf.hinweis.text().lower()
+
+    kopf.zeige_getrennt()
+    assert "192.168.80.3" in kopf.status.text()
+    assert not kopf.lease.isHidden()
+    assert "tablet" in kopf.hinweis.text().lower()
+
+
+def test_der_echte_spot_bekommt_kein_simulationsschild(qapp):
+    kopf = Header()
+    kopf.zeige_config(Config(ip="192.168.80.3", username="u", nickname="Kanti", limits=Limits()))
+    kopf.zeige_simulation("real")
+    assert "192.168.80.3" in kopf.status.text()
+    assert "tablet" in kopf.hinweis.text().lower()
+
+
 def test_lauf_zustand_zeigt_akku_live(qapp):
     kopf = Header()
     kopf.zeige_zustand({"daten": {"battery": 61.2, "velocity": [0.3, 0.0, 0.0]}})

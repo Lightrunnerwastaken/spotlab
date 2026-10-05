@@ -13,6 +13,19 @@ ERKLAERUNG = (
     "sackt zusammen. Wirkt nur auf spotlab. Das primäre Sicherheitsmittel bleibt "
     "der physische Not-Aus am Tablet."
 )
+SIM_ERKLAERUNG = (
+    "Beendet das laufende Programm sofort. Gerade läuft nur die Simulation — "
+    "kein Roboter bewegt sich."
+)
+# Backends ohne Roboter (`lauf.json` → `backend`) und ihr Name im Kopf. Ein Backend,
+# das hier fehlt, bekommt KEIN Schild -- im Zweifel steht die Roboteranzeige da.
+SIMULATIONEN = {
+    "physics": "Physik 3D",
+    "mujoco": "3D-Wiedergabe",
+    "sim": "2D",
+    "dryrun": "Trockenlauf",
+    "beobachter-trocken": "Trockenprobe",
+}
 
 
 class Header(QWidget):
@@ -20,6 +33,8 @@ class Header(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._simulation = False
+        self._roboter_text = "Nicht eingerichtet"
 
         self.ampel = QLabel("●")
         self.ampel.setObjectName("Gedaempft")
@@ -56,14 +71,35 @@ class Header(QWidget):
 
     def zeige_config(self, cfg):
         if cfg is None:
-            self.status.setText("Nicht eingerichtet — Ansicht „Spot“")
+            self._roboter_text = "Nicht eingerichtet — Ansicht „Spot“"
+        else:
+            self._roboter_text = f"{cfg.nickname} · {cfg.ip}"
+        if not self._simulation:
+            self.status.setText(self._roboter_text)
+
+    def zeige_simulation(self, backend):
+        """Ein Lauf ohne Roboter: Schild statt IP, Lease und Roboterhinweis.
+
+        Playtest 04.10.2026: während eines Übungslaufs stand oben die IP des echten
+        Spot samt „Lease —“ und dem Hinweis aufs Tablet -- als führe er.
+        """
+        name = SIMULATIONEN.get(backend)
+        if name is None:
             return
-        self.status.setText(f"{cfg.nickname} · {cfg.ip}")
+        self._simulation = True
+        self.status.setText(f"Übungsraum · {name} · kein Roboter")
+        self.lease.hide()
+        self.hinweis.setText(SIM_ERKLAERUNG)
 
     def zeige_getrennt(self):
         self._setze_ampel("Gedaempft")
         self.akku.setText("Akku —")
         self.lease.setText("Lease —")
+        if self._simulation:
+            self._simulation = False
+            self.status.setText(self._roboter_text)
+            self.lease.show()
+            self.hinweis.setText(ERKLAERUNG)
 
     def zeige_pruefung(self, pruefungen):
         if not pruefungen:

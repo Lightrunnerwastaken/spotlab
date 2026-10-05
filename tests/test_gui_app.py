@@ -39,6 +39,27 @@ def test_zustandssignal_erreicht_kopf_und_live(qapp, tmp_path):
     assert "1.00" in fenster.ansichten["live"].kachel_pose.text()
 
 
+def test_ein_simulationslauf_steht_als_solcher_im_kopf(qapp, tmp_path):
+    # Playtest 04.10.2026: waehrend eines Uebungslaufs zeigte der Kopf die IP des
+    # echten Spot, Lease-Striche und die Not-Aus-Erklaerung fuer den Roboter.
+    from spotlab.config import Config, Limits
+    from spotlab.record.run import RunRecorder
+
+    fenster = MainWindow()
+    fenster._config_gespeichert(
+        Config(ip="192.168.80.3", username="u", nickname="Kanti", limits=Limits())
+    )
+    rec = RunRecorder(tmp_path, None, backend="physics")
+    fenster._lauf_begonnen(str(rec.dir))
+    assert "Physik 3D" in fenster.kopf.status.text()
+    assert "kein Roboter" in fenster.kopf.status.text()
+    assert "192.168.80.3" not in fenster.kopf.status.text()
+
+    rec.finish("ok")
+    fenster._lauf_beendet(str(rec.dir))
+    assert "192.168.80.3" in fenster.kopf.status.text()
+
+
 def test_ohne_konfiguration_startet_die_spot_ansicht(qapp, tmp_path, monkeypatch):
     monkeypatch.setattr("spotlab.config.CONFIG_PATH", tmp_path / "gibtsnicht.toml")
     fenster = MainWindow()
