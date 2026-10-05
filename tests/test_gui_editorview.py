@@ -207,6 +207,17 @@ def test_projektwahl_listet_die_projekte(qapp, tmp_path):
     assert {"demo", "zweites"} <= eintraege
 
 
+def test_ein_neues_projekt_steht_danach_in_der_projektwahl(qapp, tmp_path):
+    # Playtest 04.10.2026: „In spotlab öffnen" auf einem eben angelegten Projekt
+    # zeigte im Baum dessen Dateien, oben aber weiter „demo".
+    ansicht, ordner, _projekt = _ansicht(tmp_path)
+    neu = ordner / "Playtest"
+    (neu / "runs").mkdir(parents=True)
+    ansicht.setze_projekt(neu)
+    assert ansicht.projektwahl.currentText() == "Playtest"
+    assert ansicht.baum._wurzel == neu
+
+
 def test_syntaxfehler_erscheint_nach_der_ruhepause(qapp, tmp_path):
     ansicht, _ordner, projekt = _ansicht(tmp_path)
     ansicht.oeffne(projekt / "hallo_spot.py")

@@ -323,6 +323,13 @@ class EditorView(QWidget):
         name = self._projekt.name
         if self.projektwahl.currentText() != name:
             index = self.projektwahl.findText(name)
+            if index < 0 and self._ordner is not None and self._projekt.parent == self._ordner:
+                # Nach dem Füllen angelegt (Reiter „Projekte"): sonst stünde oben
+                # weiter das alte Projekt, während der Baum das neue zeigt.
+                self.projektwahl.blockSignals(True)
+                self.projektwahl.addItem(name)
+                self.projektwahl.blockSignals(False)
+                index = self.projektwahl.findText(name)
             if index >= 0:
                 self.projektwahl.setCurrentIndex(index)
 
