@@ -31,6 +31,21 @@ def test_vorlage_laeuft_im_trockenlauf_durch(tmp_path, monkeypatch):
     exec(compile(quelle, "hallo_spot.py", "exec"), {"__name__": "__main__"})
 
 
+def test_vorlage_sagt_ohne_akkumeldung_nicht_none(tmp_path, monkeypatch, capsys):
+    """Playtest 04.10.2026: im Physikmodus gab die Vorlage `Akku: None %` aus."""
+    from spotlab.api.spot import Spot
+
+    ordner = create_project("p", tmp_path)
+    monkeypatch.setenv("SPOTLAB_BACKEND", "dryrun")
+    monkeypatch.chdir(ordner)
+    monkeypatch.setattr(Spot, "battery", property(lambda self: None))
+    quelle = (ordner / "hallo_spot.py").read_text(encoding="utf-8")
+    exec(compile(quelle, "hallo_spot.py", "exec"), {"__name__": "__main__"})
+    ausgabe = capsys.readouterr().out
+    assert "None" not in ausgabe
+    assert "Akku: im Simulator nicht verfügbar" in ausgabe
+
+
 def test_bestehender_ordner_wird_nicht_ueberschrieben(tmp_path):
     create_project("p", tmp_path)
     with pytest.raises(FileExistsError):

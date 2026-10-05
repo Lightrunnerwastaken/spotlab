@@ -16,7 +16,11 @@ with spotlab.connect() as spot:
     spot.power_on()
     spot.stand()
 
-    print("Akku:", spot.battery, "%")
+    # Ohne Akkumeldung (Physikmodus) ist spot.battery None, nicht 0.
+    if spot.battery is not None:
+        print(f"Akku: {spot.battery:.0f} %")
+    else:
+        print("Akku: im Simulator nicht verfügbar")
 
     # Einen Meter vorwärts. move() wartet, bis der Spot wirklich angekommen ist.
     spot.move(forward=1.0)
