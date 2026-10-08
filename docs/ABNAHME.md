@@ -1397,6 +1397,27 @@ höchstens 0.4 s, und `pose()` wurde nie befohlen.
 
 **Ergebnis** _(offen)_
 
+## A42 — Gegenstand finden: YOLOX-Klasse mit Tiefe (Teddybär)
+
+**Voraussetzung** keine für Teil 1 (leaselos, ein Mensch fährt); A1 für Teil 2. Seit dem
+08.10.2026 findet `backends/real/objekte.py` eine COCO-Klasse (Vorgabe „teddy bear") mit
+demselben YOLOX wie der Körper und setzt sie über das registrierte Tiefenbild
+(`frontleft/frontright_depth_in_visual_frame`) und den Rahmenbaum der Aufnahme in den Rahmen
+„vision" — für die Vorführung von Versuch 3 in matura-spot (`notes/ENTWURF_versuch3.md`).
+Offline geprüft: keine Teddy-Kästen im leeren Gang vom 12.08.2026. Nie geprüft: ob YOLOX
+einen Teddybären auf Spots GRAUBILDERN überhaupt findet, und bis zu welchem Abstand.
+
+1. Teddybär auf den Boden an eine Wand, Spot mit dem Tablet in 1, 2, 3, 4 m davor stellen und
+   langsam schwenken; mitschreiben mit `matura-spot/scripts/beobachten_real.py` (leaselos,
+   Bildmitschnitt der Frontkameras samt `*_depth_in_visual_frame`).
+2. Offline: Trefferquote je Abstandsband und die Weltlage gegen die gemessene Lage des
+   Teddys (Massband ab einem Tag oder ab Spots Startpunkt).
+3. Gegenprobe: dieselbe Fahrt ohne Teddy — Fehlalarme je Minute (`fehlalarme_objekt.py`).
+4. Teil 2 (nach A1): `exploration_real.py --ziel objekt:teddy_bear` in einem Raum mit dem
+   Teddy an einer Wand, vom Start aus nicht sichtbar.
+
+**Ergebnis** _(offen)_
+
 ## Nach der Abnahme
 
 Ergebnisse hier eintragen, Abweichungen als Befund in die Spec zurückspielen, und erst
