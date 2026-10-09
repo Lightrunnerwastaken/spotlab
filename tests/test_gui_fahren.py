@@ -883,3 +883,87 @@ def test_das_lagebild_wird_alle_100_ms_nachgesehen(qapp, tmp_path):
     assert ansicht.herzschlag_takt.interval() == 200, "das Lebenszeichen bleibt bei 200 ms"
     ansicht.lauf_beendet()
     assert not ansicht.lagebild_takt.isActive()
+
+
+# ------------------------------------------------ Agent darf fahren (09.10.2026)
+
+
+def _agentbild(lauf_dir, braucht=True, motoren=None, **agent):
+    stand = {"nummer": 0, "art": None, "zustand": "keiner", "grund": "", "warum": "",
+             "agent": "", "seit": None, "tiefe": None, "freigabe": False,
+             "braucht_freigabe": braucht}
+    stand.update(agent)
+    _lagebild_schreiben(lauf_dir, agent=stand, motoren=motoren)
+
+
+def _neu_laden(ansicht):
+    ansicht._lagebild_stempel = None
+    ansicht._lade_lagebild()
+
+
+def test_der_agentenschalter_gilt_nur_am_echten_spot(qapp, tmp_path):
+    ansicht = FahrenView()
+    assert not ansicht.agent_freigabe.isEnabled()
+    ansicht.lauf_beginnt(tmp_path)
+    assert not ansicht.agent_freigabe.isEnabled(), "erst das Lagebild sagt, ob es ihn braucht"
+    _agentbild(tmp_path, braucht=False)
+    _neu_laden(ansicht)
+    assert not ansicht.agent_freigabe.isEnabled()
+    assert "Übungsraum" in ansicht.agent_freigabe.toolTip()
+    _agentbild(tmp_path, braucht=True)
+    _neu_laden(ansicht)
+    assert ansicht.agent_freigabe.isEnabled()
+
+
+def test_der_agentenschalter_schreibt_die_freigabe(qapp, tmp_path):
+    from spotlab.record import agent as agentdatei
+
+    ansicht = FahrenView()
+    ansicht.lauf_beginnt(tmp_path)
+    _agentbild(tmp_path)
+    _neu_laden(ansicht)
+    ansicht.agent_freigabe.setChecked(True)
+    freigabe = agentdatei.lies_freigabe(tmp_path)
+    assert (freigabe["an"], freigabe["nummer"]) == (True, 1)
+    ansicht.agent_freigabe.setChecked(False)
+    freigabe = agentdatei.lies_freigabe(tmp_path)
+    assert (freigabe["an"], freigabe["nummer"]) == (False, 2)
+
+
+def test_taste_klick_stopp_und_laufende_nehmen_die_freigabe_zurueck(qapp, tmp_path):
+    from spotlab.record import agent as agentdatei
+
+    ansicht = FahrenView()
+    ansicht.show()
+    ansicht.lauf_beginnt(tmp_path)
+    _agentbild(tmp_path)
+    _neu_laden(ansicht)
+
+    def zurueck(handlung, was):
+        ansicht.agent_freigabe.setChecked(True)
+        handlung()
+        assert not ansicht.agent_freigabe.isChecked(), was
+        assert agentdatei.lies_freigabe(tmp_path)["an"] is False, was
+
+    zurueck(lambda: QTest.keyPress(ansicht, Qt.Key_W), "eine Fahrtaste")
+    QTest.keyRelease(ansicht, Qt.Key_W)
+    zurueck(lambda: ansicht.lagebild.klick.emit(2.5, 1.0), "ein Klick in die Draufsicht")
+    zurueck(ansicht.stopp.click, "der Stopp-Knopf")
+    zurueck(ansicht.lauf_beendet, "das Ende des Laufs")
+    assert not ansicht.agent_freigabe.isEnabled()
+    ansicht.hide()
+
+
+def test_die_agentenzeile_zeigt_wer_was_warum_und_wie_es_steht(qapp, tmp_path):
+    ansicht = FahrenView()
+    ansicht.lauf_beginnt(tmp_path)
+    _agentbild(tmp_path, nummer=3, art="ziel", zustand="abgelehnt", warum="zur Tür",
+               agent="claude", grund="keine Freigabe — ein Mensch muss …")
+    _neu_laden(ansicht)
+    text = ansicht.agent_zeile.toolTip() or ansicht.agent_zeile.text()
+    for teil in ("claude", "zur Tür", "abgelehnt", "keine Freigabe"):
+        assert teil in text, (teil, text)
+    _agentbild(tmp_path, motoren="aus — wartet auf Freigabe")
+    _neu_laden(ansicht)
+    text = ansicht.agent_zeile.toolTip() or ansicht.agent_zeile.text()
+    assert "Motoren aus" in text, text

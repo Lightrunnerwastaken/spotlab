@@ -59,6 +59,7 @@ from spotlab.gui.kurztext import Kurztext
 from spotlab.gui.lagebild import Lagebild
 from spotlab.gui.tastenfahrt import Tastenfahrt
 from spotlab.gui.tastenfeld import Tastenfeld
+from spotlab.record import agent as agentdatei
 from spotlab.record import ansicht as ansichtsschalter
 from spotlab.record import fahrt
 from spotlab.record import zentrale as protokoll
@@ -108,6 +109,17 @@ KARTEN_WERKZEUG = (
     "In der Draufsicht: grün erkannt, rot neu, gestrichelt fehlt, blass nicht geprüft."
 )
 MENSCH_KLICK_M = 0.5                  # so weit neben einem Menschen gilt ein Klick als seiner
+AGENT_WERKZEUG = (
+    "Erlaubt einem Agenten (Claude, Codex über `spotlab mcp`), den ECHTEN Spot über diese "
+    "Zentrale zu fahren — durch dieselben Schranken wie die Klickfahrt. Jede Taste, jeder Klick "
+    "in die Draufsicht, „■ Stopp“ und das Ende des Laufs schalten sie wieder aus. Startet der "
+    "Agent die Zentrale selbst, bleiben die Motoren aus, bis hier eingeschaltet wird."
+)
+AGENT_UEBUNGSRAUM = "Im Übungsraum fährt der Agent ohne Freigabe — der Schalter gilt am echten Spot."
+AGENT_ARTEN = {"ziel": "fährt zu einem Punkt", "relativ": "fährt ein Stück",
+               "drehen": "dreht sich", "stoss": "Fahrstoss", "folgen": "folgt einem Menschen",
+               "stopp": "hält an", "tiefe": "misst die Tiefe", "licht": "Licht",
+               "piep": "Piep", "suche": "Menschensuche"}
 
 HINWEIS = (
     "Startet die Steuerzentrale (Programm „zentrale.py“) im Übungsraum oder am ECHTEN Spot — "
@@ -247,6 +259,7 @@ class FahrenView(QWidget):
         self._frage_name = self._frage_wegpunkt_name
         self._lagebild_stempel = None
         self._app_aktiv = True
+        self._freigabe_nummer = 0
 
         titel = QLabel("Steuerzentrale — sehen, wo Spot ist, und ihn fahren")
         titel.setObjectName("Titel")
@@ -301,6 +314,14 @@ class FahrenView(QWidget):
         # Deshalb steht es bei den Knoepfen und nicht in der Lage-Zeile.
         self.uebernehmen = QCheckBox("🔓 Kontrolle übernehmen")
         self.uebernehmen.setToolTip(UEBERNEHMEN_WERKZEUG)
+        # Die Freigabe für einen Agenten (Agenten am Spot, Teil 1): nur am echten Spot, nur
+        # solange ein Mensch sie gibt. Grau, bis das Lagebild sagt, dass der Lauf sie braucht.
+        self.agent_freigabe = QCheckBox("🤖 Agent darf fahren")
+        self.agent_freigabe.setEnabled(False)
+        self.agent_freigabe.setToolTip(AGENT_WERKZEUG)
+        self.agent_freigabe.toggled.connect(self._freigabe_umgelegt)
+        self.agent_zeile = Kurztext("")
+        self.agent_zeile.setObjectName("Gedaempft")
 
         fahrt_gruppe = QGroupBox("Fahrt")
         knoepfe = QHBoxLayout()
@@ -319,9 +340,13 @@ class FahrenView(QWidget):
         im_blick.addWidget(self.gesicht)
         im_blick.addWidget(self.hand)
         im_blick.addStretch(1)
+        agent_reihe = QHBoxLayout()
+        agent_reihe.addWidget(self.agent_freigabe)
+        agent_reihe.addWidget(self.agent_zeile, 1)
         innen = QVBoxLayout(fahrt_gruppe)
         innen.addLayout(knoepfe)
         innen.addLayout(im_blick)
+        innen.addLayout(agent_reihe)
 
         # Die Lage: Akku wechseln (auf die Seite rollen) und Aufrichten. Kein eigener
         # Weg zum Roboter -- jeder Knopf startet einen Lauf ueber die App, mit dem
@@ -557,6 +582,9 @@ class FahrenView(QWidget):
         self._karten_nummer, self._karten_gesendet, self._karte = 0, None, None
         self._name_beruehrt = False
         self._fuelle_karten()
+        self._freigabe_zurueck()                 # die Freigabe gehört einem Lauf, nie dem nächsten
+        self._freigabe_nummer = 0
+        self.agent_zeile.setText("")
         self._lagebild_stempel = None
         self.lagebild.leeren()
         self.klick_zeile.setText(KLICK_HINWEIS)
@@ -577,6 +605,9 @@ class FahrenView(QWidget):
             self.zustand.style().polish(self.zustand)
 
     def lauf_beendet(self):
+        self._freigabe_zurueck()
+        self.agent_freigabe.setEnabled(False)
+        self.agent_zeile.setText("")
         self.tastenfahrt.beende()
         self._laeuft = False
         self._lauf_dir = None
@@ -684,6 +715,7 @@ class FahrenView(QWidget):
             self.notaus_hinweis.show()
 
     def _stopp_geklickt(self):
+        self._freigabe_zurueck()
         self.tastenfahrt.alle_los()
         self.stopp_gewuenscht.emit()
 
@@ -766,8 +798,10 @@ class FahrenView(QWidget):
 
     def keyPressEvent(self, ereignis):
         if self.tastenfahrt.tastenereignis(ereignis, gedrueckt=True):
-            # Jede Taste übernimmt: eine laufende Klickfahrt endet hier UND im Programm.
+            # Jede Taste übernimmt: eine laufende Klickfahrt endet hier UND im Programm, und
+            # ein Agent darf nicht mehr fahren.
             self._klick_abbrechen()
+            self._freigabe_zurueck()
             ereignis.accept()
             return
         super().keyPressEvent(ereignis)
@@ -827,6 +861,7 @@ class FahrenView(QWidget):
         Neben einem Menschen heisst es „folge ihm“, und das Ziel ist SEIN Ort."""
         if not self._laeuft or self._lauf_dir is None:
             return
+        self._freigabe_zurueck()                 # ein Klick ist eine menschliche Eingabe
         self._klick_nummer += 1
         mensch = self.lagebild.mensch_bei(x, y, MENSCH_KLICK_M)
         if mensch is not None:
@@ -904,8 +939,30 @@ class FahrenView(QWidget):
         if not self.bild.hat_bild():
             self.hinweis_bild.setText(KEIN_BILD if faehig.get("kamera") else KEINE_KAMERA)
         self.klick_zeile.setText(_klick_text(daten.get("klickfahrt") or {}))
+        self._zeige_agent(daten.get("agent"), daten.get("motoren"))
         self._zeige_suche(daten.get("suche"))
         self._zeige_karte(daten.get("karte"))
+
+    # --------------------------------------------------- Agent (Agenten am Spot, Teil 1)
+
+    def _freigabe_umgelegt(self, an):
+        """„🤖 Agent darf fahren“ geht als `freigabe.json` in den Lauf -- jede Änderung mit neuer
+        Nummer. Ohne Lauf gibt es nichts zu schreiben."""
+        if self._lauf_dir is None:
+            return
+        self._freigabe_nummer += 1
+        agentdatei.schreibe_freigabe(self._lauf_dir, bool(an), self._freigabe_nummer)
+
+    def _freigabe_zurueck(self):
+        """Eine menschliche Eingabe nimmt die Freigabe zurück (schreibt `an: false`)."""
+        if self.agent_freigabe.isChecked():
+            self.agent_freigabe.setChecked(False)
+
+    def _zeige_agent(self, agent, motoren):
+        braucht = bool((agent or {}).get("braucht_freigabe"))
+        self.agent_freigabe.setEnabled(braucht and self._laeuft)
+        self.agent_freigabe.setToolTip(AGENT_WERKZEUG if braucht else AGENT_UEBUNGSRAUM)
+        self.agent_zeile.setText(_agent_text(agent or {}, motoren))
 
     # --------------------------------------------------- Karten (Teil 3)
 
@@ -1100,6 +1157,24 @@ def _karten_text(karte):
                      if anteil is not None else " · zu wenig Wand im Blick")
         return text
     return grund or "Keine Karte geladen — eine wählen und „Laden“, oder „● Aufnahme“ für eine neue."
+
+
+def _agent_text(agent, motoren=None):
+    """„🤖 claude: fährt zu einem Punkt — „zur Tür“ — unterwegs“, davor ein Wartehinweis."""
+    teile = []
+    if motoren:
+        teile.append(f"⏸ Motoren {motoren}")
+    art = agent.get("art")
+    if art:
+        wer = agent.get("agent") or "Agent"
+        text = f"🤖 {wer}: {AGENT_ARTEN.get(art, art)}"
+        if agent.get("warum"):
+            text += f" — „{agent['warum']}“"
+        text += f" — {agent.get('zustand') or '?'}"
+        if agent.get("grund"):
+            text += f": {agent['grund']}"
+        teile.append(text)
+    return " · ".join(teile)
 
 
 def _klick_text(klickfahrt):
