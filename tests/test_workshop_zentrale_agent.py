@@ -471,3 +471,11 @@ def test_das_echte_programm_wartet_mit_motoren_aus_auf_die_freigabe(tmp_path):
     freigabe = arten.index("freigabe")
     assert "power_on" not in arten[:freigabe], arten
     assert arten.index("power_on") > freigabe and "stand" in arten[freigabe:], arten
+
+
+def test_das_lagebild_traegt_den_kopfraum_fuer_den_agenten(tmp_path):
+    z, _ = _mit_uhr(_Spot(), tmp_path)
+    z._kopf, z._kopf_t = (False, "Überhang 0.6 m voraus"), T0 - 0.5   # noch nicht neu fällig
+    z.wahrnehmen()
+    kopf = protokoll.lies_lagebild(tmp_path)["kopfraum"]
+    assert kopf["frei"] is False and "Überhang" in kopf["grund"] and kopf["alter_s"] == 0.5

@@ -340,6 +340,9 @@ class Zentrale:
             "agent": dict(self._agent, freigabe=self._freigabe,
                           braucht_freigabe=self.braucht_freigabe),
             "motoren": "aus — wartet auf Freigabe" if self._wartet else None,
+            "kopfraum": {"frei": bool(self._kopf[0]), "grund": self._kopf[1],
+                         "alter_s": (None if self._kopf_t is None
+                                     else round(max(0.0, t - self._kopf_t), 2))},
         }
         return daten, (None if leer else skizze.png(t))
 
