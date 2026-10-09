@@ -34,8 +34,10 @@ Muster wie `record/zentrale.py`):
 | `agent_besitz.json` | MCP → MCP | `agent`, `pid`, `seit` — wer die Zentrale gerade steuert |
 
 Die Antwort steht im vorhandenen `lagebild.json` unter dem neuen Platz **`agent`**:
-`{nummer, art, zustand, grund, seit, freigabe, tiefe}` mit `zustand ∈ keiner | unterwegs |
-angekommen | abgelehnt | versperrt | abgebrochen | gemessen`.
+`{nummer, art, zustand, grund, warum, agent, seit, freigabe, braucht_freigabe, tiefe}` mit
+`zustand ∈ keiner | unterwegs | angekommen | abgelehnt | versperrt | abgebrochen | gemessen |
+erledigt` (`erledigt`: stopp, licht, piep, suche — sofort fertig; nachgetragen beim Bau). Ein
+neuer Befehl beendet den laufenden („abgelöst durch …“): die Datei trägt genau einen Befehl.
 
 **Arten von `agent_befehl.json`:** `ziel` (x, y), `relativ` (vor_m, links_m), `drehen` (grad),
 `stoss` (vx, vy, wz, dauer_s), `folgen` (x, y), `stopp`, `tiefe`, `licht` (farbe), `piep`,
@@ -61,7 +63,8 @@ zählt der Tab seine eigene Nummer, zwei Schreiber verwürfelten sie.
 - **Totmann des Agenten:** `lebt` älter als `AGENT_TOTMANN_S` = 0.5 s heisst Stopp, wie bei
   der Klickfahrt.
 - Jeder angenommene Befehl schreibt das Ereignis `agent_befehl`, jedes Ende `agent_ergebnis`
-  (beide neu in `record/events.ARTEN`).
+  (beide neu in `record/events.ARTEN`). Die Art des Befehls heisst dort `befehl` — `art` ist
+  der Name des Ereignisses selbst (`RunRecorder.event(art, **daten)`).
 
 **Freigabe (nur echter Spot):**
 

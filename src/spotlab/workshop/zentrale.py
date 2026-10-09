@@ -29,8 +29,17 @@ das Langsame in einem eigenen Faden der Kartenarbeit; die Wahrnehmung fragt je T
 Verortung ab und gleicht die Kartenwände mit der Skizze ab (`workshop/kartenabgleich.py`).
 Am Ende wird eine laufende Aufnahme gespeichert, NACHDEM Spot angehalten hat.
 
-**Vorrang:** eine Taste vor der Klickfahrt vor dem Stillstand. Eine Taste bricht die
-Klickfahrt ab. Die Klickfahrt fährt nur, solange das Lebenszeichen des Tabs frisch ist
+**Agenten** (Agenten am Spot, Teil 1, `docs/superpowers/specs/2026-10-09-agent-faehrt-design.md`):
+ein dritter Eingang, `agent_befehl.json` (`record/agent.py`) mit Nummer, Art, Begründung und
+Lebenszeichen. Ziele werden Ziele der Klickfahrt (Quelle „agent“), Drehen und Stösse rechnet
+`workshop/agentfahrt.py`, Folgen geht an denselben Folgemodus wie ein Klick, die Tiefe misst
+der Wahrnehmungsfaden. Ein neuer Befehl beendet den alten. Am echten Spot fährt der Agent
+nur mit Freigabe (`freigabe.json` + frischer GUI-Puls), lesen darf er immer; jede Taste und
+jeder Klick übernimmt, ein Lebenszeichen älter als `AGENT_TOTMANN_S` heisst Stopp. Der Stand
+steht im Lagebild unter `agent`, Befehl und Ergebnis als Ereignis in der Aufzeichnung.
+
+**Vorrang:** eine Taste vor der Klickfahrt vor dem Agenten vor dem Stillstand. Eine Taste
+bricht die Klickfahrt ab. Die Klickfahrt fährt nur, solange das Lebenszeichen des Tabs frisch ist
 (`record/zentrale.TOTMANN_S`), und nur mit den Schranken des Folgens (Gitter voraus aus
 dem letzten Hindernisgitter, Kopfraum) — unlesbar heisst stehen. Die Tasten fahren wie
 in `fahren.py` ohne diese Schranken: dort steuert der Mensch.
@@ -54,12 +63,23 @@ import threading
 import time
 from pathlib import Path
 
+import numpy as np
+
 from spotlab.backends.base import Capability
 from spotlab.errors import SpotlabError
+from spotlab.record import agent as agentdatei
 from spotlab.record import fahrt
 from spotlab.record import zentrale as protokoll
 from spotlab.record.run import STOPP_DATEI
-from spotlab.workshop import blick, folgen, kartenabgleich, klickfahrt, klickfolgen, menschensuche
+from spotlab.workshop import (
+    agentfahrt,
+    blick,
+    folgen,
+    kartenabgleich,
+    klickfahrt,
+    klickfolgen,
+    menschensuche,
+)
 from spotlab.workshop import skizze as skizzenmodul
 
 SKRIPT = Path(__file__)
@@ -77,6 +97,13 @@ GLEICH_M = 1.0             # ein neuer Fund so nah an einem alten ist derselbe M
 START_FRIST_S = 5.0        # so lange sucht der Folgemodus den Angeklickten, dann gibt er auf
 KEINE_KAMERAS = ("Keine Bild- und Tiefenkameras (Übungsraum) — Menschen sucht nur der "
                  "echte Spot.")
+FAHR_ARTEN = ("ziel", "relativ", "drehen", "stoss", "folgen")   # brauchen am echten Spot Freigabe
+KEINE_FREIGABE = ("keine Freigabe — ein Mensch muss im Tab „Fahren“ „🤖 Agent darf fahren“ "
+                  "einschalten")
+MENSCH_UEBERNIMMT = "ein Mensch hat übernommen"
+AGENT_STILL = "kein Lebenszeichen vom Agenten — Spot steht"
+ENDE_DER_KLICKFAHRT = ("angekommen", "abgelehnt", "versperrt", "abgebrochen")
+TIEFE_KAMERAS = ("frontleft", "frontright")
 
 
 def wahrnehmungs_pause(dauer_s):
@@ -113,6 +140,14 @@ def lage_und_versatz(spot):
     return lage, (float(versatz.x), float(versatz.y), float(versatz.rot.to_yaw()))
 
 
+def _zahl(werte, name, vorgabe=None):
+    """Eine endliche Zahl aus den Werten eines Agentenbefehls — sonst ValueError mit Namen."""
+    wert = werte.get(name, vorgabe)
+    if isinstance(wert, bool) or not isinstance(wert, (int, float)) or not math.isfinite(wert):
+        raise ValueError(f"{name} muss eine endliche Zahl sein, nicht {wert!r}")
+    return float(wert)
+
+
 def _im_hintergrund(arbeit):
     threading.Thread(target=arbeit, daemon=True, name="zentrale-ton").start()
 
@@ -120,8 +155,9 @@ def _im_hintergrund(arbeit):
 class Zentrale:
     def __init__(self, spot, lauf_dir, jetzt=time.time, melde=print, licht=None,
                  hintergrund=_im_hintergrund, suche=None, folgen_mit=None,
-                 koerper_finder=None, kartenarbeit=None):
+                 koerper_finder=None, kartenarbeit=None, braucht_freigabe=False):
         self.spot = spot
+        self.braucht_freigabe = bool(braucht_freigabe)   # True am echten Spot
         self.lauf_dir = Path(lauf_dir)
         self.jetzt = jetzt
         self.melde = melde
@@ -152,6 +188,13 @@ class Zentrale:
         self._folgen_mit = folgen_mit or folgen.folge
         self._koerper_finder = koerper_finder or folgen.koerper_finder
         self._karten = kartenarbeit          # None: kein Platz für Karten (Lagebild `karte` leer)
+        self._agent_nummer = None
+        self._agent_letzter = None   # der zuletzt LESBARE Agentenbefehl (wie `_klickziel`)
+        self._agent_lauf = None      # der laufende Fahrbefehl des Agenten, sonst None
+        self._agent = {"nummer": 0, "art": None, "zustand": "keiner", "grund": "", "warum": "",
+                       "agent": "", "seit": None, "tiefe": None}
+        self._freigabe = False
+        self._tiefe_auftrag = None   # Nummer des Befehls `tiefe`, den der Wahrnehmungsfaden misst
         self.faehigkeiten = self._faehigkeiten()
         self._suche_kann = self._kann_suchen()
         if suche is None and self._suche_kann:
@@ -217,6 +260,10 @@ class Zentrale:
                 kopf = folgen.kopfraum_frei(self.spot)
             except Exception as fehler:
                 kopf = (False, f"Kopfraum nicht lesbar ({fehler})")
+        auftrag = self._tiefe_auftrag
+        if auftrag is not None:
+            ergebnis, grund = self._tiefe_messen()
+            self._tiefe_fertig(auftrag, ergebnis, grund, kopf if kopf is not None else self._kopf)
         with self._sperre:
             if gitter is not None:
                 self.skizze.aufnehmen(gitter, t)
@@ -279,6 +326,8 @@ class Zentrale:
                       "kann": self._suche_kann,
                       "grund": self._suche_grund if self._suche_kann else KEINE_KAMERAS},
             "karte": None,            # Teil 3
+            "agent": dict(self._agent, freigabe=self._freigabe,
+                          braucht_freigabe=self.braucht_freigabe),
         }
         return daten, (None if leer else skizze.png(t))
 
@@ -326,24 +375,34 @@ class Zentrale:
     # ------------------------------------------------------------ Takt
 
     def takt(self, t=None):
-        """Ein Fahrtakt: Aktionen, Klickziel, dann Taste > Klickfahrt > Stillstand."""
+        """Ein Fahrtakt: Aktionen, Freigabe, Klickziel, Agentenbefehl, dann
+        Taste > Klickfahrt > Agent > Stillstand."""
         t = self.jetzt() if t is None else t
         self._aktionen()
         self._kartenauftraege()
+        self._freigabe_pruefen()
         befehl = fahrt.lies(self.lauf_dir, jetzt=self.jetzt)
         # Unter Windows liest der Takt die Datei manchmal genau beim Ersetzen (20-mal je
         # Sekunde gelesen, 5-mal geschrieben): dann gilt das zuletzt gelesene weiter. Sein
         # Lebenszeichen altert trotzdem -- der Totmann bleibt scharf. Ohne diese Zeile brach
         # ein einziger Lesekonflikt die Klickfahrt ab (Kette im Übungsraum, 27.09.2026).
+        # Dasselbe gilt für den Befehl des Agenten.
         kz = protokoll.lies_klickziel(self.lauf_dir) or self._klickziel
         self._klickziel = kz
+        ab = agentdatei.lies_befehl(self.lauf_dir) or self._agent_letzter
+        self._agent_letzter = ab
         if kz is not None and kz.nummer != self._klick_nummer:
+            self._agent_abbrechen(MENSCH_UEBERNIMMT)
             self._neues_klickziel(kz, t)
             if kz.art == "mensch" and kz.ziel is not None and befehl == fahrt.STILL \
                     and self._suche_kann:
                 self._folge_mensch(kz.nummer, kz.ziel, "tab", self._klick_abloese(kz))
                 return
+        if ab is not None and ab.nummer != self._agent_nummer:
+            if self._agent_neu(ab, t, taste=befehl != fahrt.STILL):
+                return
         if befehl != fahrt.STILL:
+            self._agent_abbrechen(MENSCH_UEBERNIMMT)
             with self._sperre:
                 self.klick.abbrechen("eine Taste hat übernommen")
             vx, vy, wz = befehl
@@ -351,16 +410,24 @@ class Zentrale:
             self._faehrt = True
             return
         if self.klick.unterwegs:
-            if not protokoll.lebt(kz, jetzt=self.jetzt):
-                with self._sperre:
-                    self.klick.abbrechen("kein Lebenszeichen vom Tab (Reiter gewechselt oder "
-                                         "Fenster nicht aktiv) — Spot steht")
+            if self.klick.stand.quelle == "agent":
+                lebt, stufe = agentdatei.befehl_lebt(ab, jetzt=self.jetzt), "langsam"
+                still = AGENT_STILL
             else:
-                vx, wz = self._klickschritt(t, kz.stufe)
+                lebt, stufe = protokoll.lebt(kz, jetzt=self.jetzt), kz.stufe
+                still = ("kein Lebenszeichen vom Tab (Reiter gewechselt oder Fenster nicht aktiv) "
+                         "— Spot steht")
+            if not lebt:
+                with self._sperre:
+                    self.klick.abbrechen(still)
+            else:
+                vx, wz = self._klickschritt(t, stufe)
                 if (vx, wz) != (0.0, 0.0):
                     self.spot.walk(vx=vx, vy=0.0, wz=wz, stop=False)
                     self._faehrt = True
                     return
+        if self._agent_lauf is not None and self._agent_schritt(t, ab):
+            return
         if self._faehrt:
             self.spot.stop()
             self._faehrt = False
@@ -387,27 +454,314 @@ class Zentrale:
                 return
             self.klick.neues_ziel(kz.nummer, kz.ziel, lage, self.skizze, t)
 
+    def _schranken(self, t, lage):
+        """(Gitter oder None, frei voraus oder None, Kopfraum frei, Grund) — fail-closed:
+        ein Gitter älter als `GITTER_GILT_S` ist keines, ein alter Kopfraum ist zu."""
+        with self._sperre:
+            gitter, frei = None, None
+            if self._gitter is not None and t - self._gitter_t <= GITTER_GILT_S:
+                gitter = self._gitter
+                try:
+                    frei = gitter.free_distance(lage[0], lage[1], math.degrees(lage[2]))
+                except Exception:
+                    frei = None
+            kopf_frei, kopf_grund = self._kopf
+            if self._kopf_t is None or t - self._kopf_t > KOPFRAUM_GILT_S:
+                kopf_frei, kopf_grund = False, "Kopfraum nicht frisch geprüft"
+        return gitter, frei, kopf_frei, kopf_grund
+
     def _klickschritt(self, t, stufe):
         try:
             faktor = fahrt.faktor_der_stufe(stufe)
         except ValueError:
             faktor = fahrt.faktor_der_stufe("langsam")
         lage = self._lage_jetzt()
-        with self._sperre:
-            if lage is None:
+        if lage is None:
+            with self._sperre:
                 self.klick.abbrechen("Spots Lage ist nicht lesbar")
-                return 0.0, 0.0
-            frei = None
-            if self._gitter is not None and t - self._gitter_t <= GITTER_GILT_S:
-                try:
-                    frei = self._gitter.free_distance(lage[0], lage[1], math.degrees(lage[2]))
-                except Exception:
-                    frei = None
-            kopf_frei, kopf_grund = self._kopf
-            if self._kopf_t is None or t - self._kopf_t > KOPFRAUM_GILT_S:
-                kopf_frei, kopf_grund = False, "Kopfraum nicht frisch geprüft"
+            return 0.0, 0.0
+        _gitter, frei, kopf_frei, kopf_grund = self._schranken(t, lage)
+        with self._sperre:
             return self.klick.schritt(lage, self.skizze, t, frei, faktor,
                                       kopf_frei=kopf_frei, kopf_grund=kopf_grund)
+
+    # ------------------------------------------------------------ Agent
+
+    def _ereignis(self, name, **daten):
+        """In die Aufzeichnung — eine stolpernde Aufzeichnung hält keinen Befehl auf. Die Art
+        eines Agentenbefehls heisst dort `befehl`: `art` ist der Name des Ereignisses selbst."""
+        recorder = getattr(self.spot, "recorder", None)
+        if recorder is None:
+            return
+        try:
+            recorder.event(name, **daten)
+        except Exception as fehler:
+            self._einmal("aufzeichnung", f"Die Aufzeichnung stolpert ({fehler}) — Spot fährt "
+                                         f"weiter.")
+
+    def _freigabe_pruefen(self):
+        """Am echten Spot: gilt „🤖 Agent darf fahren“ noch? Jeder Wechsel kommt in die
+        Aufzeichnung; geht sie aus, endet ein laufender Agentenbefehl."""
+        if not self.braucht_freigabe:
+            return
+        frei = agentdatei.freigabe_gilt(self.lauf_dir, jetzt=self.jetzt)
+        if frei == self._freigabe:
+            return
+        with self._sperre:
+            self._freigabe = frei
+        grund = ("ein Mensch hat sie eingeschaltet" if frei else
+                 "ausgeschaltet, von einer menschlichen Eingabe zurückgenommen oder die "
+                 "Oberfläche antwortet nicht")
+        self.melde(f"🤖 Agent darf fahren: {'an' if frei else 'aus'}")
+        self._ereignis("freigabe", an=frei, grund=grund)
+        if not frei:
+            self._agent_abbrechen(f"{MENSCH_UEBERNIMMT} — die Freigabe ist aus")
+
+    def _agent_ende(self, zustand, grund="", nummer=None, **felder):
+        """Der Agentenbefehl endet — mit `nummer` nur, wenn es noch derselbe ist."""
+        with self._sperre:
+            stand = self._agent
+            if nummer is not None and stand["nummer"] != nummer:
+                return
+            self._agent_lauf = None
+            stand.update(felder, zustand=zustand, grund=grund)
+            nummer, art, seit = stand["nummer"], stand["art"], stand["seit"]
+        dauer = None if seit is None else round(max(0.0, self.jetzt() - seit), 3)
+        self._ereignis("agent_ergebnis", nummer=nummer, befehl=art, zustand=zustand, grund=grund,
+                       dauer_s=dauer)
+
+    def _agent_abbrechen(self, grund):
+        lauf = self._agent_lauf
+        if lauf is None:
+            return
+        if lauf["art"] in ("ziel", "relativ"):
+            with self._sperre:
+                if self.klick.stand.quelle == "agent":
+                    self.klick.abbrechen(grund)
+        self._agent_ende("abgebrochen", grund)
+
+    def _agent_verbot(self, ab, taste):
+        """Warum ein Fahrbefehl gar nicht erst fährt — oder None."""
+        if self.braucht_freigabe and not self._freigabe:
+            return KEINE_FREIGABE
+        if not agentdatei.befehl_lebt(ab, jetzt=self.jetzt):
+            return f"{AGENT_STILL} (der Befehl kam ohne frisches Lebenszeichen an)"
+        if taste:
+            return "ein Mensch fährt gerade mit den Tasten — warten, bis er loslässt"
+        if self.klick.unterwegs and self.klick.stand.quelle == "tab":
+            return "ein Mensch fährt gerade per Klick — warten, bis die Klickfahrt endet"
+        return None
+
+    def _agent_neu(self, ab, t, taste=False):
+        """Einen neuen Agentenbefehl annehmen; er beendet den alten. True: der Takt ist vorbei
+        (der Folgemodus lief)."""
+        self._agent_nummer = ab.nummer
+        self._agent_abbrechen("vom Agenten angehalten" if ab.art == "stopp" else
+                              f"abgelöst durch den nächsten Befehl ({ab.art})")
+        with self._sperre:
+            self._agent = {"nummer": ab.nummer, "art": ab.art, "zustand": "unterwegs", "grund": "",
+                           "warum": ab.warum, "agent": ab.agent, "seit": t, "tiefe": None}
+            self._tiefe_auftrag = None
+        self._ereignis("agent_befehl", nummer=ab.nummer, befehl=ab.art, werte=ab.werte,
+                       warum=ab.warum, agent=ab.agent)
+        if ab.art in FAHR_ARTEN:
+            verbot = self._agent_verbot(ab, taste)
+            if verbot:
+                self._agent_ende("abgelehnt", verbot)
+                return False
+        arbeit = {"ziel": self._agent_ziel, "relativ": self._agent_relativ,
+                  "drehen": self._agent_drehen, "stoss": self._agent_stoss,
+                  "folgen": self._agent_folgen, "stopp": self._agent_stopp,
+                  "tiefe": self._agent_tiefe, "licht": self._agent_licht,
+                  "piep": self._agent_piep, "suche": self._agent_suche}[ab.art]
+        try:
+            return bool(arbeit(ab, t))
+        except ValueError as fehler:
+            self._agent_ende("abgelehnt", f"{fehler} — Befehl mit gültigen Werten neu schicken")
+            return False
+
+    def _agent_lage(self):
+        lage = self._lage_jetzt()
+        if lage is None:
+            self._agent_ende("abgelehnt", "Spots Lage ist nicht lesbar")
+        return lage
+
+    def _agent_ziel(self, ab, t):
+        self._agent_klickziel(ab, (_zahl(ab.werte, "x"), _zahl(ab.werte, "y")), t)
+
+    def _agent_relativ(self, ab, t):
+        vor, links = _zahl(ab.werte, "vor_m", 0.0), _zahl(ab.werte, "links_m", 0.0)
+        lage = self._agent_lage()
+        if lage is not None:
+            self._agent_klickziel(ab, agentfahrt.relativ_ziel(lage, vor, links), t, lage)
+
+    def _agent_klickziel(self, ab, ziel, t, lage=None):
+        """Ein Ziel der Klickfahrt mit Quelle „agent“: dieselbe Wegsuche, dieselben Schranken."""
+        lage = lage or self._agent_lage()
+        if lage is None:
+            return
+        with self._sperre:
+            self.klick.neues_ziel(ab.nummer, ziel, lage, self.skizze, t, quelle="agent")
+            stand = self.klick.stand
+        if stand.zustand == "abgelehnt":
+            self._agent_ende("abgelehnt", stand.grund)
+        else:
+            self._agent_lauf = {"art": ab.art}
+
+    def _agent_drehen(self, ab, t):
+        grad = _zahl(ab.werte, "grad")
+        lage = self._agent_lage()
+        if lage is not None:
+            self._agent_lauf = {"art": "drehen",
+                                "drehung": agentfahrt.Drehung(lage[2] + math.radians(grad), t)}
+
+    def _agent_stoss(self, ab, t):
+        vx, vy, wz = (_zahl(ab.werte, k, 0.0) for k in ("vx", "vy", "wz"))
+        dauer = _zahl(ab.werte, "dauer_s")
+        lage = self._agent_lage()
+        if lage is None:
+            return
+        vx, vy, wz, dauer, grund = self._stoss_pruefen(vx, vy, wz, dauer, lage, t)
+        if grund:
+            self._agent_ende("abgelehnt", grund)
+        else:
+            self._agent_lauf = {"art": "stoss", "werte": (vx, vy, wz), "ende": t + dauer}
+
+    def _stoss_pruefen(self, vx, vy, wz, dauer, lage, t):
+        gitter, frei, kopf_frei, kopf_grund = self._schranken(t, lage)
+        return agentfahrt.stoss_pruefen(vx, vy, wz, dauer, lage, gitter, frei, kopf_frei,
+                                        kopf_grund, max_v=fahrt.TEMPO_M_S, max_w=fahrt.DREH_RAD_S)
+
+    def _agent_folgen(self, ab, t):
+        ziel = (_zahl(ab.werte, "x"), _zahl(ab.werte, "y"))
+        if not self._suche_kann:
+            self._agent_ende("abgelehnt", KEINE_KAMERAS)
+            return False
+        self._agent_lauf = {"art": "folgen"}
+        self._folge_mensch(ab.nummer, ziel, "agent", self._agent_abloese(ab))
+        self._agent_ende("abgebrochen", self.klick.stand.grund)
+        return True
+
+    def _agent_abloese(self, ab):
+        """Wann das Folgen für den Agenten endet: neuer Befehl, kein Lebenszeichen, ein Klick
+        im Tab, oder die Freigabe ist aus. Den Wechsel der Freigabe schreibt der nächste Takt."""
+        zuletzt = {"ab": ab}
+
+        def abgeloest():
+            neu = agentdatei.lies_befehl(self.lauf_dir) or zuletzt["ab"]
+            zuletzt["ab"] = neu
+            if neu.nummer != ab.nummer:
+                return "ein neuer Befehl des Agenten"
+            if not agentdatei.befehl_lebt(neu, jetzt=self.jetzt):
+                return AGENT_STILL
+            kz = protokoll.lies_klickziel(self.lauf_dir)
+            if kz is not None and kz.nummer != self._klick_nummer:
+                return MENSCH_UEBERNIMMT
+            if self.braucht_freigabe and not agentdatei.freigabe_gilt(self.lauf_dir,
+                                                                      jetzt=self.jetzt):
+                return f"{MENSCH_UEBERNIMMT} — die Freigabe ist aus"
+            return None
+
+        return abgeloest
+
+    def _agent_stopp(self, ab, t):
+        self._agent_ende("erledigt", "Spot steht")
+
+    def _agent_tiefe(self, ab, t):
+        with self._sperre:
+            self._tiefe_auftrag = ab.nummer      # misst der Wahrnehmungsfaden
+
+    def _agent_licht(self, ab, t):
+        farbe = ab.werte.get("farbe")
+        if farbe not in (*LICHTFARBEN, "aus"):
+            raise ValueError(f"farbe muss eine von {[*LICHTFARBEN, 'aus']} sein")
+        self._agent_erledigt(self._licht_setzen(farbe))
+
+    def _agent_piep(self, ab, t):
+        self._agent_erledigt(self._piepen())
+
+    def _agent_suche(self, ab, t):
+        stufe = ab.werte.get("stufe")
+        if stufe not in protokoll.SUCHSTUFEN:
+            raise ValueError(f"stufe muss eine von {list(protokoll.SUCHSTUFEN)} sein")
+        self._suche_setzen(stufe)
+        self._agent_erledigt(None if self._suche_kann else KEINE_KAMERAS)
+
+    def _agent_erledigt(self, grund):
+        if grund:
+            self._agent_ende("abgelehnt", grund)
+        else:
+            self._agent_ende("erledigt")
+
+    def _agent_schritt(self, t, ab):
+        """Ein Takt des laufenden Agentenbefehls. True: Spot fährt in diesem Takt."""
+        lauf = self._agent_lauf
+        if lauf["art"] in ("ziel", "relativ"):
+            with self._sperre:
+                stand = self.klick.stand
+            if stand.quelle != "agent":
+                self._agent_ende("abgebrochen", MENSCH_UEBERNIMMT)
+            elif stand.zustand != "unterwegs":
+                self._agent_ende(stand.zustand if stand.zustand in ENDE_DER_KLICKFAHRT
+                                 else "abgebrochen", stand.grund)
+            return False
+        if not agentdatei.befehl_lebt(ab, jetzt=self.jetzt):
+            self._agent_ende("abgebrochen", AGENT_STILL)
+            return False
+        lage = self._lage_jetzt()
+        if lage is None:
+            self._agent_ende("abgebrochen", "Spots Lage ist nicht lesbar")
+            return False
+        if lauf["art"] == "drehen":
+            wz, zustand, grund = lauf["drehung"].schritt(lage[2], t)
+            if zustand != "unterwegs":
+                self._agent_ende(zustand, grund)
+                return False
+            self.spot.walk(vx=0.0, vy=0.0, wz=wz, stop=False)
+        else:                                    # stoss
+            rest = lauf["ende"] - t
+            if rest <= 0.0:
+                self._agent_ende("angekommen")
+                return False
+            vx, vy, wz = lauf["werte"]
+            *_, grund = self._stoss_pruefen(vx, vy, wz, rest, lage, t)
+            if grund:
+                self._agent_ende("versperrt", grund)
+                return False
+            self.spot.walk(vx=vx, vy=vy, wz=wz, stop=False)
+        self._faehrt = True
+        return True
+
+    def _tiefe_messen(self):
+        """(Ergebnis, None) oder (None, Grund) — die Tiefenkameras vorne, im Körperrahmen.
+        Ohne Tiefenkameras steht dort „nicht messbar“, nie eine Zahl."""
+        try:
+            kann = self.spot.backend.capabilities()
+        except Exception:
+            kann = Capability.NONE
+        if not kann & Capability.DEPTH_CAMERAS:
+            return None, "nicht messbar — dieses Backend hat keine Tiefenkameras (Übungsraum)"
+        wolken, fehler = [], []
+        for name in TIEFE_KAMERAS:
+            try:
+                punkte = self.spot.point_cloud(name, frame="body").points
+                wolken.append(np.asarray(punkte, dtype=float).reshape(-1, 3))
+            except Exception as grund:
+                fehler.append(f"{name}: {grund}")
+        if not wolken:
+            return None, "nicht messbar — " + "; ".join(fehler)
+        return {"sektoren": agentfahrt.tiefe_sektoren(np.vstack(wolken)), "fehler": fehler}, None
+
+    def _tiefe_fertig(self, nummer, ergebnis, grund, kopf):
+        with self._sperre:
+            if self._tiefe_auftrag != nummer:
+                return                           # inzwischen ein anderer Befehl
+            self._tiefe_auftrag = None
+        if ergebnis is None:
+            self._agent_ende("abgelehnt", grund, nummer=nummer)
+        else:
+            tiefe = dict(ergebnis, kopfraum={"frei": bool(kopf[0]), "grund": kopf[1]})
+            self._agent_ende("gemessen", "", nummer=nummer, tiefe=tiefe)
 
     # ------------------------------------------------------------ Folgen per Klick
 
@@ -525,39 +879,55 @@ class Zentrale:
             return
         self._aktion_nummer = aktion["nummer"]
         if aktion["art"] == "licht":
-            self._lichtwunsch = aktion["farbe"]
-            if self._folgt:
-                return                       # die LEDs gehören gerade dem Folgemodus
-            if self._licht is None:
-                self._einmal("licht", "Licht gibt es nur am echten Spot (Dienst audio-visual).")
-                return
-            try:
-                if aktion["farbe"] == "aus":
-                    self._licht.aus()
-                else:
-                    self._licht.setze(LICHTFARBEN.get(aktion["farbe"], "blue"))
-            except Exception as fehler:
-                self._einmal("licht_fehler", f"Das Licht geht nicht ({fehler}) — Spot fährt weiter.")
+            self._licht_setzen(aktion["farbe"])
         elif aktion["art"] == "suche":
-            stufe = aktion.get("stufe")
-            if stufe in protokoll.SUCHSTUFEN:
-                with self._sperre:
-                    self._suchstufe = stufe
-                    if stufe == "aus":
-                        self._menschen = []
-                        self._suche_grund = None
+            if aktion.get("stufe") in protokoll.SUCHSTUFEN:
+                self._suche_setzen(aktion["stufe"])
         elif aktion["art"] == "ton":
-            if not self.faehigkeiten["ton"]:
-                self._einmal("ton", "Ton gibt es nur am echten Spot (Dienst audio-visual).")
-                return
+            self._piepen()
 
-            def piepen():
-                try:
-                    self.spot.beep()
-                except Exception as fehler:
-                    self._einmal("ton_fehler", f"Der Ton geht nicht ({fehler}).")
+    def _licht_setzen(self, farbe):
+        """Die Farbe aus Tab oder Agent. Gibt den Grund zurück, wenn es nicht geht."""
+        self._lichtwunsch = farbe
+        if self._folgt:
+            return None                      # die LEDs gehören gerade dem Folgemodus
+        if self._licht is None:
+            text = "Licht gibt es nur am echten Spot (Dienst audio-visual)."
+            self._einmal("licht", text)
+            return text
+        try:
+            if farbe == "aus":
+                self._licht.aus()
+            else:
+                self._licht.setze(LICHTFARBEN.get(farbe, "blue"))
+        except Exception as fehler:
+            text = f"Das Licht geht nicht ({fehler}) — Spot fährt weiter."
+            self._einmal("licht_fehler", text)
+            return text
+        return None
 
-            self.hintergrund(piepen)
+    def _suche_setzen(self, stufe):
+        with self._sperre:
+            self._suchstufe = stufe
+            if stufe == "aus":
+                self._menschen = []
+                self._suche_grund = None
+
+    def _piepen(self):
+        """Ein Ton im Hintergrund. Gibt den Grund zurück, wenn es keinen gibt."""
+        if not self.faehigkeiten["ton"]:
+            text = "Ton gibt es nur am echten Spot (Dienst audio-visual)."
+            self._einmal("ton", text)
+            return text
+
+        def piepen():
+            try:
+                self.spot.beep()
+            except Exception as fehler:
+                self._einmal("ton_fehler", f"Der Ton geht nicht ({fehler}).")
+
+        self.hintergrund(piepen)
+        return None
 
     # ------------------------------------------------------------ Schleife
 
@@ -649,6 +1019,15 @@ def argumente(argv):
     return runs, uebernehmen, arbeitsordner
 
 
+def freigabe_noetig(lauf_dir):
+    """Braucht der Agent in diesem Lauf die Freigabe eines Menschen? Ja, ausser das Backend
+    steht in `spotlab.OHNE_ROBOTER` -- ein unlesbares `lauf.json` heisst ebenfalls ja."""
+    import spotlab
+    from spotlab.record.read import read_run
+
+    return read_run(lauf_dir, zaehlen=False).backend not in spotlab.OHNE_ROBOTER
+
+
 def _hauptprogramm(argv=None):
     """Das Programm hinter dem Tab — PAKETCODE, siehe oben. Der Lauf landet unter `--runs`."""
     import os
@@ -667,7 +1046,9 @@ def _hauptprogramm(argv=None):
         lauf_dir = spot.recorder.dir
         stopp = lauf_dir / STOPP_DATEI
         karten = Kartenarbeit(spot, arbeitsordner)
-        Zentrale(spot, lauf_dir, kartenarbeit=karten).lauf(laeuft=lambda: not stopp.exists())
+        Zentrale(spot, lauf_dir, kartenarbeit=karten,
+                 braucht_freigabe=freigabe_noetig(lauf_dir)).lauf(
+            laeuft=lambda: not stopp.exists())
         spot.sit()
 
 
