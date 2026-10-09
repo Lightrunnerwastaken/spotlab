@@ -1416,6 +1416,29 @@ Zentrale wie beim Stopp-Knopf.
 
 **Ergebnis** _(offen)_
 
+## A43 — Ein Agent fährt den echten Spot über die Zentrale
+
+**Voraussetzung** A1, A38, A42. Agenten am Spot, Teil 1 (`docs/AGENTEN.md`): ein Agent (Claude
+Code oder Codex über `spotlab mcp`) startet die Zentrale selbst und fährt nur, solange ein Mensch
+im Tab „Fahren“ „🤖 Agent darf fahren“ eingeschaltet hat.
+
+1. Freifläche (mindestens 3 m frei voraus), Aufsicht, Tablet mit Not-Aus in Reichweite, spotlab
+   offen, Spot sitzt, Motoren aus. Der Agent ruft `zentrale_starten("echt")`. Erwartung: der Tab
+   „Fahren“ übernimmt den Lauf, die Zeile sagt „Motoren aus — wartet auf Freigabe“, die Motoren
+   bleiben AUS; ein `drehe(30, …)` des Agenten wird mit „keine Freigabe“ abgelehnt.
+2. „🤖 Agent darf fahren“ einschalten. Erwartung: Spot schaltet die Motoren ein und steht auf;
+   `fahre_zu` auf einen Punkt 2 m voraus antwortet „angekommen“, der Weg erscheint in der
+   Draufsicht, die Zeile zeigt Agent, Befehl und `warum`.
+3. Während einer zweiten Fahrt eine Fahrtaste drücken. Erwartung: Spot hält bzw. folgt der Taste,
+   der Schalter springt aus, der Agentenbefehl endet „abgebrochen: ein Mensch hat übernommen“,
+   der nächste Fahrbefehl des Agenten wird abgelehnt.
+4. Freigabe wieder ein, `fahre_relativ(2, 0, …)` und während der Fahrt den Agentenprozess hart
+   beenden (Task-Manager: den Prozess `spotlab mcp`). Erwartung: Spot hält binnen 0.5 s (Totmann),
+   in `ereignisse.jsonl` steht `agent_ergebnis` mit „kein Lebenszeichen vom Agenten“.
+5. `agent.jsonl` und `agent/` im Lauf ansehen: jeder Aufruf und jedes Bild ist da.
+
+**Ergebnis** _(offen)_
+
 ## Nach der Abnahme
 
 Ergebnisse hier eintragen, Abweichungen als Befund in die Spec zurückspielen, und erst

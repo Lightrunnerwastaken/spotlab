@@ -1308,6 +1308,23 @@ versionsgepinntes Extra `spotlab[sim]`.
   Lease und Not-Aus-Eintrag. Gehangen hatte sie an der Live-Liste: die Zentrale schreibt 8
   Ereignisse je Sekunde, und ohne `setUniformItemSizes` rechnete jedes `scrollToBottom` jede Zeile
   neu (191 ms je Ereignis bei 16 000 Zeilen). Am Gerät: A42.
+  **Agenten am Spot, Teil 1 (09.10.2026): ein Agent fährt den Roboter NUR über die Zentrale, den
+  echten Spot nur mit Freigabe eines Menschen** (Entwurf
+  `docs/superpowers/specs/2026-10-09-agent-faehrt-design.md`, Anleitung `docs/AGENTEN.md`). Der
+  MCP-Server (`mcp/fahren.py`, `mcp/agentlage.py`) hat keinen eigenen Weg zum Roboter: er startet
+  `workshop/zentrale.py` über den einen Startweg (Übungsraum mit `nur_trocken`, echt mit
+  `--auf-freigabe-warten`: verbunden, Motoren AUS bis zur Freigabe) und schreibt
+  `agent_befehl.json` (`record/agent.py`: Nummer, Art, Werte, `warum`, Lebenszeichen). Rangfolge
+  **Taste > Klick > Agent**; Ziele werden Ziele der Klickfahrt (Quelle „agent“, langsam), Drehen
+  und Stösse rechnet `workshop/agentfahrt.py` (Stoss ≤ 2 s, seitwärts/rückwärts ≤ 0.2 m/s nur
+  über gesehenen Boden), Folgen geht an denselben Folgemodus. **Die Freigabe** (`freigabe.json`,
+  schreibt NUR die GUI) gilt nur mit GUI-Puls ≤ 3 s; jede Taste, jeder Klick, Stopp und das Ende
+  des Laufs nehmen sie zurück. **Totmann:** ein Lebenszeichen älter als 0.5 s heisst Stopp; der
+  MCP-Server frischt es nur, solange er lebt. Lesen geht immer. Ein Agent zugleich
+  (`agent_besitz.json`, `lease.lebt`). Aufgezeichnet wird jeder Aufruf (`agent.jsonl`), jedes
+  Bild (`agent/`) und Befehl, Ergebnis und Freigabe als Ereignis (im Ereignis heisst die Art des
+  Befehls `befehl`: `art` ist der Name des Ereignisses). Die GUI erkennt eine vom Agenten
+  gestartete Zentrale am Skript (`agent.ist_zentrale`) und hängt den Tab daran. Am Gerät: A43.
 - **Das Fenstersymbol ist FREIGESTELLT und liegt im Paket** (`gui/spotlab.png`, runde
   Ecken mit Transparenz aussen, dazu `package-data`). Ein Symbol mit eigenem
   Hintergrund sitzt in der Taskleiste in einem grauen Kasten, und ohne den

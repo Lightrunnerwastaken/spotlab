@@ -215,3 +215,72 @@ def test_eine_falsche_zahl_nennt_das_argument(zentrale_mit):
     zentrale_mit(lambda b, s: ("angekommen", ""))
     antwort = fahren.fahre_zu("links", 0.0, warum="hin")
     assert "x muss eine Zahl sein" in antwort["fehler"]
+
+
+# ------------------------------------------------------------ Kette mit dem echten Programm
+
+
+def _arten(lauf):
+    return [json.loads(z)["art"] for z in (lauf / "ereignisse.jsonl").read_text(
+        encoding="utf-8").splitlines()]
+
+
+def test_die_kette_im_2d_uebungsraum_ueber_die_werkzeuge(wurzel, monkeypatch):
+    """zentrale_starten → lage → fahre_relativ → angekommen → stopp → zentrale_beenden, mit
+    dem echten Programm der Zentrale im 2D-Übungsraum „durchgang“ (Start (1, 2), Blick +x)."""
+    monkeypatch.setattr(fahren, "BESTAETIGUNG_S", 10.0)        # ein echter Prozess unter Last
+    monkeypatch.setattr(fahren, "BEFEHL_WARTE_S", 60.0)
+    start = fahren.zentrale_starten("2d", raum="durchgang")
+    assert start.get("gestartet"), start
+    lauf = fahren._zustand["lauf"]
+    try:
+        lage = fahren.lage()
+        assert lage["spot"]["x"] == pytest.approx(1.0, abs=0.2), lage
+        assert lage["freigabe"] == {"noetig": False, "an": False}
+        antwort = fahren.fahre_relativ(1.0, 0.0, warum="ein Stück vor")
+        assert antwort["zustand"] == "angekommen", antwort
+        assert fahren.lage()["spot"]["x"] == pytest.approx(2.0, abs=0.35)
+        assert fahren.stopp()["zustand"] == "erledigt"
+    finally:
+        ende = fahren.zentrale_beenden()
+    assert ende["beendet"], ende
+    arten = _arten(lauf)
+    assert "agent_befehl" in arten and "agent_ergebnis" in arten
+    werkzeuge = [json.loads(z)["werkzeug"] for z in (lauf / "agent.jsonl").read_text(
+        encoding="utf-8").splitlines()]
+    assert werkzeuge == ["zentrale_starten", "lage", "fahre_relativ", "lage", "stopp",
+                         "zentrale_beenden"]
+
+
+def test_echt_wartet_die_zentrale_mit_motoren_aus_auf_die_freigabe(wurzel, monkeypatch):
+    """Der Weg „echt“ mit dem Trockenlauf statt des Roboters: verbunden, Motoren aus, Fahrbefehle
+    abgelehnt -- erst Freigabe und Puls der Oberfläche stellen Spot hin."""
+    from spotlab.record import zentrale as protokoll
+
+    monkeypatch.setattr(fahren, "ECHT_BACKEND", "dryrun")
+    monkeypatch.setattr(fahren, "BESTAETIGUNG_S", 10.0)
+    halt = threading.Event()
+    start = fahren.zentrale_starten("echt")
+    assert start.get("gestartet") and "Motoren AUS" in start["hinweis"], start
+    lauf = fahren._zustand["lauf"]
+
+    def oberflaeche():                       # die GUI: Puls jede halbe Sekunde
+        while not halt.wait(0.5):
+            protokoll.schreibe_gui_puls(lauf)
+
+    faden = threading.Thread(target=oberflaeche, daemon=True)
+    try:
+        assert "wartet auf Freigabe" in fahren.lage()["motoren"]
+        abgelehnt = fahren.drehe(30, warum="umsehen")
+        assert abgelehnt["zustand"] == "abgelehnt" and "Freigabe" in abgelehnt["grund"]
+        protokoll.schreibe_gui_puls(lauf)
+        faden.start()
+        agentdatei.schreibe_freigabe(lauf, True, 1)
+        assert fahren._warte(lambda: "wartet" not in str(fahren.lage().get("motoren")), 20.0)
+        assert fahren.drehe(30, warum="umsehen")["zustand"] != "abgelehnt"
+    finally:
+        halt.set()
+        ende = fahren.zentrale_beenden()
+    assert ende["beendet"], ende
+    arten = _arten(lauf)
+    assert arten.index("power_on") > arten.index("freigabe"), arten

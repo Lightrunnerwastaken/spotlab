@@ -86,8 +86,10 @@ def _ist_laufende_zentrale(lauf):
 def laufende_zentrale(wurzel=None):
     """Das Verzeichnis der laufenden Zentrale — oder None."""
     gemerkt = _zustand["lauf"]
-    if gemerkt is not None and _ist_laufende_zentrale(gemerkt):
-        return gemerkt
+    if gemerkt is not None:
+        if _ist_laufende_zentrale(gemerkt):
+            return gemerkt
+        _zustand["lauf"] = None              # beendet: nicht mehr hineinschreiben
     runs = _beispiel_runs(wurzel or arbeitsordner())
     try:
         kandidaten = sorted((p for p in runs.iterdir() if p.is_dir()), reverse=True)
@@ -250,10 +252,11 @@ def _kurz(wert):
     return text if len(text) <= KURZ_ZEICHEN else text[:KURZ_ZEICHEN] + " …"
 
 
-def _aufzeichnen(name, argumente, antwort):
-    """Eine Zeile nach `<lauf>/agent.jsonl` — wirft nie."""
+def _aufzeichnen(name, argumente, antwort, lauf=None):
+    """Eine Zeile nach `<lauf>/agent.jsonl` — wirft nie. `lauf`: der Lauf, in dem der Aufruf
+    begann (auch `zentrale_beenden` gehört noch in die Aufzeichnung seines Laufs)."""
     try:
-        lauf = _zustand["lauf"] or laufende_zentrale()
+        lauf = _zustand["lauf"] or lauf or laufende_zentrale()
         if lauf is None:
             return
         zeile = {"t": time.time(), "werkzeug": name, "agent": AGENT_NAME,
@@ -274,11 +277,12 @@ def _werkzeug(funktion):
             argumente = dict(signatur.bind(*args, **kwargs).arguments)
         except TypeError:
             argumente = {"args": list(args), **kwargs}
+        vorher = _zustand["lauf"]
         try:
             antwort = funktion(*args, **kwargs)
         except Exception as fehler:
             antwort = {"fehler": _fehlertext(fehler)}
-        _aufzeichnen(funktion.__name__, argumente, antwort)
+        _aufzeichnen(funktion.__name__, argumente, antwort, vorher)
         return antwort
 
     return huelle

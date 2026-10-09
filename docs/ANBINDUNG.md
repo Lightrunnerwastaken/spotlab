@@ -138,6 +138,7 @@ Er braucht **weder GUI noch Roboter**, nur einen eingerichteten Arbeitsordner.
 | `zustand_zusammenfassen(lauf_id)` | Dauer, Strecke, Tempo, Akku, **Abtastlücken** |
 | `karten_auflisten()` · `karte_lesen(name)` | GraphNav-Karten und ihr Grundriss |
 | `spot_pruefen()` | wie `spotlab doctor` |
+| `zentrale_starten` … `stopp` | Spot sehen und fahren über die Steuerzentrale — siehe `docs/AGENTEN.md` |
 
 **Die Lese-Werkzeuge geben keine Massendaten heraus.** `zustand.jsonl` läuft mit 10 Hz —
 fünf Minuten sind 3000 Zeilen, und ein Werkzeug, das die zurückgibt, füllt den Kontext des
@@ -154,7 +155,12 @@ ausschliesslich unter `anbindungen/`.
 
 ## 5 · Was ein Agent nicht darf
 
-**Ein über MCP gestarteter Lauf kommt nie an den Roboter.** Zwei Lagen sorgen dafür:
+**Den Roboter fährt ein Agent nur über die Steuerzentrale** — mit eigenen Werkzeugen
+(`zentrale_starten`, `fahre_zu`, `lage` …), durch die Schranken der Klickfahrt, und am echten
+Spot nur, solange ein Mensch im Tab „Fahren“ „🤖 Agent darf fahren“ eingeschaltet hat. Das
+steht in **`docs/AGENTEN.md`**. Für alles andere gilt:
+
+**Ein über `skript_starten` gestarteter Lauf kommt nie an den Roboter.** Zwei Lagen sorgen dafür:
 
 1. `skript_starten` weigert sich bei `roboter = true`, bevor etwas läuft.
 2. Der Start setzt `SPOTLAB_NUR_TROCKEN=1`, und `spotlab.connect()` liest das als **Verbot**.
@@ -217,5 +223,5 @@ Die Gate-Kriterien liegen in deinem Repo. spotlab misst, du bewertest.
 **Was nicht ableitbar ist, ist `None` — nie 0.** Ein schlank aufgezeichnetes Fenster hat
 keinen Reibwert, und ein erfundener 0.0 würde sich durch jede Auswertung mitteln.
 
-**Was ein Agent nicht darf, gilt auch hier:** ein über MCP gestarteter Lauf läuft im
-Trockenlauf. Eine Messfahrt am echten Spot startet ein Mensch.
+**Was ein Agent nicht darf, gilt auch hier:** ein über `skript_starten` gestarteter Lauf läuft
+im Trockenlauf. Eine Messfahrt am echten Spot startet ein Mensch.
