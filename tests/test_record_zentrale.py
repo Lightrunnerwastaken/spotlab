@@ -159,3 +159,19 @@ def test_die_kartennummern_sind_verschieden_und_nicht_null():
     nummern = {z.KARTE_UNGEPRUEFT, z.KARTE_ERKANNT, z.KARTE_FEHLT,
                z.KARTE_NEU}
     assert len(nummern) == 4 and 0 not in nummern
+
+
+def test_ein_klick_auf_einen_wegpunkt_traegt_dessen_namen(tmp_path):
+    z.schreibe_klickziel(tmp_path, 4, (1.0, 2.0), "langsam", jetzt=lambda: 9.0, art="wegpunkt",
+                         name="Küche")
+    kz = z.lies_klickziel(tmp_path)
+    assert (kz.art, kz.name, kz.ziel, kz.nummer) == ("wegpunkt", "Küche", (1.0, 2.0), 4)
+
+
+def test_ein_altes_klickziel_ohne_namen_bleibt_lesbar(tmp_path):
+    import json
+
+    (tmp_path / z.KLICKZIEL).write_text(json.dumps(
+        {"art": "ort", "nummer": 1, "ziel": [1.0, 1.0], "stufe": "langsam", "lebt": 3.0}),
+        encoding="utf-8")
+    assert z.lies_klickziel(tmp_path).name is None

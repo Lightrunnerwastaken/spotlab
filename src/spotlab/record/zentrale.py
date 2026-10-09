@@ -52,7 +52,7 @@ ZUSTAENDE = ("keine", "unterwegs", "angekommen", "abgelehnt", "versperrt", "abge
 # es geht, dazu Seiten- und Rückkamera.
 SUCHSTUFEN = ("aus", "sparsam", "normal", "rundum")
 # Ein Klick meint einen Ort (Klickfahrt) oder einen Menschen (folgen).
-KLICKARTEN = ("ort", "mensch")
+KLICKARTEN = ("ort", "mensch", "wegpunkt")
 # Die Farbnummern im Bild: 0 unbekannt, 1..ALTERSSTUFEN frei (frisch -> alt),
 # ALTERSSTUFEN+1..2*ALTERSSTUFEN Wand. Die Farben legt die GUI darueber
 # (`gui/lagebild.py`, aus `gui/theme.py`) -- so stimmen sie in hell und dunkel.
@@ -66,10 +66,11 @@ class Klickziel:
     ziel: tuple | None           # (x, y) im Rahmen der Skizze („vision“), None = abbrechen
     stufe: str                   # Tempostufe aus `record/fahrt.STUFEN`
     lebt: float                  # Wanduhr des Tabs beim letzten Auffrischen
-    art: str = "ort"             # "ort" (Klickfahrt) oder "mensch" (folgen)
+    art: str = "ort"             # "ort" (Klickfahrt), "mensch" (folgen), "wegpunkt" (GraphNav)
+    name: str | None = None      # beim Wegpunkt: sein Name (oder seine Kennung)
 
 
-def schreibe_klickziel(lauf_dir, nummer, ziel, stufe, jetzt=time.time, art="ort"):
+def schreibe_klickziel(lauf_dir, nummer, ziel, stufe, jetzt=time.time, art="ort", name=None):
     if art not in KLICKARTEN:
         raise ValueError(f"Klickart {art!r} -- erwartet eine von {list(KLICKARTEN)}.")
     daten = {
@@ -78,8 +79,9 @@ def schreibe_klickziel(lauf_dir, nummer, ziel, stufe, jetzt=time.time, art="ort"
         "ziel": None if ziel is None else [float(ziel[0]), float(ziel[1])],
         "stufe": str(stufe),
         "lebt": float(jetzt()),
+        "name": None if name is None else str(name),
     }
-    return atomar.schreibe_atomar(Path(lauf_dir) / KLICKZIEL, json.dumps(daten))
+    return atomar.schreibe_atomar(Path(lauf_dir) / KLICKZIEL, json.dumps(daten, ensure_ascii=False))
 
 
 def lies_klickziel(lauf_dir):
@@ -91,7 +93,9 @@ def lies_klickziel(lauf_dir):
         art = str(roh.get("art", "ort"))
         if art not in KLICKARTEN:
             return None
-        return Klickziel(int(roh["nummer"]), ziel, str(roh["stufe"]), float(roh["lebt"]), art)
+        name = roh.get("name")
+        return Klickziel(int(roh["nummer"]), ziel, str(roh["stufe"]), float(roh["lebt"]), art,
+                         None if name is None else str(name))
     except _FEHLER:
         return None
 

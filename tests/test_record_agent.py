@@ -51,3 +51,11 @@ def test_der_besitz_nennt_agent_und_prozess(tmp_path):
 
 def test_die_neuen_ereignisse_sind_erlaubt():
     assert {"agent_befehl", "agent_ergebnis", "freigabe"} <= ARTEN
+
+
+@pytest.mark.parametrize("art", ["karte_laden", "aufnahme_start", "aufnahme_stopp",
+                                 "wegpunkt_setzen", "zum_wegpunkt", "merkort_setzen",
+                                 "merkort_loeschen", "zum_merkort"])
+def test_die_kartenbefehle_aus_teil_2(tmp_path, art):
+    a.schreibe_befehl(tmp_path, 7, art, {"name": "Tür"}, "", "claude", jetzt=lambda: 1.0)
+    assert a.lies_befehl(tmp_path).art == art

@@ -22,7 +22,10 @@ BEFEHL = "agent_befehl.json"
 FREIGABE = "freigabe.json"
 BESITZ = "agent_besitz.json"
 ARTEN_BEFEHL = ("ziel", "relativ", "drehen", "stoss", "folgen", "stopp", "tiefe", "licht",
-                "piep", "suche")
+                "piep", "suche",
+                # Teil 2: Karten (am echten Spot) und Merkorte (überall)
+                "karte_laden", "aufnahme_start", "aufnahme_stopp", "wegpunkt_setzen",
+                "zum_wegpunkt", "merkort_setzen", "merkort_loeschen", "zum_merkort")
 # Wie die Klickfahrt: ein Lebenszeichen, das älter ist, heisst Stopp. Der MCP-Server frischt es
 # alle AGENT_PULS_S auf, solange ein Befehl unterwegs ist; stirbt der Agent, endet sein
 # MCP-Prozess, und das Lebenszeichen bleibt aus.
