@@ -109,6 +109,7 @@ KARTEN_WERKZEUG = (
     "In der Draufsicht: grün erkannt, rot neu, gestrichelt fehlt, blass nicht geprüft."
 )
 MENSCH_KLICK_M = 0.5                  # so weit neben einem Menschen gilt ein Klick als seiner
+WEGPUNKT_KLICK_M = 0.5                # ebenso neben einem benannten Wegpunkt der Karte
 AGENT_WERKZEUG = (
     "Erlaubt einem Agenten (Claude, Codex über `spotlab mcp`), den ECHTEN Spot über diese "
     "Zentrale zu fahren — durch dieselben Schranken wie die Klickfahrt. Jede Taste, jeder Klick "
@@ -249,6 +250,7 @@ class FahrenView(QWidget):
         self._klick_nummer = 0
         self._klick_ziel = None
         self._klick_art = "ort"
+        self._klick_name = None          # beim Wegpunkt-Klick sein Name
         self._aktion_nummer = 0
         self._suche_gesendet = None      # (Stufe, Uhr) der zuletzt geschickten Suchstufe
         self._arbeitsordner = None
@@ -864,10 +866,18 @@ class FahrenView(QWidget):
         self._freigabe_zurueck()                 # ein Klick ist eine menschliche Eingabe
         self._klick_nummer += 1
         mensch = self.lagebild.mensch_bei(x, y, MENSCH_KLICK_M)
+        wegpunkt = None if mensch is not None else self.lagebild.wegpunkt_bei(x, y,
+                                                                               WEGPUNKT_KLICK_M)
+        self._klick_name = None
         if mensch is not None:
             self._klick_art = "mensch"
             self._klick_ziel = (float(mensch["x"]), float(mensch["y"]))
             text = "Klick auf einen Menschen — Spot sucht ihn und folgt …"
+        elif wegpunkt is not None:
+            self._klick_art = "wegpunkt"
+            self._klick_ziel = (float(wegpunkt["x"]), float(wegpunkt["y"]))
+            self._klick_name = str(wegpunkt["name"])
+            text = f"Klick auf den Wegpunkt ‹{self._klick_name}› — Spot fährt mit der Karte hin …"
         else:
             self._klick_art = "ort"
             self._klick_ziel = (float(x), float(y))
@@ -880,12 +890,13 @@ class FahrenView(QWidget):
             return
         self._klick_nummer += 1
         self._klick_ziel = None
-        self._klick_art = "ort"
+        self._klick_art, self._klick_name = "ort", None
         self._schreibe_klickziel()
 
     def _schreibe_klickziel(self, jetzt=time.time):
         protokoll.schreibe_klickziel(self._lauf_dir, self._klick_nummer, self._klick_ziel,
-                                     self.tastenfahrt.stufe, jetzt=jetzt, art=self._klick_art)
+                                     self.tastenfahrt.stufe, jetzt=jetzt, art=self._klick_art,
+                                     name=self._klick_name)
 
     def _herzschlag(self, jetzt=time.time):
         """Das Lebenszeichen der Klickfahrt -- nur bei sichtbarem Tab und aktivem Fenster.
@@ -1191,6 +1202,8 @@ def _klick_text(klickfahrt):
         return f"Klickfahrt: {grund}."
     if zustand == "folgt":
         return f"Spot {grund} — eine Taste, ein Klick oder „■ Stopp“ beendet das Folgen."
+    if zustand == "navigiert":
+        return f"Spot {grund} — eine Taste, ein Klick oder „■ Stopp“ hält an."
     if zustand == "abgebrochen":
         if grund.startswith("Folgen beendet"):
             return f"{grund}."

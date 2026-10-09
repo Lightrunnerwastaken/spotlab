@@ -967,3 +967,69 @@ def test_die_agentenzeile_zeigt_wer_was_warum_und_wie_es_steht(qapp, tmp_path):
     _neu_laden(ansicht)
     text = ansicht.agent_zeile.toolTip() or ansicht.agent_zeile.text()
     assert "Motoren aus" in text, text
+
+
+# ------------------------------------------------ Karten durch den Agenten (Teil 2)
+
+
+def _karte_mit_wegpunkt(zustand="verortet"):
+    return {"kann": True, "name": "flur2", "zustand": zustand, "grund": "", "auftrag": 0,
+            "wegpunkte": [{"x": 1.5, "y": 0.6, "name": "Küche"}, {"x": 0.2, "y": 1.0, "name": ""}],
+            "kanten": [[0, 1]], "raster": None, "aufnahme": None, "wiedererkennung": None}
+
+
+def test_ein_klick_neben_einen_benannten_wegpunkt_faehrt_mit_der_karte(qapp, tmp_path):
+    from spotlab.record import zentrale as protokoll
+
+    ansicht = FahrenView()
+    ansicht.lauf_beginnt(tmp_path)
+    _lagebild_schreiben(tmp_path, karte=_karte_mit_wegpunkt())
+    _neu_laden(ansicht)
+    ansicht.lagebild.klick.emit(1.6, 0.65)
+    kz = protokoll.lies_klickziel(tmp_path)
+    assert (kz.art, kz.name, kz.ziel) == ("wegpunkt", "Küche", (1.5, 0.6))
+    assert "Küche" in ansicht.klick_zeile.text()
+    ansicht.lagebild.klick.emit(0.25, 1.0)              # unbenannt: kein Ziel der Karte
+    assert protokoll.lies_klickziel(tmp_path).art == "ort"
+
+
+def test_unverortet_ist_ein_klick_auf_einen_wegpunkt_ein_ort(qapp, tmp_path):
+    from spotlab.record import zentrale as protokoll
+
+    ansicht = FahrenView()
+    ansicht.lauf_beginnt(tmp_path)
+    _lagebild_schreiben(tmp_path, karte=_karte_mit_wegpunkt(zustand="sucht_tag"))
+    _neu_laden(ansicht)
+    ansicht.lagebild.klick.emit(1.6, 0.65)
+    assert protokoll.lies_klickziel(tmp_path).art == "ort"
+
+
+def test_die_zeile_sagt_wenn_spot_mit_der_karte_faehrt(qapp, tmp_path):
+    ansicht = FahrenView()
+    ansicht.lauf_beginnt(tmp_path)
+    _lagebild_schreiben(tmp_path, klickfahrt={"nummer": 1, "zustand": "navigiert",
+                                              "grund": "fährt mit der Karte zum Wegpunkt ‹Küche›",
+                                              "ziel": None, "weg": [], "quelle": "tab"})
+    _neu_laden(ansicht)
+    assert "Küche" in ansicht.klick_zeile.text() and "Taste" in ansicht.klick_zeile.text()
+
+
+def test_merkorte_werden_in_die_draufsicht_gezeichnet(qapp, tmp_path):
+    from PySide6.QtGui import QImage
+
+    ansicht = FahrenView()
+    ansicht.resize(900, 700)
+    ansicht.lauf_beginnt(tmp_path)
+
+    def bild():
+        _neu_laden(ansicht)
+        ansicht.lagebild.resize(400, 400)
+        ziel = QImage(ansicht.lagebild.size(), QImage.Format_ARGB32)
+        ansicht.lagebild.render(ziel)
+        punkt = ansicht.lagebild.welt_zu_schirm(1.2, 0.3)
+        return ziel.pixelColor(int(punkt.x()), int(punkt.y())).name()
+
+    _lagebild_schreiben(tmp_path)
+    ohne = bild()
+    _lagebild_schreiben(tmp_path, merkorte=[{"name": "Tür", "x": 1.2, "y": 0.3}])
+    assert bild() != ohne

@@ -57,6 +57,7 @@ MENSCH_BLASS_ALPHA = 70
 RING_ABSTAND_PX = 5.0
 KARTE_BLASS_ALPHA = 120          # Kartenwand ausserhalb des Blickfelds
 WEGPUNKT_PX = 4.0
+MERKORT_PX = 7               # halbe Diagonale der Raute eines Merkorts
 GLEIT_S = 0.1                    # so lange gleitet der Pfeil zur neuen Lage (ein Zustandstakt)
 GLEIT_TAKT_MS = 16
 
@@ -211,6 +212,25 @@ class Lagebild(QWidget):
         bester = min(menschen, key=weite)
         return bester if weite(bester) <= umkreis else None
 
+    def wegpunkt_bei(self, x, y, umkreis_m):
+        """Der BENANNTE Wegpunkt der verorteten Karte, den ein Klick bei (x, y) meint — oder None.
+
+        Nur verortet: sonst weiss Spot nicht, wo der Wegpunkt von ihm aus liegt. Nur benannte:
+        GraphNav setzt beim Aufnehmen alle paar Meter einen eigenen, und die sind keine Ziele."""
+        karte = (self._daten or {}).get("karte") or {}
+        if karte.get("zustand") != "verortet":
+            return None
+        wegpunkte = [w for w in karte.get("wegpunkte") or [] if w.get("name")]
+        if not wegpunkte:
+            return None
+        umkreis = max(umkreis_m, (WEGPUNKT_PX + RING_ABSTAND_PX) / self.px_je_m)
+
+        def weite(w):
+            return math.hypot(float(w["x"]) - x, float(w["y"]) - y)
+
+        bester = min(wegpunkte, key=weite)
+        return bester if weite(bester) <= umkreis else None
+
     def mitte(self):
         """Die Ansicht folgt wieder Spot."""
         self.folgt = True
@@ -296,6 +316,7 @@ class Lagebild(QWidget):
         self._zeichne_karte(maler, daten)
         self._zeichne_klickfahrt(maler, daten.get("klickfahrt") or {})
         self._zeichne_tags(maler, daten.get("tags") or [])
+        self._zeichne_merkorte(maler, daten.get("merkorte") or [])
         self._zeichne_menschen(maler, daten.get("menschen") or [])
         self._zeichne_spot(maler, self.spot_lage())
         maler.setPen(QPen(QColor(p.rand), 1))
@@ -349,6 +370,22 @@ class Lagebild(QWidget):
             r = 7
             maler.drawLine(QPointF(q.x() - r, q.y() - r), QPointF(q.x() + r, q.y() + r))
             maler.drawLine(QPointF(q.x() - r, q.y() + r), QPointF(q.x() + r, q.y() - r))
+
+    def _zeichne_merkorte(self, maler, merkorte):
+        """Die Merkorte des Agenten (Teil 2): eine Raute mit Namen — der Mensch sieht, was der
+        Agent benannt hat."""
+        p = self._palette
+        for ort in merkorte:
+            q = self.welt_zu_schirm(ort["x"], ort["y"])
+            r = MERKORT_PX
+            maler.setPen(QPen(QColor(p.text), 1))
+            maler.setBrush(QColor(p.warnung))
+            maler.drawPolygon(QPolygonF([QPointF(q.x(), q.y() - r), QPointF(q.x() + r, q.y()),
+                                         QPointF(q.x(), q.y() + r), QPointF(q.x() - r, q.y())]))
+            maler.setPen(QColor(p.text))
+            maler.drawText(QRectF(q.x() + r + 3, q.y() - 9, 120, 18),
+                           Qt.AlignLeft | Qt.AlignVCenter, str(ort.get("name", "")))
+        maler.setBrush(Qt.NoBrush)
 
     def _zeichne_tags(self, maler, tags):
         p = self._palette
