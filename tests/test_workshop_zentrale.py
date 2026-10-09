@@ -281,6 +281,48 @@ def test_ist_die_gui_weg_endet_die_zentrale_von_selbst(tmp_path):
     assert any(json.loads(zeile)["art"] == "gui_weg" for zeile in zeilen)
 
 
+def test_das_echte_programm_setzt_spot_hin_wenn_die_gui_weg_ist(tmp_path):
+    """Die ganze Kette als eigener Prozess im 2D-Übungsraum: ein toter Puls, und das Programm
+    endet selbst -- hält an, setzt Spot hin, baut ab. Ohne GUI und ohne Stopp-Datei."""
+    import json
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    import spotlab
+
+    quelle = str(Path(spotlab.__file__).resolve().parents[1])
+    env = dict(os.environ, SPOTLAB_BACKEND="sim", SPOTLAB_RAUM="durchgang", SPOTLAB_NUR_TROCKEN="1",
+               PYTHONUTF8="1",               # wie der Startweg der GUI (gui/launcher.py)
+               PYTHONPATH=os.pathsep.join([quelle] + [os.environ.get("PYTHONPATH", "")]))
+    prozess = subprocess.Popen(
+        [sys.executable, "-m", "spotlab.workshop.zentrale", "--runs", str(tmp_path)], env=env,
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8",
+        errors="replace")
+    try:
+        lauf = warte_bis(lambda: next((p for p in tmp_path.iterdir() if p.is_dir()), None)
+                         if prozess.poll() is None else "tot", "das Lauf-Verzeichnis")
+        assert lauf != "tot", prozess.communicate()[0][-3000:]
+        warte_bis(lambda: (lauf / protokoll.LAGEBILD).exists() or prozess.poll() is not None,
+                  "das erste Lagebild")
+        assert prozess.poll() is None, prozess.communicate()[0][-3000:]
+        protokoll.schreibe_gui_puls(lauf, jetzt=lambda: time.time() - protokoll.GUI_FRIST_S - 5)
+        ausgabe, _ = prozess.communicate(timeout=TEST_TIMEOUT_S)
+    finally:
+        if prozess.poll() is None:
+            prozess.kill()
+            prozess.communicate()
+    assert prozess.returncode == 0, ausgabe[-3000:]
+    assert "Oberfläche" in ausgabe, ausgabe[-3000:]
+    ereignisse = [json.loads(z) for z in (lauf / "ereignisse.jsonl").read_text(
+        encoding="utf-8").splitlines()]
+    arten = [(e["art"], e["daten"].get("name")) for e in ereignisse]
+    weg = arten.index(("gui_weg", None))
+    assert ("kommando", "sit") in arten[weg:], arten[weg:]
+    assert json.loads((lauf / "lauf.json").read_text(encoding="utf-8"))["ergebnis"] == "ok"
+
+
 @pytest.mark.parametrize("puls_alter", [None, protokoll.GUI_FRIST_S - 1])
 def test_ein_frischer_oder_fehlender_puls_haelt_die_zentrale_nicht_an(tmp_path, puls_alter):
     spot = _Spot()
