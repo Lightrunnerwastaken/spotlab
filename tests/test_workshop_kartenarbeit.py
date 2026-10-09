@@ -352,3 +352,5 @@ def test_gespeichert_als_nennt_den_freien_namen(tmp_path):
     arbeit.auftrag(2, "aufnahme_start", "flur2")
     arbeit.auftrag(3, "aufnahme_stopp", "flur2")
     assert arbeit.gespeichert_als == "flur2-2"
+    arbeit.auftrag(4, "aufnahme_start", "flur3")
+    assert arbeit.gespeichert_als is None, "sonst nennte ein gescheitertes Speichern den alten Namen"

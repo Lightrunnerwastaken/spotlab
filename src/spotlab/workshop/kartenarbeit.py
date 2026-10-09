@@ -13,8 +13,9 @@ Aufträge kommen aus `kartenauftrag.json` (`record/zentrale.py`), jede Nummer ei
 ist die zuletzt angenommene Nummer DES TABS — das Lagebild meldet sie, damit der Tab einen
 verlorenen Auftrag nachschicken kann. Der Agent (Agenten am Spot, Teil 2) gibt Aufträge mit
 `quelle="agent"` und eigener Zählung: der Tab vergleicht `erledigt` als Zahl mit seiner eigenen,
-eine Nummer des Agenten dort liesse ihn einen alten Auftrag nachschicken. `beobachte(t)` läuft im Wahrnehmungsfaden: Verortung, das Urteil des
-Roboters über `FENSTER_S`, der Stand der Aufnahme, ein neuer Verortungsversuch alle `VERSUCH_S`.
+eine Nummer des Agenten dort liesse ihn einen alten Auftrag nachschicken. `beobachte(t)` läuft im
+Wahrnehmungsfaden: Verortung, das Urteil des Roboters über `FENSTER_S`, der Stand der Aufnahme,
+ein neuer Verortungsversuch alle `VERSUCH_S`.
 
 **Aufnehmen:** verortet in einer geladenen Karte → WEITERFÜHREN (die neuen Wegpunkte hängen an
 der alten Karte); sonst NEU (die Karte auf dem Roboter wird geleert). Gespeichert wird immer
@@ -290,6 +291,7 @@ class Kartenarbeit:
             self._sitzung, self.weiter = sitzung, weiter
             self._aufnahme_name = name or namensvorschlag()
             self._ziel_name, self._aufnahme_stand, self._wegpunkte_gesetzt = None, (0, 0), 0
+            self.gespeichert_als = None          # gilt für die Aufnahme, die gespeichert wurde
             if not weiter:          # die Karte auf dem Roboter ist leer: nichts mehr einblenden
                 self.name, self.waende, self._trafo, self._verortung = None, None, None, None
                 self._karte = None
