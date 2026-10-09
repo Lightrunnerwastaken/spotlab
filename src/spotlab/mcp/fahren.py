@@ -172,8 +172,12 @@ class _Puls:
         self._faden = threading.Thread(target=self._lauf, daemon=True, name="agent-puls")
         self._faden.start()
 
-    def halt(self):
+    def halt(self, warte_s=1.0):
+        """Anhalten und warten, bis der Faden still ist -- sonst schriebe er seinen Befehl
+        womöglich noch einmal über den nächsten."""
         self._halt.set()
+        if self._faden is not threading.current_thread():
+            self._faden.join(warte_s)
 
     @property
     def laeuft(self):
@@ -207,6 +211,7 @@ def _befehl(art, werte, warum, warte_s, beanspruchen=True):
     if beanspruchen:
         _beanspruche(lauf)
     nummer = _naechste_nummer(lauf)
+    _neuer_puls(None)                    # erst den alten Puls still, dann der neue Befehl
     agentdatei.schreibe_befehl(lauf, nummer, art, werte, warum, AGENT_NAME)
     puls = _Puls(lauf, nummer, art, werte, warum)
     _neuer_puls(puls)

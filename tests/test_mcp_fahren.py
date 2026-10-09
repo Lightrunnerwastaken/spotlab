@@ -284,3 +284,23 @@ def test_echt_wartet_die_zentrale_mit_motoren_aus_auf_die_freigabe(wurzel, monke
     assert ende["beendet"], ende
     arten = _arten(lauf)
     assert arten.index("power_on") > arten.index("freigabe"), arten
+
+
+def test_der_alte_puls_ist_still_bevor_der_neue_befehl_geschrieben_wird(zentrale_mit, monkeypatch):
+    """Sonst schreibt der Puls des alten Befehls ihn noch einmal über den neuen -- ein stopp()
+    käme bis zu einem Pulstakt zu spät."""
+    zentrale_mit(lambda b, s: ("unterwegs", ""))
+    monkeypatch.setattr(fahren, "BEFEHL_WARTE_S", 0.1)
+    assert fahren.drehe(90, warum="links schauen")["zustand"] == "läuft noch"
+    alt = fahren._zustand["puls"]
+    assert alt.laeuft
+    echt = agentdatei.schreibe_befehl
+    puls_lief = {}
+
+    def spion(lauf, nummer, *rest, **kw):
+        puls_lief.setdefault(nummer, alt.laeuft)
+        return echt(lauf, nummer, *rest, **kw)
+
+    monkeypatch.setattr(agentdatei, "schreibe_befehl", spion)
+    fahren.drehe(-90, warum="rechts schauen")
+    assert puls_lief[alt.nummer + 1] is False
