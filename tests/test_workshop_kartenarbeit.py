@@ -290,3 +290,65 @@ def test_der_abgleich_nimmt_die_waende_in_die_skizze(tmp_path):
     s.zeit = np.full((200, 200), uhr["t"])
     a = arbeit.abgleiche(s, (10.0, 20.0), uhr["t"])
     assert a is not None and a.fehlt == 1, "die eine Kartenwand bei (10, 21) sieht Spot frei"
+
+
+# ------------------------------------------------------------ Zwei Auftraggeber (Agenten, Teil 2)
+
+
+def test_tab_und_agent_zaehlen_getrennt(tmp_path):
+    arbeit, backend, _ = _geladen(tmp_path)              # Tab-Auftrag 1: laden
+    assert arbeit.auftrag(1, "aufnahme_start", "neu", quelle="agent") is None
+    assert ("start", False) in backend.protokoll, "Agent 1 ist ein anderer Auftrag als Tab 1"
+    arbeit.auftrag(2, "wegpunkt", "Tür", quelle="agent")
+    assert ("wegpunkt", "Tür") in backend.protokoll
+    assert arbeit.erledigt == 1, "der Tab sieht nur seine eigenen Nummern"
+
+
+def test_eine_ablehnung_gibt_den_grund_zurueck(tmp_path):
+    arbeit, _, _ = _arbeit(tmp_path)
+    grund = arbeit.auftrag(1, "wegpunkt", "Tür", quelle="agent")
+    assert grund and "Aufnahme" in grund
+    ohne, _, _ = _arbeit(tmp_path / "ohne", backend=_Backend(kann=False))
+    assert "GraphNav" in ohne.auftrag(1, "laden", "flur2", quelle="agent")
+
+
+def test_arbeitet_sagt_ob_spot_beschaeftigt_ist(tmp_path):
+    wartend = []
+    arbeit, _, _ = _arbeit(tmp_path, ausfuehren=wartend.append)
+    assert not arbeit.arbeitet
+    arbeit.auftrag(1, "laden", "flur2", quelle="agent")
+    assert arbeit.arbeitet
+    wartend.pop()()
+    assert not arbeit.arbeitet
+
+
+def test_die_navigationskarte_nur_geladen_verortet_und_ohne_aufnahme(tmp_path):
+    from spotlab.errors import SpotlabError
+
+    arbeit, _, _ = _arbeit(tmp_path)
+    with pytest.raises(SpotlabError, match="karte_laden"):
+        arbeit.navigationskarte()
+    arbeit.auftrag(1, "laden", "flur2")
+    karte = arbeit.navigationskarte()
+    assert karte.name == "flur2" and karte.dir.name == "flur2"
+    arbeit.auftrag(2, "aufnahme_start", "neu")
+    with pytest.raises(SpotlabError, match="aufnahme_beenden"):
+        arbeit.navigationskarte()
+
+
+def test_unverortet_gibt_es_keine_navigation(tmp_path):
+    from spotlab.errors import SpotlabError
+
+    arbeit, _, _ = _arbeit(tmp_path, backend=_Backend(localize_fehler=1))
+    arbeit.auftrag(1, "laden", "flur2")
+    assert arbeit.zustand == "sucht_tag"
+    with pytest.raises(SpotlabError, match="Tag"):
+        arbeit.navigationskarte()
+
+
+def test_gespeichert_als_nennt_den_freien_namen(tmp_path):
+    arbeit, _, _ = _geladen(tmp_path)
+    assert arbeit.gespeichert_als is None
+    arbeit.auftrag(2, "aufnahme_start", "flur2")
+    arbeit.auftrag(3, "aufnahme_stopp", "flur2")
+    assert arbeit.gespeichert_als == "flur2-2"

@@ -10,8 +10,10 @@ EINEM eigenen Faden, eine Arbeit zugleich; ein Auftrag währenddessen wird mit G
 Der Fahrtakt wartet nie darauf, und die Karte gibt keine Fahrt frei.
 
 Aufträge kommen aus `kartenauftrag.json` (`record/zentrale.py`), jede Nummer einmal; `erledigt`
-ist die zuletzt angenommene Nummer — das Lagebild meldet sie, damit der Tab einen verlorenen
-Auftrag nachschicken kann. `beobachte(t)` läuft im Wahrnehmungsfaden: Verortung, das Urteil des
+ist die zuletzt angenommene Nummer DES TABS — das Lagebild meldet sie, damit der Tab einen
+verlorenen Auftrag nachschicken kann. Der Agent (Agenten am Spot, Teil 2) gibt Aufträge mit
+`quelle="agent"` und eigener Zählung: der Tab vergleicht `erledigt` als Zahl mit seiner eigenen,
+eine Nummer des Agenten dort liesse ihn einen alten Auftrag nachschicken. `beobachte(t)` läuft im Wahrnehmungsfaden: Verortung, das Urteil des
 Roboters über `FENSTER_S`, der Stand der Aufnahme, ein neuer Verortungsversuch alle `VERSUCH_S`.
 
 **Aufnehmen:** verortet in einer geladenen Karte → WEITERFÜHREN (die neuen Wegpunkte hängen an
@@ -57,6 +59,17 @@ def namensvorschlag(jetzt=None):
     return f"karte-{(jetzt or datetime.now()):%Y-%m-%d-%H%M}"
 
 
+def _navigationskarte(ordner):
+    """`api.navigation.Map` aus dem Kartenordner — oder None, wenn der Graph nicht lesbar ist."""
+    from spotlab.api.navigation import Map
+    from spotlab.maps import store
+
+    try:
+        return Map(name=Path(ordner).name, dir=Path(ordner), graph=store.lade_graph(ordner))
+    except Exception:
+        return None
+
+
 class Kartenarbeit:
     def __init__(self, spot, arbeitsordner, jetzt=time.time, melde=print, sitzung_bauen=None,
                  ausfuehren=None, waende_laden=None):
@@ -75,7 +88,9 @@ class Kartenarbeit:
         self.name = None
         self.grund = ""
         self.erledigt = None
-        self._nummer = None
+        self._nummern = {}           # je Auftraggeber die zuletzt angenommene Nummer
+        self._karte = None           # `api.navigation.Map` der geladenen Karte, für die Navigation
+        self.gespeichert_als = None  # Name nach dem letzten erfolgreichen Speichern
         self.waende = None
         self.weiter = False
         self._trafo = None
@@ -99,43 +114,74 @@ class Kartenarbeit:
 
     # ------------------------------------------------------------ Aufträge
 
-    def auftrag(self, nummer, was, name=None):
-        """Einen Auftrag annehmen (je Nummer einmal) oder mit Grund ablehnen."""
-        if nummer == self._nummer:
-            return
-        self._nummer = nummer
-        self.erledigt = nummer
+    def auftrag(self, nummer, was, name=None, quelle="tab"):
+        """Einen Auftrag annehmen (je Auftraggeber und Nummer einmal) oder mit Grund ablehnen.
+
+        Gibt den Grund einer Ablehnung zurück (er steht auch in `grund`), sonst None."""
+        if self._nummern.get(quelle) == nummer:
+            return None
+        self._nummern[quelle] = nummer
+        if quelle == "tab":
+            self.erledigt = nummer
+        grund = self._annehmen(was, name)
+        if grund:
+            self.grund = grund
+        return grund
+
+    def _annehmen(self, was, name):
         if not self.kann:
-            self.grund = KEIN_GRAPHNAV
-            return
+            return KEIN_GRAPHNAV
         if self._arbeitet:
-            self.grund = (f"Spot ist noch beschäftigt ({self._taetigkeit}) — bitte warten und "
-                          f"nochmal klicken.")
-            return
+            return (f"Spot ist noch beschäftigt ({self._taetigkeit}) — bitte warten und "
+                    f"nochmal klicken.")
         z = self.zustand
         if was == "laden":
             if z in AUFNAHME_ZUSTAENDE:
-                self.grund = ("Während einer Aufnahme lädt Spot keine andere Karte — erst "
-                              "„■ Aufnahme beenden“.")
-            elif not name:
-                self.grund = "Keine Karte gewählt."
-            else:
-                self._starte(lambda: self._laden(name), "Karte laden")
+                return ("Während einer Aufnahme lädt Spot keine andere Karte — erst "
+                        "„■ Aufnahme beenden“.")
+            if not name:
+                return "Keine Karte gewählt."
+            self._starte(lambda: self._laden(name), "Karte laden")
         elif was == "aufnahme_start":
             if z in AUFNAHME_ZUSTAENDE:
-                self.grund = "Es läuft schon eine Aufnahme."
-            else:
-                self._starte(lambda: self._aufnahme_start(name), "Aufnahme starten")
+                return "Es läuft schon eine Aufnahme."
+            self._starte(lambda: self._aufnahme_start(name), "Aufnahme starten")
         elif was == "aufnahme_stopp":
             if z not in ("nimmt_auf", "nicht_gespeichert"):
-                self.grund = "Es läuft keine Aufnahme."
-            else:
-                self._starte(lambda: self._stoppen(name), "Karte speichern")
+                return "Es läuft keine Aufnahme."
+            self._starte(lambda: self._stoppen(name), "Karte speichern")
         elif was == "wegpunkt":
             if z != "nimmt_auf":
-                self.grund = "Wegpunkte gibt es nur während einer Aufnahme."
-            else:
-                self._starte(lambda: self._wegpunkt(name), "Wegpunkt setzen")
+                return "Wegpunkte gibt es nur während einer Aufnahme."
+            self._starte(lambda: self._wegpunkt(name), "Wegpunkt setzen")
+        else:
+            return f"Unbekannter Kartenauftrag {was!r}."
+        return None
+
+    @property
+    def arbeitet(self):
+        """Läuft gerade eine Arbeit (laden, Aufnahme starten/beenden, Wegpunkt)?"""
+        return self._arbeitet
+
+    def navigationskarte(self):
+        """Die geladene Karte für `api.navigation.navigate_to` — nur geladen, verortet, ohne
+        Aufnahme und ohne laufende Arbeit; sonst `SpotlabError` mit dem, was zu tun ist."""
+        from spotlab.errors import SpotlabError
+
+        with self._sperre:
+            zustand, karte = self.zustand, self._karte
+        if zustand in AUFNAHME_ZUSTAENDE:
+            raise SpotlabError("Während einer Aufnahme fährt Spot keine Wegpunkte an — erst "
+                               "`aufnahme_beenden`.")
+        if karte is None:
+            raise SpotlabError("Keine Karte geladen — erst `karte_laden` (Karten gibt es nur am "
+                               "echten Spot).")
+        if self._arbeitet:
+            raise SpotlabError(f"Spot ist noch beschäftigt ({self._taetigkeit}) — kurz warten.")
+        if zustand != "verortet":
+            raise SpotlabError(f"Nicht verortet ({zustand}) — einen Tag der Karte ins Bild "
+                               f"drehen, dann `karte_laden` erneut.")
+        return karte
 
     def _starte(self, arbeit, taetigkeit):
         self._arbeitet, self._taetigkeit = True, taetigkeit
@@ -173,10 +219,11 @@ class Kartenarbeit:
             waende = self._waende_laden(ordner)
         except Exception as fehler:
             self._setze(zustand="keine", name=None, waende=None, _trafo=None, _verortung=None,
-                        grund=f"Laden gescheitert: {fehler}")
+                        _karte=None, grund=f"Laden gescheitert: {fehler}")
             return
+        karte = _navigationskarte(ordner)
         with self._sperre:
-            self.name, self.waende = ordner.name, waende
+            self.name, self.waende, self._karte = ordner.name, waende, karte
             self._trafo, self._verortung = None, None
             self._zaehler.clear()
         self._verorten()
@@ -245,6 +292,7 @@ class Kartenarbeit:
             self._ziel_name, self._aufnahme_stand, self._wegpunkte_gesetzt = None, (0, 0), 0
             if not weiter:          # die Karte auf dem Roboter ist leer: nichts mehr einblenden
                 self.name, self.waende, self._trafo, self._verortung = None, None, None, None
+                self._karte = None
             self.zustand = "nimmt_auf"
             self.grund = ""
         self.melde(f"Kartenaufnahme läuft ({'weitergeführt' if weiter else 'neu'}): "
@@ -286,9 +334,11 @@ class Kartenarbeit:
             v = self.spot.backend.verortung()
         except Exception:
             v = None
+        karte = _navigationskarte(ordner)
         with self._sperre:
             self._sitzung = None
             self.name, self.waende, self.weiter = ordner.name, waende, False
+            self._karte, self.gespeichert_als = karte, ordner.name
             self._trafo, self._verortung = None, None
             self._zaehler.clear()
             self.zustand = "verortet" if v is not None else "sucht_tag"
