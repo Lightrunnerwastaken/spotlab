@@ -80,6 +80,8 @@ from spotlab.workshop import (
     klickfolgen,
     menschensuche,
 )
+from spotlab.workshop import kartenarbeit as kartenarbeitmodul
+from spotlab.workshop import merkorte as merkortemodul
 from spotlab.workshop import skizze as skizzenmodul
 
 SKRIPT = Path(__file__)
@@ -97,7 +99,13 @@ GLEICH_M = 1.0             # ein neuer Fund so nah an einem alten ist derselbe M
 START_FRIST_S = 5.0        # so lange sucht der Folgemodus den Angeklickten, dann gibt er auf
 KEINE_KAMERAS = ("Keine Bild- und Tiefenkameras (Übungsraum) — Menschen sucht nur der "
                  "echte Spot.")
-FAHR_ARTEN = ("ziel", "relativ", "drehen", "stoss", "folgen")   # brauchen am echten Spot Freigabe
+FAHR_ARTEN = ("ziel", "relativ", "drehen", "stoss", "folgen",   # brauchen am echten Spot Freigabe
+              "zum_wegpunkt", "zum_merkort")
+KLICK_ARTEN_AGENT = ("ziel", "relativ", "zum_merkort")        # werden Ziele der Klickfahrt
+KARTEN_AUFTRAEGE = {"karte_laden": "laden", "aufnahme_start": "aufnahme_start",
+                    "aufnahme_stopp": "aufnahme_stopp", "wegpunkt_setzen": "wegpunkt"}
+KEINE_KARTEN = ("Karten gibt es nur am echten Spot (GraphNav) — im Übungsraum `merkort_setzen` "
+                "und `zum_merkort`.")
 KEINE_FREIGABE = ("keine Freigabe — ein Mensch muss im Tab „Fahren“ „🤖 Agent darf fahren“ "
                   "einschalten")
 MENSCH_UEBERNIMMT = "ein Mensch hat übernommen"
@@ -158,8 +166,10 @@ class Zentrale:
     def __init__(self, spot, lauf_dir, jetzt=time.time, melde=print, licht=None,
                  hintergrund=_im_hintergrund, suche=None, folgen_mit=None,
                  koerper_finder=None, kartenarbeit=None, braucht_freigabe=False,
-                 warte_auf_freigabe=False):
+                 warte_auf_freigabe=False, merkorte=None):
         self.spot = spot
+        # Teil 2: die Merkorte des Agenten — im Übungsraum mit Datei (`merkorte_fuer`).
+        self._merkorte = merkorte if merkorte is not None else merkortemodul.Merkorte()
         self.braucht_freigabe = bool(braucht_freigabe)   # True am echten Spot
         # Vom Agenten gestartet (`--auf-freigabe-warten`): Motoren aus, bis die Freigabe kommt.
         self._wartet = bool(warte_auf_freigabe)
@@ -340,6 +350,7 @@ class Zentrale:
             "agent": dict(self._agent, freigabe=self._freigabe,
                           braucht_freigabe=self.braucht_freigabe),
             "motoren": "aus — wartet auf Freigabe" if self._wartet else None,
+            "merkorte": self._merkorte.als_daten(),
             "kopfraum": {"frei": bool(self._kopf[0]), "grund": self._kopf[1],
                          "alter_s": (None if self._kopf_t is None
                                      else round(max(0.0, t - self._kopf_t), 2))},
@@ -578,11 +589,19 @@ class Zentrale:
         self._ereignis("agent_ergebnis", nummer=nummer, befehl=art, zustand=zustand, grund=grund,
                        dauer_s=dauer)
 
-    def _agent_abbrechen(self, grund):
+    def _agent_abbrechen(self, grund, auch_karte=False):
+        """Den laufenden Agentenbefehl beenden. Eine Kartenarbeit ist keine Fahrt: eine Taste,
+        ein Klick oder die Freigabe beenden sie nicht, nur ein neuer Befehl des Agenten (und auch
+        dann arbeitet die Kartenarbeit weiter — sie lässt sich nicht anhalten)."""
         lauf = self._agent_lauf
         if lauf is None:
             return
-        if lauf["art"] in ("ziel", "relativ"):
+        if lauf["art"] == "karte":
+            if auch_karte:
+                self._agent_ende("abgebrochen", f"{grund} — die Kartenarbeit läuft im Hintergrund "
+                                                f"weiter")
+            return
+        if lauf["art"] in KLICK_ARTEN_AGENT:
             with self._sperre:
                 if self.klick.stand.quelle == "agent":
                     self.klick.abbrechen(grund)
@@ -607,7 +626,7 @@ class Zentrale:
         (der Folgemodus lief)."""
         self._agent_nummer = ab.nummer
         self._agent_abbrechen("vom Agenten angehalten" if ab.art == "stopp" else
-                              f"abgelöst durch den nächsten Befehl ({ab.art})")
+                              f"abgelöst durch den nächsten Befehl ({ab.art})", auch_karte=True)
         with self._sperre:
             self._agent = {"nummer": ab.nummer, "art": ab.art, "zustand": "unterwegs", "grund": "",
                            "warum": ab.warum, "agent": ab.agent, "seit": t, "tiefe": None}
@@ -623,7 +642,12 @@ class Zentrale:
                   "drehen": self._agent_drehen, "stoss": self._agent_stoss,
                   "folgen": self._agent_folgen, "stopp": self._agent_stopp,
                   "tiefe": self._agent_tiefe, "licht": self._agent_licht,
-                  "piep": self._agent_piep, "suche": self._agent_suche}[ab.art]
+                  "piep": self._agent_piep, "suche": self._agent_suche,
+                  "karte_laden": self._agent_karte, "aufnahme_start": self._agent_karte,
+                  "aufnahme_stopp": self._agent_karte, "wegpunkt_setzen": self._agent_karte,
+                  "merkort_setzen": self._agent_merkort_setzen,
+                  "merkort_loeschen": self._agent_merkort_loeschen,
+                  "zum_merkort": self._agent_zum_merkort}[ab.art]
         try:
             return bool(arbeit(ab, t))
         except ValueError as fehler:
@@ -645,13 +669,14 @@ class Zentrale:
         if lage is not None:
             self._agent_klickziel(ab, agentfahrt.relativ_ziel(lage, vor, links), t, lage)
 
-    def _agent_klickziel(self, ab, ziel, t, lage=None):
+    def _agent_klickziel(self, ab, ziel, t, lage=None, max_weite_m=klickfahrt.MAX_WEITE_M):
         """Ein Ziel der Klickfahrt mit Quelle „agent“: dieselbe Wegsuche, dieselben Schranken."""
         lage = lage or self._agent_lage()
         if lage is None:
             return
         with self._sperre:
-            self.klick.neues_ziel(ab.nummer, ziel, lage, self.skizze, t, quelle="agent")
+            self.klick.neues_ziel(ab.nummer, ziel, lage, self.skizze, t, quelle="agent",
+                                  max_weite_m=max_weite_m)
             stand = self.klick.stand
         if stand.zustand == "abgelehnt":
             self._agent_ende("abgelehnt", stand.grund)
@@ -737,6 +762,67 @@ class Zentrale:
         self._suche_setzen(stufe)
         self._agent_erledigt(None if self._suche_kann else KEINE_KAMERAS)
 
+    def _agent_karte(self, ab, t):
+        """Ein Kartenauftrag an dieselbe Kartenarbeit wie die des Tabs, mit eigener Zählung."""
+        if self._karten is None or not self._karten.kann:
+            self._agent_ende("abgelehnt", KEINE_KARTEN)
+            return
+        was = KARTEN_AUFTRAEGE[ab.art]
+        name = str(ab.werte.get("name") or "").strip() or None
+        if was == "laden" and name is None:
+            raise ValueError("name fehlt — welche Karte? (karten_auflisten)")
+        grund = self._karten.auftrag(ab.nummer, was, name, quelle="agent")
+        if grund:
+            self._agent_ende("abgelehnt", grund)
+        else:
+            self._agent_lauf = {"art": "karte", "was": was}
+
+    def _karte_fertig(self, lauf):
+        """Der Kartenauftrag des Agenten ist fertig: erledigt oder abgebrochen, mit dem Stand."""
+        k = self._karten
+        erfolg = {"laden": k.zustand in ("verortet", "sucht_tag"),
+                  "aufnahme_start": k.zustand == "nimmt_auf",
+                  "aufnahme_stopp": k.zustand not in kartenarbeitmodul.AUFNAHME_ZUSTAENDE,
+                  "wegpunkt": str(k.grund).startswith("Wegpunkt ‹")}[lauf["was"]]
+        karte = {"zustand": k.zustand, "name": k.name, "grund": k.grund,
+                 "gespeichert_als": k.gespeichert_als}
+        self._agent_ende("erledigt" if erfolg else "abgebrochen", k.grund, karte=karte)
+
+    def _agent_merkort_setzen(self, ab, t):
+        if "x" in ab.werte or "y" in ab.werte:
+            x, y = _zahl(ab.werte, "x"), _zahl(ab.werte, "y")
+        else:
+            lage = self._agent_lage()
+            if lage is None:
+                return
+            x, y = lage[0], lage[1]
+        with self._sperre:
+            name = self._merkorte.setze(ab.werte.get("name"), x, y)
+        self._agent_ende("erledigt", f"Merkort ‹{name}› bei ({x:.2f}, {y:.2f})")
+
+    def _agent_merkort_loeschen(self, ab, t):
+        name = str(ab.werte.get("name") or "").strip()
+        with self._sperre:
+            weg = self._merkorte.loesche(name)
+        if weg:
+            self._agent_ende("erledigt", f"Merkort ‹{name}› gelöscht")
+        else:
+            self._agent_ende("abgelehnt", self._unbekannter_merkort(name))
+
+    def _agent_zum_merkort(self, ab, t):
+        name = str(ab.werte.get("name") or "").strip()
+        with self._sperre:
+            ort = self._merkorte.hole(name)
+        if ort is None:
+            self._agent_ende("abgelehnt", self._unbekannter_merkort(name))
+            return
+        self._agent_klickziel(ab, ort, t, max_weite_m=None)
+
+    def _unbekannter_merkort(self, name):
+        with self._sperre:
+            vorhanden = ", ".join(self._merkorte.namen()) or "keine"
+        return f"Merkort ‹{name}› gibt es nicht — vorhanden: {vorhanden}"
+
     def _agent_erledigt(self, grund):
         if grund:
             self._agent_ende("abgelehnt", grund)
@@ -746,7 +832,11 @@ class Zentrale:
     def _agent_schritt(self, t, ab):
         """Ein Takt des laufenden Agentenbefehls. True: Spot fährt in diesem Takt."""
         lauf = self._agent_lauf
-        if lauf["art"] in ("ziel", "relativ"):
+        if lauf["art"] == "karte":               # kein Lebenszeichen nötig: Spot fährt nicht
+            if not self._karten.arbeitet:
+                self._karte_fertig(lauf)
+            return False
+        if lauf["art"] in KLICK_ARTEN_AGENT:
             with self._sperre:
                 stand = self.klick.stand
             if stand.quelle != "agent":
@@ -1073,6 +1163,35 @@ def argumente(argv):
     return runs, uebernehmen, arbeitsordner, warten
 
 
+def merkorte_fuer(lauf_dir, arbeitsordner, raum):
+    """Die Merkorte dieses Laufs: im Übungsraum mit Datei neben dem Raum im Arbeitsordner (sie
+    bleiben für den nächsten Lauf), am echten Spot nur im Speicher — dort setzt sich der Rahmen
+    „vision“ bei jedem Start neu."""
+    import spotlab
+    from spotlab.record.read import read_run
+
+    uebung = read_run(lauf_dir, zaehlen=False).backend in spotlab.OHNE_ROBOTER
+    if uebung and arbeitsordner and raum:
+        return merkortemodul.Merkorte(merkortemodul.pfad_fuer(arbeitsordner, raum))
+    return merkortemodul.Merkorte()
+
+
+def _raum_des_laufs():
+    """Der Name des Übungsraums wie in `spotlab.connect`: Umgebung, sonst Konfiguration."""
+    import os
+
+    from spotlab import ENV_RAUM
+
+    if os.environ.get(ENV_RAUM):
+        return os.environ[ENV_RAUM]
+    try:
+        from spotlab.config import load_config
+
+        return load_config().raum or None
+    except Exception:
+        return None
+
+
 def freigabe_noetig(lauf_dir):
     """Braucht der Agent in diesem Lauf die Freigabe eines Menschen? Ja, ausser das Backend
     steht in `spotlab.OHNE_ROBOTER` -- ein unlesbares `lauf.json` heisst ebenfalls ja."""
@@ -1106,7 +1225,8 @@ def _hauptprogramm(argv=None):
         karten = Kartenarbeit(spot, arbeitsordner)
         zentrale = Zentrale(spot, lauf_dir, kartenarbeit=karten,
                             braucht_freigabe=warten or freigabe_noetig(lauf_dir),
-                            warte_auf_freigabe=warten)
+                            warte_auf_freigabe=warten,
+                            merkorte=merkorte_fuer(lauf_dir, arbeitsordner, _raum_des_laufs()))
         zentrale.lauf(laeuft=lambda: not stopp.exists())
         if not zentrale.wartet:
             spot.sit()

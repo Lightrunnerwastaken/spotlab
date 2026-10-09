@@ -479,3 +479,137 @@ def test_das_lagebild_traegt_den_kopfraum_fuer_den_agenten(tmp_path):
     z.wahrnehmen()
     kopf = protokoll.lies_lagebild(tmp_path)["kopfraum"]
     assert kopf["frei"] is False and "Überhang" in kopf["grund"] and kopf["alter_s"] == 0.5
+
+
+# ------------------------------------------------------------ Karten und Merkorte (Teil 2)
+
+
+class _Kartenarbeit:
+    """Eine Kartenarbeit-Attrappe mit Auftraggebern: ein Auftrag läuft, bis `fertig()` kommt."""
+
+    def __init__(self, kann=True, ablehnen=None):
+        self.kann, self.ablehnen = kann, ablehnen
+        self.auftraege = []
+        self.arbeitet = False
+        self.zustand, self.name, self.grund, self.gespeichert_als = "keine", None, "", None
+
+    def auftrag(self, nummer, was, name=None, quelle="tab"):
+        self.auftraege.append((nummer, was, name, quelle))
+        if self.ablehnen:
+            self.grund = self.ablehnen
+            return self.ablehnen
+        self.arbeitet = True
+        return None
+
+    def fertig(self, **felder):
+        for schluessel, wert in felder.items():
+            setattr(self, schluessel, wert)
+        self.arbeitet = False
+
+    def beobachte(self, t):
+        pass
+
+    def abgleiche(self, skizze, spot_xy, t):
+        return None
+
+    def daten(self, t, abgleich):
+        return {"kann": self.kann, "zustand": self.zustand, "name": self.name}
+
+    def beenden(self):
+        pass
+
+
+def test_ein_kartenauftrag_des_agenten_endet_wenn_die_kartenarbeit_fertig_ist(tmp_path):
+    karten = _Kartenarbeit()
+    z, _ = _mit_uhr(_Spot(), tmp_path, kartenarbeit=karten)
+    _befehl(tmp_path, 1, "karte_laden", {"name": "flur2"})
+    z.takt()
+    assert karten.auftraege == [(1, "laden", "flur2", "agent")]
+    assert z._agent["zustand"] == "unterwegs"
+    z.takt()
+    assert z._agent["zustand"] == "unterwegs", "solange die Kartenarbeit arbeitet"
+    karten.fertig(zustand="verortet", name="flur2", grund="")
+    z.takt()
+    assert z._agent["zustand"] == "erledigt"
+    assert z._agent["karte"] == {"zustand": "verortet", "name": "flur2", "grund": "",
+                                 "gespeichert_als": None}
+
+
+def test_ein_gescheitertes_laden_kommt_als_abgebrochen_mit_grund(tmp_path):
+    karten = _Kartenarbeit()
+    z, _ = _mit_uhr(_Spot(), tmp_path, kartenarbeit=karten)
+    _befehl(tmp_path, 1, "karte_laden", {"name": "gibtsnicht"})
+    z.takt()
+    karten.fertig(zustand="keine", grund="Laden gescheitert: gibt es nicht")
+    z.takt()
+    assert z._agent["zustand"] == "abgebrochen" and "gescheitert" in z._agent["grund"]
+
+
+def test_eine_abgelehnte_kartenarbeit_sagt_warum(tmp_path):
+    z, _ = _mit_uhr(_Spot(), tmp_path, kartenarbeit=_Kartenarbeit(ablehnen="Es läuft keine Aufnahme."))
+    _befehl(tmp_path, 1, "aufnahme_stopp")
+    z.takt()
+    assert z._agent["zustand"] == "abgelehnt" and "keine Aufnahme" in z._agent["grund"]
+
+
+@pytest.mark.parametrize("karten", [None, _Kartenarbeit(kann=False)])
+def test_im_uebungsraum_gibt_es_keine_karten(tmp_path, karten):
+    z, _ = _mit_uhr(_Spot(), tmp_path, kartenarbeit=karten)
+    _befehl(tmp_path, 1, "karte_laden", {"name": "flur2"})
+    z.takt()
+    assert z._agent["zustand"] == "abgelehnt" and "merkort_setzen" in z._agent["grund"]
+
+
+def test_eine_taste_bricht_keine_kartenarbeit_ab(tmp_path):
+    karten = _Kartenarbeit()
+    z, _ = _mit_uhr(_Spot(), tmp_path, kartenarbeit=karten)
+    _befehl(tmp_path, 1, "aufnahme_start", {"name": "gang"})
+    z.takt()
+    fahrt.schreibe(tmp_path, 0.4, 0.0, 0.0, jetzt=lambda: T0)
+    z.takt()
+    assert z._agent["zustand"] == "unterwegs", "eine Aufnahme ist keine Fahrt"
+    fahrt.schreibe(tmp_path, 0.0, 0.0, 0.0, jetzt=lambda: T0)        # Taste los
+    karten.fertig(zustand="nimmt_auf")
+    z.takt()
+    assert z._agent["zustand"] == "erledigt"
+
+
+def test_ein_merkort_an_spots_ort_und_mit_zahlen(tmp_path):
+    z, _ = _mit_uhr(_Spot(), tmp_path)
+    _befehl(tmp_path, 1, "merkort_setzen", {"name": "start"})
+    z.takt()
+    _befehl(tmp_path, 2, "merkort_setzen", {"name": "Tür", "x": 3.0, "y": 1.5})
+    z.takt()
+    assert z._agent["zustand"] == "erledigt"
+    z.wahrnehmen()
+    assert protokoll.lies_lagebild(tmp_path)["merkorte"] == [
+        {"name": "start", "x": 1.0, "y": 1.0}, {"name": "Tür", "x": 3.0, "y": 1.5}]
+    _befehl(tmp_path, 3, "merkort_loeschen", {"name": "start"})
+    z.takt()
+    _befehl(tmp_path, 4, "zum_merkort", {"name": "start"})
+    z.takt()
+    assert z._agent["zustand"] == "abgelehnt" and "Tür" in z._agent["grund"]
+
+
+def test_zum_merkort_faehrt_weiter_als_ein_klick(tmp_path):
+    from test_workshop_zentrale import _gitter_um
+
+    spot = _Spot(gitter=_gitter_um(1.0, 1.0, halb=8.0, zelle=0.1))
+    z, _ = _mit_uhr(spot, tmp_path)
+    _befehl(tmp_path, 1, "merkort_setzen", {"name": "fern", "x": 8.0, "y": 1.0})   # 7 m
+    z.takt()
+    _befehl(tmp_path, 2, "zum_merkort", {"name": "fern"})
+    z.takt()
+    assert z._agent["zustand"] == "unterwegs" and z.klick.unterwegs
+    assert _fahrten(spot)[-1]["vx"] > 0.0
+
+
+def test_die_merkorte_bleiben_im_uebungsraum_in_einer_datei(tmp_path):
+    from spotlab.workshop import merkorte as mo
+
+    uebung = RunRecorder(tmp_path / "runs", None, backend="sim")
+    ort = zentrale.merkorte_fuer(uebung.dir, tmp_path / "ws", "durchgang")
+    assert ort.pfad == mo.pfad_fuer(tmp_path / "ws", "durchgang")
+    echt = RunRecorder(tmp_path / "runs2", None, backend="real")
+    assert zentrale.merkorte_fuer(echt.dir, tmp_path / "ws", "durchgang").pfad is None
+    assert zentrale.merkorte_fuer(uebung.dir, None, "durchgang").pfad is None
