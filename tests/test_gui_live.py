@@ -42,6 +42,18 @@ def test_ereignisse_landen_in_der_liste(qapp, tmp_path):
     assert "stand" in ansicht.ereignisliste.item(0).text()
 
 
+def test_die_ereignisliste_rechnet_beim_anhaengen_nicht_jede_zeile_neu(qapp):
+    """Befund vom 09.10.2026: die Steuerzentrale am echten Spot schreibt 8 Ereignisse
+    je Sekunde, und jedes `scrollToBottom` liess die Liste die Höhe JEDER Zeile neu
+    rechnen -- gemessen 8 ms je Ereignis bei 800 Zeilen, 66 bei 4000, 191 bei 16 000.
+    Nach rund einer Viertelstunde kam der Hauptfaden nicht mehr nach, und Windows
+    meldete „Keine Rückmeldung“. Mit gleich hohen Zeilen: 0.2 / 0.3 / 1.1 ms.
+
+    Geprüft wird die Einstellung, nicht die Zeit: ein Zeittest hinge an der Last."""
+    ansicht = LiveView()
+    assert ansicht.ereignisliste.uniformItemSizes()
+
+
 def test_ausgabe_wird_angehaengt(qapp, tmp_path):
     ansicht = LiveView()
     ansicht.setze_lauf(_lauf(tmp_path).dir, "x.py")

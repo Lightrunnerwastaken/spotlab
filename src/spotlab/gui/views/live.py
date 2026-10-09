@@ -77,6 +77,10 @@ class LiveView(QWidget):
         self.hart_knopf.hide()
 
         self.ereignisliste = QListWidget()
+        # Gleich hohe Zeilen: sonst rechnet jedes scrollToBottom die Höhe JEDER Zeile neu.
+        # Die Zentrale schreibt 8 Ereignisse je Sekunde -- bei 16 000 Zeilen waren das
+        # 191 ms je Ereignis, und die GUI hatte „Keine Rückmeldung“ (09.10.2026).
+        self.ereignisliste.setUniformItemSizes(True)
         self.ausgabe = QPlainTextEdit()
         self.ausgabe.setReadOnly(True)
         self.bild = QLabel("Kein Bild")
