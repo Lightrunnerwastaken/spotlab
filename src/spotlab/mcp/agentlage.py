@@ -42,6 +42,9 @@ SPOT_FARBE = (220, 30, 30)
 TAG_FARBE = (30, 90, 220)
 MENSCH_FARBE = (240, 140, 0)
 WEG_FARBE = (20, 160, 60)
+MERKORT_FARBE = (150, 60, 200)
+WEGPUNKT_FARBE = (0, 140, 140)
+WEGPUNKTE_IN_LAGE = 20
 RAHMEN = ("vision — Meter; gilt für diesen Lauf und driftet langsam. Weltwinkel: 0° = +x, "
           "positive Grad nach links. Richtungen und Peilungen relativ zu Spots Blick: 0° voraus, "
           "+90° links, −90° rechts.")
@@ -49,7 +52,8 @@ KEINE_ANTWORT = "Zentrale antwortet nicht"
 LEGENDE = ("Ausschnitt ±{r:g} m um Spot im Rahmen „vision“: oben = +y, rechts = +x, Raster 1 m. "
            "Weiss frei (blasser = länger nicht gesehen), schwarz Wand, grau unbekannt. Roter Pfeil "
            "Spot mit Blickrichtung, blaue Quadrate AprilTags mit Nummer, orange Kreise Menschen "
-           "(mit Ring: dem folgt Spot), grün der Weg der laufenden Fahrt.")
+           "(mit Ring: dem folgt Spot), grün der Weg der laufenden Fahrt, violette Rauten Merkorte, "
+           "türkise Punkte die benannten Wegpunkte der verorteten Karte.")
 
 
 def _wickle_grad(grad):
@@ -175,7 +179,8 @@ def lage_aus(lauf_dir, jetzt=time.time):
                 "freigabe": {"noetig": bool(agent.get("braucht_freigabe")),
                              "an": bool(agent.get("freigabe"))},
                 "richtungen": [], "kopfraum": daten.get("kopfraum"), "menschen": [], "tags": [],
-                "klickfahrt": _klickfahrt(daten.get("klickfahrt")), "agent": agent}
+                "klickfahrt": _klickfahrt(daten.get("klickfahrt")), "agent": agent,
+                "karte": _karte(daten.get("karte")), "merkorte": []}
     if zustand:
         tempo = zustand.get("velocity") or ()
         if len(tempo) >= 2:
@@ -204,7 +209,29 @@ def lage_aus(lauf_dir, jetzt=time.time):
         peilung, abstand = _bezug(lage, tag["x"], tag["y"])
         ergebnis["tags"].append({"id": tag["id"], "x": tag["x"], "y": tag["y"],
                                  "peilung_grad": peilung, "abstand_m": abstand})
+    for ort in daten.get("merkorte") or ():
+        peilung, abstand = _bezug(lage, ort["x"], ort["y"])
+        ergebnis["merkorte"].append({"name": ort["name"], "x": ort["x"], "y": ort["y"],
+                                     "peilung_grad": peilung, "abstand_m": abstand})
+    karte = daten.get("karte") or {}
+    if ergebnis["karte"] is not None and karte.get("zustand") == "verortet":
+        benannt = []
+        for w in karte.get("wegpunkte") or ():
+            if w.get("name"):
+                peilung, abstand = _bezug(lage, w["x"], w["y"])
+                benannt.append({"name": w["name"], "x": w["x"], "y": w["y"],
+                                "peilung_grad": peilung, "abstand_m": abstand})
+        benannt.sort(key=lambda w: w["abstand_m"])
+        ergebnis["karte"]["wegpunkte"] = benannt[:WEGPUNKTE_IN_LAGE]
     return ergebnis
+
+
+def _karte(karte):
+    """Die Karte der Zentrale in Kürze — None, wo es keine Kartenarbeit gibt (Übungsraum)."""
+    if not karte or not karte.get("kann", True):
+        return None
+    return {"name": karte.get("name"), "zustand": karte.get("zustand"),
+            "grund": karte.get("grund"), "aufnahme": karte.get("aufnahme"), "wegpunkte": []}
 
 
 def _klickfahrt(stand):
@@ -265,6 +292,17 @@ def skizze_bild(lauf_dir, radius_m=SKIZZE_RADIUS_M):
         u, v = px(tag["x"], tag["y"])
         zeichner.rectangle([u - 6, v - 6, u + 6, v + 6], fill=TAG_FARBE)
         zeichner.text((u + 8, v - 6), str(tag["id"]), fill=TAG_FARBE)
+    karte = daten.get("karte") or {}
+    if karte.get("zustand") == "verortet":
+        for w in karte.get("wegpunkte") or ():
+            if w.get("name"):
+                u, v = px(w["x"], w["y"])
+                zeichner.ellipse([u - 5, v - 5, u + 5, v + 5], fill=WEGPUNKT_FARBE)
+                zeichner.text((u + 7, v - 6), str(w["name"]), fill=WEGPUNKT_FARBE)
+    for ort in daten.get("merkorte") or ():
+        u, v = px(ort["x"], ort["y"])
+        zeichner.polygon([(u, v - 8), (u + 8, v), (u, v + 8), (u - 8, v)], fill=MERKORT_FARBE)
+        zeichner.text((u + 10, v - 6), str(ort["name"]), fill=MERKORT_FARBE)
     for mensch in daten.get("menschen") or ():
         u, v = px(mensch["x"], mensch["y"])
         zeichner.ellipse([u - 8, v - 8, u + 8, v + 8], fill=MENSCH_FARBE)
@@ -272,7 +310,8 @@ def skizze_bild(lauf_dir, radius_m=SKIZZE_RADIUS_M):
             zeichner.ellipse([u - 13, v - 13, u + 13, v + 13], outline=MENSCH_FARBE, width=2)
     _pfeil(zeichner, px(lage[0], lage[1]), lage[2])
     zeichner.rectangle([0, 0, seite, 14], fill=(255, 255, 255))
-    zeichner.text((3, 2), "Raster 1 m | +y oben | rot Spot | blau Tag | orange Mensch | gruen Weg",
+    zeichner.text((3, 2), "Raster 1 m | +y oben | rot Spot | blau Tag | orange Mensch | gruen Weg | "
+                  "violett Merkort | tuerkis Wegpunkt",
                   fill=(0, 0, 0))
     puffer = io.BytesIO()
     bild.save(puffer, format="PNG")

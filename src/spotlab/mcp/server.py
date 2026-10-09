@@ -6,12 +6,12 @@ deshalb kostet eine Aenderung am Protokoll-Paket hier nur diese Datei.
 
 Braucht weder GUI noch Roboter, nur den Arbeitsordner. Die Werkzeuge zum Fahren
 (`fahren.py`, Agenten am Spot Teil 1) sprechen nur mit der Steuerzentrale, nie mit dem
-Roboter selbst.
+Roboter selbst; ebenso die Werkzeuge für Karten und Merkorte (`karten.py`, Teil 2).
 """
 
 import functools
 
-from spotlab.mcp import fahren, werkzeuge
+from spotlab.mcp import fahren, karten, werkzeuge
 
 # Reihenfolge wie in der Spec: anbinden, ausfuehren, lesen.
 WERKZEUGE = (
@@ -58,8 +58,8 @@ WERKZEUGE = (
      "Spot bleiben die Motoren aus, bis ein Mensch im Tab „Fahren“ „🤖 Agent darf fahren“ "
      "einschaltet. Wartet höchstens 30 s, bis das erste Lagebild da ist."),
     ("zentrale_status",
-     "Läuft eine Zentrale? Ort, Lauf, ob sie antwortet, Motoren, Freigabe und welcher Agent "
-     "gerade steuert."),
+     "Läuft eine Zentrale? Ort, Lauf, ob sie antwortet, Motoren, Freigabe, welcher Agent "
+     "gerade steuert und die geladene Karte (am echten Spot)."),
     ("zentrale_beenden",
      "Beendet die Zentrale freundlich: Spot hält an und setzt sich, die Verbindung wird "
      "abgebaut. Wartet bis zum Ende."),
@@ -68,12 +68,14 @@ WERKZEUGE = (
      "die freie Strecke in 8 Richtungen relativ zu Spots Blick (0° voraus, +90° links, -90° "
      "rechts, 180° hinten): frei bis X m, dann Wand oder unbekannt; Kopfraum (hängt etwas über "
      "dem Weg?); Menschen und AprilTags mit Peilung und Abstand zu Spot und in Weltkoordinaten; "
-     "der Stand deines letzten Befehls. Koordinaten im Rahmen „vision“: Meter, gilt für diesen "
-     "Lauf, driftet langsam; 0° = +x, positive Grad nach links."),
+     "der Stand deines letzten Befehls; die Karte (Name, Zustand, verortet die nächsten BENANNTEN "
+     "Wegpunkte) und deine Merkorte, beide mit Peilung und Abstand. Koordinaten im Rahmen „vision“: "
+     "Meter, gilt für diesen Lauf, driftet langsam; 0° = +x, positive Grad nach links."),
     ("skizze",
      "Die Draufsicht um Spot als Bild (radius_m, Vorgabe 5): oben = +y, rechts = +x, Raster "
      "1 m; weiss frei, schwarz Wand, grau unbekannt; roter Pfeil Spot, blau Tags, orange "
-     "Menschen, grün der Weg der laufenden Fahrt."),
+     "Menschen, grün der Weg der laufenden Fahrt, violette Rauten Merkorte, türkise Punkte die "
+     "benannten Wegpunkte der verorteten Karte."),
     ("kamerabild",
      "Das Bild des Laufs: am echten Spot der Blick der beiden Frontkameras; im 3D-Übungsraum das "
      "Zimmer von AUSSEN (keine Roboterkamera); im 2D-Übungsraum gibt es keines."),
@@ -108,6 +110,38 @@ WERKZEUGE = (
     ("suche",
      "Die Menschensuche der Zentrale: aus, sparsam, normal oder rundum (braucht Bild- und "
      "Tiefenkameras); gefundene Menschen stehen danach in lage()."),
+)) + tuple((getattr(karten, name), beschreibung) for name, beschreibung in (
+    # Agenten am Spot, Teil 2: Karten (nur am echten Spot), Merkorte (überall), Rekonstruktion.
+    ("karte_laden",
+     "Nur am echten Spot (GraphNav): lädt eine gespeicherte Karte (Name aus karten_auflisten) "
+     "auf den Roboter und verortet Spot darin. Wartet bis 30 s; karte.zustand „verortet“ oder "
+     "„sucht_tag“ (dann einen AprilTag der Karte ins Bild drehen), sonst abgebrochen mit Grund."),
+    ("aufnahme_starten",
+     "Nur am echten Spot: beginnt eine Kartenaufnahme. Ist Spot in einer geladenen Karte "
+     "verortet, wird sie weitergeführt, sonst beginnt eine neue. name: Wunschname (optional)."),
+    ("aufnahme_beenden",
+     "Nur am echten Spot: beendet die Aufnahme, bearbeitet sie nach und speichert sie unter "
+     "einem FREIEN Namen (nie überschrieben). Wartet bis 120 s; karte.gespeichert_als nennt ihn."),
+    ("wegpunkt_setzen",
+     "Nur am echten Spot und nur während einer Aufnahme: setzt an Spots Ort einen benannten "
+     "Wegpunkt, zu dem zum_wegpunkt später fährt."),
+    ("zum_wegpunkt",
+     "Nur am echten Spot, Karte geladen und verortet: fährt mit GraphNav zu einem BENANNTEN "
+     "Wegpunkt der Karte (lage() nennt die nächsten mit Peilung und Abstand) — mit Tempodeckel, "
+     "braucht die Freigabe. warum ist Pflicht. Antworten wie fahre_zu."),
+    ("merkort_setzen",
+     "Merkt sich einen Ort mit Namen — im Übungsraum und am echten Spot. Ohne x/y Spots "
+     "jetziger Ort, sonst (x, y) in Metern im Rahmen „vision“. Ein vorhandener Name wird "
+     "verschoben. Im Übungsraum bleiben Merkorte beim Raum gespeichert, am echten Spot nur bis "
+     "zum Ende der Zentrale."),
+    ("merkort_loeschen", "Vergisst einen Merkort (lage() nennt alle)."),
+    ("zum_merkort",
+     "Fährt zum Merkort mit der Wegsuche über den ganzen gesehenen Boden (ohne die 5-m-Grenze "
+     "von fahre_zu), mit allen Schranken. warum ist Pflicht. Antworten wie fahre_zu."),
+    ("raum_aus_karte",
+     "Baut aus einer gespeicherten Karte einen Raum für den Übungsraum (Wände, Treppen, Rampen, "
+     "Tags) und speichert ihn samt Pauspapier unter einem FREIEN Namen (name optional). Braucht "
+     "keine Zentrale. Danach im Raumeditor korrigieren, dann zentrale_starten(\"3d\", raum=…)."),
 ))
 
 

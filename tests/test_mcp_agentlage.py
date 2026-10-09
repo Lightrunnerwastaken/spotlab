@@ -130,3 +130,49 @@ def test_die_skizze_ist_ein_ausschnitt_mit_plus_y_oben(tmp_path):
     rechts = bild.getpixel((mitte + int(1.75 * agentlage.PIXEL_JE_M), mitte + 30))  # x = +1.75
     assert rechts == agentlage.WAND_FARBEN[0]
     assert "+y" in legende and "1 m" in legende
+
+
+# ------------------------------------------------------------ Karten und Merkorte (Teil 2)
+
+
+def _karte(zustand="verortet"):
+    return {"kann": True, "name": "flur2", "zustand": zustand, "grund": "", "auftrag": 0,
+            "wegpunkte": [{"x": 0.0, "y": 2.0, "name": "Küche"}, {"x": 5.0, "y": 0.0, "name": ""},
+                          {"x": -1.0, "y": 0.0, "name": "Eingang"}],
+            "kanten": [], "raster": None, "aufnahme": None, "wiedererkennung": None}
+
+
+def test_die_lage_nennt_karte_wegpunkte_und_merkorte_mit_peilung(tmp_path):
+    _lagebild(tmp_path, karte=_karte(), merkorte=[{"name": "Tür", "x": 1.0, "y": 0.0}])
+    lage = agentlage.lage_aus(tmp_path, jetzt=lambda: T)
+    assert (lage["karte"]["name"], lage["karte"]["zustand"]) == ("flur2", "verortet")
+    assert [w["name"] for w in lage["karte"]["wegpunkte"]] == ["Eingang", "Küche"], \
+        "nur benannte, nächste zuerst"
+    assert lage["karte"]["wegpunkte"][1]["peilung_grad"] == pytest.approx(90.0)
+    [tuer] = lage["merkorte"]
+    assert tuer["name"] == "Tür" and tuer["abstand_m"] == pytest.approx(1.0)
+
+
+def test_unverortet_nennt_die_lage_keine_wegpunkte(tmp_path):
+    _lagebild(tmp_path, karte=_karte(zustand="sucht_tag"))
+    lage = agentlage.lage_aus(tmp_path, jetzt=lambda: T)
+    assert lage["karte"]["wegpunkte"] == [] and lage["merkorte"] == []
+
+
+def test_ohne_kartenarbeit_ist_die_karte_leer(tmp_path):
+    _lagebild(tmp_path)
+    assert agentlage.lage_aus(tmp_path, jetzt=lambda: T)["karte"] is None
+
+
+def test_die_skizze_zeichnet_merkorte_und_wegpunkte(tmp_path):
+    from PIL import Image
+
+    _lagebild(tmp_path)
+    leer = Image.open(io.BytesIO(agentlage.skizze_bild(tmp_path, radius_m=3.0)[0])).convert("RGB")
+    _lagebild(tmp_path, karte=_karte(), merkorte=[{"name": "Tür", "x": 1.0, "y": -1.0}])
+    mit = Image.open(io.BytesIO(agentlage.skizze_bild(tmp_path, radius_m=3.0)[0])).convert("RGB")
+    mitte = int(2 * 3.0 * agentlage.PIXEL_JE_M) // 2
+    merkort = (mitte + agentlage.PIXEL_JE_M, mitte + agentlage.PIXEL_JE_M)
+    assert mit.getpixel(merkort) == agentlage.MERKORT_FARBE != leer.getpixel(merkort)
+    kueche = (mitte, mitte - 2 * agentlage.PIXEL_JE_M + 1)
+    assert mit.getpixel(kueche) != leer.getpixel(kueche)

@@ -226,8 +226,9 @@ def _befehl(art, werte, warum, warte_s, beanspruchen=True):
                 "hinweis": "Der Befehl fährt weiter, solange dieser MCP-Prozess lebt — "
                            "warten(sekunden) für das Ergebnis, stopp() zum Anhalten."}
     antwort = {"nummer": nummer, "zustand": stand["zustand"], "grund": stand.get("grund", "")}
-    if stand.get("tiefe") is not None:
-        antwort["tiefe"] = stand["tiefe"]
+    for feld in ("tiefe", "karte"):          # die Messung, der Kartenstand (Teil 2)
+        if stand.get(feld) is not None:
+            antwort[feld] = stand[feld]
     return antwort
 
 
@@ -421,9 +422,12 @@ def zentrale_status():
     if besitz is not None:
         besitz = dict(besitz, lebt=besitz["pid"] == os.getpid() or _lebt(besitz["pid"]),
                       bin_ich=besitz["pid"] == os.getpid())
+    karte = lage.get("karte")
     return {"laeuft": True, "lauf": lauf.name, "ort": ort, "backend": lauf_info.backend,
             "antwortet": "fehler" not in lage, "motoren": lage.get("motoren"),
-            "freigabe": lage.get("freigabe"), "steuert": besitz}
+            "freigabe": lage.get("freigabe"), "steuert": besitz,
+            "karte": None if not karte else {"name": karte.get("name"),
+                                             "zustand": karte.get("zustand")}}
 
 
 @_werkzeug

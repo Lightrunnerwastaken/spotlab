@@ -20,6 +20,9 @@ def test_alle_werkzeuge_sind_angemeldet():
         "zentrale_starten", "zentrale_status", "zentrale_beenden", "lage", "skizze",
         "kamerabild", "tiefe_messen", "fahre_zu", "fahre_relativ", "drehe", "stoss",
         "folge_mensch", "stopp", "warten", "licht", "piep", "suche",
+        # Agenten am Spot, Teil 2
+        "karte_laden", "aufnahme_starten", "aufnahme_beenden", "wegpunkt_setzen", "zum_wegpunkt",
+        "merkort_setzen", "merkort_loeschen", "zum_merkort", "raum_aus_karte",
         # die bisherigen dreizehn
         "projekt_anbinden",
         "projekt_loesen",
@@ -157,5 +160,14 @@ def test_ein_bild_wird_ein_mcp_bild_samt_text():
 def test_die_fahrwerkzeuge_nennen_rahmen_und_begruendung():
     beschreibung = dict((f.__name__, b) for f, b in WERKZEUGE)
     assert "vision" in beschreibung["lage"] and "vision" in beschreibung["fahre_zu"]
-    for name in ("fahre_zu", "fahre_relativ", "drehe", "stoss", "folge_mensch"):
+    for name in ("fahre_zu", "fahre_relativ", "drehe", "stoss", "folge_mensch", "zum_wegpunkt",
+                 "zum_merkort"):
         assert "warum" in beschreibung[name], name
+
+
+def test_die_kartenwerkzeuge_sagen_dass_karten_nur_am_echten_spot_gehen():
+    beschreibung = dict((f.__name__, b) for f, b in WERKZEUGE)
+    for name in ("karte_laden", "aufnahme_starten", "aufnahme_beenden", "wegpunkt_setzen",
+                 "zum_wegpunkt"):
+        assert "echten Spot" in beschreibung[name], name
+    assert "BENANNT" in beschreibung["zum_wegpunkt"]

@@ -27,8 +27,8 @@ def wurzel(tmp_path, monkeypatch):
 class _Zentrale:
     """Liest `agent_befehl.json` wie die Zentrale und schreibt Lagebild und Zustand.
 
-    `antwort(befehl, seit_s)` gibt (zustand, grund) — oder None: dann wird der Befehl gar
-    nicht bestätigt (eine Zentrale, die hängt)."""
+    `antwort(befehl, seit_s)` gibt (zustand, grund) oder (zustand, grund, {weitere Felder}) —
+    oder None: dann wird der Befehl gar nicht bestätigt (eine Zentrale, die hängt)."""
 
     def __init__(self, wurzel, antwort, backend="sim"):
         from spotlab.workshop import zentrale
@@ -43,12 +43,13 @@ class _Zentrale:
                        "agent": "", "seit": None, "tiefe": None, "freigabe": False,
                        "braucht_freigabe": False}
         self._seit = {}
+        self.lagebild = {}                    # weitere Felder des Lagebilds (Karte, Merkorte)
         self._schreibe()
         self._faden = threading.Thread(target=self._lauf, daemon=True)
         self._faden.start()
 
     def _schreibe(self):
-        _lagebild(self.lauf, t=time.time(), agent=dict(self._agent))
+        _lagebild(self.lauf, t=time.time(), agent=dict(self._agent), **self.lagebild)
         with (self.lauf / "zustand.jsonl").open("a", encoding="utf-8") as f:
             f.write(json.dumps({"t": time.time(), "daten": {"pose": [0.0, 0.0, 0.0]}}) + "\n")
 
@@ -60,9 +61,10 @@ class _Zentrale:
                 anfang = self._seit.setdefault(befehl.nummer, time.monotonic())
                 ergebnis = self.antwort(befehl, time.monotonic() - anfang)
                 if ergebnis is not None:
-                    zustand, grund = ergebnis
+                    zustand, grund, *mehr = ergebnis   # ein drittes Glied: weitere Felder
                     self._agent.update(nummer=befehl.nummer, art=befehl.art, zustand=zustand,
-                                       grund=grund, warum=befehl.warum, agent=befehl.agent)
+                                       grund=grund, warum=befehl.warum, agent=befehl.agent,
+                                       **(mehr[0] if mehr else {}))
             self._schreibe()
 
     def ende(self):
