@@ -182,7 +182,9 @@ class YoloxPersonen:
             modell = YoloX(str(pfad), confThreshold=YOLOX_KONFIDENZ)
         self._modell = modell
         self._mindest = float(mindest)
-        self._klasse = int(klasse)       # COCO-Index; 0 = Mensch (objekte.py nimmt andere)
+        # COCO-Index oder mehrere; 0 = Mensch (objekte.py nimmt andere)
+        self._klassen = (frozenset(int(k) for k in klasse)
+                         if isinstance(klasse, (set, frozenset, tuple, list)) else frozenset({int(klasse)}))
 
     def __call__(self, rgb):
         import cv2
@@ -195,7 +197,7 @@ class YoloxPersonen:
         quadrat[:klein.shape[0], :klein.shape[1]] = klein
         kaesten = []
         for zeile in np.asarray(self._modell.infer(quadrat)).reshape(-1, 6):
-            if int(zeile[5]) != self._klasse or zeile[4] < self._mindest:
+            if int(zeile[5]) not in self._klassen or zeile[4] < self._mindest:
                 continue
             x, y, b, h = (float(v) / faktor for v in zeile[:4])
             kaesten.append((x, y, x + b, y + h, float(zeile[4])))

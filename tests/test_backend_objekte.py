@@ -137,6 +137,50 @@ def test_yolox_nimmt_nur_die_gewaehlte_klasse():
     assert len(koerper.YoloxPersonen(modell=modell)(np.zeros((640, 640, 3), np.uint8))) == 1
 
 
+def test_mehrere_klassen_mit_komma():
+    modell = _YoloxAttrappe([[10, 20, 50, 60, 0.6, 28], [100, 20, 50, 60, 0.7, 24],
+                             [200, 20, 50, 60, 0.9, 0]])
+    finder = objekte.YoloxObjekte("suitcase,backpack", modell=modell)
+    kaesten = finder(np.zeros((640, 640, 3), dtype=np.uint8))
+    assert [round(k[0]) for k in kaesten] == [100, 10] and finder.klasse == "suitcase+backpack"
+
+
+def _fleck_finder(rgb):
+    """Attrappe eines Erkenners: der Kasten um die hellen Pixel des Bildes, das er BEKOMMT."""
+    zeilen, spalten = np.nonzero(rgb[..., 0] > 200)
+    if zeilen.size == 0:
+        return []
+    return [(float(spalten.min()), float(zeilen.min()), float(spalten.max()), float(zeilen.max()), 0.9)]
+
+
+@pytest.mark.parametrize("quelle", ["frontleft_fisheye_image", "frontright_fisheye_image",
+                                    "back_fisheye_image"])
+def test_kaesten_aus_dem_aufgerichteten_bild_landen_im_rohbild(quelle):
+    """Gesucht wird im aufgerichteten Bild, zurück kommt der Kasten im Rohraster —
+    dort, wo der Fleck wirklich ist (sonst träfe die Tiefe etwas anderes)."""
+    grau = np.zeros((ZEILEN, SPALTEN))
+    grau[10:20, 40:50] = 255                                     # Fleck, Mitte (44.5, 14.5)
+    antwort = _antwort("bild", grau)
+    antwort.source.name = quelle
+    gesehen = []
+    [kasten] = objekte.kaesten_aufrecht(lambda rgb: gesehen.append(rgb.shape) or _fleck_finder(rgb),
+                                        antwort)
+    mitte = ((kasten[0] + kasten[2]) / 2, (kasten[1] + kasten[3]) / 2)
+    assert mitte == pytest.approx((44.5, 14.5), abs=1.5)
+    if quelle in objekte.AUFRECHT_GRAD:
+        assert gesehen[0][:2] != (ZEILEN, SPALTEN), "der Finder bekam das gedrehte Bild"
+
+
+def test_aufrichten_dreht_gegen_den_uhrzeiger_wie_die_sdk_beispiele():
+    """Positiver Winkel = gegen den Uhrzeiger (wie scipy/PIL in get_image.py): ein Fleck
+    rechts neben der Mitte wandert bei +90° nach OBEN."""
+    bild = np.zeros((41, 41), dtype=np.uint8)
+    bild[20, 35] = 255
+    gedreht, _ = objekte.aufrichten(bild, 90.0)
+    z, s = np.unravel_index(np.argmax(gedreht), gedreht.shape)
+    assert z < 10 and abs(s - 20) <= 1
+
+
 def test_coco_kennt_achtzig_klassen_und_weist_fremde_ab():
     assert len(objekte.COCO) == 80
     assert objekte.klassen_index("person") == 0

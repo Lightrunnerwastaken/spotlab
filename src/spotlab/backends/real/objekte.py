@@ -38,6 +38,11 @@ COCO = (
 )
 OBJEKT_MINDEST = koerper.YOLOX_MINDEST   # Mindestsicherheit je Kasten (wie beim Körper)
 KERN_RAND = 0.25                         # je Seite so viel des Kastens bleibt für die Tiefe weg
+# Die Fisheye-Kameras sind seitlich eingebaut; so weit drehen die SDK-Beispiele von
+# Boston Dynamics (`get_image.py`, ROTATION_ANGLE) die Bilder, damit oben oben ist.
+# Gemessen am 09.10.2026 (Rucksack, 2 m): rechts roh 0.25 „suitcase", aufgerichtet 0.57.
+AUFRECHT_GRAD = {"frontleft_fisheye_image": -78.0, "frontright_fisheye_image": -102.0,
+                 "right_fisheye_image": 180.0}
 
 
 def klassen_index(name):
@@ -51,14 +56,56 @@ def klassen_index(name):
 
 
 class YoloxObjekte(koerper.YoloxPersonen):
-    """Kästen EINER Klasse im ganzen Bild: `(rgb) -> [(x1, y1, x2, y2, score)]`."""
+    """Kästen einer oder mehrerer Klassen im ganzen Bild: `(rgb) -> [(x1, y1, x2, y2, score)]`.
+
+    `klasse` mit Kommas nimmt mehrere (`"suitcase,backpack"`): ein kastenförmiger
+    Rucksack heisst für YOLOX von vorn oft „suitcase" (gemessen 09.10.2026)."""
 
     def __init__(self, klasse="teddy bear", pfad=None, modell=None, mindest=OBJEKT_MINDEST):
-        index = klassen_index(klasse)
+        indizes = [klassen_index(k) for k in str(klasse).split(",") if k.strip()]
         if modell is None and pfad is None:
             pfad = koerper.personenmodell()
-        super().__init__(pfad, modell=modell, mindest=mindest, klasse=index)
-        self.klasse = COCO[index]
+        super().__init__(pfad, modell=modell, mindest=mindest, klasse=tuple(indizes))
+        self.klasse = "+".join(COCO[i] for i in indizes)
+
+
+def aufrichten(bild, grad):
+    """(gedreht, zurück): das Bild um `grad` gedreht (positiv = gegen den Uhrzeiger, wie
+    die SDK-Beispiele), samt der Matrix, die Pixel des gedrehten Bildes ins Original
+    zurückrechnet. Die Leinwand wächst mit, nichts wird abgeschnitten."""
+    import cv2
+
+    h, w = bild.shape[:2]
+    m = cv2.getRotationMatrix2D((w / 2.0, h / 2.0), float(grad), 1.0)
+    c, s = abs(m[0, 0]), abs(m[0, 1])
+    nw, nh = int(round(h * s + w * c)), int(round(h * c + w * s))
+    m[0, 2] += nw / 2.0 - w / 2.0
+    m[1, 2] += nh / 2.0 - h / 2.0
+    # Nächster Nachbar, kein Glätten: keine erfundenen Grauwerte. Gemessen am Rucksack
+    # (09.10.2026, 2 m): bilinear 0.36, nächster Nachbar 0.57 — ein Grenzfall, der an
+    # solchen Details hängt, ist kein verlässlicher Fund; die Erkennungsprobe sagt es.
+    gedreht = cv2.warpAffine(np.ascontiguousarray(bild), m, (nw, nh), flags=cv2.INTER_NEAREST)
+    return gedreht, cv2.invertAffineTransform(m)
+
+
+def kasten_zurueck(kasten, zurueck):
+    """Ein Kasten des gedrehten Bildes als achsparalleler Kasten im Original."""
+    x1, y1, x2, y2, score = kasten
+    ecken = np.array([[x1, y1, 1.0], [x2, y1, 1.0], [x1, y2, 1.0], [x2, y2, 1.0]])
+    p = ecken @ np.asarray(zurueck).T
+    return (float(p[:, 0].min()), float(p[:, 1].min()), float(p[:, 0].max()),
+            float(p[:, 1].max()), float(score))
+
+
+def kaesten_aufrecht(finder, antwort):
+    """Kästen in ROHBILD-Koordinaten — gesucht im aufgerichteten Bild, wo die Quelle
+    eine Drehung hat (`AUFRECHT_GRAD`); so passen sie zur Tiefe im Rohraster."""
+    rgb = bild_als_array(antwort)
+    grad = AUFRECHT_GRAD.get(antwort.source.name, 0.0)
+    if not grad:
+        return list(finder(rgb))
+    gedreht, zurueck = aufrichten(rgb, grad)
+    return [kasten_zurueck(k, zurueck) for k in finder(gedreht)]
 
 
 @dataclass(frozen=True)
