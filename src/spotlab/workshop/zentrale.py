@@ -102,6 +102,7 @@ KEINE_KAMERAS = ("Keine Bild- und Tiefenkameras (Übungsraum) — Menschen sucht
 FAHR_ARTEN = ("ziel", "relativ", "drehen", "stoss", "folgen",   # brauchen am echten Spot Freigabe
               "zum_wegpunkt", "zum_merkort")
 KLICK_ARTEN_AGENT = ("ziel", "relativ", "zum_merkort")        # werden Ziele der Klickfahrt
+NAVI_TAKT_S = 0.2          # so oft fragt die Wegpunktfahrt, ob sie abbrechen muss (Totmann 0.5 s)
 KARTEN_AUFTRAEGE = {"karte_laden": "laden", "aufnahme_start": "aufnahme_start",
                     "aufnahme_stopp": "aufnahme_stopp", "wegpunkt_setzen": "wegpunkt"}
 KEINE_KARTEN = ("Karten gibt es nur am echten Spot (GraphNav) — im Übungsraum `merkort_setzen` "
@@ -427,6 +428,9 @@ class Zentrale:
                     and self._suche_kann:
                 self._folge_mensch(kz.nummer, kz.ziel, "tab", self._klick_abloese(kz))
                 return
+            if kz.art == "wegpunkt" and kz.ziel is not None and befehl == fahrt.STILL:
+                self._zum_wegpunkt(kz.nummer, kz.name, "tab", self._klick_abloese(kz))
+                return
         if ab is not None and ab.nummer != self._agent_nummer:
             if self._agent_neu(ab, t, taste=befehl != fahrt.STILL):
                 return
@@ -496,6 +500,10 @@ class Zentrale:
             with self._sperre:
                 self.klick.abbrechen("im Tab abgebrochen")
             return
+        if kz.art == "wegpunkt":
+            with self._sperre:
+                self.klick.abbrechen("jetzt fährt Spot mit der Karte")
+            return                       # `takt` übergibt an die Navigation
         if kz.art == "mensch":
             with self._sperre:
                 self.klick.abbrechen("jetzt folgt Spot einem Menschen")
@@ -647,7 +655,8 @@ class Zentrale:
                   "aufnahme_stopp": self._agent_karte, "wegpunkt_setzen": self._agent_karte,
                   "merkort_setzen": self._agent_merkort_setzen,
                   "merkort_loeschen": self._agent_merkort_loeschen,
-                  "zum_merkort": self._agent_zum_merkort}[ab.art]
+                  "zum_merkort": self._agent_zum_merkort,
+                  "zum_wegpunkt": self._agent_zum_wegpunkt}[ab.art]
         try:
             return bool(arbeit(ab, t))
         except ValueError as fehler:
@@ -817,6 +826,73 @@ class Zentrale:
             self._agent_ende("abgelehnt", self._unbekannter_merkort(name))
             return
         self._agent_klickziel(ab, ort, t, max_weite_m=None)
+
+    def _agent_zum_wegpunkt(self, ab, t):
+        name = str(ab.werte.get("name") or "").strip()
+        if not name:
+            raise ValueError("name fehlt — welcher Wegpunkt? (lage() nennt die nächsten)")
+        self._agent_lauf = {"art": "wegpunkt"}
+        zustand, grund = self._zum_wegpunkt(ab.nummer, name, "agent", self._agent_abloese(ab))
+        self._agent_ende(zustand, grund)
+        return True
+
+    def _zum_wegpunkt(self, nummer, name, quelle, abgeloest):
+        """Mit der Karte zu einem Wegpunkt: Übergabe an die EINE Navigation
+        (`api.navigation.navigate_to`, mit Tempodeckel), wie `_folge_mensch` an `folgen.folge`.
+        Blockiert; `abbruch()` erledigt unterwegs, was sonst der Takt tut, alle `NAVI_TAKT_S`.
+        -> (zustand, grund); der Stand steht auch in `klick.stand`."""
+        from spotlab.api import navigation
+
+        def stand(zustand, grund):
+            with self._sperre:
+                self.klick.stand = klickfahrt.Stand(nummer=nummer, zustand=zustand, grund=grund,
+                                                    quelle=quelle)
+
+        try:
+            if self._karten is None or not self._karten.kann:
+                raise SpotlabError(KEINE_KARTEN)
+            karte = self._karten.navigationskarte()
+            karte.id_fuer(name)                 # unbekannt: Fehler mit den vorhandenen Namen
+        except SpotlabError as fehler:
+            stand("abgelehnt", str(fehler))
+            return "abgelehnt", str(fehler)
+        ende = {"grund": ""}
+
+        def abbruch():
+            if not self._laeuft():
+                ende["grund"] = "Stopp"
+                return True
+            self._aktionen()
+            self._kartenauftraege()
+            if fahrt.lies(self.lauf_dir, jetzt=self.jetzt) != fahrt.STILL:
+                ende["grund"] = "eine Taste hat übernommen"
+                return True
+            grund = abgeloest()
+            if grund:
+                ende["grund"] = grund
+                return True
+            if self._karten.zustand == "verloren":
+                ende["grund"] = ("Spot ist auf der Karte verloren — einen Tag der Karte ins Bild "
+                                 "drehen")
+                return True
+            return False
+
+        stand("navigiert", f"fährt mit der Karte zum Wegpunkt ‹{name}›")
+        try:
+            angekommen = navigation.navigate_to(self.spot.backend, self.spot.recorder, karte, name,
+                                                self.spot.limits, abbruch=abbruch,
+                                                takt_s=NAVI_TAKT_S)
+        except Exception as fehler:          # NavigationError, Lease, Netz: Spot hält dann an
+            zustand, grund = "abgebrochen", str(fehler)
+        else:
+            if angekommen:
+                zustand, grund = "angekommen", f"am Wegpunkt ‹{name}›"
+            else:
+                zustand, grund = "abgebrochen", ende["grund"] or "abgebrochen"
+        finally:
+            self._faehrt = False                 # `navigate_to` hält bei jedem Ende an
+        stand(zustand, grund)
+        return zustand, grund
 
     def _unbekannter_merkort(self, name):
         with self._sperre:

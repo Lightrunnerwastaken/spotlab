@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
+from test_workshop_folgen import _baum
 from test_workshop_zentrale import (
     T0,
     _fahrten,
@@ -17,7 +18,7 @@ from test_workshop_zentrale import (
     _zentrale,
 )
 
-from spotlab.backends.base import Capability, ObstacleGrid
+from spotlab.backends.base import Capability, NavStatus, ObstacleGrid
 from spotlab.record import agent as agentdatei
 from spotlab.record import fahrt
 from spotlab.record import zentrale as protokoll
@@ -613,3 +614,143 @@ def test_die_merkorte_bleiben_im_uebungsraum_in_einer_datei(tmp_path):
     echt = RunRecorder(tmp_path / "runs2", None, backend="real")
     assert zentrale.merkorte_fuer(echt.dir, tmp_path / "ws", "durchgang").pfad is None
     assert zentrale.merkorte_fuer(uebung.dir, None, "durchgang").pfad is None
+
+
+# ------------------------------------------------------------ Fahrt zu einem Wegpunkt (Teil 2)
+
+
+def _stopp_gesendet(backend):
+    return any(k.synchronized_command.mobility_command.HasField("stop_request")
+               or k.full_body_command.HasField("stop_request") for k in backend.gesendet)
+
+
+class _NaviBackend:
+    """Trockenlauf plus GraphNav: `je_status(n)` läuft vor jeder Statusabfrage (n = Befehle)."""
+
+    def __new__(cls, spot, folge=(), je_status=None):
+        from spotlab.backends.dryrun import DryRunBackend
+
+        class Backend(DryRunBackend):
+            def capabilities(self):
+                return Capability.LOCOMOTION | Capability.LOCAL_GRID | Capability.GRAPH_NAV
+
+            def frame_tree_snapshot(self):
+                return _baum(*spot._pose)
+
+            def travel_params(self, limits):
+                return "params"
+
+            def navigate_step(self, waypoint_id, dauer_s, params, command_id=None):
+                self.navi.append(waypoint_id)
+                return 7
+
+            def navigation_status(self, command_id):
+                if je_status is not None:
+                    je_status(len(self.navi))
+                if self.folge:
+                    return self.folge.pop(0)
+                return NavStatus(fertig=True, status="Angekommen.", gescheitert=False)
+
+        backend = Backend()
+        backend.power_on()
+        backend.navi, backend.folge = [], list(folge)
+        return backend
+
+
+class _NaviSpot(_Spot):
+    def __init__(self, folge=(), je_status=None):
+        from spotlab.config import Limits
+
+        super().__init__()
+        self.backend = _NaviBackend(self, folge, je_status)
+        self.recorder, self.limits = None, Limits()
+
+
+class _NaviKarten(_Kartenarbeit):
+    def __init__(self, fehler=None):
+        super().__init__()
+        self.fehler = fehler
+        self.zustand, self.name = "verortet", "flur2"
+
+    def navigationskarte(self):
+        from pathlib import Path
+
+        from test_api_navigation import _graph
+
+        from spotlab.api.navigation import Map
+        from spotlab.errors import SpotlabError
+
+        if self.fehler:
+            raise SpotlabError(self.fehler)
+        return Map(name="flur2", dir=Path("flur2"), graph=_graph())
+
+
+def _unterwegs(n=30):
+    return [NavStatus(fertig=False, status="Unterwegs.", gescheitert=False)] * n
+
+
+def test_zum_wegpunkt_faehrt_mit_der_karte_und_kommt_an(tmp_path):
+    spot = _NaviSpot(folge=_unterwegs(2))
+    z, _ = _mit_uhr(spot, tmp_path, kartenarbeit=_NaviKarten())
+    _befehl(tmp_path, 1, "zum_wegpunkt", {"name": "kueche"})
+    z.takt()
+    assert spot.backend.navi[:3] == ["wp1", "wp1", "wp1"]
+    assert z._agent["zustand"] == "angekommen"
+    assert (z.klick.stand.zustand, z.klick.stand.quelle) == ("angekommen", "agent")
+
+
+@pytest.mark.parametrize("stoerung, erwartet", [
+    ("taste", "Taste"), ("klick", "Mensch"), ("befehl", "neuer Befehl"),
+    ("still", "Lebenszeichen"), ("freigabe", "Freigabe"), ("verloren", "verloren")])
+def test_die_wegpunktfahrt_bricht_ab(tmp_path, stoerung, erwartet):
+    karten = _NaviKarten()
+    uhr = {"t": T0}
+
+    def je_status(n):
+        if n != 2:
+            return
+        if stoerung == "taste":
+            fahrt.schreibe(tmp_path, 0.4, 0.0, 0.0, jetzt=lambda: uhr["t"])
+        elif stoerung == "klick":
+            protokoll.schreibe_klickziel(tmp_path, 9, (1.5, 1.0), "langsam", jetzt=lambda: uhr["t"])
+        elif stoerung == "befehl":
+            _befehl(tmp_path, 2, "stopp", uhr=uhr)
+        elif stoerung == "still":
+            uhr["t"] = T0 + agentdatei.AGENT_TOTMANN_S + 0.1
+        elif stoerung == "freigabe":
+            _freigabe(tmp_path, an=False, nummer=2)
+        else:
+            karten.zustand = "verloren"
+
+    spot = _NaviSpot(folge=_unterwegs(), je_status=je_status)
+    z = _zentrale(spot, tmp_path, kartenarbeit=karten, jetzt=lambda: uhr["t"],
+                  braucht_freigabe=stoerung == "freigabe")
+    z.wahrnehmen()
+    if stoerung == "freigabe":
+        _freigabe(tmp_path)
+    _befehl(tmp_path, 1, "zum_wegpunkt", {"name": "kueche"}, uhr=uhr)
+    z.takt()
+    assert z._agent["zustand"] == "abgebrochen" and erwartet in z._agent["grund"], z._agent
+    assert _stopp_gesendet(spot.backend), "Spot hält an"
+
+
+@pytest.mark.parametrize("fehler, name, erwartet", [
+    ("Keine Karte geladen — erst `karte_laden`", "kueche", "karte_laden"),
+    (None, "garage", "Vorhanden")])
+def test_ohne_karte_oder_mit_unbekanntem_wegpunkt_wird_abgelehnt(tmp_path, fehler, name, erwartet):
+    spot = _NaviSpot()
+    z, _ = _mit_uhr(spot, tmp_path, kartenarbeit=_NaviKarten(fehler))
+    _befehl(tmp_path, 1, "zum_wegpunkt", {"name": name})
+    z.takt()
+    assert z._agent["zustand"] == "abgelehnt" and erwartet in z._agent["grund"]
+    assert spot.backend.navi == []
+
+
+def test_ein_klick_auf_einen_wegpunkt_im_tab_faehrt_hin(tmp_path):
+    spot = _NaviSpot(folge=_unterwegs(1))
+    z, _ = _mit_uhr(spot, tmp_path, kartenarbeit=_NaviKarten())
+    protokoll.schreibe_klickziel(tmp_path, 1, (3.0, 1.0), "langsam", jetzt=lambda: T0,
+                                 art="wegpunkt", name="kueche")
+    z.takt()
+    assert spot.backend.navi and spot.backend.navi[0] == "wp1"
+    assert (z.klick.stand.zustand, z.klick.stand.quelle) == ("angekommen", "tab")
