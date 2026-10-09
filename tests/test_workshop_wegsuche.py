@@ -96,3 +96,9 @@ def test_aufdicken_macht_eine_scheibe_ohne_umlauf():
     rand = np.zeros((5, 5), bool)
     rand[0, 0] = True
     assert not wegsuche.aufdicken(rand, 1)[4, 4], "keine Verschiebung über den Rand"
+
+
+def test_ohne_weitengrenze_geht_auch_ein_fernes_ziel():
+    s = _raum(groesse=300)                    # 15 x 15 m
+    assert wegsuche.pruefe_ziel(s, (1.0, 10.0), (13.0, 10.0), 0.3, None) == ""
+    assert "zu weit" in wegsuche.pruefe_ziel(s, (1.0, 10.0), (13.0, 10.0), 0.3, 5.0)

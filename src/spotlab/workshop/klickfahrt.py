@@ -78,11 +78,12 @@ class Klickfahrt:
     def unterwegs(self):
         return self.stand.zustand == "unterwegs"
 
-    def neues_ziel(self, nummer, ziel, lage, skizze, t, quelle="tab"):
-        """Ein neues Ziel prüfen und den Weg planen. `lage` = (x, y, gier) im Rahmen der Skizze."""
+    def neues_ziel(self, nummer, ziel, lage, skizze, t, quelle="tab", max_weite_m=MAX_WEITE_M):
+        """Ein neues Ziel prüfen und den Weg planen. `lage` = (x, y, gier) im Rahmen der Skizze.
+        `max_weite_m=None` heisst ohne Weitengrenze (Merkorte des Agenten)."""
         self.stand = Stand(nummer=int(nummer), ziel=(float(ziel[0]), float(ziel[1])),
                            quelle=quelle)
-        grund = wegsuche.pruefe_ziel(skizze, lage[:2], ziel, RAND_M, MAX_WEITE_M)
+        grund = wegsuche.pruefe_ziel(skizze, lage[:2], ziel, RAND_M, max_weite_m)
         if grund:
             self.stand.zustand, self.stand.grund = "abgelehnt", grund
             return

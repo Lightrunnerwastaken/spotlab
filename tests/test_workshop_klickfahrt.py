@@ -144,3 +144,12 @@ def test_die_abweichung_rechnet_um_die_180_grad():
     k, s = _unterwegs(ziel=(0.2, 1.0), lage=(1.0, 1.0, math.radians(170.0)))
     vx, wz = k.schritt((1.0, 1.0, math.radians(170.0)), s, 0.1, 5.0)
     assert vx > 0.0 and wz > 0.0, "10 Grad links liegt das Ziel, nicht 350 Grad rechts"
+
+
+def test_ein_merkort_darf_weiter_weg_liegen_als_ein_klick():
+    s = _raum(groesse=300)
+    k = kf.Klickfahrt()
+    k.neues_ziel(1, (13.0, 10.0), (1.0, 10.0, 0.0), s, 0.0)
+    assert k.stand.zustand == "abgelehnt" and "zu weit" in k.stand.grund
+    k.neues_ziel(2, (13.0, 10.0), (1.0, 10.0, 0.0), s, 0.0, quelle="agent", max_weite_m=None)
+    assert k.unterwegs

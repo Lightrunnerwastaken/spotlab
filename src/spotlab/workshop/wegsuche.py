@@ -185,7 +185,7 @@ def weg(skizze, start_xy, ziel_xy, rand_m=0.3, koerper_m=KOERPER_M):
 def pruefe_ziel(skizze, start_xy, ziel_xy, rand_m, max_weite_m):
     """"" für ein gutes Ziel — sonst der Grund in Worten, für den Menschen am Tab."""
     weite = math.dist(start_xy, ziel_xy)
-    if weite > max_weite_m:
+    if max_weite_m is not None and weite > max_weite_m:          # None: ohne Grenze (Merkorte)
         return f"zu weit ({weite:.1f} m, höchstens {max_weite_m:.0f} m je Klick)"
     zelle = skizze.zelle(*ziel_xy)
     if zelle is None or skizze.zustand[zelle] == sk.UNBEKANNT:
