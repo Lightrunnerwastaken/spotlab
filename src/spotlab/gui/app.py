@@ -81,6 +81,11 @@ FAHREN_BACKEND = "real"
 NAVIGATION_BACKEND = "real"     # der Tab „Karten" faehrt Wegpunkte am echten Spot ab
 
 
+def ist_zentrale(skript):
+    """Ist das Skript eines Laufs die Steuerzentrale (`workshop/zentrale.py`, Paketcode)?"""
+    return bool(skript) and Path(str(skript)).as_posix().endswith("workshop/zentrale.py")
+
+
 class MainWindow(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -846,7 +851,12 @@ class MainWindow(QWidget):
         # Das Backend aus lauf.json, nicht aus der Wahl im Editor: auch F5 aus VS Code.
         self.kopf.zeige_simulation(lauf.backend)
         self.ansichten["live"].setze_lauf(verzeichnis, name)
-        if self._fahrt_erwartet == "zentrale":
+        # Eine Zentrale, die ein Agent über `spotlab mcp` gestartet hat, kam nicht über den
+        # Knopf -- erkannt wird sie am Skript. Ohne den Tab gäbe es weder den Puls der
+        # Oberfläche noch die Freigabe (Agenten am Spot, Teil 1).
+        vom_agenten = (self._fahrt_erwartet is False and not self._navigation_erwartet
+                       and ist_zentrale(skript))
+        if self._fahrt_erwartet == "zentrale" or vom_agenten:
             # Der Tab „Fahren" bekommt das Verzeichnis und die Tastatur -- und bleibt
             # vorne: dort kommen die Tasten an. Der NOT-AUS steht im Kopf, in jedem Reiter.
             self._fahrt_erwartet = False

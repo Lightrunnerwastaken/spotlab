@@ -1710,3 +1710,28 @@ def test_der_editor_startet_die_physik_nicht_in_einem_treppenraum(qapp, tmp_path
     fenster.ansichten["code"].setze_backend("physics")
     with pytest.raises(SpotlabError, match="Rampen"):
         fenster.ansichten["code"].zusatz_umgebung()
+
+
+# ------------------------------------------------------------ Agenten am Spot, Teil 1
+
+
+def test_eine_vom_agenten_gestartete_zentrale_haengt_den_tab_fahren_an(qapp, tmp_path):
+    """Ohne den Tab gäbe es weder Puls noch Freigabe: der Agent startet die Zentrale über
+    `spotlab mcp`, nicht über den Knopf -- erkannt wird sie am Skript in `lauf.json`."""
+    from spotlab.record.run import RunRecorder
+    from spotlab.workshop import zentrale
+
+    recorder = RunRecorder(tmp_path / "runs", zentrale.SKRIPT, backend="real")
+    fenster = MainWindow()
+    try:
+        fenster._uebernimm_lauf(recorder.dir)
+        assert fenster.ansichten["fahren"].laeuft()
+    finally:
+        fenster.ansichten["fahren"].lauf_beendet()
+        recorder.finish("ok")
+
+
+def test_ein_anderes_programm_haengt_den_tab_fahren_nicht_an(qapp, tmp_path):
+    fenster = MainWindow()
+    fenster._uebernimm_lauf(_lauf_verzeichnis(tmp_path))
+    assert not fenster.ansichten["fahren"].laeuft()
