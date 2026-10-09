@@ -14,8 +14,13 @@ QUELLE = str(Path(__file__).resolve().parents[1] / "src")
 HAT_MCP = importlib.util.find_spec("mcp") is not None
 
 
-def test_alle_dreizehn_werkzeuge_sind_angemeldet():
+def test_alle_werkzeuge_sind_angemeldet():
     assert {f.__name__ for f, _ in WERKZEUGE} == {
+        # Agenten am Spot, Teil 1
+        "zentrale_starten", "zentrale_status", "zentrale_beenden", "lage", "skizze",
+        "kamerabild", "tiefe_messen", "fahre_zu", "fahre_relativ", "drehe", "stoss",
+        "folge_mensch", "stopp", "warten", "licht", "piep", "suche",
+        # die bisherigen dreizehn
         "projekt_anbinden",
         "projekt_loesen",
         "anbindungen_auflisten",
@@ -132,3 +137,25 @@ def test_die_fassung_steht_nur_an_einer_stelle():
         encoding="utf-8"
     )
     assert 'version="' not in quelle, "Der Server schreibt die Fassung wieder selbst hin"
+
+
+@pytest.mark.skipif(not HAT_MCP, reason="Extra [mcp] nicht installiert")
+def test_ein_bild_wird_ein_mcp_bild_samt_text():
+    from mcp.server.mcpserver import Image
+
+    from spotlab.mcp import fahren
+    from spotlab.mcp.server import _mit_bild
+
+    def bild():
+        return fahren.Bildantwort(b"png", "png", {"legende": "oben = +y"})
+
+    antwort = _mit_bild(bild)()
+    assert isinstance(antwort[0], Image) and antwort[1] == {"legende": "oben = +y"}
+    assert _mit_bild(lambda: {"ok": True})() == {"ok": True}
+
+
+def test_die_fahrwerkzeuge_nennen_rahmen_und_begruendung():
+    beschreibung = dict((f.__name__, b) for f, b in WERKZEUGE)
+    assert "vision" in beschreibung["lage"] and "vision" in beschreibung["fahre_zu"]
+    for name in ("fahre_zu", "fahre_relativ", "drehe", "stoss", "folge_mensch"):
+        assert "warum" in beschreibung[name], name

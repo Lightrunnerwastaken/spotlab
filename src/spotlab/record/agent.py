@@ -44,6 +44,12 @@ class Befehl:
     lebt: float                  # Wanduhr des MCP-Servers beim letzten Auffrischen
 
 
+def ist_zentrale(skript):
+    """Ist das Skript eines Laufs (`lauf.json` → `skript`) die Steuerzentrale? GUI und
+    MCP-Server erkennen eine vom Agenten gestartete Zentrale daran."""
+    return bool(skript) and Path(str(skript)).as_posix().endswith("workshop/zentrale.py")
+
+
 def schreibe_befehl(lauf_dir, nummer, art, werte, warum, agent, jetzt=time.time):
     if art not in ARTEN_BEFEHL:
         raise ValueError(f"Befehl {art!r} -- erwartet einer von {list(ARTEN_BEFEHL)}.")

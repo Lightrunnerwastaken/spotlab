@@ -47,6 +47,7 @@ from spotlab.gui.views.runs import RunsView
 from spotlab.gui.views.umwelt import UmweltView
 from spotlab.gui.watcher import RunWatcher
 from spotlab.gui.workers import DoctorWorker, OutputReader
+from spotlab.record import agent as agentdatei
 from spotlab.record.read import read_run
 from spotlab.workshop.control import ist_aktiv
 
@@ -79,11 +80,6 @@ def _letzte_fehlerzeile(zeilen):
 # Der Kettentest tauscht die Konstante gegen den Trockenlauf.
 FAHREN_BACKEND = "real"
 NAVIGATION_BACKEND = "real"     # der Tab „Karten" faehrt Wegpunkte am echten Spot ab
-
-
-def ist_zentrale(skript):
-    """Ist das Skript eines Laufs die Steuerzentrale (`workshop/zentrale.py`, Paketcode)?"""
-    return bool(skript) and Path(str(skript)).as_posix().endswith("workshop/zentrale.py")
 
 
 class MainWindow(QWidget):
@@ -855,7 +851,7 @@ class MainWindow(QWidget):
         # Knopf -- erkannt wird sie am Skript. Ohne den Tab gäbe es weder den Puls der
         # Oberfläche noch die Freigabe (Agenten am Spot, Teil 1).
         vom_agenten = (self._fahrt_erwartet is False and not self._navigation_erwartet
-                       and ist_zentrale(skript))
+                       and agentdatei.ist_zentrale(skript))
         if self._fahrt_erwartet == "zentrale" or vom_agenten:
             # Der Tab „Fahren" bekommt das Verzeichnis und die Tastatur -- und bleibt
             # vorne: dort kommen die Tasten an. Der NOT-AUS steht im Kopf, in jedem Reiter.
