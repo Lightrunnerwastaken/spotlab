@@ -1416,7 +1416,13 @@ einen Teddybären auf Spots GRAUBILDERN überhaupt findet, und bis zu welchem Ab
 4. Teil 2 (nach A1): `exploration_real.py --ziel objekt:teddy_bear` in einem Raum mit dem
    Teddy an einer Wand, vom Start aus nicht sichtbar.
 
-**Ergebnis** _(offen)_
+**Ergebnis Teil 1 (09.10.2026, mit Rucksack statt Teddy)** — `matura-spot/notes/experimente/
+erkennungsprobe_rucksack_20261009.md`. Erster Versuch: 0 Treffer — die Frontbilder liegen
+seitlich, YOLOX sah den Rucksack im Rohbild nicht. Seither `objekte.kaesten_aufrecht`
+(−78°/−102° wie `get_image.py`). Danach mit `objekt:suitcase,backpack` (der kastenförmige
+Rucksack heisst für YOLOX „suitcase"): 1 m 20/20, 2 m 18/20, 3 m 20/20 (gemessen 2.97–3.01 m),
+4 m 0/20. Gegenprobe 6/20, alle an EINER Stelle (4.1 m, +23°): ein echter Koffer im Raum.
+Teil 2 offen.
 
 ## Nach der Abnahme
 
