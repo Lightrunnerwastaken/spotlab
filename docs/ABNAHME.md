@@ -1466,6 +1466,35 @@ Rucksack heisst für YOLOX „suitcase"): 1 m 20/20, 2 m 18/20, 3 m 20/20 (gemes
 4 m 0/20. Gegenprobe 6/20, alle an EINER Stelle (4.1 m, +23°): ein echter Koffer im Raum.
 Teil 2 offen.
 
+## A45 — Ein Agent nutzt Karten am echten Spot
+
+**Voraussetzung** A1, A40, A43. Agenten am Spot, Teil 2 (`docs/AGENTEN.md`, „Karten und
+Merkorte“): Kartenaufträge gehen an dieselbe Kartenarbeit wie der Tab, Wegpunktfahrten an
+dieselbe Navigation (`navigate_to` mit Tempodeckel). Im Übungsraum geprüft sind nur Merkorte und
+die Rekonstruktion; GraphNav gibt es nur am Gerät.
+
+1. Eine Karte mit mindestens zwei BENANNTEN Wegpunkten und Tags liegt im Arbeitsordner (sonst
+   zuerst Schritt 5). Aufsicht, Tablet mit Not-Aus, spotlab offen. Der Agent ruft
+   `zentrale_starten("echt")`, der Mensch gibt frei, der Agent ruft `karte_laden(<name>)`.
+   Erwartung: Antwort `verortet` (oder `sucht_tag` — dann `drehe` zu einem Tag, bis `lage()`
+   `verortet` meldet); `lage()` nennt die benannten Wegpunkte mit Peilung und Abstand, die
+   unbenannten fehlen; `skizze()` zeigt sie türkis.
+2. `zum_wegpunkt(<name>, warum=…)`. Erwartung: Spot fährt mit GraphNav hin (höchstens das
+   Tempo aus der Konfiguration), Antwort „angekommen“; im Tab steht „navigiert“.
+3. Zweite Fahrt, unterwegs eine Fahrtaste. Erwartung: Spot hält binnen 0.2 s, Antwort
+   „abgebrochen“ mit Grund „eine Taste hat übernommen“, danach ist die Freigabe aus. Dann den Agentenprozess
+   während einer Fahrt hart beenden — Spot hält binnen 0.5 s (Totmann).
+4. Im Tab „Fahren“ auf einen benannten Wegpunkt klicken. Erwartung: dieselbe Fahrt, ohne Agent.
+5. `aufnahme_starten("probe")`, ein Stück fahren, `wegpunkt_setzen("Ecke")`, weiterfahren,
+   `aufnahme_beenden()`. Erwartung: gespeichert unter einem freien Namen (`probe` oder
+   `probe-2`), der Wegpunkt „Ecke“ steht in der Karte; ein `zum_wegpunkt` während der Aufnahme
+   wurde abgelehnt („erst aufnahme_beenden“).
+6. `merkort_setzen("start")`, wegfahren, `zum_merkort("start", …)`. Erwartung: Spot kehrt auf
+   ±0.3 m zurück; die Raute steht im Tab. Danach `raum_aus_karte(<name>)` und den Raum im
+   Raumeditor öffnen: Wände und Tags liegen wie in der Karte.
+
+**Ergebnis** _(offen)_
+
 ## Nach der Abnahme
 
 Ergebnisse hier eintragen, Abweichungen als Befund in die Spec zurückspielen, und erst

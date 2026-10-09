@@ -1,9 +1,11 @@
 # Agenten am Spot
 
 Ein Agent — Claude Code, Codex oder ein anderer MCP-Klient — kann Spot über spotlab **sehen und
-fahren**: im Übungsraum frei, am echten Spot nur, solange ein Mensch es erlaubt. Teil 1 von fünf
-(Entwurf `docs/superpowers/specs/2026-10-09-agent-faehrt-design.md`); Karten durch den Agenten,
-Glas und Gefahrenzonen, Experimente und virtuelle Gehirne folgen als eigene Teile.
+fahren**: im Übungsraum frei, am echten Spot nur, solange ein Mensch es erlaubt — und er kann
+**Karten** nutzen und sich **Orte merken**. Teile 1 und 2 von fünf (Entwürfe
+`docs/superpowers/specs/2026-10-09-agent-faehrt-design.md` und
+`docs/superpowers/specs/2026-10-09-agent-karten-design.md`); Glas und Gefahrenzonen, Experimente
+und virtuelle Gehirne folgen als eigene Teile.
 
 **Der Agent hat keinen eigenen Weg zum Roboter.** Er startet die Steuerzentrale (dasselbe
 Programm wie der Tab „Fahren“, `workshop/zentrale.py`) und spricht mit ihr über Dateien im
@@ -66,10 +68,10 @@ nicht fahren.
 | Werkzeug | Was es tut |
 |---|---|
 | `zentrale_starten(ort, raum)` | `ort`: `2d`, `3d`, `physik`, `echt`; wartet ≤ 30 s auf das erste Lagebild |
-| `zentrale_status()` | läuft sie, wo, antwortet sie, Motoren, Freigabe, wer steuert |
+| `zentrale_status()` | läuft sie, wo, antwortet sie, Motoren, Freigabe, wer steuert, geladene Karte |
 | `zentrale_beenden()` | freundlicher Stopp: Spot hält und setzt sich |
-| `lage()` | Pose, Tempo, Akku, Motoren, Freigabe, freie Strecke in 8 Richtungen, Kopfraum, Menschen, Tags, letzter Befehl |
-| `skizze(radius_m)` | die Draufsicht als Bild: +y oben, Raster 1 m, weiss frei, schwarz Wand, grau unbekannt |
+| `lage()` | Pose, Tempo, Akku, Motoren, Freigabe, freie Strecke in 8 Richtungen, Kopfraum, Menschen, Tags, letzter Befehl, Karte und Merkorte |
+| `skizze(radius_m)` | die Draufsicht als Bild: +y oben, Raster 1 m, weiss frei, schwarz Wand, grau unbekannt, violette Rauten Merkorte, türkise Punkte Wegpunkte |
 | `kamerabild()` | echter Spot: Frontkameras; 3D: das Zimmer von aussen; 2D: keines |
 | `tiefe_messen()` | Tiefenkameras vorne: Abstand links / mitte (±10°) / rechts und Kopfraum |
 | `fahre_zu(x, y, warum)` | zum Punkt, wie ein Klick (Wegsuche, höchstens 5 m, langsam) |
@@ -88,6 +90,49 @@ Fahrbefehle warten höchstens 30 s und antworten mit `angekommen`, `abgelehnt`, 
 **Koordinaten:** Meter im Rahmen „vision“. Er gilt für diesen Lauf und driftet über lange Wege
 langsam. Weltwinkel: 0° = +x, positive Grad nach links. Richtungen und Peilungen in `lage()`
 sind **relativ zu Spots Blick**: 0° voraus, +90° links, −90° rechts, 180° hinten.
+
+## Karten und Merkorte (Teil 2)
+
+**Karten gibt es nur am echten Spot** — es sind GraphNav-Karten, dieselben wie im Tab „Karten“
+(`<Arbeitsordner>/karten/`). Im Übungsraum antworten die Karten-Werkzeuge mit dem Hinweis auf
+Merkorte, ohne einen Befehl zu schicken. Die Zentrale gibt jeden Kartenauftrag an DIESELBE
+Kartenarbeit wie der Tab; eine Kartenarbeit läuft im Hintergrund und lässt sich nicht anhalten.
+
+| Werkzeug | Was es tut |
+|---|---|
+| `karten_auflisten()` | die gespeicherten Karten (gab es schon) |
+| `karte_laden(name)` | lädt die Karte auf den Roboter und verortet Spot, ≤ 30 s; `karte.zustand` ist `verortet` oder `sucht_tag` (dann einen AprilTag der Karte ins Bild drehen — Spot versucht es von selbst wieder) |
+| `aufnahme_starten(name)` | verortet in einer geladenen Karte: weiterführen, sonst neu |
+| `aufnahme_beenden()` | beendet, bearbeitet nach (Schleifenschluss) und speichert unter einem FREIEN Namen, ≤ 120 s; `karte.gespeichert_als` nennt ihn |
+| `wegpunkt_setzen(name)` | nur während einer Aufnahme: ein benannter Wegpunkt an Spots Ort |
+| `zum_wegpunkt(name, warum)` | GraphNav-Fahrt zum benannten Wegpunkt, mit Tempodeckel und Freigabe; Antworten wie `fahre_zu` |
+| `merkort_setzen(name, x, y)` | merkt sich einen Ort — ohne `x`/`y` Spots jetzigen |
+| `merkort_loeschen(name)` | vergisst ihn |
+| `zum_merkort(name, warum)` | Wegsuche über den ganzen gesehenen Boden, ohne die 5-m-Grenze von `fahre_zu` |
+| `raum_aus_karte(karte, name)` | baut aus einer Karte einen Raum für den Übungsraum — ohne Zentrale |
+
+**Nur BENANNTE Wegpunkte sind Ziele.** GraphNav legt beim Aufnehmen alle paar Meter selbst einen
+Wegpunkt an; die haben keinen Namen und erscheinen weder in `lage()` noch in `skizze()`. `lage()`
+nennt verortet die 20 nächsten benannten mit Peilung und Abstand. Wer eigene Ziele will, setzt sie
+in der Aufnahme mit `wegpunkt_setzen` oder benennt sie im Tab „Karten“ nachträglich.
+
+**Ablauf am echten Spot:** `zentrale_starten("echt")`, Freigabe durch den Menschen,
+`karte_laden("flur")`, bei `sucht_tag` einen Tag ins Bild drehen (`drehe`), bis `lage()` die Karte
+`verortet` nennt, dann `zum_wegpunkt("Küche", warum=…)`. Spot fährt dabei nicht weiter, als er sich
+in der Karte findet: wird er `verloren`, bricht die Fahrt ab. Ein Klick des Menschen auf einen
+benannten Wegpunkt im Tab „Fahren“ fährt ebenso hin.
+
+**Merkorte** gibt es überall — im Übungsraum fahren sie die Wegsuche statt GraphNav. Sie liegen im
+Rahmen „vision“: im Übungsraum ist der bei jedem Start gleich, und die Merkorte bleiben neben dem
+Raum gespeichert (`<Arbeitsordner>/raeume/<raum>.merkorte.json`, auch für eine Vorlage); am echten
+Spot setzt sich „vision“ bei jedem Start neu, dort leben sie nur bis zum Ende der Zentrale. Der
+Mensch sieht sie im Tab „Fahren“ als Rauten mit Namen.
+
+**Rekonstruktion:** `raum_aus_karte("flur")` baut aus der gespeicherten Karte Wände, Treppen,
+Rampen und Tags (dieselbe Rechnung wie im Raumeditor, ohne Korrigierer) und speichert den Raum
+samt Pauspapier unter einem freien Namen — nie über einen vorhandenen Raum und nie unter dem Namen
+einer Vorlage. Danach im Raumeditor korrigieren (Lücken schliessen, Gelände bauen) und dort üben:
+`zentrale_starten("3d", raum="flur")`.
 
 ## Regeln
 
@@ -116,4 +161,5 @@ Alles liegt im Lauf der Zentrale (`<Arbeitsordner>/Beispiele/runs/<lauf>/`):
 
 Die Ausgabe des Programms steht unter `<Arbeitsordner>/mcp-ausgabe/`.
 
-Am Gerät geprüft wird das mit Abnahmepunkt **A43** (`docs/ABNAHME.md`).
+Am Gerät geprüft wird das mit den Abnahmepunkten **A43** (fahren) und **A45** (Karten)
+(`docs/ABNAHME.md`).

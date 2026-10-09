@@ -119,3 +119,39 @@ def test_raum_aus_karte_baut_einen_ladbaren_raum_mit_pauspapier(wurzel, monkeypa
     assert antwort["waende"] > 10 and antwort["tags"] > 10
     assert raum_laden("kata", wurzel).name == "kata"
     assert 'raum="kata"' in antwort["hinweis"]
+
+
+# ------------------------------------------------------------ Kette mit dem echten Programm
+
+
+def test_die_kette_mit_einem_merkort_im_2d_uebungsraum(wurzel, monkeypatch):  # noqa: F811
+    """zentrale_starten → merkort_setzen → fahre_relativ → zum_merkort → angekommen →
+    zentrale_beenden mit dem echten Programm im 2D-Übungsraum „durchgang“ (Start (1, 2), Blick
+    +x). Der Merkort liegt danach neben dem Raum, und ein zweiter Start kennt ihn wieder."""
+    import json
+
+    monkeypatch.setattr(fahren, "BESTAETIGUNG_S", 10.0)        # ein echter Prozess unter Last
+    monkeypatch.setattr(fahren, "BEFEHL_WARTE_S", 60.0)
+    start = fahren.zentrale_starten("2d", raum="durchgang")
+    assert start.get("gestartet"), start
+    try:
+        gesetzt = karten.merkort_setzen("start")
+        assert gesetzt["zustand"] == "erledigt", gesetzt
+        assert fahren.fahre_relativ(1.0, 0.0, warum="ein Stück vor")["zustand"] == "angekommen"
+        assert fahren.lage()["spot"]["x"] == pytest.approx(2.0, abs=0.35)
+        zurueck = karten.zum_merkort("start", warum="zurück zum Anfang")
+        assert zurueck["zustand"] == "angekommen", zurueck
+        lage = fahren.lage()
+        assert (lage["spot"]["x"], lage["spot"]["y"]) == (pytest.approx(1.0, abs=0.35),
+                                                          pytest.approx(2.0, abs=0.35)), lage
+    finally:
+        ende = fahren.zentrale_beenden()
+    assert ende["beendet"], ende
+    datei = wurzel / "raeume" / "durchgang.merkorte.json"
+    assert [o["name"] for o in json.loads(datei.read_text(encoding="utf-8"))] == ["start"]
+
+    assert fahren.zentrale_starten("2d", raum="durchgang").get("gestartet")
+    try:
+        assert [o["name"] for o in fahren.lage()["merkorte"]] == ["start"]
+    finally:
+        assert fahren.zentrale_beenden()["beendet"]

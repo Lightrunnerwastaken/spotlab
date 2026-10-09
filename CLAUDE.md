@@ -1325,6 +1325,26 @@ versionsgepinntes Extra `spotlab[sim]`.
   Bild (`agent/`) und Befehl, Ergebnis und Freigabe als Ereignis (im Ereignis heisst die Art des
   Befehls `befehl`: `art` ist der Name des Ereignisses). Die GUI erkennt eine vom Agenten
   gestartete Zentrale am Skript (`agent.ist_zentrale`) und hängt den Tab daran. Am Gerät: A43.
+  **Teil 2 (09.10.2026): Karten durch den Agenten** (Entwurf
+  `docs/superpowers/specs/2026-10-09-agent-karten-design.md`, Werkzeuge `mcp/karten.py`). Am
+  echten Spot gehen Kartenaufträge des Agenten an DIESELBE `Kartenarbeit` wie die des Tabs, mit
+  EIGENER Zählung je Auftraggeber (`auftrag(…, quelle=)`): der Tab vergleicht seine Nummer mit
+  `<`, und eine fremde, höhere hätte ihm alte Aufträge verschluckt. Eine Kartenarbeit ist keine
+  Fahrt — Taste, Klick und Freigabe beenden sie nicht, ein neuer Agentenbefehl beendet nur den
+  BEFEHL („läuft im Hintergrund weiter“). **Wegpunktfahrten übergeben an `navigation.navigate_to`**
+  wie das Folgen an `folgen.folge` (`Zentrale._zum_wegpunkt`): `abbruch()` erledigt alle
+  `NAVI_TAKT_S` (0.2 s, unter dem Totmann von 0.5 s) Stopp, Aktionen, Kartenaufträge, Taste,
+  Ablösung und „verloren“; ein Klick des Menschen auf einen BENANNTEN Wegpunkt im Tab fährt
+  denselben Weg (`klickziel.json` mit Art „wegpunkt“). **Nur benannte Wegpunkte sind Ziele**
+  (`Lagebild.wegpunkt_bei`, `agentlage`): GraphNav setzt beim Aufnehmen eigene ohne Namen.
+  `navigationskarte()` weist ab, was nicht navigierbar ist (Aufnahme, beschäftigt, nicht
+  verortet), mit dem Schritt, der hilft. **Merkorte** (`workshop/merkorte.py`) sind benannte
+  Punkte im Rahmen „vision“ für Übungsraum UND echten Spot, Fahrt über die Wegsuche ohne die
+  5-m-Grenze (`max_weite_m=None`); im Übungsraum in einer EIGENEN Datei neben dem Raum
+  (`raeume/<raum>.merkorte.json` — der Raumeditor schreibt die Raumdatei neu und verlöre sie
+  sonst), am echten Spot nur im Speicher, weil „vision“ dort bei jedem Start neu beginnt.
+  `raum_aus_karte` rekonstruiert ohne Zentrale unter einem freien Namen (nie eine Vorlage). Am
+  Gerät: A45.
 - **Das Fenstersymbol ist FREIGESTELLT und liegt im Paket** (`gui/spotlab.png`, runde
   Ecken mit Transparenz aussen, dazu `package-data`). Ein Symbol mit eigenem
   Hintergrund sitzt in der Taskleiste in einem grauen Kasten, und ohne den
