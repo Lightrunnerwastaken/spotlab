@@ -323,3 +323,23 @@ def test_ein_gemeldetes_scheitern_haelt_spot_an(tmp_path, monkeypatch):
     with pytest.raises(NavigationError):
         navigate_to(backend, None, karte, "kueche", Limits(), schlaf=lambda _: None)
     assert gestoppt == [True]
+
+
+def test_der_nachfragetakt_ist_einstellbar(tmp_path):
+    """Die Zentrale fragt alle 0.2 s nach (Agenten am Spot, Teil 2) -- sonst hielte Spot nach
+    dem Ende eines Agenten erst nach bis zu einer Sekunde."""
+    from spotlab.api.navigation import NACHSENDE_INTERVALL_S
+
+    _karte_auf_platte(tmp_path)
+    unterwegs = NavStatus(fertig=False, status="Unterwegs.", gescheitert=False)
+    geschlafen = []
+    backend = FakeBackend(folge=[unterwegs, unterwegs])
+    karte = load_map(backend, None, tmp_path, "turnhalle")
+    navigate_to(backend, None, karte, "kueche", Limits(), schlaf=geschlafen.append,
+                jetzt=lambda: 0.0, takt_s=0.2)
+    assert geschlafen == [0.2, 0.2]
+    geschlafen.clear()
+    backend = FakeBackend(folge=[unterwegs])
+    navigate_to(backend, None, karte, "kueche", Limits(), schlaf=geschlafen.append,
+                jetzt=lambda: 0.0)
+    assert geschlafen == [NACHSENDE_INTERVALL_S], "ohne Angabe bleibt der alte Takt"

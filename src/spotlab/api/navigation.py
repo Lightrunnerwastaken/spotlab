@@ -138,13 +138,16 @@ def navigate_to(
     schlaf=time.sleep,
     jetzt=time.monotonic,
     abbruch=None,
+    takt_s=NACHSENDE_INTERVALL_S,
 ):
     """Autonom zu einem Wegpunkt fahren. True: angekommen; False: abgebrochen.
 
     Navigationskommandos verfallen wie Geschwindigkeitskommandos, deshalb die
     Schleife: nachsenden, Rückmeldung prüfen, wiederholen. `abbruch()` wird in
     jedem Takt gefragt; sagt es wahr, hält Spot an (`stop`) und die Fahrt ist
-    zu Ende -- so bricht der Karten-Tab eine Fahrt für ein neues Ziel ab.
+    zu Ende -- so bricht der Karten-Tab eine Fahrt für ein neues Ziel ab. `takt_s` ist der
+    Abstand dieser Nachfragen; die Steuerzentrale nimmt einen kürzeren, damit `abbruch` so schnell
+    greift wie der Totmann eines Agenten.
     """
     require(backend, Capability.GRAPH_NAV, "auf einer Karte navigieren")
     waypoint_id = karte.id_fuer(ziel)
@@ -187,4 +190,4 @@ def navigate_to(
                 f"Der Spot hat '{ziel}' nicht innerhalb von {timeout:.0f} s erreicht "
                 f"(zuletzt: {zustand.status})."
             )
-        schlaf(NACHSENDE_INTERVALL_S)
+        schlaf(takt_s)
