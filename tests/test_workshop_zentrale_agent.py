@@ -345,3 +345,129 @@ def test_freigabe_braucht_jedes_backend_ausser_dem_uebungsraum(tmp_path, backend
         RunRecorder(tmp_path, None, backend=backend)
     lauf = next((p for p in tmp_path.iterdir() if p.is_dir()), tmp_path)
     assert zentrale.freigabe_noetig(lauf) is noetig
+
+
+# ------------------------------------------------------------ Warten auf die Freigabe
+
+
+class _MotorSpot(_Spot):
+    def power_on(self):
+        self.kommandos.append("power_on")
+
+    def stand(self):
+        self.kommandos.append("stand")
+
+
+def test_ohne_freigabe_bleiben_die_motoren_aus_und_nichts_faehrt(tmp_path):
+    spot = _MotorSpot()
+    gesagt = []
+    z, _ = _mit_uhr(spot, tmp_path, braucht_freigabe=True, warte_auf_freigabe=True,
+                    melde=gesagt.append)
+    fahrt.schreibe(tmp_path, 0.4, 0.0, 0.0, jetzt=lambda: T0)
+    protokoll.schreibe_klickziel(tmp_path, 1, (2.5, 1.0), "normal", jetzt=lambda: T0)
+    _befehl(tmp_path, 1, "ziel", {"x": 2.5, "y": 1.0})
+    z.takt()
+    z.wahrnehmen()
+    assert spot.kommandos == [] and z.wartet
+    assert z._agent["zustand"] == "abgelehnt" and "Freigabe" in z._agent["grund"]
+    assert "wartet auf Freigabe" in protokoll.lies_lagebild(tmp_path)["motoren"]
+    assert any("Motoren" in text for text in gesagt), gesagt
+    assert not z.klick.unterwegs, "ein Klick aus der Wartezeit fährt nicht später los"
+
+
+def test_mit_der_freigabe_steht_spot_auf_und_faehrt_dann(tmp_path):
+    spot = _MotorSpot()
+    z, _ = _mit_uhr(spot, tmp_path, braucht_freigabe=True, warte_auf_freigabe=True)
+    protokoll.schreibe_klickziel(tmp_path, 1, (2.5, 1.0), "normal", jetzt=lambda: T0)
+    z.takt()
+    _freigabe(tmp_path)
+    z.takt()
+    assert spot.kommandos == ["power_on", "stand"] and not z.wartet
+    assert not z.klick.unterwegs, "der alte Klick ist verbraucht"
+    _befehl(tmp_path, 1, "ziel", {"x": 2.5, "y": 1.0})
+    z.takt()
+    assert _fahrten(spot) and z._agent["zustand"] == "unterwegs"
+    z.wahrnehmen()
+    assert protokoll.lies_lagebild(tmp_path)["motoren"] is None
+
+
+def test_schlaegt_das_aufstehen_fehl_wartet_sie_auf_eine_neue_freigabe(tmp_path):
+    class _Kaputt(_MotorSpot):
+        def power_on(self):
+            self.kommandos.append("power_on")
+            raise RuntimeError("Not-Aus am Tablet")
+
+    spot = _Kaputt()
+    gesagt = []
+    z, _ = _mit_uhr(spot, tmp_path, braucht_freigabe=True, warte_auf_freigabe=True,
+                    melde=gesagt.append)
+    _freigabe(tmp_path)
+    z.takt()
+    z.takt()
+    assert spot.kommandos == ["power_on"] and z.wartet, "kein zweiter Versuch ohne neue Freigabe"
+    assert any("Not-Aus am Tablet" in text for text in gesagt)
+    _freigabe(tmp_path, an=False, nummer=2)
+    z.takt()
+    _freigabe(tmp_path, an=True, nummer=3)
+    z.takt()
+    assert spot.kommandos == ["power_on", "power_on"]
+
+
+def test_am_ende_haelt_eine_wartende_zentrale_nichts_an(tmp_path):
+    spot = _MotorSpot()
+    z, _ = _mit_uhr(spot, tmp_path, braucht_freigabe=True, warte_auf_freigabe=True)
+    runden = {"n": 0}
+
+    def laeuft():
+        runden["n"] += 1
+        return runden["n"] <= 2
+
+    z.lauf(laeuft, schlaf=lambda _s: None, mit_blick=False)
+    assert "stop" not in spot.kommandos, "mit Motoren aus gibt es nichts anzuhalten"
+
+
+def test_das_echte_programm_wartet_mit_motoren_aus_auf_die_freigabe(tmp_path):
+    """Der Startweg des Agenten am echten Spot, mit dem Trockenlauf statt des Roboters:
+    verbinden, Lagebild, Motoren aus -- erst die Freigabe schaltet ein und stellt Spot hin."""
+    import os
+    import subprocess
+    import sys
+    import time
+    from pathlib import Path
+
+    import spotlab
+    from spotlab.record.run import STOPP_DATEI
+    from tests_zeitgrenzen import TEST_TIMEOUT_S, warte_bis
+
+    quelle = str(Path(spotlab.__file__).resolve().parents[1])
+    env = dict(os.environ, SPOTLAB_BACKEND="dryrun", SPOTLAB_NUR_TROCKEN="1", PYTHONUTF8="1",
+               PYTHONPATH=os.pathsep.join([quelle] + [os.environ.get("PYTHONPATH", "")]))
+    prozess = subprocess.Popen(
+        [sys.executable, "-m", "spotlab.workshop.zentrale", "--runs", str(tmp_path),
+         "--auf-freigabe-warten"], env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        text=True, encoding="utf-8", errors="replace")
+    try:
+        lauf = warte_bis(lambda: next((p for p in tmp_path.iterdir() if p.is_dir()), None)
+                         if prozess.poll() is None else "tot", "das Lauf-Verzeichnis")
+        assert lauf != "tot", prozess.communicate()[0][-3000:]
+        bild = warte_bis(lambda: protokoll.lies_lagebild(lauf) or prozess.poll() is not None,
+                         "das erste Lagebild")
+        assert prozess.poll() is None, prozess.communicate()[0][-3000:]
+        assert "wartet auf Freigabe" in bild["motoren"]
+        _freigabe(lauf, t=time.time())
+        warte_bis(lambda: (protokoll.lies_lagebild(lauf) or {}).get("motoren", "") is None
+                  or prozess.poll() is not None, "Spot steht auf")
+        (lauf / STOPP_DATEI).touch()
+        ausgabe, _ = prozess.communicate(timeout=TEST_TIMEOUT_S)
+    finally:
+        if prozess.poll() is None:
+            prozess.kill()
+            prozess.communicate()
+    # Die Stopp-Datei endet wie der Stopp-Knopf (Abbruch im Hauptfaden, Abbau durch connect).
+    assert "Traceback" not in ausgabe, ausgabe[-3000:]
+    ereignisse = [json.loads(z) for z in (lauf / "ereignisse.jsonl").read_text(
+        encoding="utf-8").splitlines()]
+    arten = [e["daten"].get("name") if e["art"] == "kommando" else e["art"] for e in ereignisse]
+    freigabe = arten.index("freigabe")
+    assert "power_on" not in arten[:freigabe], arten
+    assert arten.index("power_on") > freigabe and "stand" in arten[freigabe:], arten

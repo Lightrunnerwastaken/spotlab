@@ -746,9 +746,10 @@ def test_ein_kartenauftrag_kommt_auch_waehrend_des_folgens_an(tmp_path):
 
 
 def test_die_argumente():
-    assert zentrale.argumente(["--runs", "X", "--uebernehmen"]) == ("X", True, None)
-    assert zentrale.argumente([]) == (None, False, None)
-    assert zentrale.argumente(["--arbeitsordner", "W", "--runs", "X"]) == ("X", False, "W")
+    assert zentrale.argumente(["--runs", "X", "--uebernehmen"]) == ("X", True, None, False)
+    assert zentrale.argumente([]) == (None, False, None, False)
+    assert zentrale.argumente(["--arbeitsordner", "W", "--runs", "X"]) == ("X", False, "W", False)
+    assert zentrale.argumente(["--auf-freigabe-warten"]) == (None, False, None, True)
     with pytest.raises(SpotlabError):
         zentrale.argumente(["--arbeitsordner"])
     with pytest.raises(SpotlabError):

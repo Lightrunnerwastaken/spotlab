@@ -102,6 +102,8 @@ KEINE_FREIGABE = ("keine Freigabe — ein Mensch muss im Tab „Fahren“ „�
                   "einschalten")
 MENSCH_UEBERNIMMT = "ein Mensch hat übernommen"
 AGENT_STILL = "kein Lebenszeichen vom Agenten — Spot steht"
+WARTET = ("Die Motoren sind aus, bis ein Mensch im Tab „Fahren“ „🤖 Agent darf fahren“ "
+          "einschaltet — Tasten, Klicks und Fahrbefehle fahren erst danach.")
 ENDE_DER_KLICKFAHRT = ("angekommen", "abgelehnt", "versperrt", "abgebrochen")
 TIEFE_KAMERAS = ("frontleft", "frontright")
 
@@ -155,9 +157,13 @@ def _im_hintergrund(arbeit):
 class Zentrale:
     def __init__(self, spot, lauf_dir, jetzt=time.time, melde=print, licht=None,
                  hintergrund=_im_hintergrund, suche=None, folgen_mit=None,
-                 koerper_finder=None, kartenarbeit=None, braucht_freigabe=False):
+                 koerper_finder=None, kartenarbeit=None, braucht_freigabe=False,
+                 warte_auf_freigabe=False):
         self.spot = spot
         self.braucht_freigabe = bool(braucht_freigabe)   # True am echten Spot
+        # Vom Agenten gestartet (`--auf-freigabe-warten`): Motoren aus, bis die Freigabe kommt.
+        self._wartet = bool(warte_auf_freigabe)
+        self._aufstehen_gescheitert = False
         self.lauf_dir = Path(lauf_dir)
         self.jetzt = jetzt
         self.melde = melde
@@ -205,6 +211,11 @@ class Zentrale:
 
             licht = Statuslicht(spot)
         self._licht = licht
+
+    @property
+    def wartet(self):
+        """Motoren noch aus, weil die Freigabe fehlt (`--auf-freigabe-warten`)."""
+        return self._wartet
 
     def _faehigkeiten(self):
         def gefragt(merkmal):
@@ -328,6 +339,7 @@ class Zentrale:
             "karte": None,            # Teil 3
             "agent": dict(self._agent, freigabe=self._freigabe,
                           braucht_freigabe=self.braucht_freigabe),
+            "motoren": "aus — wartet auf Freigabe" if self._wartet else None,
         }
         return daten, (None if leer else skizze.png(t))
 
@@ -381,6 +393,9 @@ class Zentrale:
         self._aktionen()
         self._kartenauftraege()
         self._freigabe_pruefen()
+        if self._wartet:
+            self._warten(t)
+            return
         befehl = fahrt.lies(self.lauf_dir, jetzt=self.jetzt)
         # Unter Windows liest der Takt die Datei manchmal genau beim Ersetzen (20-mal je
         # Sekunde gelesen, 5-mal geschrieben): dann gilt das zuletzt gelesene weiter. Sein
@@ -431,6 +446,35 @@ class Zentrale:
         if self._faehrt:
             self.spot.stop()
             self._faehrt = False
+
+    def _warten(self, t):
+        """Motoren aus, bis ein Mensch freigibt: lesen ja, fahren nein. Klicks und Befehle aus
+        dieser Zeit werden verbraucht -- sonst führe nach dem Aufstehen ein alter Klick los."""
+        if self._freigabe and not self._aufstehen_gescheitert:
+            self._aufstehen()
+            return
+        kz = protokoll.lies_klickziel(self.lauf_dir)
+        neuer_klick = kz is not None and kz.nummer != self._klick_nummer
+        if kz is not None:
+            self._klickziel, self._klick_nummer = kz, kz.nummer
+        ab = agentdatei.lies_befehl(self.lauf_dir) or self._agent_letzter
+        self._agent_letzter = ab
+        if ab is not None and ab.nummer != self._agent_nummer:
+            self._agent_neu(ab, t)               # ein Fahrbefehl scheitert an `_agent_verbot`
+        if neuer_klick or fahrt.lies(self.lauf_dir, jetzt=self.jetzt) != fahrt.STILL:
+            self._einmal("wartet", WARTET)
+
+    def _aufstehen(self):
+        self.melde("Freigabe da — Spot schaltet die Motoren ein und steht auf.")
+        try:
+            self.spot.power_on()
+            self.spot.stand()
+        except Exception as fehler:
+            self._aufstehen_gescheitert = True
+            self.melde(f"Aufstehen ging nicht ({fehler}) — am Tablet nachsehen, dann „🤖 Agent "
+                       f"darf fahren“ aus- und wieder einschalten.")
+            return
+        self._wartet = False
 
     def _neues_klickziel(self, kz, t):
         self._klick_nummer = kz.nummer
@@ -515,6 +559,7 @@ class Zentrale:
         self.melde(f"🤖 Agent darf fahren: {'an' if frei else 'aus'}")
         self._ereignis("freigabe", an=frei, grund=grund)
         if not frei:
+            self._aufstehen_gescheitert = False      # die nächste Freigabe versucht es wieder
             self._agent_abbrechen(f"{MENSCH_UEBERNIMMT} — die Freigabe ist aus")
 
     def _agent_ende(self, zustand, grund="", nummer=None, **felder):
@@ -544,6 +589,8 @@ class Zentrale:
         """Warum ein Fahrbefehl gar nicht erst fährt — oder None."""
         if self.braucht_freigabe and not self._freigabe:
             return KEINE_FREIGABE
+        if self._wartet:
+            return WARTET
         if not agentdatei.befehl_lebt(ab, jetzt=self.jetzt):
             return f"{AGENT_STILL} (der Befehl kam ohne frisches Lebenszeichen an)"
         if taste:
@@ -974,7 +1021,8 @@ class Zentrale:
                 schlaf(takt_s)
         finally:
             try:
-                self.spot.stop()                  # ZUERST anhalten
+                if not self._wartet:              # mit Motoren aus gibt es nichts anzuhalten
+                    self.spot.stop()              # ZUERST anhalten
             finally:
                 if self._licht is not None:
                     try:
@@ -1000,9 +1048,10 @@ class Zentrale:
 
 
 def argumente(argv):
-    """(runs, uebernehmen, arbeitsordner) aus der Kommandozeile:
-    `zentrale.py [--runs ORDNER] [--arbeitsordner ORDNER] [--uebernehmen]`."""
-    rest, runs, uebernehmen, arbeitsordner = list(argv), None, False, None
+    """(runs, uebernehmen, arbeitsordner, warten) aus der Kommandozeile:
+    `zentrale.py [--runs ORDNER] [--arbeitsordner ORDNER] [--uebernehmen]
+    [--auf-freigabe-warten]`."""
+    rest, runs, uebernehmen, arbeitsordner, warten = list(argv), None, False, None, False
     while rest:
         wort = rest.pop(0)
         if wort in ("--runs", "--arbeitsordner"):
@@ -1014,9 +1063,11 @@ def argumente(argv):
                 arbeitsordner = rest.pop(0)
         elif wort == "--uebernehmen":
             uebernehmen = True
+        elif wort == "--auf-freigabe-warten":
+            warten = True
         else:
             raise SpotlabError(f"Unbekannte Option {wort}.")
-    return runs, uebernehmen, arbeitsordner
+    return runs, uebernehmen, arbeitsordner, warten
 
 
 def freigabe_noetig(lauf_dir):
@@ -1036,20 +1087,26 @@ def _hauptprogramm(argv=None):
     import spotlab
     from spotlab.workshop.kartenarbeit import Kartenarbeit
 
-    runs, uebernehmen, arbeitsordner = argumente(sys.argv[1:] if argv is None else argv)
+    runs, uebernehmen, arbeitsordner, warten = argumente(
+        sys.argv[1:] if argv is None else argv)
     runs = runs or os.environ.get("SPOTLAB_RUNS_DIR") or str(Path.cwd() / "runs")
     with spotlab.connect(runs_dir=runs, script=__file__, take=uebernehmen) as spot:
-        spot.power_on()
-        spot.stand()
+        if warten:
+            print(f"Steuerzentrale (vom Agenten gestartet): {WARTET}")
+        else:
+            spot.power_on()
+            spot.stand()
         print("Steuerzentrale: W/S vor und zurück · A/D seitwärts · Q/E drehen · "
               "Klick in die Draufsicht: dorthin gehen · Leertaste hält")
         lauf_dir = spot.recorder.dir
         stopp = lauf_dir / STOPP_DATEI
         karten = Kartenarbeit(spot, arbeitsordner)
-        Zentrale(spot, lauf_dir, kartenarbeit=karten,
-                 braucht_freigabe=freigabe_noetig(lauf_dir)).lauf(
-            laeuft=lambda: not stopp.exists())
-        spot.sit()
+        zentrale = Zentrale(spot, lauf_dir, kartenarbeit=karten,
+                            braucht_freigabe=warten or freigabe_noetig(lauf_dir),
+                            warte_auf_freigabe=warten)
+        zentrale.lauf(laeuft=lambda: not stopp.exists())
+        if not zentrale.wartet:
+            spot.sit()
 
 
 if __name__ == "__main__":
