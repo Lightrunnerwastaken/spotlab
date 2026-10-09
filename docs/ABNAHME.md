@@ -1439,6 +1439,33 @@ im Tab „Fahren“ „🤖 Agent darf fahren“ eingeschaltet hat.
 
 **Ergebnis** _(offen)_
 
+## A44 — Gegenstand finden: YOLOX-Klasse mit Tiefe (Teddybär)
+
+**Voraussetzung** keine für Teil 1 (leaselos, ein Mensch fährt); A1 für Teil 2. Seit dem
+08.10.2026 findet `backends/real/objekte.py` eine COCO-Klasse (Vorgabe „teddy bear") mit
+demselben YOLOX wie der Körper und setzt sie über das registrierte Tiefenbild
+(`frontleft/frontright_depth_in_visual_frame`) und den Rahmenbaum der Aufnahme in den Rahmen
+„vision" — für die Vorführung von Versuch 3 in matura-spot (`notes/ENTWURF_versuch3.md`).
+Offline geprüft: keine Teddy-Kästen im leeren Gang vom 12.08.2026. Nie geprüft: ob YOLOX
+einen Teddybären auf Spots GRAUBILDERN überhaupt findet, und bis zu welchem Abstand.
+
+1. Teddybär auf den Boden an eine Wand, Spot mit dem Tablet in 1, 2, 3, 4 m davor stellen und
+   langsam schwenken; mitschreiben mit `matura-spot/scripts/beobachten_real.py` (leaselos,
+   Bildmitschnitt der Frontkameras samt `*_depth_in_visual_frame`).
+2. Offline: Trefferquote je Abstandsband und die Weltlage gegen die gemessene Lage des
+   Teddys (Massband ab einem Tag oder ab Spots Startpunkt).
+3. Gegenprobe: dieselbe Fahrt ohne Teddy — Fehlalarme je Minute (`fehlalarme_objekt.py`).
+4. Teil 2 (nach A1): `exploration_real.py --ziel objekt:teddy_bear` in einem Raum mit dem
+   Teddy an einer Wand, vom Start aus nicht sichtbar.
+
+**Ergebnis Teil 1 (09.10.2026, mit Rucksack statt Teddy)** — `matura-spot/notes/experimente/
+erkennungsprobe_rucksack_20261009.md`. Erster Versuch: 0 Treffer — die Frontbilder liegen
+seitlich, YOLOX sah den Rucksack im Rohbild nicht. Seither `objekte.kaesten_aufrecht`
+(−78°/−102° wie `get_image.py`). Danach mit `objekt:suitcase,backpack` (der kastenförmige
+Rucksack heisst für YOLOX „suitcase"): 1 m 20/20, 2 m 18/20, 3 m 20/20 (gemessen 2.97–3.01 m),
+4 m 0/20. Gegenprobe 6/20, alle an EINER Stelle (4.1 m, +23°): ein echter Koffer im Raum.
+Teil 2 offen.
+
 ## Nach der Abnahme
 
 Ergebnisse hier eintragen, Abweichungen als Befund in die Spec zurückspielen, und erst

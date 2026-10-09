@@ -175,13 +175,16 @@ class YoloxPersonen:
     klasse`); ohne sie wird die Zoo-Klasse mit der Modelldatei gebaut.
     """
 
-    def __init__(self, pfad=None, modell=None, mindest=YOLOX_MINDEST):
+    def __init__(self, pfad=None, modell=None, mindest=YOLOX_MINDEST, klasse=0):
         if modell is None:
             from spotlab.backends.real.zoo.yolox import YoloX
 
             modell = YoloX(str(pfad), confThreshold=YOLOX_KONFIDENZ)
         self._modell = modell
         self._mindest = float(mindest)
+        # COCO-Index oder mehrere; 0 = Mensch (objekte.py nimmt andere)
+        self._klassen = (frozenset(int(k) for k in klasse)
+                         if isinstance(klasse, (set, frozenset, tuple, list)) else frozenset({int(klasse)}))
 
     def __call__(self, rgb):
         import cv2
@@ -194,7 +197,7 @@ class YoloxPersonen:
         quadrat[:klein.shape[0], :klein.shape[1]] = klein
         kaesten = []
         for zeile in np.asarray(self._modell.infer(quadrat)).reshape(-1, 6):
-            if int(zeile[5]) != 0 or zeile[4] < self._mindest:
+            if int(zeile[5]) not in self._klassen or zeile[4] < self._mindest:
                 continue
             x, y, b, h = (float(v) / faktor for v in zeile[:4])
             kaesten.append((x, y, x + b, y + h, float(zeile[4])))
