@@ -341,7 +341,7 @@ class Zentrale:
             self._neues_klickziel(kz, t)
             if kz.art == "mensch" and kz.ziel is not None and befehl == fahrt.STILL \
                     and self._suche_kann:
-                self._folge_mensch(kz)
+                self._folge_mensch(kz.nummer, kz.ziel, "tab", self._klick_abloese(kz))
                 return
         if befehl != fahrt.STILL:
             with self._sperre:
@@ -411,11 +411,29 @@ class Zentrale:
 
     # ------------------------------------------------------------ Folgen per Klick
 
-    def _folge_mensch(self, kz):
-        """Der Folgemodus übernimmt, bis `laeuft` einen Grund hat aufzuhören. Blockiert."""
+    def _klick_abloese(self, kz):
+        """Wann der Tab das Folgen beendet: ein neuer Klick oder kein Lebenszeichen mehr."""
+        zuletzt = {"kz": kz}
+
+        def abgeloest():
+            neu = protokoll.lies_klickziel(self.lauf_dir) or zuletzt["kz"]
+            zuletzt["kz"] = neu
+            if neu.nummer != kz.nummer:
+                return "ein neuer Klick"
+            if not protokoll.lebt(neu, jetzt=self.jetzt):
+                return ("kein Lebenszeichen vom Tab (Reiter gewechselt oder Fenster nicht aktiv) "
+                        "— Spot steht")
+            return None
+
+        return abgeloest
+
+    def _folge_mensch(self, nummer, ziel, quelle, abgeloest):
+        """Der Folgemodus übernimmt, bis `laeuft` einen Grund hat aufzuhören. Blockiert.
+
+        `abgeloest()` sagt, ob der Auftraggeber (Tab oder Agent) das Folgen beendet hat — ein
+        Grund als Text, sonst None. Stopp, Tasten und die Startfrist gelten für beide."""
         anfang = self.jetzt()
         ende = {"grund": ""}
-        zuletzt = {"kz": kz}
 
         def gesehen(punkte, gewaehlt):
             t = self.jetzt()
@@ -429,12 +447,12 @@ class Zentrale:
                 if gefolgt is not None:
                     self._gefolgt = gefolgt
 
-        finder = klickfolgen.KlickFinder(self._koerper_finder(), kz.ziel, gesehen=gesehen)
+        finder = klickfolgen.KlickFinder(self._koerper_finder(), ziel, gesehen=gesehen)
 
         def stand(grund):
             with self._sperre:
-                self.klick.stand = klickfahrt.Stand(nummer=kz.nummer, zustand="folgt",
-                                                    grund=grund, ziel=kz.ziel)
+                self.klick.stand = klickfahrt.Stand(nummer=nummer, zustand="folgt",
+                                                    grund=grund, ziel=ziel, quelle=quelle)
 
         def laeuft():
             if not self._laeuft():
@@ -445,14 +463,9 @@ class Zentrale:
             if fahrt.lies(self.lauf_dir, jetzt=self.jetzt) != fahrt.STILL:
                 ende["grund"] = "eine Taste hat übernommen"
                 return False
-            neu = protokoll.lies_klickziel(self.lauf_dir) or zuletzt["kz"]
-            zuletzt["kz"] = neu
-            if neu.nummer != kz.nummer:
-                ende["grund"] = "ein neuer Klick"
-                return False
-            if not protokoll.lebt(neu, jetzt=self.jetzt):
-                ende["grund"] = ("kein Lebenszeichen vom Tab (Reiter gewechselt oder Fenster "
-                                 "nicht aktiv) — Spot steht")
+            grund = abgeloest()
+            if grund:
+                ende["grund"] = grund
                 return False
             if finder.treffer == 0 and self.jetzt() - anfang > START_FRIST_S:
                 ende["grund"] = (f"der angeklickte Mensch war {START_FRIST_S:.0f} s lang nicht "
@@ -481,7 +494,7 @@ class Zentrale:
                 self._folgt = False
                 self._gefolgt = None
                 self.klick.stand = klickfahrt.Stand(
-                    nummer=kz.nummer, zustand="abgebrochen",
+                    nummer=nummer, zustand="abgebrochen", quelle=quelle,
                     grund=f"Folgen beendet: {ende['grund'] or 'der Folgemodus hat aufgehört'}")
             self._licht_zurueck()
 

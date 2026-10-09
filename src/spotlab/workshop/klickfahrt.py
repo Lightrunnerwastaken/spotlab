@@ -43,6 +43,7 @@ class Stand:
     grund: str = ""
     ziel: tuple | None = None
     weg: list = field(default_factory=list)
+    quelle: str = "tab"        # wer das Ziel gesetzt hat: "tab" (Klick) oder "agent"
 
     def als_daten(self):
         return {
@@ -51,6 +52,7 @@ class Stand:
             "grund": self.grund,
             "ziel": None if self.ziel is None else [float(self.ziel[0]), float(self.ziel[1])],
             "weg": [[float(x), float(y)] for x, y in self.weg],
+            "quelle": self.quelle,
         }
 
 
@@ -76,9 +78,10 @@ class Klickfahrt:
     def unterwegs(self):
         return self.stand.zustand == "unterwegs"
 
-    def neues_ziel(self, nummer, ziel, lage, skizze, t):
+    def neues_ziel(self, nummer, ziel, lage, skizze, t, quelle="tab"):
         """Ein neues Ziel prüfen und den Weg planen. `lage` = (x, y, gier) im Rahmen der Skizze."""
-        self.stand = Stand(nummer=int(nummer), ziel=(float(ziel[0]), float(ziel[1])))
+        self.stand = Stand(nummer=int(nummer), ziel=(float(ziel[0]), float(ziel[1])),
+                           quelle=quelle)
         grund = wegsuche.pruefe_ziel(skizze, lage[:2], ziel, RAND_M, MAX_WEITE_M)
         if grund:
             self.stand.zustand, self.stand.grund = "abgelehnt", grund

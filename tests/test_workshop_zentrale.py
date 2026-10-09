@@ -94,7 +94,7 @@ def test_die_wahrnehmung_schreibt_das_lagebild_mit_allen_plaetzen(tmp_path):
     assert bild["breite"] > 0 and bild["hoehe"] > 0 and len(bild["ursprung"]) == 2
     assert bild["spot"]["x"] == pytest.approx(1.0) and bild["spot"]["gier_grad"] == pytest.approx(0.0)
     assert bild["tags"] == [{"id": 3, "x": 3.0, "y": 1.0}]
-    assert bild["klickfahrt"]["zustand"] == "keine"
+    assert bild["klickfahrt"]["zustand"] == "keine" and bild["klickfahrt"]["quelle"] == "tab"
     assert bild["faehigkeiten"] == {"licht": False, "ton": False, "kamera": False}
     assert bild["menschen"] == [] and bild["karte"] is None
 

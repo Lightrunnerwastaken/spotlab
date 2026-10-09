@@ -128,8 +128,16 @@ def test_der_stand_als_daten():
     k, _ = _unterwegs()
     daten = k.stand.als_daten()
     assert daten == {"nummer": 1, "zustand": "unterwegs", "grund": "",
-                     "ziel": [2.0, 1.0], "weg": [[2.0, 1.0]]}
+                     "ziel": [2.0, 1.0], "weg": [[2.0, 1.0]], "quelle": "tab"}
     assert kf.Stand().als_daten()["ziel"] is None
+
+
+def test_das_ziel_merkt_sich_wer_es_gesetzt_hat():
+    k = kf.Klickfahrt()
+    k.neues_ziel(3, (2.0, 1.0), (1.0, 1.0, 0.0), _raum(), 0.0, quelle="agent")
+    assert k.stand.quelle == "agent" and k.stand.als_daten()["quelle"] == "agent"
+    k.neues_ziel(4, (2.52, 1.0), (1.0, 1.0, 0.0), _raum(), 0.0, quelle="agent")
+    assert k.stand.zustand == "abgelehnt" and k.stand.quelle == "agent"
 
 
 def test_die_abweichung_rechnet_um_die_180_grad():
