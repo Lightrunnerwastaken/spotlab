@@ -1299,6 +1299,15 @@ versionsgepinntes Extra `spotlab[sim]`.
   bleibt grau an der letzten Stelle. Das Kartenbild ist ein zweites Indexbild im Zellgitter der
   Skizze; „fehlt“ strichelt Qt selbst (Maske + Musterpinsel), die GUI bleibt ohne numpy.
   Gemessen an den Katakomben: Laden 4 s, Abgleich 5 ms, Bild 3 ms. Am Gerät: A40.
+  **Die Zentrale endet, wenn die Oberfläche weg ist** (09.10.2026, `record/zentrale.GUI_PULS`,
+  `GUI_FRIST_S` = 10 s): der Tab schreibt jede Sekunde `gui_lebt.json`, in JEDEM Reiter — anders
+  als das Lebenszeichen der Klickfahrt, das nur der sichtbare Tab frischt —, und bleibt der Puls
+  aus (Absturz oder Hänger), endet `Zentrale.lauf` wie beim Stopp-Knopf, schreibt `gui_weg` und
+  setzt Spot hin. Ohne je einen Puls (Kommandozeile, Tests) urteilt sie nie. Anlass: an diesem Tag
+  hing die GUI, wurde geschlossen, und die Zentrale hielt den echten Spot stehend weiter, mit
+  Lease und Not-Aus-Eintrag. Gehangen hatte sie an der Live-Liste: die Zentrale schreibt 8
+  Ereignisse je Sekunde, und ohne `setUniformItemSizes` rechnete jedes `scrollToBottom` jede Zeile
+  neu (191 ms je Ereignis bei 16 000 Zeilen). Am Gerät: A42.
 - **Das Fenstersymbol ist FREIGESTELLT und liegt im Paket** (`gui/spotlab.png`, runde
   Ecken mit Transparenz aussen, dazu `package-data`). Ein Symbol mit eigenem
   Hintergrund sitzt in der Taskleiste in einem grauen Kasten, und ohne den

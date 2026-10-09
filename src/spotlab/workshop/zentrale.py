@@ -557,6 +557,20 @@ class Zentrale:
                 self._einmal("wahrnehmung", f"Die Wahrnehmung stolpert ({fehler}).")
             halt.wait(wahrnehmungs_pause(time.monotonic() - beginn))
 
+    def _gui_weg(self):
+        """Die Oberfläche ist abgestürzt oder hängt: enden wie beim Stopp-Knopf, nicht verwaist
+        weiterlaufen. Befund 09.10.2026: sonst hielt die Zentrale den echten Spot stehend, mit
+        Lease und Not-Aus-Eintrag, und niemand konnte sie mehr erreichen."""
+        frist = protokoll.GUI_FRIST_S
+        self.melde(f"Keine Verbindung zur Oberfläche seit {frist:.0f} s — Spot hält an und setzt "
+                   f"sich, die Steuerzentrale endet. spotlab neu starten, dann neu verbinden.")
+        recorder = getattr(self.spot, "recorder", None)
+        if recorder is not None:
+            try:
+                recorder.event("gui_weg", frist_s=frist)
+            except Exception:
+                pass                 # die Aufzeichnung darf das Hinsetzen nicht aufhalten
+
     def lauf(self, laeuft, schlaf=time.sleep, takt_s=TAKT_S, mit_blick=True):
         """Fahrtakt hier, Wahrnehmung im Faden, bis `laeuft()` falsch ist. Am Ende hält Spot."""
         self._laeuft = laeuft
@@ -570,6 +584,9 @@ class Zentrale:
         sucher.start()
         try:
             while laeuft():
+                if protokoll.gui_weg(self.lauf_dir, self.jetzt):
+                    self._gui_weg()
+                    break
                 self.takt()
                 schlaf(takt_s)
         finally:

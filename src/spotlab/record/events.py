@@ -21,6 +21,7 @@ ARTEN = frozenset(
         "ziel",             # Folgemodus: was der Finder in diesem Takt lieferte (oder einmal: weg)
         "angestossen",      # Übungsraum: Spot steht an einer Wand an (nur die Flanke)
         "treppe_verweigert",  # Übungsraum: Treppe falsch herum (Nase bergab), nur die Flanke
+        "gui_weg",          # Steuerzentrale: kein Puls der Oberfläche mehr, sie endet (frist_s)
         "ende",
     }
 )

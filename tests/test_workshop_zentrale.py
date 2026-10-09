@@ -247,6 +247,51 @@ def test_am_ende_erst_anhalten_dann_licht_aus(tmp_path):
     assert spot.kommandos[-2:] == ["stop", "licht aus"]
 
 
+# ------------------------------------------------------------ Puls der Oberfläche
+
+
+def _runden(n):
+    """laeuft() für höchstens n Runden -- das Netz, falls die Zentrale selbst nicht endet."""
+    zaehler = {"n": 0}
+
+    def laeuft():
+        zaehler["n"] += 1
+        return zaehler["n"] <= n
+
+    return laeuft, zaehler
+
+
+def test_ist_die_gui_weg_endet_die_zentrale_von_selbst(tmp_path):
+    # Befund 09.10.2026: die GUI stürzte ab, die Zentrale hielt den echten Spot stehend weiter.
+    import json
+
+    from spotlab.record.run import RunRecorder
+
+    spot = _Spot()
+    spot.recorder = RunRecorder(tmp_path / "runs", None, backend="dryrun")
+    gesagt = []
+    z = _zentrale(spot, spot.recorder.dir, melde=gesagt.append)
+    protokoll.schreibe_gui_puls(spot.recorder.dir, jetzt=lambda: T0 - protokoll.GUI_FRIST_S - 1)
+    laeuft, zaehler = _runden(50)
+    z.lauf(laeuft, schlaf=lambda _s: None, mit_blick=False)
+    assert zaehler["n"] == 1, "die Zentrale lief trotz totem Puls weiter"
+    assert spot.kommandos[-1] == "stop"
+    assert any("Oberfläche" in text for text in gesagt), gesagt
+    zeilen = (spot.recorder.dir / "ereignisse.jsonl").read_text(encoding="utf-8").splitlines()
+    assert any(json.loads(zeile)["art"] == "gui_weg" for zeile in zeilen)
+
+
+@pytest.mark.parametrize("puls_alter", [None, protokoll.GUI_FRIST_S - 1])
+def test_ein_frischer_oder_fehlender_puls_haelt_die_zentrale_nicht_an(tmp_path, puls_alter):
+    spot = _Spot()
+    z = _zentrale(spot, tmp_path)
+    if puls_alter is not None:
+        protokoll.schreibe_gui_puls(tmp_path, jetzt=lambda: T0 - puls_alter)
+    laeuft, zaehler = _runden(3)
+    z.lauf(laeuft, schlaf=lambda _s: None, mit_blick=False)
+    assert zaehler["n"] == 4                     # drei Runden, dann sagte laeuft() nein
+
+
 # ------------------------------------------------------------ Menschensuche (Teil 2)
 
 

@@ -11,6 +11,7 @@ lagebild.json   Programm → Tab: Skizze (Bild daneben), Spot, Tags, Klickfahrt.
 lagebild.png    Programm → Tab: die Skizze, ein Pixel je Zelle, Farbnummer = Zustand und Alter.
 kartenauftrag.json  Tab → Programm: Karte laden, Aufnahme starten/beenden, Wegpunkt (Teil 3).
 lagebild_karte.png  Programm → Tab: die geladene Karte im Raster der Skizze, Farbnummer = Abgleich.
+gui_lebt.json   Tab → Programm: die Oberfläche lebt (jede Sekunde, in jedem Reiter).
 """
 
 import json
@@ -36,7 +37,16 @@ KARTE_UNGEPRUEFT, KARTE_ERKANNT, KARTE_FEHLT, KARTE_NEU = 1, 2, 3, 4
 # frischt es alle 200 ms auf, solange er sichtbar ist -- Reiterwechsel, Alt-Tab
 # oder ein eingefrorenes Fenster halten die Klickfahrt an.
 TOTMANN_S = 0.5
-FARBEN = ("aus", "blau", "gruen", "gelb", "rot")
+# Der Puls der OBERFLÄCHE -- nicht die Fahrerlaubnis oben. Der Tab schreibt ihn jede Sekunde,
+# solange der Lauf lebt, egal welcher Reiter vorne ist; er bleibt aus, wenn die GUI abstürzt
+# ODER hängt. Ist er älter als GUI_FRIST_S, endet die Zentrale wie beim Stopp-Knopf (Spot
+# setzt sich). Befund 09.10.2026: die GUI stürzte ab, die Zentrale lief verwaist weiter und
+# hielt den echten Spot stehend, mit Lease und Not-Aus-Eintrag. 10 s liegen über den 5 s, nach
+# denen Windows „Keine Rückmeldung“ zeigt -- kurzes Stocken hält keinen Lauf an. Wer ohne GUI
+# startet (Kommandozeile, Tests), schreibt nie einen Puls und wird nie angehalten.
+GUI_PULS = "gui_lebt.json"
+GUI_FRIST_S = 10.0
+FARBEN =("aus", "blau", "gruen", "gelb", "rot")
 ZUSTAENDE = ("keine", "unterwegs", "angekommen", "abgelehnt", "versperrt", "abgebrochen", "folgt")
 # Die Menschensuche (Teil 2): wie viel Rechenzeit sie bekommt -- aus, vorne selten, vorne so oft
 # es geht, dazu Seiten- und Rückkamera.
@@ -89,6 +99,24 @@ def lies_klickziel(lauf_dir):
 def lebt(klickziel, jetzt=time.time):
     """Ist das Lebenszeichen frisch genug, dass Spot der Klickfahrt weiter folgen darf?"""
     return klickziel is not None and jetzt() - klickziel.lebt <= TOTMANN_S
+
+
+def schreibe_gui_puls(lauf_dir, jetzt=time.time):
+    return atomar.schreibe_atomar(Path(lauf_dir) / GUI_PULS, json.dumps({"lebt": float(jetzt())}))
+
+
+def lies_gui_puls(lauf_dir):
+    """Wanduhr des letzten Pulses — oder None (nie geschrieben, halb geschrieben, kaputt)."""
+    try:
+        return float(json.loads((Path(lauf_dir) / GUI_PULS).read_text(encoding="utf-8"))["lebt"])
+    except _FEHLER:
+        return None
+
+
+def gui_weg(lauf_dir, jetzt=time.time):
+    """Kam ein Puls, und ist er älter als GUI_FRIST_S? Ohne lesbaren Puls: kein Urteil."""
+    puls = lies_gui_puls(lauf_dir)
+    return puls is not None and jetzt() - puls > GUI_FRIST_S
 
 
 def schreibe_aktion(lauf_dir, nummer, art, farbe=None, stufe=None):

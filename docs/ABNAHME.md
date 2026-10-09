@@ -1397,6 +1397,25 @@ höchstens 0.4 s, und `pose()` wurde nie befohlen.
 
 **Ergebnis** _(offen)_
 
+## A42 — Steuerzentrale endet, wenn die Oberfläche weg ist
+
+**Voraussetzung** A1, A38. Befund vom 09.10.2026: die GUI hing („Keine Rückmeldung“), wurde
+geschlossen, und die Zentrale lief verwaist weiter — Spot stand mit Motoren an, Lease und
+Not-Aus-Eintrag, und kein Knopf erreichte ihn mehr. Seitdem schreibt der Tab „Fahren“ jede
+Sekunde `gui_lebt.json`, in jedem Reiter; bleibt der Puls 10 s aus (`GUI_FRIST_S`), endet die
+Zentrale wie beim Stopp-Knopf.
+
+1. Freifläche, Aufsicht, Tablet mit Not-Aus in Reichweite. Im Tab „Fahren“ „🐕 Echter Spot“
+   starten, Spot steht.
+2. In einen anderen Reiter wechseln und 30 s warten. Erwartung: Spot bleibt stehen, nichts endet.
+3. Zurück in „Fahren“, dann die GUI im Task-Manager beenden („Task beenden“ auf spotlab).
+   Erwartung: nach 10–11 s hält Spot an, setzt sich und schaltet die Motoren aus; in
+   `ereignisse.jsonl` steht `gui_weg`, der Prozess `zentrale.py` ist weg.
+4. spotlab neu starten und die Zentrale erneut starten — ohne „Kontrolle übernehmen“ (das
+   Lease muss zurückgegeben sein).
+
+**Ergebnis** _(offen)_
+
 ## Nach der Abnahme
 
 Ergebnisse hier eintragen, Abweichungen als Befund in die Spec zurückspielen, und erst

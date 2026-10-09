@@ -65,6 +65,7 @@ from spotlab.record import zentrale as protokoll
 
 VORGABE_STUFE = "langsam"             # am echten Roboter gemächlich anfangen
 HERZSCHLAG_MS = 200                   # Lebenszeichen der Klickfahrt
+GUI_PULS_S = 1.0                      # Puls der Oberfläche (record/zentrale.GUI_PULS)
 LAGEBILD_MS = 100                     # so oft schaut der Tab nach einem neuen Lagebild
 # Kurz, weil das Feld in der Knopfzeile steht: die Namen aus dem Entwurf („Übungsraum 3D
 # (Wiedergabe)“, „Übungsraum Physik“) machten das Fenster 69 px breiter als sein Mindestmass.
@@ -231,6 +232,7 @@ class FahrenView(QWidget):
         self.setFocusPolicy(Qt.StrongFocus)
         self._laeuft = False
         self._lauf_dir = None
+        self._puls_t = None              # Wanduhr des letzten Pulses der Oberfläche
         self._lage_laeuft = False
         self._klick_nummer = 0
         self._klick_ziel = None
@@ -559,6 +561,8 @@ class FahrenView(QWidget):
         self.lagebild.leeren()
         self.klick_zeile.setText(KLICK_HINWEIS)
         self.ort_wahl.setEnabled(False)
+        self._puls_t = None
+        self._puls(sofort=True)
         self.herzschlag_takt.start()
         self.lagebild_takt.start()
         self._zustand_normal()
@@ -849,10 +853,25 @@ class FahrenView(QWidget):
                                      self.tastenfahrt.stufe, jetzt=jetzt, art=self._klick_art)
 
     def _herzschlag(self, jetzt=time.time):
-        """Das Lebenszeichen der Klickfahrt -- nur bei sichtbarem Tab und aktivem Fenster."""
+        """Das Lebenszeichen der Klickfahrt -- nur bei sichtbarem Tab und aktivem Fenster.
+        Dazu der Puls der Oberfläche: der kommt aus JEDEM Reiter (siehe `_puls`)."""
+        self._puls(jetzt)
         if (self._laeuft and self._lauf_dir is not None and self._klick_nummer
                 and self.isVisible() and self._app_aktiv):
             self._schreibe_klickziel(jetzt=jetzt)
+
+    def _puls(self, jetzt=time.time, sofort=False):
+        """„Die GUI lebt“, einmal je Sekunde, solange ein Lauf lebt -- egal welcher Reiter vorne
+        ist. Bleibt er GUI_FRIST_S aus (Absturz oder Hänger), endet die Zentrale und Spot setzt
+        sich (Befund 09.10.2026)."""
+        if not self._laeuft or self._lauf_dir is None:
+            return
+        t = jetzt()
+        # abs(): stellt die Zeitsynchronisierung die Wanduhr zurück, käme sonst bis zum Aufholen
+        # kein Puls -- und die Zentrale setzte Spot hin, obwohl die GUI lebt.
+        if sofort or self._puls_t is None or abs(t - self._puls_t) >= GUI_PULS_S:
+            protokoll.schreibe_gui_puls(self._lauf_dir, jetzt=lambda: t)
+            self._puls_t = t
 
     def _lade_lagebild(self):
         """`lagebild.json` + `.png` zeigen, wenn es ein neues gibt -- sonst nichts tun."""

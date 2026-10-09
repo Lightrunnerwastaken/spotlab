@@ -30,6 +30,22 @@ def test_kaputt_oder_fehlend_ist_nichts(tmp_path):
     assert z.lies_klickziel(tmp_path) is None
 
 
+def test_die_gui_ist_erst_weg_wenn_ihr_puls_zehn_sekunden_alt_ist(tmp_path):
+    # Befund 09.10.2026: die GUI stürzte ab, die Zentrale am echten Spot lief verwaist
+    # weiter und hielt ihn stehend. Der Puls sagt, dass die OBERFLÄCHE lebt.
+    assert not z.gui_weg(tmp_path, jetzt=lambda: 1e9)          # nie gesehen: kein Urteil
+    z.schreibe_gui_puls(tmp_path, jetzt=lambda: 100.0)
+    assert z.lies_gui_puls(tmp_path) == 100.0
+    assert not z.gui_weg(tmp_path, jetzt=lambda: 100.0 + z.GUI_FRIST_S)
+    assert z.gui_weg(tmp_path, jetzt=lambda: 100.1 + z.GUI_FRIST_S)
+
+
+def test_ein_kaputter_puls_ist_kein_urteil(tmp_path):
+    (tmp_path / z.GUI_PULS).write_text("{halb", encoding="utf-8")
+    assert z.lies_gui_puls(tmp_path) is None
+    assert not z.gui_weg(tmp_path, jetzt=lambda: 1e9)
+
+
 def test_aktionen_licht_und_ton(tmp_path):
     z.schreibe_aktion(tmp_path, 1, "licht", "gruen")
     assert z.lies_aktion(tmp_path) == {"nummer": 1, "art": "licht", "farbe": "gruen"}

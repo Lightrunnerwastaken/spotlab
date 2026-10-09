@@ -524,6 +524,26 @@ def test_der_herzschlag_lebt_nur_bei_sichtbarem_tab(qapp, tmp_path):
     assert ansicht.herzschlag_takt.interval() == 200
 
 
+def test_der_puls_der_oberflaeche_kommt_auch_aus_einem_verdeckten_reiter(qapp, tmp_path):
+    """Anders als das Lebenszeichen der Klickfahrt: der Puls sagt nur „die GUI lebt“ und
+    darf nicht ausbleiben, weil jemand im Reiter Code ist -- sonst setzte sich Spot."""
+    from spotlab.record import zentrale as protokoll
+
+    ansicht = FahrenView()
+    ansicht.lauf_beginnt(tmp_path)
+    assert protokoll.lies_gui_puls(tmp_path) is not None, "der erste Puls kommt sofort"
+    ansicht.hide()
+    ansicht._herzschlag(jetzt=lambda: 5000.0)
+    assert protokoll.lies_gui_puls(tmp_path) == 5000.0
+    ansicht._herzschlag(jetzt=lambda: 5000.5)           # höchstens einmal je Sekunde
+    assert protokoll.lies_gui_puls(tmp_path) == 5000.0
+    ansicht._herzschlag(jetzt=lambda: 5001.0)
+    assert protokoll.lies_gui_puls(tmp_path) == 5001.0
+    ansicht.lauf_beendet()
+    ansicht._herzschlag(jetzt=lambda: 6000.0)
+    assert protokoll.lies_gui_puls(tmp_path) == 5001.0, "nach dem Lauf kein Puls mehr"
+
+
 def test_eine_taste_bricht_die_klickfahrt_ab(qapp, tmp_path):
     from spotlab.record import zentrale as protokoll
 
